@@ -991,7 +991,7 @@ fn propagate_theme_variable_to_scales(
     indices: impl IntoIterator<Item = usize>,
 ) {
     for index in indices {
-        config.propagate_theme_variable_ownership(source, &format!("cScale{index}"));
+        config.propagate_theme_variable_ownership(source, THEME_SCALE_KEYS[index]);
     }
 }
 
@@ -1379,33 +1379,31 @@ fn restore_default_baseline_palette(
     target: &mut ThemeStageSnapshot,
     baseline: &Map<String, Value>,
 ) {
-    for prefix in [
-        "cScale",
-        "cScalePeer",
-        "cScaleInv",
-        "cScaleLabel",
-        "surface",
-        "surfacePeer",
+    for keys in [
+        THEME_SCALE_KEYS.as_slice(),
+        THEME_SCALE_PEER_KEYS.as_slice(),
+        THEME_SCALE_INVERSE_KEYS.as_slice(),
+        THEME_SCALE_LABEL_KEYS.as_slice(),
+        THEME_SURFACE_KEYS.as_slice(),
+        THEME_SURFACE_PEER_KEYS.as_slice(),
     ] {
-        for index in 0..12 {
-            let key = format!("{prefix}{index}");
-            if let Some(value) = baseline.get(&key) {
+        for &key in keys {
+            if let Some(value) = baseline.get(key) {
                 #[cfg(test)]
                 target
                     .origins
-                    .insert(key.clone(), ThemeValueOrigin::DefaultSnapshot);
-                target.variables.insert(key, value.clone());
+                    .insert(key.to_string(), ThemeValueOrigin::DefaultSnapshot);
+                target.variables.insert(key.to_string(), value.clone());
             }
         }
     }
-    for index in 1..=12 {
-        let key = format!("pie{index}");
-        if let Some(value) = baseline.get(&key) {
+    for key in THEME_PIE_KEYS.iter().copied() {
+        if let Some(value) = baseline.get(key) {
             #[cfg(test)]
             target
                 .origins
-                .insert(key.clone(), ThemeValueOrigin::DefaultSnapshot);
-            target.variables.insert(key, value.clone());
+                .insert(key.to_string(), ThemeValueOrigin::DefaultSnapshot);
+            target.variables.insert(key.to_string(), value.clone());
         }
     }
     if let Some(value) = baseline.get("scaleLabelColor") {
@@ -1579,15 +1577,112 @@ impl ColorTransform {
     }
 }
 
+const THEME_GIT_KEYS: [&str; 8] = [
+    "git0", "git1", "git2", "git3", "git4", "git5", "git6", "git7",
+];
+const THEME_GIT_INVERSE_KEYS: [&str; 8] = [
+    "gitInv0", "gitInv1", "gitInv2", "gitInv3", "gitInv4", "gitInv5", "gitInv6", "gitInv7",
+];
+const THEME_SCALE_KEYS: [&str; 12] = [
+    "cScale0", "cScale1", "cScale2", "cScale3", "cScale4", "cScale5", "cScale6", "cScale7",
+    "cScale8", "cScale9", "cScale10", "cScale11",
+];
+const THEME_SCALE_INVERSE_KEYS: [&str; 12] = [
+    "cScaleInv0",
+    "cScaleInv1",
+    "cScaleInv2",
+    "cScaleInv3",
+    "cScaleInv4",
+    "cScaleInv5",
+    "cScaleInv6",
+    "cScaleInv7",
+    "cScaleInv8",
+    "cScaleInv9",
+    "cScaleInv10",
+    "cScaleInv11",
+];
+const THEME_SCALE_PEER_KEYS: [&str; 12] = [
+    "cScalePeer0",
+    "cScalePeer1",
+    "cScalePeer2",
+    "cScalePeer3",
+    "cScalePeer4",
+    "cScalePeer5",
+    "cScalePeer6",
+    "cScalePeer7",
+    "cScalePeer8",
+    "cScalePeer9",
+    "cScalePeer10",
+    "cScalePeer11",
+];
+const THEME_SCALE_LABEL_KEYS: [&str; 12] = [
+    "cScaleLabel0",
+    "cScaleLabel1",
+    "cScaleLabel2",
+    "cScaleLabel3",
+    "cScaleLabel4",
+    "cScaleLabel5",
+    "cScaleLabel6",
+    "cScaleLabel7",
+    "cScaleLabel8",
+    "cScaleLabel9",
+    "cScaleLabel10",
+    "cScaleLabel11",
+];
+const THEME_SURFACE_KEYS: [&str; 12] = [
+    "surface0",
+    "surface1",
+    "surface2",
+    "surface3",
+    "surface4",
+    "surface5",
+    "surface6",
+    "surface7",
+    "surface8",
+    "surface9",
+    "surface10",
+    "surface11",
+];
+const THEME_SURFACE_PEER_KEYS: [&str; 12] = [
+    "surfacePeer0",
+    "surfacePeer1",
+    "surfacePeer2",
+    "surfacePeer3",
+    "surfacePeer4",
+    "surfacePeer5",
+    "surfacePeer6",
+    "surfacePeer7",
+    "surfacePeer8",
+    "surfacePeer9",
+    "surfacePeer10",
+    "surfacePeer11",
+];
+const THEME_PIE_KEYS: [&str; 12] = [
+    "pie1", "pie2", "pie3", "pie4", "pie5", "pie6", "pie7", "pie8", "pie9", "pie10", "pie11",
+    "pie12",
+];
+const THEME_VENN_KEYS: [&str; 8] = [
+    "venn1", "venn2", "venn3", "venn4", "venn5", "venn6", "venn7", "venn8",
+];
+const THEME_FILL_TYPE_KEYS: [&str; 8] = [
+    "fillType0",
+    "fillType1",
+    "fillType2",
+    "fillType3",
+    "fillType4",
+    "fillType5",
+    "fillType6",
+    "fillType7",
+];
+
 fn validate_explicit_git_transforms(
     tv: &Map<String, Value>,
     explicit: &Map<String, Value>,
     transform: ColorTransform,
 ) -> Result<(), ColorError> {
-    for index in 0..8 {
-        let key = format!("git{index}");
-        if explicit.contains_key(&key) {
-            transform.apply(&required_color(tv, &key)?)?;
+    for key in THEME_GIT_KEYS.iter().copied() {
+        if explicit.contains_key(key) {
+            transform.apply(&required_color(tv, key)?)?;
         }
     }
     Ok(())
@@ -1599,22 +1694,25 @@ fn apply_single_pass_git_palette(
     bases: [String; 8],
     transform: ColorTransform,
 ) -> Result<(), ColorError> {
-    for (index, base) in bases.into_iter().enumerate() {
-        let git_key = format!("git{index}");
-        let source = if explicit.contains_key(&git_key) {
-            required_color(tv, &git_key)?
+    for ((git_key, inverse_key), base) in THEME_GIT_KEYS
+        .iter()
+        .copied()
+        .zip(THEME_GIT_INVERSE_KEYS.iter().copied())
+        .zip(bases)
+    {
+        let source = if explicit.contains_key(git_key) {
+            required_color(tv, git_key)?
         } else {
             base
         };
         let transformed = transform.apply(&source)?;
-        if !explicit.contains_key(&git_key) {
-            tv.insert(git_key, Value::String(transformed.clone()));
+        if !explicit.contains_key(git_key) {
+            tv.insert(git_key.to_string(), Value::String(transformed.clone()));
         }
 
-        let inverse_key = format!("gitInv{index}");
-        if !explicit.contains_key(&inverse_key) {
+        if !explicit.contains_key(inverse_key) {
             tv.insert(
-                inverse_key,
+                inverse_key.to_string(),
                 Value::String(theme_color::invert(&transformed)?),
             );
         }
@@ -1641,10 +1739,9 @@ fn apply_scale_label_dependencies(
 ) {
     let scale_label = calculated_or_fallback_value(explicit, "scaleLabelColor", fallback);
     tv.insert("scaleLabelColor".to_string(), scale_label.clone());
-    for index in 0..12 {
-        let key = format!("cScaleLabel{index}");
-        if !explicit.contains_key(&key) {
-            tv.insert(key, scale_label.clone());
+    for key in THEME_SCALE_LABEL_KEYS.iter().copied() {
+        if !explicit.contains_key(key) {
+            tv.insert(key.to_string(), scale_label.clone());
         }
     }
 }
@@ -1721,25 +1818,24 @@ fn apply_darkened_scale_dependencies(
     let transform = ColorTransform::Darken(if dark_mode { 75.0 } else { 25.0 });
     let bases = darkened_scale_bases(tv)?;
 
-    for (index, base) in bases.into_iter().enumerate() {
-        let scale_key = format!("cScale{index}");
-        let source = get_truthy_string(explicit, &scale_key).unwrap_or(base);
+    for ((scale_key, inverse_key), (peer_key, base)) in THEME_SCALE_KEYS
+        .iter()
+        .copied()
+        .zip(THEME_SCALE_INVERSE_KEYS.iter().copied())
+        .zip(THEME_SCALE_PEER_KEYS.iter().copied().zip(bases))
+    {
+        let source = get_truthy_string(explicit, scale_key).unwrap_or(base);
         let scale = transform.apply(&source)?;
-        if !explicit.contains_key(&scale_key) {
-            tv.insert(scale_key, Value::String(scale.clone()));
+        if !explicit.contains_key(scale_key) {
+            tv.insert(scale_key.to_string(), Value::String(scale.clone()));
         }
-        set_derived_string_unless_explicit(
-            tv,
-            explicit,
-            &format!("cScaleInv{index}"),
-            theme_color::invert(&scale)?,
-        );
+        set_derived_string_unless_explicit(tv, explicit, inverse_key, theme_color::invert(&scale)?);
         let peer = if dark_mode {
             theme_color::lighten(&scale, 10.0)?
         } else {
             theme_color::darken(&scale, 10.0)?
         };
-        set_derived_string_unless_explicit(tv, explicit, &format!("cScalePeer{index}"), peer);
+        set_derived_string_unless_explicit(tv, explicit, peer_key, peer);
     }
 
     let label_text = tv
@@ -1799,41 +1895,45 @@ fn replay_extended_theme_khroma_operations(
         _ => None,
     };
     if let Some(transform) = scale_policy {
-        for index in 0..2 {
-            let scale_key = format!("cScale{index}");
-            if !explicit.contains_key(&scale_key) {
+        for ((scale_key, inverse_key), (peer_key, label_key)) in THEME_SCALE_KEYS
+            .into_iter()
+            .zip(THEME_SCALE_INVERSE_KEYS.iter().copied())
+            .zip(
+                THEME_SCALE_PEER_KEYS
+                    .iter()
+                    .copied()
+                    .zip(THEME_SCALE_LABEL_KEYS.iter().copied()),
+            )
+            .take(2)
+        {
+            if !explicit.contains_key(scale_key) {
                 continue;
             }
-            let source = required_color(tv, &scale_key)?;
+            let source = required_color(tv, scale_key)?;
             let calculated = match transform {
                 Some(transform) => transform.apply(&source)?,
                 None => source,
             };
 
-            let inverse_key = format!("cScaleInv{index}");
-            if !explicit.contains_key(&inverse_key) {
+            if !explicit.contains_key(inverse_key) {
                 tv.insert(
-                    inverse_key,
+                    inverse_key.to_string(),
                     Value::String(theme_color::invert(&calculated)?),
                 );
             }
-            let peer_key = format!("cScalePeer{index}");
-            if !explicit.contains_key(&peer_key) {
+            if !explicit.contains_key(peer_key) {
                 let peer = if dark_mode {
                     theme_color::lighten(&calculated, 10.0)?
                 } else {
                     theme_color::darken(&calculated, 10.0)?
                 };
-                tv.insert(peer_key, Value::String(peer));
+                tv.insert(peer_key.to_string(), Value::String(peer));
             }
-            if theme == MermaidThemeId::ReduxDarkColor {
-                let label_key = format!("cScaleLabel{index}");
-                if !explicit.contains_key(&label_key) {
-                    tv.insert(
-                        label_key,
-                        Value::String(theme_color::darken(&calculated, 75.0)?),
-                    );
-                }
+            if theme == MermaidThemeId::ReduxDarkColor && !explicit.contains_key(label_key) {
+                tv.insert(
+                    label_key.to_string(),
+                    Value::String(theme_color::darken(&calculated, 75.0)?),
+                );
             }
         }
     }
@@ -2041,14 +2141,13 @@ fn apply_extended_theme_visible_derivations(
         MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor
     ) {
         // Resolve categorical fallbacks before the shared dependency ledger derives pie/Gantt.
-        for index in 0..12 {
-            let scale = format!("cScale{index}");
-            if explicit.contains_key(&scale) {
+        for scale in THEME_SCALE_KEYS.iter().copied() {
+            if explicit.contains_key(scale) {
                 // Both Redux color themes use fixed categorical fallbacks in
                 // updateColors(). Consumers read that stage, not the final replay.
                 let fallback =
-                    ThemeProgram::resolve(theme).calculation_snapshot(explicit)[&scale].clone();
-                set_if_missing(tv, &scale, fallback);
+                    ThemeProgram::resolve(theme).calculation_snapshot(explicit)[scale].clone();
+                set_if_missing(tv, scale, fallback);
             }
         }
         for (palette, prefix) in [("borderColorArray", "venn"), ("bkgColorArray", "fillType")] {
@@ -2057,8 +2156,12 @@ fn apply_extended_theme_visible_derivations(
             }
             if let Some(colors) = explicit.get(palette).and_then(Value::as_array) {
                 for index in 0..8 {
-                    let key = format!("{prefix}{}", index + usize::from(prefix == "venn"));
-                    if explicit.contains_key(&key) {
+                    let key = if prefix == "venn" {
+                        THEME_VENN_KEYS[index]
+                    } else {
+                        THEME_FILL_TYPE_KEYS[index]
+                    };
+                    if explicit.contains_key(key) {
                         continue;
                     }
                     let color = if prefix == "venn" && !colors.is_empty() {
@@ -2067,22 +2170,24 @@ fn apply_extended_theme_visible_derivations(
                         colors.get(index)
                     };
                     if let Some(color) = color {
-                        tv.insert(key, color.clone());
+                        tv.insert(key.to_string(), color.clone());
                     } else {
-                        tv.remove(&key);
+                        tv.remove(key);
                     }
                 }
             }
         }
     }
 
-    for i in 0..8 {
-        let git_key = format!("git{i}");
-        let git_inv_key = format!("gitInv{i}");
-        if explicit.contains_key(&git_key) && !explicit.contains_key(&git_inv_key) {
-            let git = required_color(tv, &git_key)?;
+    for (git_key, git_inv_key) in THEME_GIT_KEYS
+        .iter()
+        .copied()
+        .zip(THEME_GIT_INVERSE_KEYS.iter().copied())
+    {
+        if explicit.contains_key(git_key) && !explicit.contains_key(git_inv_key) {
+            let git = required_color(tv, git_key)?;
             let inv = theme_color::invert(&git)?;
-            tv.insert(git_inv_key, Value::String(inv));
+            tv.insert(git_inv_key.to_string(), Value::String(inv));
         }
     }
 
@@ -2474,8 +2579,8 @@ fn calculate_default_theme_variables(
         c_scales.push(theme_color::darken(&base, 10.0)?);
     }
 
-    for (i, v) in c_scales.iter().enumerate() {
-        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(v.clone()));
+    for (key, v) in THEME_SCALE_KEYS.iter().copied().zip(&c_scales) {
+        set_if_missing(&mut tv, key, Value::String(v.clone()));
     }
     set_if_missing(
         &mut tv,
@@ -2487,32 +2592,33 @@ fn calculate_default_theme_variables(
         "cScalePeer2",
         Value::String(theme_color::darken(&tertiary_color, 40.0)?),
     );
-    for (i, fallback_color) in c_scales.iter().enumerate() {
-        let color =
-            get_truthy_string(&tv, &format!("cScale{i}")).unwrap_or_else(|| fallback_color.clone());
+    for (index, (key, fallback_color)) in
+        THEME_SCALE_KEYS.iter().copied().zip(&c_scales).enumerate()
+    {
+        let color = get_truthy_string(&tv, key).unwrap_or_else(|| fallback_color.clone());
         set_if_missing(
             &mut tv,
-            &format!("cScalePeer{i}"),
+            THEME_SCALE_PEER_KEYS[index],
             Value::String(theme_color::darken(&color, 25.0)?),
         );
         set_if_missing(
             &mut tv,
-            &format!("cScaleInv{i}"),
+            THEME_SCALE_INVERSE_KEYS[index],
             Value::String(theme_color::adjust(
                 &color,
                 ColorAdjustment::hsl(180.0, 0.0, 0.0),
             )?),
         );
-        if i == 0 || i == 3 {
+        if index == 0 || index == 3 {
             set_if_missing(
                 &mut tv,
-                &format!("cScaleLabel{i}"),
+                THEME_SCALE_LABEL_KEYS[index],
                 Value::String("#ffffff".to_string()),
             );
         }
         set_if_missing(
             &mut tv,
-            &format!("cScaleLabel{i}"),
+            THEME_SCALE_LABEL_KEYS[index],
             Value::String(actor_text_color.clone()),
         );
     }

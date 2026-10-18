@@ -17,6 +17,15 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 indexed-key checkpoint](theme_indexed_keys_macos_2026-10-18.md) removes repeated
+formatting of fixed Git, cScale, palette and default-restoration keys during non-exact theme
+materialization. All 30 non-empty, non-palette public SVG rows reduce allocations and bytes; the
+default theme saves 134 allocations/2,233 bytes and the other themes save 15–55 allocations/
+137–1,024 bytes. Empty snapshot and explicit palette controls are unchanged, and all 60 SVG/report
+artifacts compare byte-for-byte equal. Theme tests (139), public merman tests (396), Clippy,
+formatting and release build pass. This is an allocation/work reduction with no calibrated latency
+claim and no retained state.
+
 The [October 18 staged-empty checkpoint](staged_empty_lazy_macos_2026-10-18.md) caches the exact
 ordered result for empty, owner-free compatibility execution of Base, Dark, Forest and Neutral.
 It preserves generated-theme insertion order by running the existing staged executor once; the
