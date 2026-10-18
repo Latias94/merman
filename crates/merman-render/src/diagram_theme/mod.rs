@@ -61,11 +61,11 @@ pub use admission::{
     ThemePortabilityRequirement, ThemeRequirements, TrustedThemeLane, TrustedThemeLanes,
 };
 #[cfg(test)]
-pub(crate) use application::RootThemeEvaluation;
+pub(crate) use application::RootThemeResidualReason;
 pub use application::RootThemeVerification;
 pub(crate) use application::{
     FamilyThemeMechanismKey, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
-    RootThemeReport, RootThemeResidualReason,
+    RootThemeReport,
 };
 pub use assets::{
     FontAssetSpec, FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec,

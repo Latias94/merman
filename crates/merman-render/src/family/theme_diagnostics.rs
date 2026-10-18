@@ -98,9 +98,9 @@ pub(super) fn project(
     theme: Option<&DiagramTheme>,
 ) -> Box<[ThemeDiagnostic]> {
     let mut diagnostics = Vec::new();
-    for residual in root.residuals() {
-        let code = residual.reason().id();
-        let diagnostic = match residual.key() {
+    for (key, reason) in root.residuals() {
+        let code = reason.id();
+        let diagnostic = match key {
             RootThemeMechanismKey::CanvasRule { index } => {
                 rule(code, ThemeTarget::Canvas, *index, theme)
             }
@@ -126,13 +126,6 @@ pub(super) fn project(
             }
         };
         diagnostics.push(diagnostic);
-    }
-    if !root.coverage_complete() {
-        diagnostics.push(ThemeDiagnostic::new(
-            "evidence-incomplete",
-            "root-evidence",
-            None,
-        ));
     }
     for residual in &family.theme_residuals {
         let code = residual.reason().id();

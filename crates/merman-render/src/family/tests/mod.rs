@@ -3,10 +3,10 @@ use crate::RenderCapability;
 use crate::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, FontStack, GradientStop, LinearGradient, MermaidThemeCompatibility,
-    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RootThemeEvaluation,
-    RootThemeMechanismKey, RootThemeVerification, Specified, TextStylePatch, ThemeCapability,
-    ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeTypographyProperty, TypographySpec,
+    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RootThemeMechanismKey,
+    RootThemeVerification, Specified, TextStylePatch, ThemeCapability, ThemeColorValue,
+    ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+    ThemeTypographyProperty, TypographySpec,
 };
 use std::sync::{Arc, Mutex};
 
@@ -968,8 +968,8 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
         .expect("render themed family SVG");
     assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
     assert_eq!(
-        rendered.root_theme_report().evaluation(),
-        RootThemeEvaluation::NotApplicable
+        rendered.root_theme_report().verification(),
+        RootThemeVerification::NotApplicable
     );
     assert_eq!(
         rendered.style_report().verification(),
@@ -1038,8 +1038,8 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
         }
     );
     assert_eq!(
-        completion.report().root_theme_report().evaluation(),
-        RootThemeEvaluation::NotApplicable
+        completion.report().root_theme_report().verification(),
+        RootThemeVerification::NotApplicable
     );
 }
 
@@ -1071,20 +1071,11 @@ fn solid_root_layer_is_applied_by_terminal_svg_completion() {
         .expect("render themed SVG");
 
     assert_eq!(
-        rendered.root_theme_report().evaluation(),
-        RootThemeEvaluation::Evaluated
-    );
-    assert_eq!(
         rendered.root_theme_report().verification(),
         RootThemeVerification::Verified
     );
-    assert!(
-        rendered
-            .root_theme_report()
-            .applied_mechanisms()
-            .contains(&RootThemeMechanismKey::CanvasLayer { index: 0 })
-    );
-    assert!(rendered.root_theme_report().residuals().is_empty());
+    assert_eq!(rendered.root_theme_report().applied_count(), 1);
+    assert_eq!(rendered.root_theme_report().residual_count(), 0);
     assert!(rendered.svg().contains(
         r#"data-merman-theme-canvas-layer="0" aria-hidden="true" pointer-events="none""#
     ));
@@ -1102,9 +1093,8 @@ fn solid_root_layer_is_applied_by_terminal_svg_completion() {
         .expect("finalize themed SVG")
         .into_completion();
     let root_report = completion.report().root_theme_report();
-    assert!(root_report.residuals().is_empty());
+    assert_eq!(root_report.residual_count(), 0);
     assert_eq!(root_report.verification(), RootThemeVerification::Verified);
-    assert!(root_report.coverage_complete());
 }
 
 #[test]
@@ -1132,12 +1122,7 @@ fn solid_root_base_is_applied_by_terminal_svg_completion() {
         rendered.root_theme_report().verification(),
         RootThemeVerification::Verified
     );
-    assert!(
-        rendered
-            .root_theme_report()
-            .applied_mechanisms()
-            .contains(&RootThemeMechanismKey::CanvasBase)
-    );
+    assert_eq!(rendered.root_theme_report().applied_count(), 1);
     assert!(
         rendered
             .svg()
@@ -1214,7 +1199,7 @@ fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
         RootThemeVerification::Unverified
     );
     assert_eq!(
-        rendered.root_theme_report().residuals()[0].reason(),
+        rendered.root_theme_report().residuals().next().unwrap().1,
         crate::diagram_theme::RootThemeResidualReason::OutputMutation
     );
     let completion = rendered.into_completion();
@@ -1388,11 +1373,10 @@ fn unsupported_root_pattern_residual_survives_terminal_svg_completion() {
         .expect("render best-effort SVG");
 
     let report = rendered.root_theme_report();
-    assert_eq!(report.evaluation(), RootThemeEvaluation::Evaluated);
     assert_eq!(report.verification(), RootThemeVerification::Unverified);
-    assert_eq!(report.residuals().len(), 1);
+    assert_eq!(report.residual_count(), 1);
     assert_eq!(
-        report.residuals()[0].key(),
+        report.residuals().next().unwrap().0,
         &RootThemeMechanismKey::CanvasLayer { index: 0 }
     );
     assert!(!rendered.svg().contains("data-merman-theme-canvas-layer"));
@@ -1412,41 +1396,39 @@ fn root_theme_evidence_preserves_distinct_layers_with_equal_capabilities() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
-    let plan = RootThemePlan::from_theme(session.theme());
-    let mut application = plan.begin_svg_application();
-    assert!(application.mark_applied(
-        &RootThemeMechanismKey::CanvasLayer { index: 0 },
-        [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint],
-    ));
-    assert!(application.mark_applied(
-        &RootThemeMechanismKey::CanvasLayer { index: 1 },
-        [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint],
-    ));
-    let report = application.finish();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare layered canvas")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render layered SVG");
+    let report = rendered.root_theme_report();
 
-    assert_eq!(
-        report.required_mechanisms(),
-        &[
-            RootThemeMechanismKey::CanvasLayer { index: 0 },
-            RootThemeMechanismKey::CanvasLayer { index: 1 },
-        ]
-    );
-    assert!(report.residuals().is_empty());
-    assert_eq!(
-        report.applied_mechanisms(),
-        &[
-            RootThemeMechanismKey::CanvasLayer { index: 0 },
-            RootThemeMechanismKey::CanvasLayer { index: 1 },
-        ]
-    );
-    assert!(report.coverage_complete());
+    assert_eq!(report.verification(), RootThemeVerification::Verified);
+    assert_eq!(report.required_count(), 2);
+    assert_eq!(report.applied_count(), 2);
+    assert_eq!(report.residual_count(), 0);
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG document");
+    let layers = document
+        .descendants()
+        .filter_map(|node| {
+            Some((
+                node.attribute("data-merman-theme-canvas-layer")?,
+                node.children().find_map(|child| child.attribute("fill"))?,
+            ))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(layers, [("0", "#ef4444"), ("1", "#2563eb")]);
 }
 
 #[test]
-fn root_layer_evidence_keeps_opacity_and_offset_capabilities_on_the_layer_key() {
+fn root_layer_requires_placement_even_when_paint_and_opacity_are_applied() {
     let layer = CanvasLayer::new(CanvasPaint::solid("#ef4444").expect("valid layer paint"))
         .with_opacity(0.5)
         .expect("valid layer opacity")
@@ -1458,25 +1440,38 @@ fn root_layer_evidence_keeps_opacity_and_offset_capabilities_on_the_layer_key() 
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
-    let report = RootThemePlan::from_theme(Some(&theme))
-        .begin_svg_application()
-        .finish();
-    let mechanism = &report.mechanisms()[0];
+    let plan = RootThemePlan::from_theme(Some(&theme));
+    let mut application = plan.begin_svg_application();
+    let key = RootThemeMechanismKey::CanvasLayer { index: 0 };
+    let applied = [
+        ThemeCapability::LayeredCanvas,
+        ThemeCapability::SolidPaint,
+        ThemeCapability::Opacity,
+    ];
+    assert!(application.mark_applied(&key, applied));
+    let report = application.finish();
 
-    assert!(
-        mechanism
-            .required_capabilities()
-            .any(|capability| capability == ThemeCapability::Opacity)
+    assert_eq!(report.verification(), RootThemeVerification::Unverified);
+    assert_eq!(report.applied_count(), 0);
+    assert_eq!(report.residual_count(), 1);
+    assert_eq!(report.residuals().next().unwrap().0, &key);
+    assert_eq!(
+        report.applied_capabilities().collect::<BTreeSet<_>>(),
+        applied.into_iter().collect()
     );
+
+    let mut application = plan.begin_svg_application();
     assert!(
-        mechanism
-            .required_capabilities()
-            .any(|capability| capability == ThemeCapability::CanvasLayerPlacement)
+        application.mark_applied(
+            &key,
+            applied
+                .into_iter()
+                .chain([ThemeCapability::CanvasLayerPlacement]),
+        )
     );
-    assert!(
-        mechanism
-            .residual_capabilities()
-            .any(|capability| capability == ThemeCapability::CanvasLayerPlacement)
+    assert_eq!(
+        application.finish().verification(),
+        RootThemeVerification::Verified
     );
 }
 

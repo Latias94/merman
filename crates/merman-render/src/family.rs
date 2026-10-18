@@ -4054,7 +4054,7 @@ fn ensure_root_theme_portable(
     }
     Err(Error::RejectedRootTheme {
         verification,
-        residual_count: report.residuals().len(),
+        residual_count: report.residual_count(),
     })
 }
 

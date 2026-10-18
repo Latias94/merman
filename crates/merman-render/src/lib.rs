@@ -441,19 +441,16 @@ pub mod __private {
 
     impl RootEvidenceSummary {
         pub(crate) fn from_root(root: &crate::diagram_theme::RootThemeReport) -> Self {
-            let required_count = root.required_mechanisms().len();
-            let applied_count = root.applied_mechanisms().len();
-            let residual_count = root.residuals().len();
+            let required_count = root.required_count();
+            let applied_count = root.applied_count();
+            let residual_count = root.residual_count();
             Self {
                 status: root.verification(),
                 required_count,
                 accounted_count: applied_count.saturating_add(residual_count),
                 applied_count,
                 residual_count,
-                output_mutated: root.residuals().iter().any(|residual| {
-                    residual.reason()
-                        == crate::diagram_theme::RootThemeResidualReason::OutputMutation
-                }),
+                output_mutated: root.output_mutated(),
             }
         }
 
