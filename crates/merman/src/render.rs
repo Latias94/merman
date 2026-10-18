@@ -880,16 +880,15 @@ impl Renderer {
             }
         });
         #[cfg(feature = "svg")]
-        let operation_engine = theme
-            .as_ref()
-            .map(|theme| {
-                merman_render::__private::install_parse_compatibility(theme, self.engine.clone())
-            })
-            .unwrap_or_else(|| self.engine.clone());
+        let themed_engine = theme.as_ref().map(|theme| {
+            merman_render::__private::install_parse_compatibility(theme, self.engine.clone())
+        });
+        #[cfg(feature = "svg")]
+        let operation_engine = themed_engine.as_ref().unwrap_or(&self.engine);
         #[cfg(not(feature = "svg"))]
-        let operation_engine = self.engine.clone();
+        let operation_engine = &self.engine;
         let operation = Operation::begin(
-            &operation_engine,
+            operation_engine,
             source,
             control,
             resources,

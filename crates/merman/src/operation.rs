@@ -15,10 +15,10 @@ use crate::render::{RenderError, ResourceLimitCause, ResourceLimitExceeded};
 #[cfg(feature = "svg")]
 use merman_render::diagram_theme::DiagramTheme;
 
-/// Immutable operation-owned values shared by every target adapter.
+/// Parse-stage state borrowing the engine while owning the operation's execution context.
 #[derive(Debug)]
-pub(crate) struct Operation {
-    engine: Engine,
+pub(crate) struct Operation<'engine> {
+    engine: &'engine Engine,
     pub(crate) control: OperationControl,
     pub(crate) context: OperationContext,
     resources: InputResourcePolicy,
@@ -26,9 +26,9 @@ pub(crate) struct Operation {
     theme: Option<DiagramTheme>,
 }
 
-impl Operation {
+impl<'engine> Operation<'engine> {
     pub(crate) fn begin(
-        engine: &Engine,
+        engine: &'engine Engine,
         source: &str,
         control: OperationControl,
         resources: InputResourcePolicy,
@@ -45,7 +45,7 @@ impl Operation {
         let context = engine.begin_operation().map_err(RenderError::from)?;
         checkpoint(&control, OperationPhase::Admission)?;
         Ok(Self {
-            engine: engine.clone(),
+            engine,
             control,
             context,
             resources,

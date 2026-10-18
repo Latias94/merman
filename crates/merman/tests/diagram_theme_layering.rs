@@ -140,6 +140,33 @@ Alice->>Bob: Hello"##;
 }
 
 #[test]
+fn request_theme_does_not_leak_after_success_or_cancellation() {
+    let renderer = Renderer::new();
+    let baseline = effective_config(&renderer, SOURCE, SvgRequest::default(), None);
+
+    let themed = effective_config(&renderer, SOURCE, SvgRequest::default(), Some(one_dark()));
+    assert_ne!(themed, baseline, "the request theme must take effect");
+    assert_eq!(
+        effective_config(&renderer, SOURCE, SvgRequest::default(), None),
+        baseline,
+        "a successful request-scoped theme must not alter the renderer"
+    );
+
+    let control = OperationControl::new();
+    control.cancel();
+    let cancelled = renderer.render(
+        RenderRequest::layout_json(SOURCE, control, SvgRequest::default()).with_theme(one_dark()),
+    );
+    assert!(matches!(cancelled, Err(merman::RenderError::Cancelled(_))));
+
+    assert_eq!(
+        baseline,
+        effective_config(&renderer, SOURCE, SvgRequest::default(), None),
+        "a request-scoped theme must not alter the renderer after cancellation"
+    );
+}
+
+#[test]
 fn svg_pipeline_selection_does_not_change_theme_identity() {
     let theme = one_dark();
     let renderer = Renderer::new();
