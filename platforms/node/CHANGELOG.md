@@ -2,6 +2,12 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.9.1] - Unreleased
+
+- ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
+- Diagram lexers now make progress and honor cancellation while skipping malformed or empty input.
+- Generated HTML label IDs are scoped to the diagram root so multiple diagrams can share a document.
+
 ## [0.9.0] - 2026-10-12
 
 The experimental `0.9.0` package group requires Node.js 22 or newer. Keep the loader and selected native/WASM transport artifacts at the same version.

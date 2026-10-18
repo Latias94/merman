@@ -7,7 +7,7 @@ silently falls back to browser or Node WASM.
 ## Quick start
 
 ```sh
-npm install @mermanjs/node-wasm@0.9.0
+npm install @mermanjs/node-wasm@0.9.1
 ```
 
 ```js

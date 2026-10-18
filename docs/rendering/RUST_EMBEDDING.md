@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide covers Rust embedding with Merman `0.9.0`, retaining Mermaid `12.1.0` compatibility from 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
+This guide covers Rust embedding with Merman `0.9.1`, retaining Mermaid `12.1.0` compatibility from 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
 
 ## Select languages, outputs, and layout backends
 
@@ -10,7 +10,7 @@ For an SVG host that needs all built-in diagram families and Cytoscape support:
 
 ```toml
 [dependencies]
-merman = { version = "0.9.0", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
+merman = { version = "0.9.1", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
 ```
 
 Default facade builds include all languages, SVG, Cytoscape, ELK, and math. Disable defaults when that exceeds the host's requirements; `complete-svg` adds SVG, Cytoscape, and math without ELK, and still needs a family selection. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
@@ -54,7 +54,7 @@ Reuse the configured `Renderer` across calls when site configuration and default
 The reviewed Zed reference snapshot pins `0.8.0-alpha.5` and selects `svg, layout-cytoscape` with defaults disabled. Updating that declaration alone compiles on alpha.7, but strict parsing fails because no built-in family is selected. Add `all-diagrams` to preserve the former language surface, or select the families from the host's own allowlist:
 
 ```toml
-merman = { version = "0.9.0", default-features = false, features = [
+merman = { version = "0.9.1", default-features = false, features = [
     "svg", "layout-cytoscape",
     "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state",
     "diagram-er", "diagram-gantt", "diagram-pie", "diagram-git-graph",

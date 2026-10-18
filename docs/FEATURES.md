@@ -1,6 +1,6 @@
 # Choosing Merman capabilities
 
-This page documents Merman `0.9.0` capabilities. Explicit family selection and default facade ELK remain as in 0.8.0; use the [upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for changed models and output defaults. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+This page documents Merman `0.9.1` capabilities. Explicit family selection and default facade ELK remain as in 0.8.0; use the [upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for changed models and output defaults. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
@@ -387,11 +387,11 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, explicit native fonts, local Iconify loading,
 Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is included in source defaults and the standard archive.
 The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
-EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7, 0.8.0, and 0.9.0 include ELK in both recipes.
+EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7, 0.8.0, 0.9.1 include ELK in both recipes.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version 0.9.0 --locked
+cargo install merman-cli --version 0.9.1 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -424,7 +424,7 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The `0.9.0` source default
+Rustdoc has two independently distributed static-SVG workflows. The `0.9.1` source default
 and release archive retain the deterministic CLI `build/check` authoring workflow, as in
 alpha.7. It enables SVG rendering with Cytoscape and math;
 it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
@@ -434,7 +434,7 @@ in its normal/build Cargo graph, supports crate-level docs, and makes diagram up
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
 features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
-optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply from alpha.7 through 0.9.0. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
+optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply from alpha.7 through 0.9.1. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
 and continues to include math.
 
 The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
@@ -504,7 +504,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter `0.9.0` uses `flutter pub add 'merman:0.9.0'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
+Flutter `0.9.1` uses `flutter pub add 'merman:0.9.1'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 2 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`

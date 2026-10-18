@@ -33,7 +33,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.9.0"
+merman = "0.9.1"
 ```
 
 Render a source string to SVG:

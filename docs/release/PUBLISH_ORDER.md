@@ -1,13 +1,28 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-12 (Asia/Shanghai)
+Last updated: 2026-10-18 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Selected preparation target: `0.9.0`; latest verified published Rust workspace and CLI/LSP release: `0.8.0`. Independent prerequisites and channels are tracked in the [0.9.0 preparation record](#090-preparation). The broader theme refactor remains deferred; start with the [stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md) or [alpha.7 delta](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+Selected preparation target: `0.9.1`, based on the `v0.9.0` source tag. See the [0.9.1 preparation record](#091-preparation) for the patch release scope. Verify each registry and GitHub channel independently before publication; independent versions retain separate release tracks.
+
+## 0.9.1 preparation
+
+Status on 2026-10-18 (Asia/Shanghai): preparation is in progress for workspace 0.9.1. The source delta starts at `v0.9.0` (`f754a3c3077d35d2a372c2fec04f9e9b87db1c3f`) and carries selected fixes, including lexer progress/cancellation, safe HTML-label transforms, diagram-root label IDs, isolated native font measurement sessions, prepared ER geometry, and the CLI font-measurement budget option. The broader theme refactor remains deferred.
+
+The root and workspace-coupled package changelogs remain `Unreleased` until the immutable preflight source and intended tag date are fixed. Version projections and target-version installation examples are prepared locally. The local version, preparation changelog, CLI distribution-asset, Playground catalog, third-party license, static surface-contract, and formatting gates passed. The focused ER suite passed 15 tests, CLI font/distribution suites passed 27 tests, and release projection/changelog/license/surface scripts passed 46 tests. Immutable release preflight has not yet been run for the final source SHA. No 0.9.1 tag, registry acceptance, artifact publication, or successful preflight is asserted by this record.
+
+| Surface | Selected target | Preparation and delivery boundary |
+| --- | --- | --- |
+| Workspace Rust / CLI / LSP | `0.9.1` / intended `v0.9.1` | Version projection and focused checks passed from the `v0.9.0` source line; final source SHA, dated changelogs, workspace checks, and immutable preflight remain required. The workspace tag triggers crates.io and CLI/LSP workflows. |
+| Web / Node / Python / Flutter / Android / Apple | `0.9.1` | Target version projection and package-facing documentation are prepared. Each owner must build and verify the exact package group or native artifact; a workspace tag does not publish these channels. |
+| Independent Typst wrapper | `0.5.0` | Separate version axis; this preparation does not rebuild or publish it. Its current bundle remains on Merman `0.9.0`; update it only in a separately prepared Typst release. |
+| Independent VS Code extension | `0.1.0` | Separate version axis; its artifacts and Marketplace availability require their own release scope. |
+
+Release order and evidence boundaries follow the process below and the [release operator guide](RELEASING.md). Do not move tags or publish any channel based on this preparation record alone.
 
 ## 0.9.0 preparation
 

@@ -5,7 +5,7 @@ and native or WASM artifacts to the same Merman version.
 
 ## Release versions
 
-Merman `0.9.0` retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0` compatibility. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for changes to APIs, commands, and rendered output.
+Merman `0.9.1` retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0` compatibility. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for changes to APIs, commands, and rendered output.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 

@@ -4,6 +4,12 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.9.1] - Unreleased
+
+- ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
+- Diagram lexers now make progress and honor cancellation while skipping malformed or empty input.
+- Generated HTML label IDs are scoped to the diagram root so multiple diagrams can share a document.
+
 ## [0.9.0] - 2026-10-12
 
 Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and native artifacts paired.
