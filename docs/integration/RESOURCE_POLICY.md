@@ -77,7 +77,7 @@ is not an ASCII budget. See the [host examples](../../crates/merman/examples/REA
 ## Native font measurement budget
 
 Native-font measurement has its own per-operation provider limit, separate from
-`RenderResourcePolicy`. Its default is 4,096 uncached, nonempty shaping probes;
+`RenderResourcePolicy`. Its default is 16,384 uncached, nonempty shaping probes;
 cache hits do not consume it. One text label may require several probes for wrapping
 and different measurement operations, so this is not a table or label count.
 Changing the render profile, including `unbounded_for_trusted_input()`, does not
@@ -92,7 +92,7 @@ use merman::svg::export::{NativeFontLimits, NativeFontOptions};
 use merman::OperationControl;
 
 let limits = NativeFontLimits {
-    max_measurements: 8_192,
+    max_measurements: 32_768,
     ..Default::default()
 };
 let fonts = NativeFontOptions::default()
@@ -112,7 +112,7 @@ that value alone may fail again. A larger budget
 permits more font work, so keep cancellation, deadlines, and host concurrency limits.
 
 For the CLI, retain the same font sources and add
-`--font-max-measurements 8192`. This option requires native Mermaid measurement;
+`--font-max-measurements 32768`. This option requires native Mermaid measurement;
 it does not enable font discovery on its own and does not apply to raw SVG.
 
 ## Keep three different controls separate

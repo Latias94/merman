@@ -55,9 +55,9 @@ mod er_native_regressions {
     }
 
     #[test]
-    fn er_native_default_budget_renders_340_tables() {
-        let output = render(&tables(340), Some(single_font_context()));
-        assert!(output.svg().contains("entity-T339-339"));
+    fn er_native_default_budget_renders_500_tables() {
+        let output = render(&tables(500), Some(single_font_context()));
+        assert!(output.svg().contains("entity-T499-499"));
         assert_native_without_fallback(&output, "er");
     }
 

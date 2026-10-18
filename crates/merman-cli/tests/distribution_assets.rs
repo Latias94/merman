@@ -306,7 +306,7 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
         assert!(man.contains("Control bounded system font discovery"));
         assert!(man.contains("off with explicit sources unless on is requested"));
         assert!(man.contains("Maximum uncached native font shaping probes per diagram"));
-        assert!(man.contains("default: 4096"));
+        assert!(man.contains("default: 16384"));
         assert!(!man.contains("title horizontal bounds only"));
         assert!(!man.contains("deterministic without font sources"));
         assert!(!man.contains("System discovery is deferred"));

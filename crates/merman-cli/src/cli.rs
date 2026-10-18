@@ -823,7 +823,7 @@ struct FontArgumentDefinitions {
     /// Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested.
     #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
     font_system: Option<FontSystemKind>,
-    /// Maximum uncached native font shaping probes per diagram (default: 4096); independent of --resource-profile.
+    /// Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile.
     #[arg(
         long = "font-max-measurements",
         value_name = "COUNT",
