@@ -1850,6 +1850,15 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
     let explicit = program.normalize_overrides(raw);
 
     if let Some(staged_program) = program.staged_program() {
+        if explicit.is_empty() && !config.has_theme_variable_calculation_owners() {
+            let variables = staged_program.resolved_without_overrides()?.clone();
+            config.retain_normalized_theme_compatibility_variables(&explicit);
+            config.set_value_preserving_theme_compatibility(
+                "themeVariables",
+                Value::Object(variables),
+            );
+            return Ok(());
+        }
         let resolution = staged::Resolution::execute_with_owners(
             staged_program,
             program.prepared_constructor(),
