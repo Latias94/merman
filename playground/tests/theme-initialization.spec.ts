@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { ThemeRecipeV1 } from "@mermanjs/web";
 
 import { encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
@@ -69,6 +70,97 @@ async function nodeFills(page: Page): Promise<(string | null)[]> {
     }),
   );
 }
+
+test("Compare backing stays shared and preserves authored white canvas and exported SVG bytes", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = monitorBrowserErrors(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    if (window === window.top) localStorage.setItem("merman-language", "en");
+  });
+  const recipe = {
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: { canvas: { base: "white" } },
+  } satisfies ThemeRecipeV1;
+  await page.goto(`./${encodeShareHash({
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    code: "flowchart LR\nA[Authored white canvas] --> B[Shared backing]",
+    diagramTheme: "dark",
+    themeRecipeJson: JSON.stringify(recipe),
+  })}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const merman = page.locator('[data-merman-compare-engine="merman"]');
+  const mermaid = page.locator('[data-merman-compare-engine="mermaid"]');
+  await expect(merman).toHaveAttribute("data-merman-artifact-state", "ready");
+  await expect(mermaid).toHaveAttribute("data-merman-artifact-state", "ready");
+  const explanation = page.getByText("Merman applies its selected preset or custom recipe.", { exact: false });
+  await expect(explanation).toBeVisible();
+  const mermanSvg = merman.locator(".preview-container svg").first();
+  const mermaidSvg = mermaid.locator(".preview-container svg").first();
+  const authoredCanvas = mermanSvg.locator('[data-merman-theme-canvas="base"]');
+  await expect(authoredCanvas).toHaveCSS("fill", "rgb(255, 255, 255)");
+  await expect(mermaidSvg.locator("[data-merman-theme-canvas]")).toHaveCount(0);
+  const originalMermanRoot = await mermanSvg.elementHandle();
+  const originalMermaidRoot = await mermaidSvg.elementHandle();
+  const originalMermanSvg = await mermanSvg.evaluate((root) => root.outerHTML);
+  const originalMermaidSvg = await mermaidSvg.evaluate((root) => root.outerHTML);
+  const copySvg = async (pane: Locator) => {
+    await pane.getByRole("button", { name: /^(Copy SVG|Copied!)$/ }).click();
+    return page.evaluate(() => navigator.clipboard.readText());
+  };
+  const mermanExport = await copySvg(merman);
+  const mermaidExport = await copySvg(mermaid);
+  expect(mermanExport).toContain('data-merman-theme-canvas="base"');
+  expect(mermanExport).toContain(`fill="${await authoredCanvas.getAttribute("fill")}"`);
+  expect(mermaidExport).not.toContain("data-merman-theme-canvas");
+  const backing = page.getByLabel("Preview backing", { exact: true });
+  const canvases = page.locator('[data-merman-compare-engine] [data-merman-svg-viewport="true"]');
+  await expect(canvases).toHaveCount(2);
+  const backgrounds = new Map<string, string>();
+
+  for (const [value, tone] of [
+    ["automatic", "dark"], ["light", "light"], ["dark", "dark"],
+    ["transparency", "light"], ["automatic", "dark"],
+  ] as const) {
+    await backing.selectOption(value);
+    await expect(page.locator("#preview-mode-panel")).toHaveAttribute("data-preview-backing", value);
+    for (const canvas of await canvases.all()) await expect(canvas).toHaveAttribute("data-preview-canvas-tone", tone);
+    const paints = await canvases.evaluateAll((elements) => elements.map((element) => ({
+      color: getComputedStyle(element).backgroundColor,
+      image: getComputedStyle(element).backgroundImage,
+    })));
+    expect(paints[0]).toEqual(paints[1]);
+    backgrounds.set(value, paints[0].color);
+    if (value === "transparency") expect(paints[0].image).toContain("conic-gradient");
+    await expect(authoredCanvas).toHaveCSS("fill", "rgb(255, 255, 255)");
+    expect(await mermanSvg.evaluate((root, original) => root === original, originalMermanRoot)).toBe(true);
+    expect(await mermaidSvg.evaluate((root, original) => root === original, originalMermaidRoot)).toBe(true);
+    expect(await mermanSvg.evaluate((root) => root.outerHTML)).toBe(originalMermanSvg);
+    expect(await mermaidSvg.evaluate((root) => root.outerHTML)).toBe(originalMermaidSvg);
+    expect(await copySvg(merman)).toBe(mermanExport);
+    expect(await copySvg(mermaid)).toBe(mermaidExport);
+  }
+  expect(backgrounds.get("light")).not.toBe(backgrounds.get("dark"));
+  expect(backgrounds.get("automatic")).toBe(backgrounds.get("dark"));
+  await originalMermanRoot?.dispose();
+  await originalMermaidRoot?.dispose();
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  const workbench = page.locator("#theme-workbench");
+  await workbench.getByRole("tab", { name: "Presets", exact: true }).click();
+  const none = workbench.getByRole("button", { name: /^None/ });
+  await expect(none).toHaveAttribute("aria-pressed", "false");
+  await none.click();
+  await expect(none).toHaveAttribute("aria-pressed", "true");
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(merman).toHaveAttribute("data-merman-artifact-state", "ready");
+  await expect(mermanSvg.locator("[data-merman-theme-canvas]")).toHaveCount(0);
+  await expect(explanation).toBeHidden();
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(await copySvg(merman)).not.toContain("data-merman-theme-canvas");
+  errors.assertNone();
+});
 
 
 test("Merman keeps host security against configuration, frontmatter and directives", async ({ page }) => {

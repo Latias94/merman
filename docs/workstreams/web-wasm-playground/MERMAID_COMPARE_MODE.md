@@ -1,12 +1,12 @@
 # Mermaid Compare Mode
 
 Status: Implemented
-Last updated: 2026-08-16
+Last updated: 2026-10-18
 
 ## Purpose
 
-Compare renders one frozen Mermaid source through Merman WASM and pinned Mermaid JS
-`11.16.1@7ecca0cd` for interactive side-by-side inspection. It is a compatibility aid, not a
+Compare renders one frozen Mermaid source through Merman WASM and the lockfile-pinned Mermaid JS
+runtime for interactive side-by-side inspection. Each pane reports its engine version. It is a compatibility aid, not a
 pixel-diff oracle and not the formal benchmark.
 
 ## User Contract
@@ -20,6 +20,10 @@ pixel-diff oracle and not the formal benchmark.
 - A Merman failure and Mermaid failure remain independent evidence; partial success is visible.
 - Source/config/theme/font changes produce one latest coherent batch. Actions are disabled while a
   replacement batch is pending.
+- The theme workbench previews valid drafts through the same coordinator without changing the applied
+  workspace theme. Workspace/issue sharing and SVG/image actions require Apply while a changed draft
+  is visible; source and ASCII actions retain their existing ownership.
+- Both panes share a display-only Preview backing choice and preserve engine-owned SVG paint.
 
 Interactive durations describe engine execution for the actual source. They exclude no work by
 performing a hidden synthetic warmup, and they are not presented as cross-engine benchmark phases.
@@ -84,7 +88,7 @@ mutation poisons and destroys the iframe; the next request must create a fresh r
 Merman's typed detection facts provide the logical family, syntax id, and effective layout id.
 Playground code maps those neutral facts to Mermaid-only requirements such as ZenUML or ELK
 registration. Compare does not scan source prefixes or regular expressions as a fallback. This
-keeps frontmatter, directives, aliases, incomplete input, ELK selection, and Mermaid 11.16 families
+keeps frontmatter, directives, aliases, incomplete input, ELK selection, and the pinned Mermaid families
 aligned with the shared Rust parser.
 
 ## Render Coordinator
@@ -98,6 +102,13 @@ The coordinator freezes:
 - one canonical `800x600` viewport and controlled `screenAvailableWidth=800`;
 - diagnostics/Compare flags;
 - exact Merman package version.
+
+An active theme-editing session supplies its last valid candidate to this same frozen operation.
+Invalid recipe text stays editable while current source/configuration/font edits continue rendering
+with that candidate. Apply commits theme fields only; Cancel restores the applied theme without
+rolling back unrelated workspace changes. See
+[Create, Customize, and Share Diagram Themes](../../rendering/custom-diagram-themes.md#edit-and-share-in-the-playground)
+for the user workflow.
 
 It invokes Merman and, when enabled, the Compare realm. Monotonic request ids make publication
 latest-wins even when non-abortable work completes out of order. Parse/layout diagnostics and
@@ -122,18 +133,30 @@ to the renderer-owned root viewport, and fits their union. Disconnected decorati
 viewport intentionally clips remain outside Fit, preventing an off-range marker from collapsing the
 diagram.
 ViewBox Frame restores the root's original overflow behavior, removes the grid, and gives the exact
-mounted SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state. The responsive clone
-suppresses Merman's known default white root background without changing the frozen artifact,
-exports, or non-default root backgrounds. A missing-`viewBox` artifact, failed measurement, or
+mounted SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state.
+The responsive clone preserves every renderer-owned root background and canvas layer, including white
+paint. **Preview backing** offers Automatic, Light, Dark, and Transparency; both panes use the same
+choice. Backing is host presentation only: it changes no SVG bytes, render identity, theme recipe,
+or image-export paint. Automatic follows the existing Mermaid appearance resolver. A missing-`viewBox` artifact, failed measurement, or
 non-finite browser result falls back to preview-local intrinsic dimensions. Connected browser bounds are
 never promoted into renderer or export geometry. The optional SVG Bounds outline follows the mounted root
 and affects neither fit nor export. This shared presentation path applies equally to Merman and
 Mermaid.js; ViewBox Frame remains the diagnostic mode for engine-owned root clipping.
 
+Merman presets and custom recipes affect the Merman pane only. Mermaid.js receives the Mermaid
+source, configuration, and compatibility theme. Selecting None in the theme workbench is an explicit
+way to compare without Merman recipe styling; replacing a modified custom draft requires a discard
+decision. Preset design scope and declared mechanism support are distinct from the same-execution
+theme metadata published with Merman's displayed SVG. Unknown or missing outcomes remain unverified;
+a successful preview does not certify an export target.
+
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
 artifact; Merman raster output rerenders the frozen operation once through `resvg-safe`. Preview
 and download use the same encoded Blob.
+Opening or changing an unapplied theme draft invalidates an existing image-export workbench before
+another action can start. An already-dispatched export can finish against its captured publication.
+After Apply, a newly opened export workbench captures the current applied publication.
 
 ## Security And Resource Lifecycle
 

@@ -71,9 +71,12 @@ test("stores Preview-owned SVG presentation preferences outside workspace snapsh
 
   useAppStore.getState().setShowSvgBounds(true);
   useAppStore.getState().setSvgPresentationMode("viewbox");
+  useAppStore.getState().setPreviewBacking("transparency");
 
   assert.equal(useAppStore.getState().showSvgBounds, true);
   assert.equal(useAppStore.getState().svgPresentationMode, "viewbox");
+  assert.equal(useAppStore.getState().previewBacking, "transparency");
+  assert.equal("previewBacking" in selectWorkspaceSnapshot(useAppStore.getState()), false);
   assert.equal("showSvgBounds" in selectWorkspaceSnapshot(useAppStore.getState()), false);
   assert.equal(
     "svgPresentationMode" in selectWorkspaceSnapshot(useAppStore.getState()),

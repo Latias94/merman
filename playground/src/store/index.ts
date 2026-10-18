@@ -43,6 +43,7 @@ export type UITheme = "light" | "dark" | "system";
 export type ResolvedUITheme = Exclude<UITheme, "system">;
 export type EditorMode = "code" | "config";
 export type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
+export type PreviewBacking = "automatic" | "light" | "dark" | "transparency";
 export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
 export type SvgPipeline = MermanSvgPipeline;
@@ -102,6 +103,8 @@ export interface AppState {
   setSvgPresentationMode: (mode: SvgPresentationMode) => void;
   showSvgBounds: boolean;
   setShowSvgBounds: (show: boolean) => void;
+  previewBacking: PreviewBacking;
+  setPreviewBacking: (backing: PreviewBacking) => void;
 }
 
 export function selectWorkspaceSnapshot(
@@ -314,6 +317,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     ),
   showSvgBounds: false,
   setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
+  previewBacking: "automatic",
+  setPreviewBacking: (previewBacking) => set({ previewBacking }),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

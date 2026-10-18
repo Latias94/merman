@@ -253,16 +253,14 @@ test("automatic and explicit default themes remain distinct in the presentation 
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await expect(page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }))
-    .toHaveAttribute("aria-checked", "true");
-  await page.getByRole("menuitemradio", { name: "Default", exact: true }).click();
+  const compatibility = page.getByLabel("Mermaid compatibility theme", { exact: true });
+  await expect(compatibility).toHaveValue("auto");
+  await compatibility.selectOption("default");
   await waitForPreviewSvg(page);
   await expect(page.locator("footer")).toContainText("Default");
 
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await expect(page.getByRole("menuitemradio", { name: "Default", exact: true }))
-    .toHaveAttribute("aria-checked", "true");
-  await page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }).click();
+  await expect(compatibility).toHaveValue("default");
+  await compatibility.selectOption("auto");
   await expect(page.locator("footer")).toContainText("Automatic (diagram default)");
   errors.assertNone();
 });

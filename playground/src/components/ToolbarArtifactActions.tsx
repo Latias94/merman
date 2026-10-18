@@ -49,6 +49,7 @@ import {
 } from "@/src/runtime/use-render-coordinator";
 import {
   selectWorkspaceSnapshot,
+  selectThemeDraftChanged,
   useAppStore,
 } from "@/src/store";
 
@@ -59,12 +60,14 @@ export function useToolbarArtifactActions() {
     diagramTheme,
     mermaidConfig,
     hasMermanTheme,
+    themeDraftChanged,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramTheme: state.diagramTheme,
       mermaidConfig: state.mermaidConfig,
-      hasMermanTheme: Boolean(state.themePresetId || state.themeRecipeJson),
+      hasMermanTheme: Boolean(state.themePresetId || state.themeRecipeJson || (state.themeEditSession && state.themeEditSession.candidate.kind !== "none")),
+      themeDraftChanged: selectThemeDraftChanged(state),
     })),
   );
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
@@ -80,7 +83,7 @@ export function useToolbarArtifactActions() {
     : t("export.asciiNotSupported");
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
-  const artifactActionsEnabled = currentMerman !== null;
+  const artifactActionsEnabled = currentMerman !== null && !themeDraftChanged;
   const asciiAvailable = isAsciiExportAvailable(asciiSupported, currentBatch);
 
   const handleOpenExport = useCallback((restoreFocus?: HTMLElement | null) => {
@@ -145,6 +148,10 @@ export function useToolbarArtifactActions() {
   }, [currentBatch, t]);
 
   const handleCopyWorkspaceLink = useCallback(async () => {
+    if (selectThemeDraftChanged(useAppStore.getState())) {
+      toast.error(t("themeWorkbench.applyFirst"));
+      return;
+    }
     const snapshot = selectWorkspaceSnapshot(useAppStore.getState());
     if (!snapshot.code.trim()) {
       toast.error(t("share.copyFailed"));
@@ -160,6 +167,10 @@ export function useToolbarArtifactActions() {
 
   const handleCopyIssueLink = useCallback(async () => {
     const state = useAppStore.getState();
+    if (selectThemeDraftChanged(state)) {
+      toast.error(t("themeWorkbench.applyFirst"));
+      return;
+    }
     const snapshot = selectWorkspaceSnapshot(state);
     if (!snapshot.code.trim()) {
       toast.error(t("share.copyFailed"));
@@ -194,6 +205,7 @@ export function useToolbarArtifactActions() {
 
   return {
     hasMermanTheme,
+    themeDraftChanged,
     artifactActionsEnabled,
     asciiExportDescription,
     asciiAvailable,
@@ -248,6 +260,7 @@ export function ToolbarArtifactActions({
         </Tooltip>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
+          {owner.themeDraftChanged && <p role="status" className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("themeWorkbench.applyFirst")}</p>}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => owner.handleOpenExport(exportTriggerRef.current)}
@@ -355,12 +368,14 @@ function ShareMenu({
           className="w-80 max-w-[calc(100vw-2rem)]"
         >
           <DropdownMenuLabel>{t("share.title")}</DropdownMenuLabel>
+          {owner.themeDraftChanged && <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("themeWorkbench.applyFirst")}</p>}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             aria-label={t("share.workspaceLink")}
             aria-describedby={workspaceDescriptionId}
             className="items-start py-2"
             onClick={owner.handleCopyWorkspaceLink}
+            disabled={owner.themeDraftChanged}
           >
             <Share2 className="mt-0.5 size-4" />
             <span className="min-w-0">
@@ -380,6 +395,7 @@ function ShareMenu({
             aria-describedby={issueDescriptionId}
             className="items-start py-2"
             onClick={owner.handleCopyIssueLink}
+            disabled={owner.themeDraftChanged}
           >
             <Copy className="mt-0.5 size-4" />
             <span className="min-w-0">

@@ -22,17 +22,42 @@ a background-only compiled rule does not infer or recolor labels on another surf
 
 ## Edit and share in the Playground
 
-Open **Theme → Custom theme…**. Edit the versioned JSON recipe, import a `.json` file,
-or choose **Use selected preset** to customize the currently selected Merman preset.
-**Validate and apply** compiles the recipe through the same Rust theme compiler as rendering.
-Invalid JSON, unsupported schema fields, and invalid theme values leave the applied theme unchanged.
-Closing the dialog discards unapplied edits. **Download JSON** validates and saves the draft
-without applying it; the file is also accepted by native CLI `render --theme-file` and Web
-`options.theme`.
+Open **Theme** to keep the theme workbench beside the diagram. On narrow screens, the workbench
+reserves space for a compact diagram preview. Use **Presets** to browse the loaded runtime's
+catalog, select a preset, and choose **Customize** to create an independent `complete_spec`
+recipe. This snapshot retains its canvas layers, effects, typography, assets, and family rules;
+later catalog changes do not alter it. The card swatches illustrate a preset and are not rendered
+previews of the current diagram.
 
-A Merman visual preset and a custom recipe are mutually exclusive. Selecting a preset (including
-None) clears the custom recipe. The separate **Mermaid compatibility theme** and Mermaid config
-still apply; explicit source configuration may override parts of the Merman theme.
+Choose **New recipe** for a small `definition` theme, or **Import JSON** for an existing standalone
+recipe. **Visual** and **JSON** edit the same versioned document. Visual controls expose definition
+color/series/typography tokens, complete-spec canvas base, and scoped rule facets for selected
+semantic targets. Unrelated fields and rule order are preserved. Advanced paints remain intact
+unless you explicitly replace them; use JSON for effects, layered canvases, resources, and other
+advanced values. **Omit**, **Clear**, and **Transparent** have different meanings, as explained
+under [Customize an existing preset](#customize-an-existing-preset).
+
+Recipe edits are validated by the existing Rust theme compiler. A valid draft updates the preview
+without changing the applied workspace theme. Invalid JSON or theme values stay editable; the
+preview continues using the last valid theme with the current diagram source, configuration, and
+font. Visual controls wait until the current JSON is valid. A diagram parse/render error remains
+visible and does not prevent a valid recipe from being imported, saved, or applied.
+
+**Validate and apply** commits the selected theme and keeps the workbench open. Further edits
+start from that applied baseline. **Cancel** closes the workbench and restores the applied theme;
+source, configuration, and font edits made during the session remain. Replacing a modified custom
+draft asks whether to keep editing or discard it. Drafts are session-local; download a recipe to
+keep it across reloads.
+
+A Merman visual preset and a custom recipe are mutually exclusive applied selections. Choosing
+**None** removes Merman recipe styling after Apply. The separate **Mermaid compatibility theme**
+and Mermaid configuration still apply to both engines. Authored Mermaid settings and source
+styles can take precedence; the workbench does not infer a winning source location for every field.
+
+**Download JSON** and **Copy JSON** validate the current recipe without applying it or requiring
+a successful diagram render. They produce a standalone recipe accepted by native CLI
+`render --theme-file` and Web `options.theme`. Invalid imports or validation failures leave the
+applied theme unchanged.
 
 **Share → Copy workspace link** includes the applied recipe together with the diagram, config,
 font selection, and SVG pipeline. Custom recipes use the `s3` compressed URL format; preset-only
@@ -41,10 +66,34 @@ workspaces continue to use `s2`, and existing links remain readable. Recipe JSON
 when distributing a reusable theme separately from a diagram. Links reference the receiving
 Playground runtime; they do not pin an engine version or embed fonts.
 
+While a changed theme draft is being previewed, apply it before copying a workspace/issue link
+or copying/exporting SVG, PNG, or JPEG. After Apply, artifact actions wait for the corresponding
+current render. A previously opened image-export workbench cannot start another export from an
+unapplied draft. Source and ASCII actions remain available; the visual recipe does not style ASCII.
+
 External Markdown image links and Mermaid Live carry Mermaid configuration only. They cannot
 reproduce Merman presets or custom recipes; use a Playground workspace link or export the rendered
 SVG when preserving the Merman appearance matters. Theme validation checks the recipe, not visual
 quality or compatibility with every diagram family and export target.
+
+### Preview backing and Compare
+
+**Preview backing** offers **Automatic**, **Light**, **Dark**, and **Transparency** in Visual and
+Compare. Both Compare panes use the same backing. This is a display preference: it does not change
+theme JSON, trigger another render, or add paint to image exports. Authored SVG root backgrounds
+and theme canvas layers remain visible, including explicit white or transparent paint. Automatic
+uses the current Mermaid appearance; a dark Merman recipe can therefore differ from its backing.
+
+Compare applies the Merman preset or recipe only to Merman. Mermaid.js receives Mermaid source
+and configuration. To compare without Merman recipe styling, explicitly select **None** in the
+workbench and apply it; a modified custom draft is not discarded silently.
+
+Preset family design scope, **Capability discovery**, and **This render's theme outcome** answer
+different questions. Design scope describes catalog intent; discovery describes declared family,
+target, and facet support; the render outcome belongs to the exact displayed SVG execution. Theme
+and output-target statuses remain separate. Missing evidence, unknown evidence versions/statuses,
+or an empty diagnostic list do not establish portability. Inspect the outcome when a requested
+style is conditional or appears unchanged, and check the intended export target separately.
 
 ## Choose a recipe for a diagram
 

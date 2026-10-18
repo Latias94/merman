@@ -24,6 +24,7 @@ import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
+import { ThemeWorkbench } from "./components/theme-workbench/ThemeWorkbench";
 
 const CodeEditor = lazy(() =>
   import("./components/EditorFeature").then((module) => ({
@@ -44,6 +45,7 @@ export default function App() {
     shareViewWarning,
     workspacePane,
     setWorkspacePane,
+    themeEditSession,
   } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
@@ -51,6 +53,7 @@ export default function App() {
       shareViewWarning: state.shareViewWarning,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
+      themeEditSession: state.themeEditSession,
     }))
   );
   const isNarrowLayout = useNarrowLayout();
@@ -82,8 +85,8 @@ export default function App() {
             </div>
           )}
 
-          <main className="relative min-h-0 flex-1 overflow-hidden">
-            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+            <div className="flex min-h-40 min-w-0 flex-1 flex-col overflow-hidden">
               {isNarrowLayout && (
                 <WorkspaceTabs
                   value={workspacePane}
@@ -140,6 +143,13 @@ export default function App() {
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
+            {themeEditSession && <ThemeWorkbench
+              className="h-[45%] min-h-0 shrink-0 border-t lg:h-full lg:w-96 lg:border-t-0 lg:border-l"
+              onClose={() => requestAnimationFrame(() => {
+                const launchers = document.querySelectorAll<HTMLButtonElement>("[data-theme-launcher]");
+                Array.from(launchers).find((launcher) => launcher.offsetParent !== null)?.focus({ preventScroll: true });
+              })}
+            />}
           </main>
 
           <StatusBar />

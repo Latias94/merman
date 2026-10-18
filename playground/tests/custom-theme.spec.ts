@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { ThemeRecipeV1 } from "@mermanjs/web";
 import { encodeShareHash, decodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
+  replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
 
@@ -16,9 +18,10 @@ const recipe = {
     expansion_version: 1,
     tokens: { canvas: "#fef3c7", text: "#172554", accent: "#dc2626" },
   },
-};
+} satisfies ThemeRecipeV1;
 
 async function start(page: Page, themePresetId: string | null = null) {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
   await page.goto(`./${encodeShareHash({
     ...DEFAULT_WORKSPACE_SNAPSHOT,
@@ -31,10 +34,39 @@ async function start(page: Page, themePresetId: string | null = null) {
   await waitForPreviewSvg(page);
 }
 
-async function editor(page: Page, applied = false) {
+async function editor(page: Page) {
   await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await page.getByRole("menuitem", { name: applied ? /Edit custom theme/ : /Custom theme/ }).click();
-  return page.getByRole("dialog", { name: "Custom Merman theme" });
+  const workbench = page.locator("#theme-workbench");
+  await expect(workbench).toBeVisible();
+  return workbench;
+}
+
+async function replaceRecipe(page: Page, workbench: Locator, rawJson: string, label = "Theme recipe JSON") {
+  await workbench.getByRole("tab", { name: "JSON", exact: true }).click();
+  const input = workbench.getByRole("textbox", { name: label, exact: true });
+  await expect(input).toBeVisible();
+  await input.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  const notCancelled = await input.evaluate((element, value) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text/plain", value);
+    return element.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true, cancelable: true, clipboardData: clipboard,
+    }));
+  }, rawJson);
+  expect(notCancelled).toBe(false);
+}
+
+async function newRecipe(page: Page, workbench: Locator, value = JSON.stringify(recipe)) {
+  await workbench.getByRole("button", { name: "New recipe", exact: true }).click();
+  await replaceRecipe(page, workbench, value);
+}
+
+async function copyRecipe(page: Page, workbench: Locator): Promise<ThemeRecipeV1> {
+  const button = workbench.getByRole("button", { name: "Copy JSON", exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+  return JSON.parse(await page.evaluate(() => navigator.clipboard.readText())) as ThemeRecipeV1;
 }
 
 async function svg(page: Page) {
@@ -43,19 +75,27 @@ async function svg(page: Page) {
   );
 }
 
-test("custom theme validates, renders, downloads, and survives a copied workspace link", async ({ page, context }) => {
+test("valid drafts preview, require Apply before artifact sharing, and reopen from a workspace link", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await start(page);
-  const dialog = await editor(page);
-  await dialog.getByLabel("Theme recipe JSON").fill(JSON.stringify(recipe));
-  const downloadPromise = page.waitForEvent("download");
-  await dialog.getByRole("button", { name: "Download JSON" }).click();
-  const download = await downloadPromise;
-  expect(JSON.parse(await readFile((await download.path())!, "utf8"))).toEqual(recipe);
-  await dialog.getByRole("button", { name: "Validate and apply" }).click();
-  await expect(dialog).toBeHidden();
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
   await expect.poll(() => svg(page)).toContain("#fef3c7");
+  await expect(workbench).toBeVisible();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy workspace link", exact: true })).toBeDisabled();
+  await expect(page.getByRole("menu")).toContainText("Apply the theme draft before sharing or exporting the preview.");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /^Copy Code$/i })).toBeEnabled();
+  await expect(page.getByRole("menuitem", { name: "Copy SVG", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  const downloadPromise = page.waitForEvent("download");
+  await workbench.getByRole("button", { name: "Download JSON", exact: true }).click();
+  expect(JSON.parse(await readFile((await (await downloadPromise).path())!, "utf8"))).toEqual(recipe);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(workbench).toBeVisible();
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
   const url = await page.evaluate(() => navigator.clipboard.readText());
@@ -64,77 +104,110 @@ test("custom theme validates, renders, downloads, and survives a copied workspac
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
   await expect.poll(() => svg(page)).toContain("#fef3c7");
-  const restored = await editor(page, true);
-  expect(JSON.parse(await restored.getByLabel("Theme recipe JSON").inputValue())).toEqual(recipe);
+  const restored = await editor(page);
+  expect(await copyRecipe(page, restored)).toEqual(recipe);
   await expectNoDocumentOverflow(page);
   await page.screenshot({ path: test.info().outputPath("custom-theme-desktop.png") });
   errors.assertNone();
 });
 
-test("invalid recipes and duplicate fields preserve the applied preset; cancel discards drafts", async ({ page }) => {
+test("invalid JSON keeps the last valid preview while current source edits survive Cancel", async ({ page }) => {
   await start(page, "brutalist");
-  const before = await svg(page);
-  const dialog = await editor(page);
-  await dialog.getByRole("button", { name: "Use selected preset" }).click();
-  const exported = JSON.parse(await dialog.getByLabel("Theme recipe JSON").inputValue());
-  expect(exported.schema_version).toBe(1);
-  expect(["definition", "complete_spec"]).toContain(exported.kind);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await expect.poll(() => svg(page)).toContain("#fef3c7");
+  const validPreview = await svg(page);
   for (const draft of [
+    "{",
     '{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000"},"canvas":{"base":"#0000ff"}}}',
+    JSON.stringify({ ...recipe, schema_version: 99 }),
     JSON.stringify({ ...recipe, unknown: true }),
-    JSON.stringify(recipe).replace('"#dc2626"', '"not-a-color"'),
     JSON.stringify(recipe).replace('"#dc2626"', '"#dc2626","accent":"#000000"'),
   ]) {
-    await dialog.getByLabel("Theme recipe JSON").fill(draft);
-    await dialog.getByRole("button", { name: "Validate and apply" }).click();
-    await expect(dialog.getByRole("alert")).toContainText("The applied theme has not changed.");
-    expect(await svg(page)).toBe(before);
+    await replaceRecipe(page, workbench, draft);
+    await expect(workbench.getByRole("alert")).toBeVisible();
+    await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeDisabled();
+    expect(await svg(page)).toBe(validPreview);
   }
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("button", { name: "Theme", exact: true })).toBeFocused();
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await expect(page.getByRole("menuitemradio", { name: /^Brutalist/ })).toBeChecked();
-});
-
-test("mobile imports recipes, explains external sharing, and can switch back to a preset", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await start(page);
-  const dialog = await editor(page);
-  await dialog.locator('input[type="file"]').setInputFiles({
-    name: "custom.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(recipe)),
-  });
-  await expect(dialog.getByLabel("Theme recipe JSON")).toHaveValue(JSON.stringify(recipe));
-  await expectNoDocumentOverflow(page);
-  const bounds = await dialog.boundingBox();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(391);
-  await page.screenshot({ path: test.info().outputPath("custom-theme-mobile.png") });
-  await dialog.getByRole("button", { name: "Validate and apply" }).click();
+  await replaceEditorSource(page, "flowchart LR\nEdited[Source edit survives] --> B");
+  await expect.poll(() => svg(page)).toContain("Source edit survives");
   await expect.poll(() => svg(page)).toContain("#fef3c7");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await expect(
-    page.getByRole("menu").getByText("Mermaid.ink and Mermaid Live links omit Merman visual presets and custom themes.", { exact: true }),
-  ).toHaveCount(1);
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await page.getByRole("menuitemradio", { name: /^Brutalist/ }).click();
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(workbench).toBeHidden();
+  await expect(page.getByRole("button", { name: "Theme", exact: true })).toBeFocused();
+  await expect.poll(() => svg(page)).toContain("Source edit survives");
   await expect.poll(() => svg(page)).not.toContain("#fef3c7");
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: /Custom theme/ })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /Edit custom theme/ })).toHaveCount(0);
+  const reopened = await editor(page);
+  await expect(reopened.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a preset recipe can be customized and exported as themed SVG", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await start(page, "brutalist");
-  const dialog = await editor(page);
-  await dialog.getByRole("button", { name: "Use selected preset" }).click();
-  const exported = JSON.parse(await dialog.getByLabel("Theme recipe JSON").inputValue());
+test("Visual edits and JSON share one draft and applying does not depend on a valid diagram", async ({ page }) => {
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const text = workbench.getByRole("textbox", { name: /^text$/i });
+  await text.fill("#224466");
+  await text.press("Enter");
+  const edited = await copyRecipe(page, workbench);
+  expect(edited.kind).toBe("definition");
+  if (edited.kind === "definition") expect(edited.definition.tokens.text).toBe("#224466");
+  await replaceEditorSource(page, "flowchart LR\nA -->");
+  await expect(page.locator('[data-merman-render-error="true"]')).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await workbench.getByRole("button", { name: "Download JSON", exact: true }).click();
+  expect(JSON.parse(await readFile((await (await downloadPromise).path())!, "utf8"))).toEqual(edited);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(workbench).toBeVisible();
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  await replaceEditorSource(page, "flowchart LR\nA[Recovered] --> B");
+  await expect.poll(() => svg(page)).toContain("#224466");
+});
+
+test("customizing Cyberpunk preserves its complete canvas, effects, assets and ordered family rules", async ({ page }) => {
+  await start(page, "cyberpunk");
+  const workbench = await editor(page);
+  await workbench.getByRole("button", { name: "Customize", exact: true }).click();
+  const exported = await copyRecipe(page, workbench);
   expect(exported.kind).toBe("complete_spec");
-  exported.complete_spec.canvas.base = "#fef3c7";
-  await dialog.getByLabel("Theme recipe JSON").fill(JSON.stringify(exported));
-  await dialog.getByRole("button", { name: "Validate and apply" }).click();
-  await expect(dialog).toBeHidden();
+  if (exported.kind !== "complete_spec") return;
+  expect(exported.complete_spec.canvas?.layers?.length).toBeGreaterThan(0);
+  expect(exported.complete_spec.effects?.length).toBeGreaterThan(0);
+  expect(exported.complete_spec.styles?.some((entry) => entry.kind === "rule" && entry.family === "sequence")).toBe(true);
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const base = workbench.getByRole("textbox", { name: "Canvas base", exact: true });
+  await base.fill("#fef3c7");
+  await base.press("Enter");
+  await workbench.getByText("Append an override", { exact: true }).click();
+  await workbench.getByLabel("Family scope", { exact: true }).selectOption("explicit");
+  await workbench.getByLabel("Family ID", { exact: true }).fill("class");
+  await workbench.getByLabel("Semantic target", { exact: true }).selectOption("node");
+  await workbench.getByRole("button", { name: "Append rule", exact: true }).click();
+  await workbench.getByLabel("Border / line paint: value mode", { exact: true }).selectOption("color");
+  const border = workbench.getByRole("textbox", { name: "Border / line paint", exact: true });
+  await border.fill("#ff00ff");
+  await border.press("Enter");
+  const edited = await copyRecipe(page, workbench);
+  expect(edited).toEqual({
+    ...exported,
+    complete_spec: {
+      ...exported.complete_spec,
+      canvas: { ...exported.complete_spec.canvas, base: "#fef3c7" },
+      styles: [...exported.complete_spec.styles ?? [], {
+        kind: "rule", family: "class", target: "node", style: { stroke: { paint: "#ff00ff" } },
+      }],
+    },
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await workbench.getByRole("button", { name: "Download JSON", exact: true }).click();
+  const saved = await readFile((await (await downloadPromise).path())!, "utf8");
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await workbench.locator('input[type="file"]').setInputFiles({
+    name: "cyberpunk-custom.json", mimeType: "application/json", buffer: Buffer.from(saved),
+  });
+  expect(await copyRecipe(page, workbench)).toEqual(edited);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
   await expect.poll(() => svg(page)).toContain("#fef3c7");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy SVG", exact: true }).click();
@@ -143,18 +216,107 @@ test("a preset recipe can be customized and exported as themed SVG", async ({ pa
   expect(copied).toContain("#fef3c7");
 });
 
-test("oversized theme files are rejected before replacing the editable draft", async ({ page }) => {
+test("theme outcome describes the displayed SVG without certifying capability discovery", async ({ page }) => {
   await start(page);
-  const dialog = await editor(page);
-  const before = await dialog.getByLabel("Theme recipe JSON").inputValue();
-  await dialog.locator('input[type="file"]').setInputFiles({
-    name: "too-large.json", mimeType: "application/json", buffer: Buffer.alloc(256 * 1024 + 1, 32),
-  });
-  await expect(dialog.getByRole("alert")).toContainText("256 KiB");
-  await expect(dialog.getByLabel("Theme recipe JSON")).toHaveValue(before);
+  await replaceEditorSource(page, "classDiagram\nclass 用户");
+  await page.getByRole("button", { name: "Render settings", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "resvg-compatible SVG", exact: true }).click();
+  const workbench = await editor(page);
+  await newRecipe(page, workbench, JSON.stringify({
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: { styles: [{
+      kind: "rule", family: "class", target: "node", style: { stroke: { width: 2 } },
+    }] },
+  }));
+  await expect.poll(() => svg(page)).toContain("用户");
+  const outcome = page.getByTestId("theme-render-status");
+  await outcome.locator("summary").click();
+  await expect.poll(async () => {
+    const text = await outcome.locator("pre").textContent();
+    return text ? JSON.parse(text).family_id : null;
+  }).toBe("class");
+  const evidence = JSON.parse((await outcome.locator("pre").textContent())!);
+  expect(evidence.version).toBe(1);
+  expect(["residual", "incomplete"]).toContain(evidence.theme_status);
+  expect(evidence.target_status).not.toBe("portable");
+  await expect(outcome).toContainText("an empty diagnostic list does not certify portability");
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await expect(workbench).toContainText("does not infer per-field provenance");
+  await workbench.getByText("Capability discovery", { exact: false }).click();
+  await expect(workbench).toContainText("Declared capabilities are separate from the current render outcome");
 });
 
-test("a late file read cannot overwrite edits or a reopened theme dialog", async ({ page }) => {
+test("dirty drafts gate Compare and issue sharing and invalidate an open export target", async ({ page }) => {
+  await start(page);
+  let workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(workbench).toBeVisible();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    const button = [...document.querySelectorAll("#theme-workbench button")]
+      .find((element) => element.textContent?.includes("New recipe"));
+    if (!button) throw new Error("Theme workbench is not mounted behind export dialog.");
+    (button as HTMLElement).click();
+  });
+  await expect(dialog).toBeHidden();
+  await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.locator('[data-merman-compare-engine="merman"] button[aria-label="Copy SVG"]')).toBeDisabled();
+  await expect(page.locator('[data-merman-compare-engine="merman"] button[aria-label="Export image"]')).toBeDisabled();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy workspace link", exact: true })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Copy issue reproduction link", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(page.locator('[data-merman-compare-engine="merman"] button[aria-label="Copy SVG"]')).toBeEnabled();
+});
+
+test("imports and applies a valid recipe while the current diagram is invalid", async ({ page }) => {
+  await start(page);
+  await replaceEditorSource(page, "flowchart LR\nA -->");
+  await expect(page.locator('[data-merman-render-error="true"]')).toBeVisible();
+  const workbench = await editor(page);
+  await workbench.locator('input[type="file"]').setInputFiles({
+    name: "valid-theme.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(recipe)),
+  });
+  await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect(workbench).toBeVisible();
+  await replaceEditorSource(page, "flowchart LR\nA[Recovered] --> B");
+  await expect.poll(() => svg(page)).toContain("#fef3c7");
+});
+
+test("oversized files keep the current valid draft and replacing it requires an explicit choice", async ({ page }) => {
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.locator('input[type="file"]').setInputFiles({
+    name: "too-large.json", mimeType: "application/json", buffer: Buffer.alloc(256 * 1024 + 1, 32),
+  });
+  await expect(workbench.getByRole("alert")).toContainText("256 KiB");
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("tab", { name: "Presets", exact: true }).click();
+  await workbench.getByRole("button", { name: /^Brutalist/ }).click();
+  const confirmation = page.getByRole("dialog");
+  await confirmation.getByRole("button", { name: "Keep editing", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("button", { name: /^Brutalist/ }).click();
+  await confirmation.getByRole("button", { name: "Discard and replace", exact: true }).click();
+  await expect(workbench.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("aria-pressed", "true");
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await expect.poll(() => svg(page)).not.toContain("#fef3c7");
+});
+
+test("late file reads cannot overwrite an edit or a reopened workbench", async ({ page }) => {
   await start(page);
   await page.evaluate(() => {
     const original = File.prototype.text;
@@ -165,40 +327,49 @@ test("a late file read cannot overwrite edits or a reopened theme dialog", async
       });
     };
   });
-  let dialog = await editor(page);
+  let workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
   const delayedFile = { name: "delayed.json", mimeType: "application/json", buffer: Buffer.from("{}") };
-  await dialog.locator('input[type="file"]').setInputFiles(delayedFile);
-  await expect(dialog.getByRole("status")).toHaveText("Reading theme…");
-  await dialog.getByLabel("Theme recipe JSON").fill(JSON.stringify(recipe));
+  await workbench.locator('input[type="file"]').setInputFiles(delayedFile);
+  await expect(workbench.locator("[data-theme-draft-status]")).toContainText("Reading theme…");
+  const changed = { ...recipe, definition: { ...recipe.definition, tokens: { ...recipe.definition.tokens, canvas: "#ddffdd" } } };
+  await replaceRecipe(page, workbench, JSON.stringify(changed));
   await page.evaluate(() => window.dispatchEvent(new Event("release-theme-import")));
-  await expect(dialog.getByLabel("Theme recipe JSON")).toHaveValue(JSON.stringify(recipe));
-  await expect(dialog.getByRole("button", { name: "Validate and apply" })).toBeEnabled();
-
-  await dialog.locator('input[type="file"]').setInputFiles(delayedFile);
-  await expect(dialog.getByRole("status")).toHaveText("Reading theme…");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  dialog = await editor(page);
-  const reopened = await dialog.getByLabel("Theme recipe JSON").inputValue();
+  expect(await copyRecipe(page, workbench)).toEqual(changed);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await workbench.locator('input[type="file"]').setInputFiles(delayedFile);
+  await expect(workbench.locator("[data-theme-draft-status]")).toContainText("Reading theme…");
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  workbench = await editor(page);
   await page.evaluate(() => window.dispatchEvent(new Event("release-theme-import")));
-  await expect(dialog.getByLabel("Theme recipe JSON")).toHaveValue(reopened);
+  expect(await copyRecipe(page, workbench)).toEqual(changed);
 });
 
-test("Chinese theme editing remains usable on a narrow screen", async ({ page }) => {
+test("Chinese workbench keeps preview, JSON and theme actions reachable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.addInitScript(() => localStorage.setItem("merman-language", "zh"));
   await page.goto("./", { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("WASM: 就绪");
   await page.getByRole("button", { name: "主题", exact: true }).click();
-  await page.getByRole("menuitem", { name: "自定义主题…", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "自定义 Merman 主题" });
-  await dialog.getByLabel("主题配方 JSON").fill("{");
-  await dialog.getByRole("button", { name: "校验并应用" }).click();
-  await expect(dialog.getByRole("alert")).toContainText("已应用的主题未改变。");
+  const workbench = page.locator("#theme-workbench");
+  await expect(workbench).toBeVisible();
+  await waitForPreviewSvg(page);
+  const previewBounds = await page.locator(".preview-container").first().boundingBox();
+  expect(previewBounds!.height).toBeGreaterThan(60);
+  await workbench.getByRole("button", { name: "新建配方", exact: true }).click();
+  await replaceRecipe(page, workbench, "{", "主题配方 JSON");
+  await expect(workbench.getByRole("alert")).toBeVisible();
+  await expect(workbench.getByRole("button", { name: /^(校验并应用|应用)$/ })).toBeDisabled();
   await expectNoDocumentOverflow(page);
-  const bounds = await dialog.boundingBox();
+  const bounds = await workbench.boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(321);
-  await dialog.getByLabel("主题配方 JSON").fill(JSON.stringify(recipe));
-  await dialog.getByRole("button", { name: "校验并应用" }).click();
-  await expect(dialog).toBeHidden();
+  await replaceRecipe(page, workbench, JSON.stringify(recipe), "主题配方 JSON");
+  await workbench.getByRole("button", { name: /^(校验并应用|应用)$/ }).click();
+  await expect(workbench).toBeVisible();
+  await expect.poll(() => svg(page)).toContain("#fef3c7");
+  await page.screenshot({ path: test.info().outputPath("custom-theme-mobile-zh.png") });
+  await workbench.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(workbench).toBeHidden();
 });

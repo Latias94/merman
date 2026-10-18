@@ -81,6 +81,75 @@ test("selects copied SVG and ASCII only from the named current publication", asy
   ]);
 });
 
+test("unapplied theme drafts block SVG actions while source ASCII remains available", async () => {
+  const publication = completedPublication("draft");
+  const publicationId = publication.snapshot.publicationId;
+  const calls: string[] = [];
+  let dirty = false;
+  const dependencies = {
+    getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
+    hasUnappliedThemeDraft: () => dirty,
+  };
+  const owner = createArtifactActionOwner({ ...dependencies, io: recordingIo(calls) });
+  const exports = createExportTargetOwner(dependencies);
+  const target = exports.freeze({ engine: "merman", publicationId });
+  dirty = true;
+  for (const engine of ["merman", "mermaid"] as const) {
+    await assert.rejects(owner({ action: "copy-svg", engine, publicationId }), {
+      code: "theme-draft-unapplied",
+    });
+    assert.throws(() => exports.freeze({ engine, publicationId }), {
+      code: "theme-draft-unapplied",
+    });
+  }
+  assert.throws(() => exports.rasterArtifact(target), { code: "theme-draft-unapplied" });
+  await owner({ action: "copy-ascii", publicationId });
+  assert.deepEqual(calls, ["copy-ascii:ascii-draft"]);
+  dirty = false;
+  await owner({ action: "copy-svg", engine: "merman", publicationId });
+  assert.deepEqual(calls, ["copy-ascii:ascii-draft", "copy-svg:merman"]);
+});
+
+test("a discarded draft publication cannot be exported as the applied workspace", async () => {
+  const publication = completedPublication("draft-render");
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
+    getAppliedWorkspace: () => ({ ...DEFAULT_WORKSPACE_SNAPSHOT, code: "applied source" }),
+    io: recordingIo(calls),
+  });
+  await assert.rejects(owner({ action: "copy-svg", engine: "merman", publicationId: publication.snapshot.publicationId }), {
+    code: "publication-not-current",
+  });
+  assert.deepEqual(calls, []);
+});
+
+test("export rejects a publication whose theme alone differs from the applied selection", async () => {
+  const publication = completedPublication("same-source");
+  const publicationId = publication.snapshot.publicationId;
+  for (const theme of [
+    { themePresetId: "cyberpunk", themeRecipeJson: null },
+    { themePresetId: null, themeRecipeJson: '{"schema_version":1,"kind":"definition"}' },
+  ]) {
+    const calls: string[] = [];
+    const dependencies = {
+      getRenderState: () => publication,
+      getRuntimeState: () => readyRuntime(),
+      getAppliedWorkspace: () => ({ ...workspace("same-source"), ...theme }),
+    };
+    const owner = createArtifactActionOwner({ ...dependencies, io: recordingIo(calls) });
+    await assert.rejects(owner({ action: "copy-svg", engine: "merman", publicationId }), {
+      code: "publication-not-current",
+    });
+    assert.throws(() => createExportTargetOwner(dependencies).freeze({ engine: "merman", publicationId }), {
+      code: "publication-not-current",
+    });
+    assert.deepEqual(calls, []);
+  }
+});
+
 test("renders and caches ASCII only after an explicit artifact action", async () => {
   const completed = completedPublication("on-demand");
   const publication: CompletedRenderBatch = Object.freeze({
