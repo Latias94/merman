@@ -17,6 +17,26 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md) removes cloned
+root-report inventories/residuals and repeated self-coverage reconstruction, retaining canonical
+writer outcomes, frozen counts/capability union and output-mutation invalidation. All 178 public
+SVG/report/ordered-measurer controls and 152 benchmark SVG identities match. Of 173 stable memory
+inputs, 30 save 12 allocations/672 bytes and 143 stay unchanged; five variable Flowchart inputs
+remain inconclusive. All 418 catalog cells preserve SVG/reports: 380 preset cells save 12–16
+allocations/672–1,048 bytes, all 38 no-theme cells stay unchanged, 25 peak-growth values decrease
+and retained growth always matches. Native 8,254 tests, Clippy, qualification, WASM, smoke, DOM and
+format pass. Fixed adjacent E2E diagnostics range from -0.54% to +3.83%, without calibrated
+latency admission. The independent root-report candidate is complete.
+
+The [October 18 v0.9.0 refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md) measures all 19
+same-SVG E2E scenarios across 15 logical families in 76 fixed diagnostic calls. Eight rows exceed
+both 10% and 1 us: Class tiny, Pie, Sankey, Quadrant, Zenuml, Packet, Kanban and Wardley.
+Packet/Kanban/Zenuml observe +42.83%/+29.96%/+19.44%; the other rows remain in the complete table.
+The 57 changed-SVG rendering fixtures and three preprocessing-only fixtures remain separate.
+These uncalibrated release-range observations do not isolate theme costs or close the active goal.
+Next attribute actual consumers in the flagged rows, with configured duplicate CSS normalization
+kept as a separate policy/order hypothesis.
+
 The [October 18 root style checkpoint](root_style_borrow_macos_2026-10-18.md) borrows ordinary
 root styles and deferred static suffixes until actual custom-property composition needs ownership.
 All 178 SVG/report/measurer controls and 152 benchmark SVG identities match. Of 172 stable memory
@@ -26,8 +46,9 @@ Default Zenuml saves one allocation/20 bytes. All 418 compiled-preset/default co
 all peak/retained metrics match. Partial-support statuses are preserved, not treated as Verified.
 Native 8,253 tests, Clippy, theme qualification, optimized full WASM, smoke, DOM and format pass.
 Five-family E2E diagnostics range from -1.52% to +0.81%, with no calibrated latency claim. Separate
-same-SVG v0.9.0 Zenuml context is 20.5995 → 24.0605 us (+16.80%). Next evaluate renderer-private
-root report inventories/repeated self-coverage, preserving actual writer outcomes and public evidence.
+same-SVG v0.9.0 Zenuml context is 20.5995 → 24.0605 us (+16.80%). The subsequent
+[root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md) completes the renderer-private
+report inventory/self-coverage cleanup while preserving actual writer outcomes and public evidence.
 
 The [October 18 Engine ownership and scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
 removes redundant Engine clones through an internal parse-stage borrow; explicit request themes
@@ -38,7 +59,8 @@ gates pass. Five-family E2E diagnostics range from -1.16% to +0.60%, without a c
 Separate same-SVG v0.9.0 Zenuml context is 20.3045 → 23.9505 us (+17.96%). The active goal below
 covers all 35 logical families and 10 public presets, not only previously timed default requests.
 Root style composition is completed by the [root style checkpoint](root_style_borrow_macos_2026-10-18.md);
-explicit root-report rebuilding remains a separate candidate.
+explicit root-report rebuilding is completed by the
+[root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md).
 
 The [October 18 root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) narrows
 post-write root state to `Option<ViewBox>`, avoiding a complete viewport-plan clone and retaining
@@ -749,10 +771,13 @@ cost justification. Do not mark missing coverage, noisy timing or unexplained re
 
 Continue high-confidence ownership/work/allocation repairs in independent measured batches.
 Preserve theme/config fallback, source semantics, actual writer evidence, error order, budgets,
-cancellation and measurement callbacks. The Engine borrow and root style borrowing are complete. All 418 warm compiled-preset/default
-coverage cells have a frozen adjacent baseline. Next evaluate explicit root-report inventory/
-coverage rebuilding and configured duplicate CSS normalization separately; use actual consumer
-evidence and fresh measurements before broader changes. See the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md).
+cancellation and measurement callbacks. Engine borrowing, root style borrowing and canonical
+root-outcome ownership are complete. All 418 warm compiled-preset/default coverage cells preserve
+the frozen adjacent output/report contract. The fresh 19-scene same-SVG diagnostic still flags
+eight rows; attribute actual consumers before selecting the next repair. Keep configured duplicate
+CSS normalization as a separate policy/order candidate. Use fresh adjacent evidence and calibrated
+confirmation for latency claims; see the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
+and [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
 ### Active: alpha.7 default SVG regression
 

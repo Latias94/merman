@@ -814,16 +814,18 @@ impl ThemeProgram {
         explicit: &Map<String, Value>,
     ) -> Result<Map<String, Value>, ColorError> {
         match self.kind {
-            ThemeProgramKind::Default => {
-                let calculated = calculate_default_theme_variables(explicit)?;
-                Ok(ThemeResolution::new(self.id, explicit, calculated)?.into_resolved_variables())
-            }
+            ThemeProgramKind::Default => Ok(ThemeResolution::new(self.id, explicit, || {
+                calculate_default_theme_variables(explicit)
+            })?
+            .into_resolved_variables()),
             ThemeProgramKind::Staged(_) => {
                 unreachable!("staged themes do not enter legacy theme execution")
             }
             ThemeProgramKind::Extended => {
-                Ok(ThemeResolution::new(self.id, explicit, explicit.clone())?
-                    .into_resolved_variables())
+                Ok(
+                    ThemeResolution::new(self.id, explicit, || Ok(explicit.clone()))?
+                        .into_resolved_variables(),
+                )
             }
         }
     }
@@ -1280,7 +1282,7 @@ impl ThemeResolution {
     fn new(
         theme: MermaidThemeId,
         explicit: &Map<String, Value>,
-        calculated: Map<String, Value>,
+        calculate: impl FnOnce() -> Result<Map<String, Value>, ColorError>,
     ) -> Result<Self, ColorError> {
         let program = ThemeProgram::resolve(theme);
         let has_user_theme_variables = !explicit.is_empty();
@@ -1303,13 +1305,12 @@ impl ThemeResolution {
             snapshot
         };
 
-        let mut calculated_snapshot = ThemeStageSnapshot::from_variables(calculated);
-
-        if let Some(snapshot) = program.exact_snapshot(explicit) {
+        let calculated_snapshot = if let Some(snapshot) = program.exact_snapshot(explicit) {
             // Generated snapshots are exact calculation-stage results for branch-only inputs.
             // Typography inputs do not affect updateColors() and are replayed below.
-            calculated_snapshot = ThemeStageSnapshot::from_variables(snapshot.clone());
+            ThemeStageSnapshot::from_variables(snapshot.clone())
         } else {
+            let mut calculated_snapshot = ThemeStageSnapshot::from_variables(calculate()?);
             let snapshot = program.calculation_snapshot(explicit);
             merge_theme_variable_defaults(&mut calculated_snapshot.variables, snapshot);
             #[cfg(test)]
@@ -1338,7 +1339,8 @@ impl ThemeResolution {
                         .insert(key.clone(), ThemeValueOrigin::Calculated);
                 }
             }
-        }
+            calculated_snapshot
+        };
 
         #[cfg(test)]
         let calculated = calculated_snapshot.clone();
@@ -4855,6 +4857,78 @@ Alice->>Bob: Hello
     }
 
     #[test]
+    fn default_theme_exact_overrides_preserve_truthiness_and_typography() {
+        let program = ThemeProgram::resolve(MermaidThemeId::Default);
+        for (overrides, dark_mode) in [
+            (
+                json!({"darkMode": false, "fontFamily": "", "fontSize": 17}),
+                false,
+            ),
+            (
+                json!({"darkMode": 0, "fontFamily": 17, "fontSize": ""}),
+                false,
+            ),
+            (
+                json!({"darkMode": "", "fontFamily": null, "fontSize": null}),
+                false,
+            ),
+            (
+                json!({"darkMode": "false", "fontFamily": {"name": "Inter"}, "fontSize": ["16px"]}),
+                true,
+            ),
+            (json!({"darkMode": []}), true),
+            (json!({"darkMode": {}}), true),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": "default", "themeVariables": overrides.clone(),
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+
+            let mut expected = if dark_mode {
+                program.resolved_dark_mode_true().clone()
+            } else {
+                program.resolved_without_overrides().clone()
+            };
+            expected.extend(
+                overrides
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .filter(|(_, value)| !value.is_null())
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
+            assert_eq!(
+                config.as_value()["themeVariables"].as_object().unwrap(),
+                &expected,
+                "overrides={overrides}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_theme_nonexact_invalid_colors_preserve_errors() {
+        for (variable, value, expected_input) in [
+            ("primaryColor", json!("not-a-color"), "not-a-color"),
+            ("git7", json!("not-a-color"), "not-a-color"),
+            ("quadrant1Fill", json!(17), "17"),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": "default", "themeVariables": {(variable): value},
+            }));
+            let before = config.clone();
+            assert_eq!(
+                apply_theme_defaults(&mut config),
+                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
+                    input: expected_input.to_string(),
+                })),
+                "{variable}"
+            );
+            assert_eq!(config.as_value(), before.as_value(), "{variable}");
+            assert!(!config.path_was_mutated_after(&before, ""), "{variable}");
+        }
+    }
+
+    #[test]
     fn base_node_border_override_controls_inferred_gradient() {
         for (overrides, expected) in [
             (json!({ "nodeBorder": "#225577" }), false),
@@ -6076,7 +6150,7 @@ flowchart TD
         .unwrap()
         .clone();
         let resolution =
-            ThemeResolution::new(MermaidThemeId::Default, &explicit, calculated).unwrap();
+            ThemeResolution::new(MermaidThemeId::Default, &explicit, || Ok(calculated)).unwrap();
         assert_eq!(
             resolution.default_snapshot.stage,
             ThemeResolutionStage::DefaultSnapshot
