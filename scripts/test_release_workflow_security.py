@@ -838,6 +838,19 @@ jobs:
         self.assertIn("Test-Json", scoop)
         self.assertIn("-SchemaFile scoop-schema/schema.json", scoop)
 
+    def test_winget_validation_requires_installation_before_uploading_evidence(self) -> None:
+        winget = workflow_job(read(WORKFLOW_ROOT / "release-cli-registries.yml"), "winget")
+        install = winget.index("winget.exe install")
+        smoke = winget.index("shell: python\n        run:")
+        upload = winget.index("uses: actions/upload-artifact@")
+        self.assertLess(winget.index("winget.exe validate"), install)
+        self.assertLess(install, smoke)
+        self.assertLess(smoke, upload)
+        self.assertIn("--scope user", winget)
+        self.assertIn("--accept-package-agreements --accept-source-agreements", winget)
+        for bypass in ("--skip-dependencies", "--ignore-security-hash", "continue-on-error:"):
+            self.assertNotIn(bypass, winget)
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",
