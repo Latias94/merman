@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## Unreleased
+## [0.9.1] - Unreleased
 
-- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
-  Swimlane titles in PNG, JPEG, and PDF exports.
-  [#200](https://github.com/Latias94/merman/issues/200)
+- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
+- Ensure Class, Sequence, and State lexers always make progress and observe cancellation while skipping input, including empty Sequence comments and malformed declarations.
+- Update the locked `rustls` dependency to 0.23.46 and refresh generated legal materials.
+- Shorten repository paths and enforce a Windows checkout path budget for Git dependencies.
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated Swimlane titles in PNG, JPEG, and PDF exports. [#200](https://github.com/Latias94/merman/issues/200)
+- Scope generated HTML label IDs to the diagram root so multiple diagrams can share a document.
 
 ## [0.9.0] - 2026-10-12
 
