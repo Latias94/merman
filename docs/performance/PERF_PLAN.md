@@ -17,6 +17,22 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) narrows
+post-write root state to `Option<ViewBox>`, avoiding a complete viewport-plan clone and retaining
+only geometry consumed by canvas application. Root sizing, provenance, deferred finalization,
+resource checks and cancellation remain. All 178 public SVG/report/custom-measurer pairs and 152
+benchmark SVG identities match. Of 171 stable memory inputs, 156 reduce allocation and 15 remain
+unchanged; seven variable Flowchart inputs remain memory-inconclusive. Default Zenuml saves four
+allocations/46 bytes (471 → 467); stable peak growth never increases and retained bytes match.
+Native 8,252 tests, Clippy, theme qualification, optimized full WASM, 37-diagram smoke and all-family
+DOM pass. Forty fixed adjacent diagnostic calls observe Zenuml/Packet/Timeline/State/ER public E2E
+changes of -0.94%/-0.28%/+0.29%/-0.01%/-0.82%, with no calibrated latency claim. Fresh same-SVG
+v0.9.0 Zenuml context is 20.2635 → 23.7765 us (+17.34%); error/resource contracts differ, and this
+is neither all-family evidence nor theme-only attribution. A separate consumer audit identifies
+an extra Engine clone between the public facade and Operation, on the pipeline E2E path, as the
+next independent ownership candidate. Root style composition remains separate; neither is assigned
+the complete remaining release gap.
+
 The [October 18 Zenuml source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
 resolves the actual `themeVariables.zenuml` object once for both typography and source colors.
 Missing/non-object namespaces return the same defaults, replacing 36 full role-path requests with
@@ -28,9 +44,10 @@ retained bytes never increase. Native 8,252 tests, Clippy, theme qualification, 
 37-diagram smoke and all-family DOM pass. Fixed adjacent diagnostics observe Zenuml preparation
 4.6143 → 3.8969 us (-15.55%) and public E2E 24.7250 → 24.1535 us (-2.31%), with Packet/Timeline
 E2E -0.38%/-0.64%. These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is
-20.155 → 24.220 us (+20.17%), without an all-family or theme-only cause. Root viewport retention
-and the extra intermediate facade Engine clone remain separate candidates; select the next work
-from fresh remaining-owner evidence. Previous XML A/A remains inconclusive and is not retried.
+20.155 → 24.220 us (+20.17%), without an all-family or theme-only cause. The subsequent
+[root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
+ownership. The extra intermediate facade Engine clone remains an independent candidate.
+Previous XML A/A remains inconclusive and is not retried.
 
 The [October 17 XML legal-whitespace checkpoint](xml_legal_whitespace_macos_2026-10-17.md)
 lets exact XML-legal TAB/LF/CR use the existing bulk classifier instead of forcing complete chunks
@@ -44,8 +61,10 @@ These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is 1
 (+25.01%), without theme-only attribution. Native, Clippy, private theme, optimized full WASM,
 37-diagram smoke and all-family DOM pass. Preparation samples put 19.66% under source-style
 construction; the subsequent [source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
-addresses that repeated path ownership. Post-write root viewport state and the extra facade Engine
-clone remain separate candidates. Previous A/A remains inconclusive and is not retried.
+addresses that repeated path ownership. The subsequent
+[root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
+ownership; the extra facade Engine clone remains separate. Previous A/A remains inconclusive and
+is not retried.
 
 The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
 
@@ -77,8 +96,9 @@ average, equivalent error/resource contract or theme-only cause is claimed. Chan
 remain separate. The ownership checkpoint above addresses the measured Zenuml font copies and
 single-title predicates; the subsequent CSS encoding and XML legal-whitespace checkpoints above
 address their independent encoding questions.
-Keep Packet/Kanban writer and actual preparation costs separate. Unused root viewport-plan
-ownership and Kanban temporary label/font copies remain small independent allocation candidates.
+Keep Packet/Kanban writer and actual preparation costs separate. Unused post-write root
+viewport-plan ownership is addressed in the [root viewport checkpoint](root_viewport_state_macos_2026-10-18.md);
+Kanban temporary label/font copies remain a separate allocation candidate.
 
 The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) supplied the
 preceding writer experiment. Inclusive Packet/Kanban emission samples placed 34.55%/52.32% beneath
