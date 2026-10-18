@@ -173,6 +173,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Select shared text measurement\: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied]:FONT_MEASUREMENT:(deterministic native)' \
 '--font-system=[Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested]:FONT_SYSTEM:(off on)' \
+'--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 4096); independent of --resource-profile]:COUNT:' \
 '--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
 editor-dark\:"\[alpha\] Editor Dark"
 one-dark\:"\[alpha\] One Dark"
@@ -284,6 +285,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Select shared text measurement\: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied]:FONT_MEASUREMENT:(deterministic native)' \
 '--font-system=[Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested]:FONT_SYSTEM:(off on)' \
+'--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 4096); independent of --resource-profile]:COUNT:' \
 '--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
 editor-dark\:"\[alpha\] Editor Dark"
 one-dark\:"\[alpha\] One Dark"
@@ -490,6 +492,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Select shared text measurement\: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied]:FONT_MEASUREMENT:(deterministic native)' \
 '--font-system=[Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested]:FONT_SYSTEM:(off on)' \
+'--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 4096); independent of --resource-profile]:COUNT:' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \
 '--width=[Width of the page]:CONTAINER_WIDTH:_default' \

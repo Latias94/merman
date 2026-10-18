@@ -285,6 +285,7 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
             "--font-dir",
             "--font-measurement",
             "--font-system",
+            "--font-max-measurements",
         ] {
             assert!(options.contains(option), "{command} omits {option}");
         }
@@ -304,6 +305,8 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
         assert!(man.contains("native enables actual fonts and system discovery"));
         assert!(man.contains("Control bounded system font discovery"));
         assert!(man.contains("off with explicit sources unless on is requested"));
+        assert!(man.contains("Maximum uncached native font shaping probes per diagram"));
+        assert!(man.contains("default: 4096"));
         assert!(!man.contains("title horizontal bounds only"));
         assert!(!man.contains("deterministic without font sources"));
         assert!(!man.contains("System discovery is deferred"));
@@ -326,6 +329,10 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
         assert!(
             completion.contains("Control bounded system font discovery"),
             "{asset} omits bounded system discovery"
+        );
+        assert!(
+            completion.contains("font-max-measurements"),
+            "{asset} omits the native font measurement budget"
         );
         assert!(
             !completion.contains("System discovery is deferred"),

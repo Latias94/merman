@@ -113,6 +113,19 @@ mod er_native_regressions {
         let merman::RenderError::ResourceLimitExceeded(limit) = error else {
             panic!("expected a structured native font limit, got {error}");
         };
+        let message = limit.to_string();
+        assert!(
+            message.contains("NativeFontLimits::max_measurements"),
+            "{message}"
+        );
+        assert!(
+            message.contains("NativeFontOptions::with_limits"),
+            "{message}"
+        );
+        assert!(
+            message.contains("resource profiles do not change"),
+            "{message}"
+        );
         assert_eq!(limit.id, "native_font_measurements");
         assert_eq!(limit.actual, 65);
         assert_eq!(limit.maximum, 64);

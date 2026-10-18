@@ -205,7 +205,8 @@ impl From<merman_render::Error> for RenderError {
 /// matching backend-specific errors.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}"
+    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}{hint}",
+    hint = self.recovery_hint()
 )]
 #[non_exhaustive]
 pub struct ResourceLimitExceeded {
@@ -240,6 +241,14 @@ impl std::fmt::Display for ResourceLimitCause {
 }
 
 impl ResourceLimitExceeded {
+    fn recovery_hint(&self) -> &'static str {
+        if self.id == "native_font_measurements" && self.cause == ResourceLimitCause::Ceiling {
+            "; simplify the diagram or increase NativeFontLimits::max_measurements via NativeFontOptions::with_limits before loading fonts; render resource profiles do not change this limit"
+        } else {
+            ""
+        }
+    }
+
     pub(crate) fn from_input(error: merman_core::resources::InputResourceLimitExceeded) -> Self {
         Self {
             id: error.limit,

@@ -45,6 +45,9 @@ pub struct NativeFontLimits {
     pub max_directory_entries: usize,
     pub max_directory_depth: usize,
     pub max_label_bytes: usize,
+    /// Maximum uncached, nonempty shaping probes within one operation (default: 4096).
+    /// Cache hits do not consume this budget. This provider limit is independent of render
+    /// resource profiles; set it with `NativeFontOptions::with_limits` before loading fonts.
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
