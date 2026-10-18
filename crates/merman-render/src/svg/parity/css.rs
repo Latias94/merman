@@ -500,11 +500,38 @@ impl PreparedCommonCss {
         font_size_css: &str,
         typed_font_stack_active: bool,
     ) -> Self {
-        let mut values = Self::with_resolved_typography(
+        Self::bind_resolved(
             effective_config,
             normalize_css_font_family(font_family),
             font_size_css.to_owned(),
-        );
+            typed_font_stack_active,
+        )
+    }
+
+    #[cfg(feature = "diagram-class")]
+    pub(crate) fn bind_normalized(
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        font_size_css: &str,
+        typed_font_stack_active: bool,
+    ) -> Self {
+        Self::bind_resolved(
+            effective_config,
+            font_family.to_owned(),
+            font_size_css.to_owned(),
+            typed_font_stack_active,
+        )
+    }
+
+    #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+    fn bind_resolved(
+        effective_config: &serde_json::Value,
+        font_family: String,
+        font_size_css: String,
+        typed_font_stack_active: bool,
+    ) -> Self {
+        let mut values =
+            Self::with_resolved_typography(effective_config, font_family, font_size_css);
         if !typed_font_stack_active {
             values = values.with_configured_root_font_family(effective_config);
         }

@@ -134,12 +134,15 @@ impl PieThemePlan {
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let css = PieCssBinding::new(
+        let mut css = PieCssBinding::new(
             effective_config.as_value(),
-            inherited_font_stack
-                .typography_requested()
-                .then_some(inherited_font_stack.font_family_css()),
+            Some(inherited_font_stack.font_family_css()),
         );
+        if !inherited_font_stack.typography_requested() {
+            css.common = css
+                .common
+                .with_configured_root_font_family(effective_config.as_value());
+        }
         let mut plan = Self {
             css,
             label_indices: HashMap::new(),

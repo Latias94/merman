@@ -1,10 +1,10 @@
 use super::super::*;
 
-pub(super) fn write_sankey_css<I>(
+pub(super) fn write_sankey_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    theme: &crate::sankey::SankeyTypographyThemePlan,
-) -> Result<crate::sankey::SankeyTypographyCssEmission>
+    theme: &'a crate::sankey::SankeyTypographyThemePlan,
+) -> Result<crate::sankey::SankeyTypographyCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
 {
@@ -16,12 +16,12 @@ where
     )
 }
 
-fn write_sankey_css_values<I>(
+fn write_sankey_css_values<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    values: &crate::svg::PreparedCommonCss,
+    values: &'a crate::svg::PreparedCommonCss,
     label_background: &str,
-) -> Result<crate::sankey::SankeyTypographyCssEmission>
+) -> Result<crate::sankey::SankeyTypographyCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
 {
@@ -55,10 +55,10 @@ where
     .all(|family| family == values.font_family());
     Ok(
         crate::sankey::SankeyTypographyCssEmission::from_successful_writes(
-            values.font_family().to_owned(),
+            values.font_family(),
             all_font_surfaces_match,
-            values.text_color().to_owned(),
-            values.text_color().to_owned(),
+            values.text_color(),
+            values.text_color(),
         ),
     )
 }

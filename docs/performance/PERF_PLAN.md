@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 family preparation checkpoint](family_theme_preparation_macos_2026-10-19.md)
+removes discarded/duplicated Class, Pie, Sankey, and no-theme Quadrant preparation. All 178
+public controls preserve exact SVG/report/measurement traces; 171 jointly stable rows have no
+memory-metric regression and seven variable Flowchart rows remain inconclusive. All 418
+family/preset/default cells preserve output and metadata; 24 reduce allocation count and bytes,
+with no peak or retained-growth regressions. Candidate 1 was rejected after ER regressed by one
+allocation. This is allocation/work evidence only; no calibrated latency claim was run.
+
 The [October 18 indexed-key checkpoint](theme_indexed_keys_macos_2026-10-18.md) removes repeated
 formatting of fixed Git, cScale, palette and default-restoration keys during non-exact theme
 materialization. All 21 non-empty, non-palette public SVG rows reduce allocations and bytes; the
@@ -793,12 +801,14 @@ cost justification. Do not mark missing coverage, noisy timing or unexplained re
 Continue high-confidence ownership/work/allocation repairs in independent measured batches.
 Preserve theme/config fallback, source semantics, actual writer evidence, error order, budgets,
 cancellation and measurement callbacks. Engine borrowing, root style borrowing and canonical
-root-outcome ownership are complete. All 418 warm compiled-preset/default coverage cells preserve
-the frozen adjacent output/report contract. The fresh 19-scene same-SVG diagnostic still flags
-eight rows; attribute actual consumers before selecting the next repair. Keep configured duplicate
-CSS normalization as a separate policy/order candidate. Use fresh adjacent evidence and calibrated
-confirmation for latency claims; see the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
-and [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
+root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
+in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
+compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
+fresh 19-scene same-SVG diagnostic still flags eight rows; attribute actual consumers before
+selecting the next repair. Keep configured duplicate CSS normalization as a separate policy/order
+candidate. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+[scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
+[release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
 ### Active: alpha.7 default SVG regression
 

@@ -211,17 +211,6 @@ impl ClassTextThemePlan {
             .flatten();
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let configured_font_size_css = crate::config::config_css_number_or_string(
-            effective_config.as_value(),
-            &["themeVariables", "fontSize"],
-        )
-        .unwrap_or_else(|| "16px".to_string());
-        let configured_font_size_px = crate::config::config_f64_explicit_css_px(
-            effective_config.as_value(),
-            &["themeVariables", "fontSize"],
-        )
-        .unwrap_or(16.0)
-        .max(1.0);
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -238,32 +227,43 @@ impl ClassTextThemePlan {
                 "themeVariables.fontSize",
             );
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let (font_size_px, font_size_css) = match (theme, typed_font_size_active) {
-            (Some(theme), true) => {
-                let font_size_px = crate::number_format::canonicalize_number(f64::from(
-                    theme.typography().font_size_px(),
-                ))
-                .max(1.0);
-                (
-                    font_size_px,
-                    format!("{}px", crate::number_format::canonical_number(font_size_px)),
-                )
-            }
-            _ => (configured_font_size_px, configured_font_size_css),
+        let typed_font_size = theme.filter(|_| typed_font_size_active).map(|theme| {
+            crate::number_format::canonicalize_number(f64::from(theme.typography().font_size_px()))
+                .max(1.0)
+        });
+        let (font_size_px, font_size_css) = if let Some(font_size_px) = typed_font_size {
+            (
+                font_size_px,
+                format!("{}px", crate::number_format::canonical_number(font_size_px)),
+            )
+        } else {
+            let font_size_css = crate::config::config_css_number_or_string(
+                effective_config.as_value(),
+                &["themeVariables", "fontSize"],
+            )
+            .unwrap_or_else(|| "16px".to_string());
+            let font_size_px = crate::config::config_f64_explicit_css_px(
+                effective_config.as_value(),
+                &["themeVariables", "fontSize"],
+            )
+            .unwrap_or(16.0)
+            .max(1.0);
+            (font_size_px, font_size_css)
         };
-        let configured_layout_font =
-            super::super::config::ClassConfigView::new(effective_config.as_value())
-                .layout_font_family_css();
-        let stylesheet_font_family_css =
-            crate::config::normalize_css_font_family(inherited_font_stack.font_family_css());
+        let stylesheet_font_family_css = if inherited_font_stack.typed_font_stack_active() {
+            crate::config::normalize_css_font_family(inherited_font_stack.font_family_css())
+        } else {
+            inherited_font_stack.font_family_css().to_owned()
+        };
         let layout_font_family_css = if inherited_font_stack.typed_font_stack_active() {
             stylesheet_font_family_css.clone()
         } else {
-            configured_layout_font
+            super::super::config::ClassConfigView::new(effective_config.as_value())
+                .layout_font_family_css()
         };
         Self {
             css_binding: super::ClassCssThemeBinding::resolve(effective_config.as_value()),
-            common_css: crate::svg::PreparedCommonCss::bind(
+            common_css: crate::svg::PreparedCommonCss::bind_normalized(
                 effective_config.as_value(),
                 &stylesheet_font_family_css,
                 &font_size_css,
