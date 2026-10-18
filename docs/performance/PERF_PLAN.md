@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 staged-empty checkpoint](staged_empty_lazy_macos_2026-10-18.md) caches the exact
+ordered result for empty, owner-free compatibility execution of Base, Dark, Forest and Neutral.
+It preserves generated-theme insertion order by running the existing staged executor once; the
+generated sorted snapshot is intentionally not used. Across 178 public SVG/report/measurer
+controls and the 418-cell matrix covering 35 logical families and 10 presets, output, diagnostics,
+status and admission are exact. 380 preset cells reduce 851–1,070 allocations and 56–75 KB per
+operation; 38 no-theme cells are unchanged and retained growth matches everywhere. Four fixed
+cache entries retain about 281 KB after first preparation; subsequent preparations have zero
+retained growth. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. This is an exact
+allocation/work-removal admission with no calibrated latency claim; first-request timing remains
+open. Nonempty, owner-bearing, invalid, bounded and cancellation paths retain the full executor.
+
 The [October 18 root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md) removes cloned
 root-report inventories/residuals and repeated self-coverage reconstruction, retaining canonical
 writer outcomes, frozen counts/capability union and output-mutation invalidation. All 178 public
