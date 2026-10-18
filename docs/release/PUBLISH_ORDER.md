@@ -6,7 +6,7 @@ Last updated: 2026-10-18 (Asia/Shanghai)
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 ## Version Decision
 
-Latest verified CLI/LSP, Web, Node, Python, Flutter, and Android release: `0.9.1`; Rust workspace and Apple publication remain in progress in the [0.9.1 publication snapshot](#091-publication-snapshot). The latest fully verified Rust workspace registry release remains `0.9.0` until its new batch receipts complete. Typst wrapper 0.5.0 and the other independent surfaces retain separate publication boundaries.
+Latest verified CLI/LSP, Web, Node, Python, Flutter, Android, and Apple release: `0.9.1`; Rust workspace publication remains in progress in the [0.9.1 publication snapshot](#091-publication-snapshot). The latest fully verified Rust workspace registry release remains `0.9.0` until its new batch receipts complete. Typst wrapper 0.5.0 and the other independent surfaces retain separate publication boundaries.
 
 ## 0.9.1 Publication Snapshot
 
@@ -23,7 +23,7 @@ Publication is in progress on 2026-10-18 (Asia/Shanghai) from immutable source c
 | Flutter | [pub.dev `merman 0.9.1`](https://pub.dev/packages/merman/versions/0.9.1) is published. A separate read-only archive reconciliation returned `exact`, matching file paths, executable bits, sizes and bytes with the frozen owner package. | [39109126069](https://github.com/Latias94/merman/actions/runs/39109126069) |
 | Python | PyPI `merman 0.9.1` is published with Linux x86_64, macOS ARM64 and Windows x86_64 wheels. The three registry SHA256 values match the corresponding GitHub Release assets. | [39111572953](https://github.com/Latias94/merman/actions/runs/39111572953) |
 | Android | `merman-android-v0.9.1.aar` is available on the workspace GitHub Release with SHA256 `55a7c0270f9f4fa01ec2f698e6889097a20b43fbd5dc1f924185c5f8f42c971b`. The native build, JVM contract tests and owner release-byte verification passed; this is an AAR release asset, not a Maven Central upload. | [39111583242](https://github.com/Latias94/merman/actions/runs/39111583242) |
-| Apple | Exact-source Xcode 15.2 / Swift 5.9.2 validation passed, including iOS XCFramework builds and generated Swift typechecks. The separate validation job checked out and asserted the frozen release SHA. The XCFramework owner publication is running. | [Floor check 39108265268](https://github.com/Latias94/merman/actions/runs/39108265268), [publisher 39111593825](https://github.com/Latias94/merman/actions/runs/39111593825) |
+| Apple | `Merman.xcframework-v0.9.1.zip` and its checksum are available on the workspace GitHub Release. Exact-source Xcode 15.2 / Swift 5.9.2 validation passed, including iOS XCFramework builds and generated Swift typechecks. | [Floor check 39108265268](https://github.com/Latias94/merman/actions/runs/39108265268), [publisher 39111593825](https://github.com/Latias94/merman/actions/runs/39111593825) |
 | Independent Roughr / Tree-sitter / Typst / VS Code; external package managers and Pages | No publication is part of this patch operation. | Independent release boundaries |
 
 The Web package-group artifact is `merman-web-npm-package-group` (artifact `12130147285`, digest `sha256:453da1d7acef9e86729ff6fb677f8746de8ceb23196540ea956fc051d615b2b9`); its manifest SHA256 is `4060abdea77b7cdb41510971ae3ddf1f249e38de0243f65d33214bfa8d5b0cbf`. The owner report reached `released`, and a subsequent read-only reconciliation returned the same result.
@@ -31,6 +31,8 @@ The Web package-group artifact is `merman-web-npm-package-group` (artifact `1213
 The Flutter owner retained `merman-flutter-package` (artifact `12130837889`, digest `sha256:44ed45c190062d7a2e3e37eb7b80d00df685666bd3aaaac8bea0ccb6fefe3ebb`). Its 86,205,594-byte source/tree-bound archive has SHA256 `765c64897f4d57850d08c7713fc884017f4a67e7ffe986b948e4ca2c0674df52`; the registry-repacked archive has SHA256 `14cbf6408f97c8dc48dd92597ca99881adc6dced735e575dcc96ac0808726d65`. Their canonical contents match. The shipped README and changelog describe `0.9.1`, dated 2026-10-18.
 
 The Node recovery report `merman-node-npm-reconciliation-report-attempt-1` (artifact `12130887049`, digest `sha256:da802884c27103eb6a5e1d8862086c94baa92a2043b6021749ec45a51de92d5a`) reached `released`; its manifest SHA256 is `4913c3a0185c9ac0bb105e4c3ae09a5e7e8caa4912b59736374d9fd891f4feb3`, with one already-published member and six exact recovery uploads.
+
+The Apple release assets are `Merman.xcframework-v0.9.1.zip` (297,812,765 bytes, SHA256 `75a3c4c4431e1966685476d20d6d231235458cecee45721c2129db9761c9e8c7`) and its 96-byte checksum sidecar (SHA256 `090511f3376dbe92332c45d417a4998c8ac040394ab4d74a9008b21c91ffc99a`). This is a GitHub Release XCFramework asset; it does not establish a remote SwiftPM binary target.
 
 ## 0.9.0 Publication Snapshot
 
