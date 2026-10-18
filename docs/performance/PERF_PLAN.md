@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 root style checkpoint](root_style_borrow_macos_2026-10-18.md) borrows ordinary
+root styles and deferred static suffixes until actual custom-property composition needs ownership.
+All 178 SVG/report/measurer controls and 152 benchmark SVG identities match. Of 172 stable memory
+inputs, 168 reduce allocation and four remain unchanged; six variable Flowchart rows are inconclusive.
+Default Zenuml saves one allocation/20 bytes. All 418 compiled-preset/default coverage cells across
+35 logical families preserve SVG and reports: 407 save one allocation, 11 Usecase cells stay unchanged;
+all peak/retained metrics match. Partial-support statuses are preserved, not treated as Verified.
+Native 8,253 tests, Clippy, theme qualification, optimized full WASM, smoke, DOM and format pass.
+Five-family E2E diagnostics range from -1.52% to +0.81%, with no calibrated latency claim. Separate
+same-SVG v0.9.0 Zenuml context is 20.5995 → 24.0605 us (+16.80%). Next evaluate renderer-private
+root report inventories/repeated self-coverage, preserving actual writer outcomes and public evidence.
+
 The [October 18 Engine ownership and scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
 removes redundant Engine clones through an internal parse-stage borrow; explicit request themes
 retain an isolated engine. This is an ownership refactor: all four memory metrics stay unchanged
@@ -25,7 +37,8 @@ measurer controls, 152 benchmark SVG identities, native 8,253 tests, Clippy, the
 gates pass. Five-family E2E diagnostics range from -1.16% to +0.60%, without a calibrated speedup.
 Separate same-SVG v0.9.0 Zenuml context is 20.3045 → 23.9505 us (+17.96%). The active goal below
 covers all 35 logical families and 10 public presets, not only previously timed default requests.
-Root style composition and explicit root-report rebuilding remain separate candidates.
+Root style composition is completed by the [root style checkpoint](root_style_borrow_macos_2026-10-18.md);
+explicit root-report rebuilding remains a separate candidate.
 
 The [October 18 root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) narrows
 post-write root state to `Option<ViewBox>`, avoiding a complete viewport-plan clone and retaining
@@ -41,7 +54,8 @@ v0.9.0 Zenuml context is 20.2635 → 23.7765 us (+17.34%); error/resource contra
 is neither all-family evidence nor theme-only attribution. A separate consumer audit identifies
 an extra Engine clone between the public facade and Operation, on the pipeline E2E path. The
 subsequent [ownership refactor](engine_borrow_theme_scope_macos_2026-10-18.md) removes it. Root style
-composition remains separate; neither is assigned the complete remaining release gap.
+composition is subsequently addressed by the [root style checkpoint](root_style_borrow_macos_2026-10-18.md);
+these ownership changes are not assigned the complete remaining release gap.
 
 The [October 18 Zenuml source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
 resolves the actual `themeVariables.zenuml` object once for both typography and source colors.
@@ -735,10 +749,10 @@ cost justification. Do not mark missing coverage, noisy timing or unexplained re
 
 Continue high-confidence ownership/work/allocation repairs in independent measured batches.
 Preserve theme/config fallback, source semantics, actual writer evidence, error order, budgets,
-cancellation and measurement callbacks. The Engine borrow is complete; next evaluate root style
-composition, explicit root-report inventory/coverage rebuilding and configured duplicate CSS
-normalization separately. Fresh all-family/preset discovery is required before choosing broader
-changes. See the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md).
+cancellation and measurement callbacks. The Engine borrow and root style borrowing are complete. All 418 warm compiled-preset/default
+coverage cells have a frozen adjacent baseline. Next evaluate explicit root-report inventory/
+coverage rebuilding and configured duplicate CSS normalization separately; use actual consumer
+evidence and fresh measurements before broader changes. See the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md).
 
 ### Active: alpha.7 default SVG regression
 
