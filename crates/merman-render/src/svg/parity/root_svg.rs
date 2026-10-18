@@ -363,7 +363,7 @@ enum RootDocumentState {
     },
     Ready {
         root_open: String,
-        plan: RootViewportPlan,
+        view_box: Option<ViewBox>,
     },
 }
 
@@ -384,7 +384,7 @@ pub(super) struct RootedSvg {
     family: DiagramFamilyId,
     diagram_id: String,
     root_open_end: usize,
-    viewport: RootViewportPlan,
+    view_box: Option<ViewBox>,
 }
 
 #[derive(Debug, Clone)]
@@ -590,7 +590,10 @@ impl<'a> RootViewportContext<'a> {
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.as_str().to_string(),
-            state: RootDocumentState::Ready { root_open, plan },
+            state: RootDocumentState::Ready {
+                root_open,
+                view_box: Some(view_box),
+            },
         })
     }
 
@@ -669,7 +672,7 @@ impl<'a> RootViewportContext<'a> {
             diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Ready {
                 root_open: out.as_str().to_string(),
-                plan: plan.clone(),
+                view_box: plan.view_box,
             },
         })
     }
@@ -680,7 +683,11 @@ impl<'a> RootViewportContext<'a> {
                 message: "root document belongs to a different render context".to_string(),
             });
         }
-        let RootDocumentState::Ready { root_open, plan } = document.state else {
+        let RootDocumentState::Ready {
+            root_open,
+            view_box,
+        } = document.state
+        else {
             return Err(Error::InvalidModel {
                 message: "root document viewport was not finalized".to_string(),
             });
@@ -700,7 +707,7 @@ impl<'a> RootViewportContext<'a> {
             family: self.family,
             diagram_id: self.diagram_id.as_str().to_string(),
             root_open_end: root_open.len(),
-            viewport: plan,
+            view_box,
         })
     }
 
@@ -803,8 +810,7 @@ impl RootedSvg {
             ));
         };
         let mut application = plan.begin_svg_application();
-        let canvas_prelude =
-            CanvasPreludePlan::new(plan, self.diagram_id.as_str(), self.viewport.view_box())?;
+        let canvas_prelude = CanvasPreludePlan::new(plan, self.diagram_id.as_str(), self.view_box)?;
         let background_edit = (plan.canvas().has_explicit_base()
             && matches!(plan.canvas().base(), CanvasPaint::Transparent))
         .then(|| {
@@ -816,7 +822,7 @@ impl RootedSvg {
         })
         .transpose()?;
 
-        let prelude_len = canvas_prelude.encoded_len(self.viewport.view_box())?;
+        let prelude_len = canvas_prelude.encoded_len(self.view_box)?;
         let background_growth = background_edit
             .as_ref()
             .map_or(0, |edit| edit.additional_len());
@@ -835,7 +841,7 @@ impl RootedSvg {
                 .map_err(|_| Error::InvalidModel {
                     message: "failed to reserve bounded root theme SVG prelude".to_string(),
                 })?;
-            canvas_prelude.write(&mut prelude, self.viewport.view_box())?;
+            canvas_prelude.write(&mut prelude, self.view_box)?;
             if prelude.len() != prelude_len {
                 return Err(Error::InvalidModel {
                     message: "root theme SVG preflight disagreed with terminal serialization"
@@ -2648,12 +2654,8 @@ mod tests {
             let meter = crate::resources::OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             );
-            let prelude = CanvasPreludePlan::new(
-                plan,
-                rooted.diagram_id.as_str(),
-                rooted.viewport.view_box(),
-            )
-            .unwrap();
+            let prelude =
+                CanvasPreludePlan::new(plan, rooted.diagram_id.as_str(), rooted.view_box).unwrap();
             assert!(prelude.entries.is_empty());
             assert_eq!(
                 prelude.entries.capacity(),
