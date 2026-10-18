@@ -1,0 +1,111 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { ThemeRecipeV1 } from "@mermanjs/web";
+
+import {
+  appendThemeRule,
+  setDefinitionToken,
+  setDefinitionTypography,
+  setThemeCanvasBase,
+  setThemeRuleFacet,
+  validateThemeDocument,
+} from "./theme-document.ts";
+
+test("validates original bytes before decoding duplicate fields or unknown versions", () => {
+  for (const raw of [
+    '{"schema_version":1,"schema_version":2,"kind":"definition","definition":{}}',
+    '{"schema_version":99,"kind":"definition","definition":{}}',
+  ]) {
+    const observed: string[] = [];
+    assert.throws(() => validateThemeDocument(raw, (input) => {
+      observed.push(input);
+      throw new Error("Rust rejected recipe");
+    }), /Rust rejected recipe/);
+    assert.deepEqual(observed, [raw]);
+  }
+});
+
+test("complete recipe edits retain ordered rules, layers, effects and assets", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: {
+      mermaid: { theme: "base", dark_mode: true },
+      canvas: {
+        base: "#101020",
+        layers: [{ paint: { kind: "pattern", pattern: "grid", cell_width: 20, cell_height: 20, foreground: "#112233" }, opacity: 0.5 }],
+        bleed: 8,
+      },
+      effects: [{ kind: "graph", id: "glow", primitives: [{ kind: "gaussian-blur", std_deviation: 2 }] }],
+      assets: { aliases: [{ alias: "Diagram", target: "Arial" }], available_sources: ["system"] },
+      requirements: { capabilities: ["svg-filters"] },
+      typography: { default: { font_stack: ["Arial"], font_weight: 600 } },
+      styles: [
+        { kind: "rule", family: "sequence", target: "actor", style: { fill: "#112233", effect: "glow" } },
+        { kind: "ordinal-palette", target: "series", colors: ["#112233", "#445566"] },
+      ],
+    },
+  };
+  const before = structuredClone(original);
+  const edited = appendThemeRule(setThemeCanvasBase(original, "white"), {
+    family: "class", target: "node",
+  }, { stroke: { paint: "#ff00ff", width: 0 } });
+  assert.equal(edited.kind, "complete_spec");
+  if (edited.kind !== "complete_spec") return;
+  assert.deepEqual(original, before);
+  assert.deepEqual(edited.complete_spec, {
+    ...before.complete_spec,
+    canvas: { ...before.complete_spec.canvas, base: "white" },
+    styles: [...before.complete_spec.styles!, {
+      kind: "rule", family: "class", target: "node", style: { stroke: { paint: "#ff00ff", width: 0 } },
+    }],
+  });
+  const restored = validateThemeDocument(JSON.stringify(edited), (raw) => raw);
+  assert.deepEqual(restored.document, edited);
+});
+
+test("facet omission, Clear, transparent and zero remain distinct", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      canvas: { layers: [] },
+      styles: [{ kind: "rule", target: "node", style: { stroke: { paint: "#123456", width: 2 }, effect: "glow" } }],
+    },
+  };
+  const omitted = setThemeRuleFacet(original, 0, "stroke.paint", undefined);
+  const cleared = setThemeRuleFacet(original, 0, "stroke.paint", null);
+  const transparent = setThemeRuleFacet(original, 0, "stroke.paint", "transparent");
+  const zero = setThemeRuleFacet(original, 0, "stroke.width", 0);
+  for (const result of [omitted, cleared, transparent, zero]) {
+    assert.equal(result.kind, "complete_spec");
+    if (result.kind !== "complete_spec") continue;
+    const rule = result.complete_spec.styles![0];
+    assert.equal(rule.kind, "rule");
+    if (rule.kind === "rule") assert.equal(rule.style.effect, "glow");
+  }
+  assert.match(JSON.stringify(omitted), /"stroke":\{"width":2\}/);
+  assert.match(JSON.stringify(cleared), /"paint":null/);
+  assert.match(JSON.stringify(transparent), /"paint":"transparent"/);
+  assert.match(JSON.stringify(zero), /"width":0/);
+  assert.deepEqual(setThemeCanvasBase(original, undefined), original);
+  assert.match(JSON.stringify(setThemeCanvasBase(original, "transparent")), /"base":"transparent"/);
+});
+
+test("definition token and typography edits preserve unrelated tokens and styles", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "definition", definition: {
+      authoring_schema_version: 1, expansion_version: 1,
+      tokens: { text: "#111111", series: ["#222222"], typography: { font_stack: ["Arial"], font_weight: 500 } },
+      styles: [{ kind: "rule", target: "node", style: { radius: 0 } }],
+    },
+  };
+  const edited = setDefinitionTypography(setDefinitionToken(original, "text", "#333333"), "font_size_px", 18);
+  assert.deepEqual(edited, {
+    ...original, definition: {
+      ...original.definition,
+      tokens: { ...original.definition.tokens, text: "#333333", typography: { font_stack: ["Arial"], font_weight: 500, font_size_px: 18 } },
+    },
+  });
+  const omitted = setDefinitionToken(edited, "series", undefined);
+  assert.equal(omitted.kind, "definition");
+  if (omitted.kind === "definition") assert.equal("series" in omitted.definition.tokens, false);
+});
