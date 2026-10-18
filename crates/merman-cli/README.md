@@ -206,6 +206,22 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
+Native measurement allows 16,384 uncached shaping probes per diagram by default.
+Large diagrams can reach this budget because one label may need several probes.
+If the CLI reports `native_font_measurements`, simplify or split the diagram, or
+retain your font options and increase the finite budget:
+
+```sh
+merman-cli render diagram.mmd --output diagram.svg --font-file fonts/FiraSans-Regular.ttf --font-max-measurements 32768
+```
+
+The reported `actual` is the first rejected probe, not the total needed to finish.
+`--resource-profile` does not change this font-provider limit. The same option is
+available on `mmdc` and `batch`; each diagram gets its own allowance. It requires
+native Mermaid measurement and does not apply to raw SVG conversion. See the
+[host resource guide](../../docs/integration/RESOURCE_POLICY.md#native-font-measurement-budget)
+for the corresponding Rust API.
+
 Explicit font files added roughly 2–7 ms per invocation in two small Windows
 Flowchart SVG probes: about 43–46 ms with default measurement and 46–53 ms with
 fixed fonts, using warm filesystem caches. These observations do not predict

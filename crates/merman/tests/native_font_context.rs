@@ -18,7 +18,7 @@ fn context(
 }
 
 #[test]
-fn facade_replays_native_failure_even_with_different_request_control() {
+fn facade_replays_native_failure_without_poisoning_selected_font_assets() {
     let context = context(
         NativeFontLimits {
             max_label_bytes: 1,
@@ -38,30 +38,39 @@ fn facade_replays_native_failure_even_with_different_request_control() {
         RenderTarget::Svg(request),
         OperationControl::new(),
     ));
-    assert!(
-        output.is_err(),
-        "host failure must never become successful fallback output"
-    );
-    assert!(context.check().is_err());
+    let merman::RenderError::ResourceLimitExceeded(limit) = output.unwrap_err() else {
+        panic!("expected a structured native font limit");
+    };
+    assert_eq!(limit.id, "native_font_label_bytes");
+    assert_eq!(limit.maximum, 1);
+    assert!(context.check().is_ok());
 }
 
 #[test]
-fn facade_checks_context_cancellation_before_rendering() {
-    let control = OperationControl::new();
-    let context = context(Default::default(), &control);
-    let environment = SvgEnvironment::deterministic()
-        .with_native_font_context(context)
-        .unwrap();
-    control.cancel();
-    let output = Renderer::new().render(RenderRequest::new(
-        "flowchart LR\nA-->B\n",
-        RenderTarget::Svg(SvgRequest {
-            environment,
-            ..Default::default()
-        }),
-        OperationControl::new(),
-    ));
-    assert!(output.is_err());
+fn facade_isolates_request_control_from_selected_font_assets() {
+    for cancel_before_install in [false, true] {
+        let control = OperationControl::new();
+        let context = context(Default::default(), &control);
+        if cancel_before_install {
+            control.cancel();
+        }
+        let environment = SvgEnvironment::deterministic()
+            .with_native_font_context(context)
+            .unwrap();
+        control.cancel();
+        let output = Renderer::new().render(RenderRequest::new(
+            "flowchart LR\nA-->B\n",
+            RenderTarget::Svg(SvgRequest {
+                environment,
+                ..Default::default()
+            }),
+            OperationControl::new(),
+        ));
+        assert!(
+            output.is_ok(),
+            "old font control must not cancel this request: {output:?}"
+        );
+    }
 }
 
 fn native_request() -> SvgRequest {
@@ -448,6 +457,17 @@ mod binary_context_contract {
     }
 
     #[test]
+    fn painting_only_context_isolates_the_old_font_control() {
+        let control = OperationControl::new();
+        let context = context(Default::default(), &control);
+        control.cancel();
+        for target in targets(SvgRequest::default(), Some(context)) {
+            let output = render("flowchart LR\nA[Hello]", target);
+            assert!(output.is_ok(), "{:?}", output.err());
+        }
+    }
+
+    #[test]
     fn either_context_source_is_shared_with_the_other_stage() {
         let context = context(Default::default(), &OperationControl::new());
         let svg = SvgRequest {
@@ -482,10 +502,18 @@ mod document_context_contract {
     const SOURCE: &str = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Measured and painted with Cousine]\n";
 
     fn document(environment: SvgEnvironment, source: &str) -> merman::RenderedDocument {
+        document_with_control(environment, source, OperationControl::new())
+    }
+
+    fn document_with_control(
+        environment: SvgEnvironment,
+        source: &str,
+        control: OperationControl,
+    ) -> merman::RenderedDocument {
         let output = Renderer::new()
             .render(RenderRequest::document(
                 source,
-                OperationControl::new(),
+                control,
                 SvgRequest {
                     environment,
                     ..Default::default()
@@ -496,6 +524,88 @@ mod document_context_contract {
             panic!("expected a completed graphical document");
         };
         document
+    }
+
+    #[test]
+    fn completed_document_exports_ignore_finished_render_control() {
+        for cancelled in [true, false] {
+            let control = OperationControl::new();
+            let environment = SvgEnvironment::deterministic()
+                .with_native_font_context(context(Default::default(), &OperationControl::new()))
+                .unwrap();
+            let document = document_with_control(environment, SOURCE, control.clone());
+            if cancelled {
+                control.cancel();
+            } else {
+                assert!(control.set_deadline(std::time::Duration::ZERO));
+                assert!(control.checkpoint().is_err());
+            }
+            #[cfg(feature = "png")]
+            document
+                .export_png(&Default::default(), OperationControl::new())
+                .expect("PNG export must use its own control");
+            #[cfg(feature = "jpeg")]
+            document
+                .export_jpeg(&Default::default(), OperationControl::new())
+                .expect("JPEG export must use its own control");
+            #[cfg(feature = "pdf")]
+            document
+                .export_pdf(&Default::default(), OperationControl::new())
+                .expect("PDF export must use its own control");
+        }
+    }
+
+    #[test]
+    fn cancelled_prepared_exports_do_not_poison_the_completed_document() {
+        let environment = SvgEnvironment::deterministic()
+            .with_native_font_context(context(Default::default(), &OperationControl::new()))
+            .unwrap();
+        let document = document(environment, SOURCE);
+        #[cfg(feature = "png")]
+        {
+            let control = OperationControl::new();
+            let prepared = document
+                .prepare_png_export(&Default::default(), control.clone())
+                .unwrap();
+            control.cancel();
+            assert!(matches!(
+                prepared.encode(),
+                Err(merman::RenderError::Cancelled(_))
+            ));
+            document
+                .export_png(&Default::default(), OperationControl::new())
+                .unwrap();
+        }
+        #[cfg(feature = "jpeg")]
+        {
+            let control = OperationControl::new();
+            let prepared = document
+                .prepare_jpeg_export(&Default::default(), control.clone())
+                .unwrap();
+            control.cancel();
+            assert!(matches!(
+                prepared.encode(),
+                Err(merman::RenderError::Cancelled(_))
+            ));
+            document
+                .export_jpeg(&Default::default(), OperationControl::new())
+                .unwrap();
+        }
+        #[cfg(feature = "pdf")]
+        {
+            let control = OperationControl::new();
+            let prepared = document
+                .prepare_pdf_export(&Default::default(), control.clone())
+                .unwrap();
+            control.cancel();
+            assert!(matches!(
+                prepared.encode(),
+                Err(merman::RenderError::Cancelled(_))
+            ));
+            document
+                .export_pdf(&Default::default(), OperationControl::new())
+                .unwrap();
+        }
     }
 
     fn prepare_errors(

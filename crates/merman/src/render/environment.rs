@@ -15,7 +15,6 @@ use super::RenderError;
 pub(super) enum NativeFontMeasurementState {
     Default,
     Explicit,
-    Completed,
 }
 
 #[cfg(all(
@@ -45,13 +44,6 @@ pub(super) fn resolve_native_font_context(
                 )
                 .into());
             }
-            NativeFontMeasurementState::Completed => {
-                return Err(merman_export::NativeFontError::Measurement(
-                    "native painting font context cannot be added to a completed document; select it before text measurement and native admission"
-                        .to_owned(),
-                )
-                .into());
-            }
         },
         (None, None) => None,
     };
@@ -68,7 +60,12 @@ pub(super) fn resolve_native_font_context(
 pub struct SvgEnvironment {
     backend: BackendRenderEnvironment,
     #[cfg(feature = "native-fonts")]
+    // The caller-selected context is retained for measurement/painting identity checks. The
+    // active context is forked per render operation so counters and sticky failures do not leak.
     pub(super) native_fonts: Option<merman_export::NativeFontContext>,
+    #[cfg(feature = "native-fonts")]
+    // Keep the original Arc identity for later measurement/painting compatibility checks.
+    pub(super) selected_native_fonts: Option<merman_export::NativeFontContext>,
     #[cfg(all(
         feature = "native-fonts",
         any(feature = "png", feature = "jpeg", feature = "pdf")
@@ -87,6 +84,8 @@ impl SvgEnvironment {
         Self {
             #[cfg(feature = "native-fonts")]
             native_fonts: None,
+            #[cfg(feature = "native-fonts")]
+            selected_native_fonts: None,
             #[cfg(all(
                 feature = "native-fonts",
                 any(feature = "png", feature = "jpeg", feature = "pdf")
@@ -104,6 +103,7 @@ impl SvgEnvironment {
         #[cfg(feature = "native-fonts")]
         {
             self.native_fonts = None;
+            self.selected_native_fonts = None;
             #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
             {
                 self.text_measurement_is_default = false;
@@ -114,13 +114,12 @@ impl SvgEnvironment {
         self
     }
 
-    /// Shares explicit fonts between text measurement and native painting.
+    /// Selects reusable font assets for measurement and painting in subsequent operations.
     #[cfg(feature = "native-fonts")]
     pub fn with_native_font_context(
         self,
         context: merman_export::NativeFontContext,
     ) -> Result<Self, merman_export::NativeFontError> {
-        context.check()?;
         use merman_render::environment::{
             MeasurementProfileId, TextMeasurementPhase, TextMeasurementProfileIdentity,
         };
@@ -134,8 +133,38 @@ impl SvgEnvironment {
             TextMeasurementPhase::ALL,
         );
         let mut environment = self.with_text_measurement_policy(policy);
-        environment.native_fonts = Some(context);
+        environment.native_fonts = Some(context.clone());
+        environment.selected_native_fonts = Some(context);
         Ok(environment)
+    }
+
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn with_active_native_font_context(
+        mut self,
+        context: merman_export::NativeFontContext,
+    ) -> Self {
+        use merman_render::environment::{
+            MeasurementProfileId, TextMeasurementPhase, TextMeasurementProfileIdentity,
+        };
+        let id = MeasurementProfileId::new("native-fonts")
+            .expect("native font profile id is fixed and valid");
+        let identity = TextMeasurementProfileIdentity::new(id, context.identity())
+            .expect("native font context identity is valid");
+        let policy = TextMeasurementPolicy::host_display(
+            identity,
+            std::sync::Arc::new(context.clone()),
+            TextMeasurementPhase::ALL,
+        );
+        let selected = self.selected_native_fonts.clone();
+        self = self.with_text_measurement_policy(policy);
+        self.native_fonts = Some(context);
+        self.selected_native_fonts = selected;
+        self
+    }
+
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn selected_native_font_context(&self) -> Option<&merman_export::NativeFontContext> {
+        self.selected_native_fonts.as_ref()
     }
 
     #[cfg(feature = "native-fonts")]

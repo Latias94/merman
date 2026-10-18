@@ -78,7 +78,7 @@ Optional graph backends preserve registered fallback behavior. Without compiled 
 
 ## Review presentation and host services
 
-Core SVG leaves the background unset; set `SvgOutputPolicy.root_background_color` when opaque artwork is required. Optional `native-fonts` supports a reusable `NativeFontContext` through `RenderEnvironment::with_native_font_context`; ordinary Rust defaults remain deterministic. Keep `ManagedSemanticJson` owned when writing deep semantic or layout results, using its maintained JSON writers rather than raw recursive serde.
+Core SVG leaves the background unset; set `SvgOutputPolicy.root_background_color` when opaque artwork is required. Optional `native-fonts` supports a reusable `NativeFontContext` through `RenderEnvironment::with_native_font_context`; the facade forks operation-local measurement state for each render while retaining the selected context for measurement/painting identity checks. Ordinary Rust defaults remain deterministic. Keep `ManagedSemanticJson` owned when writing deep semantic or layout results, using its maintained JSON writers rather than raw recursive serde.
 
 Mermaid 12 changes default layout, theme, and look. To request the earlier presentation choices, set top-level `layout: dagre`, `theme: default`, and `look: classic` through the host's approved site configuration. These choices do not promise byte-identical old SVG; correctness fixes and measurement changes also affect geometry and IDs. Refresh snapshots and selectors against the actual artifact. Runtime configuration does not remove compiled ELK dependencies or their distribution notices.
 

@@ -205,7 +205,8 @@ impl From<merman_render::Error> for RenderError {
 /// matching backend-specific errors.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}"
+    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}{hint}",
+    hint = self.recovery_hint()
 )]
 #[non_exhaustive]
 pub struct ResourceLimitExceeded {
@@ -240,6 +241,14 @@ impl std::fmt::Display for ResourceLimitCause {
 }
 
 impl ResourceLimitExceeded {
+    fn recovery_hint(&self) -> &'static str {
+        if self.id == "native_font_measurements" && self.cause == ResourceLimitCause::Ceiling {
+            "; simplify the diagram or increase NativeFontLimits::max_measurements via NativeFontOptions::with_limits before loading fonts; render resource profiles do not change this limit"
+        } else {
+            ""
+        }
+    }
+
     pub(crate) fn from_input(error: merman_core::resources::InputResourceLimitExceeded) -> Self {
         Self {
             id: error.limit,
@@ -474,6 +483,61 @@ impl RenderTarget {
                 Ok(Self::Pdf(request))
             }
             other => Ok(other),
+        }
+    }
+
+    #[cfg(feature = "native-fonts")]
+    fn activate_native_font_context(self, control: &OperationControl) -> Self {
+        fn activate(environment: &mut SvgEnvironment, control: &OperationControl) {
+            if let Some(selected) = environment.selected_native_font_context() {
+                *environment = environment
+                    .clone()
+                    .with_active_native_font_context(selected.for_operation(control));
+            }
+        }
+
+        match self {
+            #[cfg(feature = "svg")]
+            Self::Svg(mut request) => {
+                activate(&mut request.environment, control);
+                Self::Svg(request)
+            }
+            #[cfg(feature = "svg")]
+            Self::Document(mut request) => {
+                activate(&mut request.environment, control);
+                Self::Document(request)
+            }
+            #[cfg(feature = "svg")]
+            Self::LayoutJson(mut request) => {
+                activate(&mut request.environment, control);
+                Self::LayoutJson(request)
+            }
+            #[cfg(feature = "svg")]
+            Self::EdgeGeometryJson(mut request) => {
+                activate(&mut request.environment, control);
+                Self::EdgeGeometryJson(request)
+            }
+            #[cfg(feature = "svg")]
+            Self::SvgPlan(mut request) => {
+                activate(&mut request.environment, control);
+                Self::SvgPlan(request)
+            }
+            #[cfg(feature = "png")]
+            Self::Png(mut request) => {
+                activate(&mut request.svg.environment, control);
+                Self::Png(request)
+            }
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg(mut request) => {
+                activate(&mut request.svg.environment, control);
+                Self::Jpeg(request)
+            }
+            #[cfg(feature = "pdf")]
+            Self::Pdf(mut request) => {
+                activate(&mut request.svg.environment, control);
+                Self::Pdf(request)
+            }
+            other => other,
         }
     }
 
@@ -1122,7 +1186,9 @@ impl SemanticArtifact {
     /// Consumes this operation-owned semantic artifact into one typed output target.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let target = target.normalize_native_font_context()?;
+        let target = target
+            .normalize_native_font_context()?
+            .activate_native_font_context(self.control());
         #[cfg(feature = "native-fonts")]
         if target.native_fonts_are_selected() {
             let metadata = self.parsed().metadata();
@@ -1425,6 +1491,11 @@ fn render_document_target(
             any(feature = "png", feature = "jpeg", feature = "pdf")
         ))]
         request.environment.native_fonts,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.environment.selected_native_fonts,
     );
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
     Ok(Some(document))
@@ -1477,6 +1548,11 @@ fn render_png_target(
         required_capabilities,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.svg.environment.selected_native_fonts,
     )
     .export_png(&request.options, operation.control)
     .map(Some)
@@ -1497,6 +1573,11 @@ fn render_jpeg_target(
         required_capabilities,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.svg.environment.selected_native_fonts,
     )
     .export_jpeg(&request.options, operation.control)
     .map(Some)
@@ -1517,6 +1598,11 @@ fn render_pdf_target(
         required_capabilities,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.svg.environment.selected_native_fonts,
     )
     .export_pdf(&request.options, operation.control)
     .map(Some)

@@ -46,6 +46,11 @@ pub struct RenderedDocument {
         any(feature = "png", feature = "jpeg", feature = "pdf")
     ))]
     native_fonts: Option<merman_export::NativeFontContext>,
+    #[cfg(all(
+        feature = "native-fonts",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    selected_native_fonts: Option<merman_export::NativeFontContext>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -152,6 +157,11 @@ impl RenderedDocument {
             any(feature = "png", feature = "jpeg", feature = "pdf")
         ))]
         native_fonts: Option<merman_export::NativeFontContext>,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        selected_native_fonts: Option<merman_export::NativeFontContext>,
     ) -> Self {
         let (svg, family) = completion.into_output_and_report();
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
@@ -167,6 +177,11 @@ impl RenderedDocument {
                 any(feature = "png", feature = "jpeg", feature = "pdf")
             ))]
             native_fonts,
+            #[cfg(all(
+                feature = "native-fonts",
+                any(feature = "png", feature = "jpeg", feature = "pdf")
+            ))]
+            selected_native_fonts,
         }
     }
 
@@ -342,11 +357,27 @@ impl RenderedDocument {
         control: &OperationControl,
     ) -> Result<Option<merman_export::NativeFontContext>, RenderError> {
         crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Export)?;
-        super::environment::resolve_native_font_context(
-            self.native_fonts.as_ref(),
-            painting,
-            super::environment::NativeFontMeasurementState::Completed,
-        )
+        if let (Some(selected), Some(painting)) = (&self.selected_native_fonts, painting)
+            && selected != painting
+        {
+            return Err(merman_export::NativeFontError::Measurement(
+                "native font contexts for measurement and painting conflict; share the same context"
+                    .to_owned(),
+            )
+            .into());
+        }
+        if self.selected_native_fonts.is_none() && painting.is_some() {
+            return Err(merman_export::NativeFontError::Measurement(
+                "native painting font context cannot be added to a completed document; select it before text measurement and native admission"
+                    .to_owned(),
+            )
+            .into());
+        }
+        self.native_fonts
+            .as_ref()
+            .map(|fonts| fonts.for_export(control))
+            .transpose()
+            .map_err(RenderError::from)
     }
 
     #[cfg(all(feature = "native-fonts", any(feature = "png", feature = "jpeg")))]

@@ -17,6 +17,133 @@ fn font_context() -> NativeFontContext {
         .expect("the checked-in explicit font set loads")
 }
 
+#[cfg(feature = "diagram-er")]
+mod er_native_regressions {
+    use super::*;
+    use merman::svg::export::NativeFontLimits;
+    use std::fmt::Write as _;
+
+    fn tables(count: usize) -> String {
+        let mut source = String::from("erDiagram\n");
+        for i in 0..count {
+            writeln!(
+                source,
+                "  T{i} {{\n    text name_{i}\n    integer size_{i}\n  }}"
+            )
+            .unwrap();
+        }
+        source
+    }
+
+    fn request(context: NativeFontContext) -> SvgRequest {
+        SvgRequest {
+            environment: SvgEnvironment::deterministic()
+                .with_native_font_context(context)
+                .unwrap(),
+            ..Default::default()
+        }
+    }
+
+    fn single_font_context() -> NativeFontContext {
+        NativeFontOptions::default()
+            .with_font_file(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../merman-export/tests/fonts/Cousine-Regular.ttf"),
+            )
+            .load(&OperationControl::new())
+            .unwrap()
+    }
+
+    #[test]
+    fn er_native_default_budget_renders_500_tables() {
+        let output = render(&tables(500), Some(single_font_context()));
+        assert!(output.svg().contains("entity-T499-499"));
+        assert_native_without_fallback(&output, "er");
+    }
+
+    #[test]
+    fn er_native_independent_renders_do_not_accumulate_measurements() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../merman-export/tests/fonts/Cousine-Regular.ttf"),
+            )
+            .with_limits(NativeFontLimits {
+                max_cache_entries: 0,
+                max_measurements: 256,
+                ..Default::default()
+            })
+            .load(&OperationControl::new())
+            .unwrap();
+        let request = request(context.clone());
+        let renderer = Renderer::new();
+        for _ in 0..10 {
+            let output = renderer.render(RenderRequest::svg(
+                &tables(3),
+                OperationControl::new(),
+                request.clone(),
+            ));
+            assert!(output.is_ok(), "independent render failed: {output:?}");
+        }
+        assert!(context.check().is_ok());
+    }
+
+    #[test]
+    fn er_native_failed_render_does_not_poison_font_assets() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../merman-export/tests/fonts/Cousine-Regular.ttf"),
+            )
+            .with_limits(NativeFontLimits {
+                max_measurements: 64,
+                ..Default::default()
+            })
+            .load(&OperationControl::new())
+            .unwrap();
+        let request = request(context.clone());
+        let renderer = Renderer::new();
+        let error = renderer
+            .render(RenderRequest::svg(
+                &tables(340),
+                OperationControl::new(),
+                request.clone(),
+            ))
+            .unwrap_err();
+        let merman::RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a structured native font limit, got {error}");
+        };
+        let message = limit.to_string();
+        assert!(
+            message.contains("NativeFontLimits::max_measurements"),
+            "{message}"
+        );
+        assert!(
+            message.contains("NativeFontOptions::with_limits"),
+            "{message}"
+        );
+        assert!(
+            message.contains("resource profiles do not change"),
+            "{message}"
+        );
+        assert_eq!(limit.id, "native_font_measurements");
+        assert_eq!(limit.actual, 65);
+        assert_eq!(limit.maximum, 64);
+        assert_eq!(limit.cause, merman::ResourceLimitCause::Ceiling);
+        assert!(
+            context.check().is_ok(),
+            "render failure mutated shared font assets"
+        );
+        renderer
+            .render(RenderRequest::svg(
+                "erDiagram\nSMALL\n",
+                OperationControl::new(),
+                request,
+            ))
+            .expect("a fresh operation can render with the same font assets");
+    }
+}
+
 fn render(source: &str, context: Option<NativeFontContext>) -> SvgOutput {
     let environment = match context {
         Some(context) => SvgEnvironment::deterministic()

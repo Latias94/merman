@@ -182,7 +182,9 @@ returns the same evidence-bearing `RasterOutput` or `PdfOutput` as the correspon
 admission once. Document completion does not enforce that SVG receipt; inspect
 `standalone_svg_admission()` before publishing the SVG. Each native projection receives its own
 cancellation control, independently enforces the request's portability requirement, and returns a
-target-owned admission receipt.
+target-owned admission receipt. Native font projections retain the font bytes admitted during
+layout while using an independent export session. Cancelling or expiring the completed render's
+control does not cancel a later projection; a failed projection does not poison the document.
 Calling `into_bytes()` is an explicit lossy projection that discards those receipts.
 
 The same path is available as a runnable repository example:
