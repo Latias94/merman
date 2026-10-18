@@ -12,12 +12,20 @@ per-operation `Materialize` path. It covers the default theme and all six Extend
 empty, unrelated, scale and Git overrides, plus palette-array cases for Redux Color themes.
 Each row has five allocation observations after a warm-up render.
 
-All 30 non-empty, non-palette rows reduce allocations and allocated bytes. The default theme saves
+All 21 non-empty, non-palette rows reduce allocations and allocated bytes. The default theme saves
 134 allocations and 2,233 bytes per render. Other themes save 15–55 allocations and 137–1,024
 bytes. Empty exact-snapshot controls and explicit palette controls are unchanged. The 60 SVG and
 theme-report artifacts (30 rows, two artifacts each) compare byte-for-byte equal between base and
 candidate; the focused theme suite passes 139/139 and the public `merman` suite passes 396/396
 with two configured skips. Clippy, formatting and the all-feature release build pass.
+
+An October 19 follow-up closes the ordered-configuration gate using a frozen 100-row public
+probe against the original base and candidate: 93 successful ordered effective configurations,
+SVGs and reports, seven invalid-color errors, and all 100 source inputs match byte for byte.
+The expanded controls include font-weight scalar/object/falsy/null values, dark mode and combined
+typography. All 386 observed artifacts match; raw receipts are in `base-config-1/` and
+`ordered-config-verification.json` under the same experiment directory. The candidate observation
+is `theme-fontweight-snapshot-20261019/base-source-1/` beside that directory.
 
 This is an allocation/work reduction only. No calibrated latency claim is made; the change has no
 retained cache or new state. Raw allocation metrics and SVG/report artifacts are retained under
