@@ -1,0 +1,48 @@
+name: apple-swift-5-9-validate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apple-swift-5-9-smoke:
+    name: apple-swift-5-9-smoke
+    runs-on: macos-14
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: f6202f702dbde0a75049b1a62b3124feae709b3d
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "f6202f702dbde0a75049b1a62b3124feae709b3d"
+
+      - name: Select Xcode 15.2
+        shell: bash
+        run: sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+
+      - name: Verify Swift compiler floor
+        shell: bash
+        run: |
+          swift --version
+          swift --version | grep -Eq 'Apple Swift version 5\.9([ .]|$)'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Build Apple XCFramework
+        shell: bash
+        run: bash scripts/build-apple-xcframework.sh --ios
+
+      - name: Typecheck generated Swift bindings
+        shell: bash
+        run: swiftc -typecheck platforms/apple/Sources/Merman/Generated/*.swift
+
+      - name: Check generated bindings are clean
+        shell: bash
+        run: git diff --exit-code -- platforms/apple/Sources/Merman/Generated
