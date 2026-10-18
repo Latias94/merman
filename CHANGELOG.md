@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.9.1] - Unreleased
+## [0.9.1] - 2026-10-18
 
 - Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
 - Ensure Class, Sequence, and State lexers always make progress and observe cancellation while skipping input, including empty Sequence comments and malformed declarations.

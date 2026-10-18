@@ -4,7 +4,7 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.9.1] - Unreleased
+## [0.9.1] - 2026-10-18
 
 - ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
 - Diagram lexers now make progress and honor cancellation while skipping malformed or empty input.
