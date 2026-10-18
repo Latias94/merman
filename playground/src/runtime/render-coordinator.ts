@@ -4,6 +4,7 @@ import {
   type DiagramDetectionFacts,
   type DiagramType,
   type SvgPlanResult,
+  type SvgRenderMetadata,
 } from "@mermanjs/web";
 
 import type {
@@ -54,6 +55,7 @@ export type RenderPublicationId = number & {
 
 export interface MermanRenderSuccess {
   readonly artifact: NavigableInlineSvg;
+  readonly metadata: SvgRenderMetadata | null;
   readonly engine: "merman";
   readonly presentedAt: number | null;
   readonly renderTimeMs: number;
@@ -823,6 +825,7 @@ function renderMerman(
     status: "success",
     engine: "merman",
     artifact: result.artifact,
+    metadata: freezeRenderMetadata(result.metadata ?? null),
     renderTimeMs: result.renderTime,
     presentedAt: null,
   });
@@ -1015,6 +1018,19 @@ function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
     required_capability_ids: requiredCapabilityIds,
     missing_capability_ids: missingCapabilityIds,
   });
+}
+
+function freezeRenderMetadata(metadata: SvgRenderMetadata | null): SvgRenderMetadata | null {
+  if (metadata === null) return null;
+  const snapshot = structuredClone(metadata);
+  freezeMetadataValue(snapshot);
+  return snapshot;
+}
+
+function freezeMetadataValue(value: unknown): void {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
+  Object.freeze(value);
+  for (const child of Object.values(value)) freezeMetadataValue(child);
 }
 
 export function isCompletedRenderState(

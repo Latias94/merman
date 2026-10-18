@@ -269,6 +269,7 @@ test("freezes an export target that does not retarget after a newer publication"
         return {
           artifact: projectNavigableInlineSvg(svg("frozen-raster")),
           error: null,
+          metadata: null,
           renderTime: 1,
           status: "success",
         };
@@ -371,6 +372,7 @@ function completedPublication(
     status: "success",
     merman: Object.freeze({
       artifact: projectNavigableInlineSvg(svg("merman")),
+      metadata: null,
       engine: "merman",
       presentedAt: null,
       renderTimeMs: 1,
@@ -405,6 +407,7 @@ function readyRuntime(
   render: MermanDomainFacade["render"] = (input) => ({
     artifact: projectNavigableInlineSvg(svg(input.source)),
     error: null,
+    metadata: null,
     renderTime: 1,
     status: "success",
   }),

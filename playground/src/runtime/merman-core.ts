@@ -7,6 +7,7 @@ import type {
   DiagramFamilyCapability,
   DiagramType,
   SvgPlanResult,
+  SvgRenderMetadata,
   ThemeName,
   ThemeCatalog,
   RuntimeCatalog,
@@ -41,6 +42,7 @@ export type MermanRenderResult =
   | {
       readonly artifact: NavigableInlineSvg;
       readonly error: null;
+      readonly metadata: SvgRenderMetadata | null;
       readonly renderTime: number;
       readonly status: "success";
     }
@@ -67,6 +69,7 @@ export type MermanAsciiResult =
 export interface MermanDomainFacade {
   readonly packageVersion: string;
   exportThemePreset: typeof import("@mermanjs/web").exportThemePreset;
+  describeThemeSupport: typeof import("@mermanjs/web").describeThemeSupport;
   validateThemeRecipe(recipeJson: string): string;
   runtimeCatalog(): RuntimeCatalog;
   themeCatalog(): ThemeCatalog;
