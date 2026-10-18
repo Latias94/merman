@@ -115,6 +115,54 @@ jobs:
             --manifest "candidates/winget/manifests/l/Latias94/MermanCLI/$env:RELEASE_VERSION" `
             --disable-interactivity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install the generated WinGet manifest
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        shell: pwsh
+        run: |
+          winget.exe settings --enable LocalManifestFiles
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          winget.exe install `
+            --manifest "candidates/winget/manifests/l/Latias94/MermanCLI/$env:RELEASE_VERSION" `
+            --scope user --dependency-source winget --silent --disable-interactivity `
+            --accept-package-agreements --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Smoke-test the installed command alias
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import subprocess
+          from xml.etree import ElementTree
+
+          binary = Path(os.environ["LOCALAPPDATA"]) / "Microsoft/WinGet/Links/merman-cli.exe"
+          probes = (
+              (["--version"], 0, b""),
+              (["--help"], 0, b""),
+              ([], 2, b""),
+              (["render", "-", "--format", "svg"], 0, b"flowchart LR\n  A --> B\n"),
+          )
+          for arguments, expected_code, source in probes:
+              result = subprocess.run(
+                  [str(binary), *arguments], input=source, capture_output=True, timeout=30,
+              )
+              print(f"merman-cli {' '.join(arguments)}: exit {result.returncode}", flush=True)
+              if result.returncode != expected_code:
+                  raise RuntimeError(f"Expected exit {expected_code}: {result.stdout!r} {result.stderr!r}")
+              if arguments == ["--version"]:
+                  expected = f"merman-cli {os.environ['RELEASE_VERSION']}"
+                  if result.stdout.decode().strip() != expected:
+                      raise RuntimeError(f"Installed version differs: {result.stdout!r}")
+              elif not arguments or arguments == ["--help"]:
+                  if b"Usage:" not in result.stdout + result.stderr:
+                      raise RuntimeError("Installed CLI did not display usage")
+              elif ElementTree.fromstring(result.stdout).tag != "{http://www.w3.org/2000/svg}svg":
+                  raise RuntimeError("Installed CLI did not render SVG")
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: winget-validated-${{ needs.prepare.outputs.version }}
