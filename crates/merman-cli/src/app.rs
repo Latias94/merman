@@ -459,6 +459,7 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
         "--id",
         "--hand-drawn-seed",
         "--resource-profile",
+        "--font-max-measurements",
         "--math-renderer",
         "--backgroundColor",
         "--background-color",

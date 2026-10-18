@@ -186,22 +186,24 @@ fn execute_graphical_with_pipeline(
             if let Some(context) = &font_context {
                 crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
                 context.check().map_err(super::prepare::native_font_error)?;
-                let faces = context.selected_faces();
-                if !faces.is_empty() {
-                    crate::diagnostics::DiagnosticSink::new(
-                        prepared.quiet || !prepared.font_diagnostics,
-                        stderr,
-                    )
-                    .info(format!(
-                        "native measurement faces: {}; context {}",
-                        merman::normalize_terminal_diagnostic(&faces.join(", ")),
-                        context.identity()
-                    ));
-                }
             }
             match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
                     let (svg, _evidence) = svg.into_parts();
+                    #[cfg(feature = "native-fonts")]
+                    {
+                        let faces = _evidence.native_font_faces();
+                        if !faces.is_empty() {
+                            crate::diagnostics::DiagnosticSink::new(
+                                prepared.quiet || !prepared.font_diagnostics,
+                                stderr,
+                            )
+                            .info(format!(
+                                "native measurement faces: {}",
+                                merman::normalize_terminal_diagnostic(&faces.join(", ")),
+                            ));
+                        }
+                    }
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata(&svg);
                     Ok(ExecutedArtifact {

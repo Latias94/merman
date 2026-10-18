@@ -397,6 +397,7 @@ fn prepare_single(
             if !common.render.fonts.sources.is_empty()
                 || common.render.fonts.measurement.is_some()
                 || common.render.fonts.system.is_some()
+                || common.render.fonts.max_measurements.is_some()
             {
                 return Err(CliError::InvalidInput(
                     "native font options require SVG, PNG, JPEG, or PDF output".to_string(),
@@ -685,6 +686,22 @@ fn prepare_font_context(
     use merman::svg::export::NativeFontOptions;
 
     let explicit = !args.sources.is_empty();
+    if args.max_measurements.is_some() {
+        if raw_svg {
+            return Err(CliError::InvalidInput(
+                "--font-max-measurements requires native Mermaid text measurement; raw SVG is not relaid out".to_owned(),
+            ));
+        }
+        if args.measurement == Some(FontMeasurementKind::Deterministic)
+            || !(explicit
+                || args.measurement == Some(FontMeasurementKind::Native)
+                || args.system == Some(FontSystemKind::On))
+        {
+            return Err(CliError::InvalidInput(
+                "--font-max-measurements requires native text measurement; provide --font-file or --font-dir, or select --font-measurement native".to_owned(),
+            ));
+        }
+    }
     if raw_svg && args.measurement.is_some() {
         return Err(CliError::InvalidInput(
             "--font-measurement is only supported for Mermaid input; raw SVG is not relaid out"
@@ -742,6 +759,9 @@ fn prepare_font_context(
         return Ok(None);
     }
     let mut options = NativeFontOptions::default().with_system_fonts(use_system);
+    if let Some(maximum) = args.max_measurements {
+        options.limits.max_measurements = maximum;
+    }
     for source in &args.sources {
         let resolve = |path: &std::path::PathBuf| {
             if path.is_absolute() {

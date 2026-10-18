@@ -74,6 +74,45 @@ Parser-only calls do not perform SVG layout. Semantic input limits still matter.
 have their own `AsciiResourcePolicy`, grid/label limits, and output contract; an SVG work ceiling
 is not an ASCII budget. See the [host examples](../../crates/merman/examples/README.md).
 
+## Native font measurement budget
+
+Native-font measurement has its own per-operation provider limit, separate from
+`RenderResourcePolicy`. Its default is 16,384 uncached, nonempty shaping probes;
+cache hits do not consume it. One text label may require several probes for wrapping
+and different measurement operations, so this is not a table or label count.
+Changing the render profile, including `unbounded_for_trusted_input()`, does not
+raise this font limit.
+
+If rendering returns `RenderError::ResourceLimitExceeded` with
+`id == "native_font_measurements"`, simplify or split the diagram, or select a
+larger finite budget before loading the fonts:
+
+```rust
+use merman::svg::export::{NativeFontLimits, NativeFontOptions};
+use merman::OperationControl;
+
+let limits = NativeFontLimits {
+    max_measurements: 32_768,
+    ..Default::default()
+};
+let fonts = NativeFontOptions::default()
+    .with_font_file("fonts/MyFont-Regular.ttf")
+    .with_limits(limits)
+    .load(&OperationControl::new())?;
+// Install `fonts` with SvgEnvironment::with_native_font_context as usual.
+```
+
+The facade creates fresh measurement state for each render using these font assets;
+one rejected operation does not consume the next operation's allowance. Direct
+`merman-export` callers use `NativeFontContext::for_operation` for each independent
+operation. The error's `actual` reports the first rejected probe, not the total
+needed to finish; increasing to that value alone may fail again. A larger budget
+permits more font work, so keep cancellation, deadlines, and host concurrency limits.
+
+For the CLI, retain the same font sources and add
+`--font-max-measurements 32768`. This option requires native Mermaid measurement;
+it does not enable font discovery on its own and does not apply to raw SVG.
+
 ## Keep three different controls separate
 
 | Control | What it bounds | What it does not promise |

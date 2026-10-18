@@ -148,6 +148,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-me
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
@@ -254,6 +255,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-mea
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
@@ -412,6 +414,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-meas
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''
 ratex\t''"
