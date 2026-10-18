@@ -1271,6 +1271,54 @@ jobs:
           python3 tools/bench/test_native_memory_driver_contracts.py
           python3 tools/bench/test_perf_contracts.py
 
+  apple-swift-5-9-release-floor:
+    name: apple-swift-5-9-release-floor
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: f6202f702dbde0a75049b1a62b3124feae709b3d
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable release source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "f6202f702dbde0a75049b1a62b3124feae709b3d"
+
+      - name: Select Xcode 15.2 and verify Swift 5.9
+        shell: bash
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+          swift --version
+          swift --version | grep -Eq 'Apple Swift version 5\.9([ .]|$)'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+
+      - name: Build iOS XCFramework with Swift 5.9
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh --ios
+
+      - name: Type-check generated Swift with Swift 5.9
+        run: |
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0-simulator \
+            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
+
   pr-gate:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}
     if: ${{ always() }}
