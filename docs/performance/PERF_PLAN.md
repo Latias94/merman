@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 Engine ownership and scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
+removes redundant Engine clones through an internal parse-stage borrow; explicit request themes
+retain an isolated engine. This is an ownership refactor: all four memory metrics stay unchanged
+for 172 stable inputs; six variable Flowchart rows remain inconclusive. All 178 public SVG/report/
+measurer controls, 152 benchmark SVG identities, native 8,253 tests, Clippy, theme, WASM and DOM
+gates pass. Five-family E2E diagnostics range from -1.16% to +0.60%, without a calibrated speedup.
+Separate same-SVG v0.9.0 Zenuml context is 20.3045 → 23.9505 us (+17.96%). The active goal below
+covers all 35 logical families and 10 public presets, not only previously timed default requests.
+Root style composition and explicit root-report rebuilding remain separate candidates.
+
 The [October 18 root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) narrows
 post-write root state to `Option<ViewBox>`, avoiding a complete viewport-plan clone and retaining
 only geometry consumed by canvas application. Root sizing, provenance, deferred finalization,
@@ -29,9 +39,9 @@ DOM pass. Forty fixed adjacent diagnostic calls observe Zenuml/Packet/Timeline/S
 changes of -0.94%/-0.28%/+0.29%/-0.01%/-0.82%, with no calibrated latency claim. Fresh same-SVG
 v0.9.0 Zenuml context is 20.2635 → 23.7765 us (+17.34%); error/resource contracts differ, and this
 is neither all-family evidence nor theme-only attribution. A separate consumer audit identifies
-an extra Engine clone between the public facade and Operation, on the pipeline E2E path, as the
-next independent ownership candidate. Root style composition remains separate; neither is assigned
-the complete remaining release gap.
+an extra Engine clone between the public facade and Operation, on the pipeline E2E path. The
+subsequent [ownership refactor](engine_borrow_theme_scope_macos_2026-10-18.md) removes it. Root style
+composition remains separate; neither is assigned the complete remaining release gap.
 
 The [October 18 Zenuml source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
 resolves the actual `themeVariables.zenuml` object once for both typography and source colors.
@@ -46,7 +56,8 @@ retained bytes never increase. Native 8,252 tests, Clippy, theme qualification, 
 E2E -0.38%/-0.64%. These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is
 20.155 → 24.220 us (+20.17%), without an all-family or theme-only cause. The subsequent
 [root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
-ownership. The extra intermediate facade Engine clone remains an independent candidate.
+ownership. The extra intermediate facade Engine clone is subsequently removed by the
+[Engine ownership refactor](engine_borrow_theme_scope_macos_2026-10-18.md).
 Previous XML A/A remains inconclusive and is not retried.
 
 The [October 17 XML legal-whitespace checkpoint](xml_legal_whitespace_macos_2026-10-17.md)
@@ -63,7 +74,8 @@ These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is 1
 construction; the subsequent [source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
 addresses that repeated path ownership. The subsequent
 [root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
-ownership; the extra facade Engine clone remains separate. Previous A/A remains inconclusive and
+ownership; the separate [Engine borrow](engine_borrow_theme_scope_macos_2026-10-18.md) removes its
+redundant facade clones. Previous A/A remains inconclusive and
 is not retried.
 
 The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
@@ -705,6 +717,28 @@ The latest full standard run measured 196.96 us versus mmdr's 71.08 us and retai
 and XYChart sources from every ratio.
 
 ## Work queue
+
+### Active: all-family theme performance convergence to v0.9.0
+
+The maintainer requested a persistent goal on 2026-10-18. Cover all 35 logical family catalog
+entries and all 10 compiled presets, including partial support and fallback; retain parser aliases
+as coverage rather than counting them as independent logical families. Use the existing 38-scene
+cross-family corpus and additional stress inputs when actual cost warrants them. A compiled theme
+is prepared outside warm-render measurements; its per-request application remains inside.
+
+For comparable public E2E operations, the near-release target is no gap exceeding both 10% and
+1 us, assessed per row rather than through an average. Decision-grade latency evidence still
+requires the existing A/A and fixed AB/BA contract; uncalibrated diagnostics cannot close the goal.
+Different SVG/capabilities remain separate lanes with source-backed reasons and alternative
+adjacent evidence. Necessary residual fixed work may remain only with an explicit consumer and
+cost justification. Do not mark missing coverage, noisy timing or unexplained residuals complete.
+
+Continue high-confidence ownership/work/allocation repairs in independent measured batches.
+Preserve theme/config fallback, source semantics, actual writer evidence, error order, budgets,
+cancellation and measurement callbacks. The Engine borrow is complete; next evaluate root style
+composition, explicit root-report inventory/coverage rebuilding and configured duplicate CSS
+normalization separately. Fresh all-family/preset discovery is required before choosing broader
+changes. See the [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md).
 
 ### Active: alpha.7 default SVG regression
 
