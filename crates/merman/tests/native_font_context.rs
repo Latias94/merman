@@ -18,7 +18,7 @@ fn context(
 }
 
 #[test]
-fn facade_replays_native_failure_even_with_different_request_control() {
+fn facade_replays_native_failure_without_poisoning_selected_font_assets() {
     let context = context(
         NativeFontLimits {
             max_label_bytes: 1,
@@ -38,30 +38,127 @@ fn facade_replays_native_failure_even_with_different_request_control() {
         RenderTarget::Svg(request),
         OperationControl::new(),
     ));
-    assert!(
-        output.is_err(),
-        "host failure must never become successful fallback output"
-    );
-    assert!(context.check().is_err());
+    let merman::RenderError::ResourceLimitExceeded(limit) = output.unwrap_err() else {
+        panic!("expected a structured native font limit");
+    };
+    assert_eq!(limit.id, "native_font_label_bytes");
+    assert_eq!(limit.maximum, 1);
+    assert!(context.check().is_ok());
 }
 
 #[test]
-fn facade_checks_context_cancellation_before_rendering() {
+fn facade_isolates_request_control_from_selected_font_assets() {
+    for cancel_before_install in [false, true] {
+        let control = OperationControl::new();
+        let context = context(Default::default(), &control);
+        if cancel_before_install {
+            control.cancel();
+        }
+        let environment = SvgEnvironment::deterministic()
+            .with_native_font_context(context)
+            .unwrap();
+        control.cancel();
+        let output = Renderer::new().render(RenderRequest::new(
+            "flowchart LR\nA-->B\n",
+            RenderTarget::Svg(SvgRequest {
+                environment,
+                ..Default::default()
+            }),
+            OperationControl::new(),
+        ));
+        assert!(
+            output.is_ok(),
+            "old font control must not cancel this request: {output:?}"
+        );
+    }
+}
+
+#[test]
+fn facade_honors_the_new_request_control() {
     let control = OperationControl::new();
-    let context = context(Default::default(), &control);
+    control.cancel();
+    let output = Renderer::new().render(RenderRequest::svg(
+        "flowchart LR\nA-->B\n",
+        control,
+        native_request(),
+    ));
+    assert!(matches!(output, Err(merman::RenderError::Cancelled(_))));
+}
+
+#[test]
+fn svg_evidence_reports_the_active_context_faces() {
+    let context = context(Default::default(), &OperationControl::new());
+    let request = SvgRequest {
+        environment: SvgEnvironment::deterministic()
+            .with_native_font_context(context.clone())
+            .unwrap(),
+        ..Default::default()
+    };
+    let merman::RenderOutput::Svg(Some(output)) = Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart LR\nA[Hello]-->B[World]\n",
+            OperationControl::new(),
+            request,
+        ))
+        .unwrap()
+    else {
+        panic!("expected SVG output");
+    };
+    assert!(
+        output
+            .evidence()
+            .native_font_faces()
+            .iter()
+            .any(|face| face.contains("Cousine")),
+        "the completed operation must retain its actual native face selection"
+    );
+    assert!(
+        context.selected_faces().is_empty(),
+        "the operation must not mutate the selected reusable context"
+    );
+}
+
+#[test]
+fn facade_does_not_inherit_a_selected_context_failure() {
+    use merman::svg::{
+        HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation,
+        TextMeasurementPhase, TextStyle, WrapMode,
+    };
+
+    let context = context(
+        NativeFontLimits {
+            max_label_bytes: 1024,
+            ..Default::default()
+        },
+        &OperationControl::new(),
+    );
+    let text = "a".repeat(2048);
+    assert!(
+        context
+            .measure(HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::ComputedLength,
+                phase: TextMeasurementPhase::ComputedLength,
+                text: &text,
+                style: &TextStyle::default(),
+                max_width: None,
+                wrap_mode: WrapMode::SvgLike,
+            })
+            .is_err()
+    );
+    assert!(context.check().is_err());
     let environment = SvgEnvironment::deterministic()
         .with_native_font_context(context)
         .unwrap();
-    control.cancel();
-    let output = Renderer::new().render(RenderRequest::new(
-        "flowchart LR\nA-->B\n",
-        RenderTarget::Svg(SvgRequest {
-            environment,
-            ..Default::default()
-        }),
-        OperationControl::new(),
-    ));
-    assert!(output.is_err());
+    Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart LR\nA-->B\n",
+            OperationControl::new(),
+            SvgRequest {
+                environment,
+                ..Default::default()
+            },
+        ))
+        .expect("an earlier host measurement failure must not poison a fresh operation");
 }
 
 fn native_request() -> SvgRequest {
@@ -337,7 +434,7 @@ mod binary_context_contract {
 
     #[test]
     fn painting_only_context_participates_in_native_measurement() {
-        for mut target in targets(
+        for target in targets(
             SvgRequest::default(),
             Some(context(
                 NativeFontLimits {
@@ -347,21 +444,6 @@ mod binary_context_contract {
                 &OperationControl::new(),
             )),
         ) {
-            let painting = match &mut target {
-                #[cfg(feature = "png")]
-                RenderTarget::Png(request) => &mut request.options.font_context,
-                #[cfg(feature = "jpeg")]
-                RenderTarget::Jpeg(request) => &mut request.options.font_context,
-                #[cfg(feature = "pdf")]
-                RenderTarget::Pdf(request) => &mut request.options.font_context,
-                _ => unreachable!("binary context test only creates binary targets"),
-            };
-            *painting = Some(
-                painting
-                    .as_ref()
-                    .unwrap()
-                    .for_operation(&OperationControl::new()),
-            );
             let error = render("flowchart LR\nA[Long label]", target).unwrap_err();
             let merman::RenderError::ResourceLimitExceeded(limit) = error else {
                 panic!("expected active native measurement resource limit, got {error}");
@@ -372,6 +454,29 @@ mod binary_context_contract {
             assert_eq!(limit.maximum, 1);
             assert_eq!(limit.cause, merman::ResourceLimitCause::Ceiling);
         }
+    }
+
+    #[test]
+    fn painting_only_context_reports_measurement_budget_exhaustion() {
+        let context = context(
+            NativeFontLimits {
+                max_measurements: 0,
+                ..Default::default()
+            },
+            &OperationControl::new(),
+        );
+        for target in targets(SvgRequest::default(), Some(context.clone())) {
+            let error = render("flowchart LR\nA[Hello]", target).unwrap_err();
+            let merman::RenderError::ResourceLimitExceeded(limit) = error else {
+                panic!("expected active native measurement resource limit, got {error}");
+            };
+            assert_eq!(limit.id, "native_font_measurements");
+            assert_eq!(limit.actual, 1);
+            assert_eq!(limit.maximum, 0);
+            assert_eq!(limit.cause, merman::ResourceLimitCause::Ceiling);
+            assert!(limit.to_string().contains("NativeFontOptions::with_limits"));
+        }
+        assert!(context.check().is_ok());
     }
 
     #[test]
@@ -450,6 +555,33 @@ mod binary_context_contract {
             let output = render("flowchart LR\nA[Hello]", target);
             assert!(output.is_ok(), "{:?}", output.err());
         }
+    }
+
+    #[test]
+    fn painting_only_context_isolates_the_old_font_control() {
+        let control = OperationControl::new();
+        let context = context(Default::default(), &control);
+        control.cancel();
+        for target in targets(SvgRequest::default(), Some(context)) {
+            let output = render("flowchart LR\nA[Hello]", target);
+            assert!(output.is_ok(), "{:?}", output.err());
+        }
+    }
+
+    #[test]
+    fn painting_only_context_honors_the_new_request_control() {
+        let context = context(Default::default(), &OperationControl::new());
+        for target in targets(SvgRequest::default(), Some(context.clone())) {
+            let control = OperationControl::new();
+            control.cancel();
+            let output = Renderer::new().render(RenderRequest::new(
+                "flowchart LR\nA[Hello]",
+                target,
+                control,
+            ));
+            assert!(matches!(output, Err(merman::RenderError::Cancelled(_))));
+        }
+        assert!(context.check().is_ok());
     }
 
     #[test]

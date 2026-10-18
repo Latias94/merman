@@ -100,7 +100,6 @@ impl SvgEnvironment {
         self,
         context: merman_export::NativeFontContext,
     ) -> Result<Self, merman_export::NativeFontError> {
-        context.check()?;
         use merman_render::environment::{
             MeasurementProfileId, TextMeasurementPhase, TextMeasurementProfileIdentity,
         };
@@ -218,6 +217,7 @@ pub struct RenderEvidence {
     execution_path: OperationExecutionPath,
     required_capabilities: Vec<RenderCapability>,
     session: Box<merman_render::environment::RenderSessionReport>,
+    native_font_faces: Vec<String>,
 }
 
 #[cfg(feature = "svg")]
@@ -225,11 +225,13 @@ impl RenderEvidence {
     fn from_session(
         session: merman_render::environment::RenderSession,
         required_capabilities: Vec<RenderCapability>,
+        native_font_faces: Vec<String>,
     ) -> Self {
         Self {
             execution_path: OperationExecutionPath::Renderer,
             required_capabilities,
             session: Box::new(session.report()),
+            native_font_faces,
         }
     }
 
@@ -248,6 +250,12 @@ impl RenderEvidence {
 
     pub fn measurement(&self) -> &merman_render::environment::TextMeasurementReport {
         self.session.measurement()
+    }
+
+    /// Faces selected by successful native shaping probes in this operation.
+    /// This excludes deterministic fallback and native painting-only font selection.
+    pub fn native_font_faces(&self) -> &[String] {
+        &self.native_font_faces
     }
 
     pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
@@ -289,10 +297,15 @@ impl SvgOutput {
         svg: String,
         session: merman_render::environment::RenderSession,
         required_capabilities: Vec<RenderCapability>,
+        native_font_faces: Vec<String>,
     ) -> Self {
         Self {
             svg,
-            evidence: RenderEvidence::from_session(session, required_capabilities),
+            evidence: RenderEvidence::from_session(
+                session,
+                required_capabilities,
+                native_font_faces,
+            ),
         }
     }
 
@@ -420,7 +433,8 @@ impl From<merman_render::Error> for RenderError {
 /// matching backend-specific errors.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}"
+    "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}{hint}",
+    hint = self.recovery_hint()
 )]
 #[non_exhaustive]
 pub struct ResourceLimitExceeded {
@@ -455,6 +469,14 @@ impl std::fmt::Display for ResourceLimitCause {
 }
 
 impl ResourceLimitExceeded {
+    fn recovery_hint(&self) -> &'static str {
+        if self.id == "native_font_measurements" && self.cause == ResourceLimitCause::Ceiling {
+            "; simplify the diagram or increase NativeFontLimits::max_measurements via NativeFontOptions::with_limits before loading fonts; render resource profiles do not change this limit"
+        } else {
+            ""
+        }
+    }
+
     pub(crate) fn from_input(error: merman_core::resources::InputResourceLimitExceeded) -> Self {
         Self {
             id: error.limit,
@@ -648,6 +670,59 @@ impl RenderTarget {
                     &mut request.svg.environment,
                     &mut request.options.font_context,
                 )?;
+                Ok(Self::Pdf(request))
+            }
+            other => Ok(other),
+        }
+    }
+
+    #[cfg(feature = "native-fonts")]
+    fn activate_native_font_context(self, control: &OperationControl) -> Result<Self, RenderError> {
+        fn activate(
+            environment: &mut SvgEnvironment,
+            control: &OperationControl,
+        ) -> Result<(), RenderError> {
+            if let Some(selected) = &environment.native_fonts {
+                *environment = environment
+                    .clone()
+                    .with_native_font_context(selected.for_operation(control))?;
+            }
+            Ok(())
+        }
+
+        match self {
+            Self::Svg(mut request) => {
+                activate(&mut request.environment, control)?;
+                Ok(Self::Svg(request))
+            }
+            Self::LayoutJson(mut request) => {
+                activate(&mut request.environment, control)?;
+                Ok(Self::LayoutJson(request))
+            }
+            Self::EdgeGeometryJson(mut request) => {
+                activate(&mut request.environment, control)?;
+                Ok(Self::EdgeGeometryJson(request))
+            }
+            Self::SvgPlan(mut request) => {
+                activate(&mut request.environment, control)?;
+                Ok(Self::SvgPlan(request))
+            }
+            #[cfg(feature = "png")]
+            Self::Png(mut request) => {
+                activate(&mut request.svg.environment, control)?;
+                request.options.font_context = request.svg.environment.native_fonts.clone();
+                Ok(Self::Png(request))
+            }
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg(mut request) => {
+                activate(&mut request.svg.environment, control)?;
+                request.options.font_context = request.svg.environment.native_fonts.clone();
+                Ok(Self::Jpeg(request))
+            }
+            #[cfg(feature = "pdf")]
+            Self::Pdf(mut request) => {
+                activate(&mut request.svg.environment, control)?;
+                request.options.font_context = request.svg.environment.native_fonts.clone();
                 Ok(Self::Pdf(request))
             }
             other => Ok(other),
@@ -1260,7 +1335,9 @@ impl SemanticArtifact {
     /// Consumes this operation-owned semantic artifact into one typed output target.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let target = target.normalize_native_font_context()?;
+        let target = target
+            .normalize_native_font_context()?
+            .activate_native_font_context(self.control())?;
         #[cfg(feature = "native-fonts")]
         if target.native_fonts_are_selected() {
             let metadata = self.parsed().metadata();
@@ -1416,7 +1493,20 @@ fn render_svg_target(
     let (svg, _, _, session) = rendered.into_parts();
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
+    #[cfg(feature = "native-fonts")]
+    let native_font_faces = request
+        .environment
+        .native_fonts
+        .as_ref()
+        .map_or_else(Vec::new, merman_export::NativeFontContext::selected_faces);
+    #[cfg(not(feature = "native-fonts"))]
+    let native_font_faces = Vec::new();
+    Ok(Some(SvgOutput::new(
+        svg,
+        session,
+        required_capabilities,
+        native_font_faces,
+    )))
 }
 
 #[cfg(feature = "svg")]

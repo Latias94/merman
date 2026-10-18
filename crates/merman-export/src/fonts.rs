@@ -44,6 +44,7 @@ pub struct NativeFontLimits {
     pub max_directory_entries: usize,
     pub max_directory_depth: usize,
     pub max_label_bytes: usize,
+    /// Maximum uncached shaping probes per render operation (default: 16,384).
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
@@ -65,7 +66,7 @@ impl Default for NativeFontLimits {
             max_directory_entries: 16_384,
             max_directory_depth: 16,
             max_label_bytes: 64 * 1024,
-            max_measurements: 4096,
+            max_measurements: 16_384,
             max_cache_entries: 1024,
             max_cache_bytes: 4 * 1024 * 1024,
             max_system_files: 4096,

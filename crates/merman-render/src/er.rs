@@ -151,6 +151,8 @@ pub(crate) struct ErEntityMeasureRow {
     pub key_label: ErBoxLabel,
     pub comment_label: ErBoxLabel,
     pub height: f64,
+    pub cell_widths: [f64; 4],
+    pub cell_max_widths_px: [i64; 4],
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +164,7 @@ pub(crate) struct ErEntityMeasure {
     pub label_html_width: f64,
     pub label_height: f64,
     pub label_max_width_px: i64,
+    pub label_text_width_px: i64,
     pub has_key: bool,
     pub has_comment: bool,
     pub type_col_w: f64,
@@ -238,6 +241,7 @@ pub(crate) fn measure_entity_box(
             } else {
                 wrapping_width_px
             },
+            label_text_width_px: calc_w,
             has_key: false,
             has_comment: false,
             type_col_w: 0.0,
@@ -302,12 +306,22 @@ pub(crate) fn measure_entity_box(
             .max(comment_m.height)
             + text_padding;
 
+        let cell_max_widths_px = if settings.wrap_mode == WrapMode::HtmlLike {
+            [&type_label, &name_label, &key_label, &comment_label].map(|label| {
+                calculate_text_width_like_mermaid_px(measurer, attr_style, label.markdown_input())
+                    + 100
+            })
+        } else {
+            [0; 4]
+        };
         rows.push(ErEntityMeasureRow {
             type_label,
             name_label,
             key_label,
             comment_label,
             height: row_h.max(1.0),
+            cell_widths: [type_w, name_w, keys_w, comment_w].map(|width| width.max(0.0)),
+            cell_max_widths_px,
         });
         total_rows_h += row_h.max(1.0);
     }
@@ -353,6 +367,11 @@ pub(crate) fn measure_entity_box(
     let width = (shape_bbox_w + padding * 2.0).max(max_width);
     let name_h = label_metrics.height + text_padding;
     let height = total_rows_h + name_h;
+    let label_text_width_px = if settings.wrap_mode == WrapMode::HtmlLike {
+        calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input())
+    } else {
+        0
+    };
 
     ErEntityMeasure {
         width: width.max(1.0),
@@ -362,6 +381,7 @@ pub(crate) fn measure_entity_box(
         label_html_width,
         label_height: label_metrics.height.max(0.0),
         label_max_width_px: wrapping_width_px,
+        label_text_width_px,
         has_key,
         has_comment,
         type_col_w: max_type_col_w.max(0.0),
@@ -370,17 +390,6 @@ pub(crate) fn measure_entity_box(
         comment_col_w: max_comment_col_w.max(0.0),
         rows,
     }
-}
-
-fn entity_box_dimensions(
-    entity: &ErEntity,
-    measurer: &dyn TextMeasurer,
-    label_style: &TextStyle,
-    attr_style: &TextStyle,
-    settings: ErEntityMeasurementSettings,
-) -> (f64, f64) {
-    let m = measure_entity_box(entity, measurer, label_style, attr_style, settings);
-    (m.width, m.height)
 }
 
 fn edge_label_metrics(
@@ -1038,6 +1047,7 @@ fn layout_er_diagram_dagre_typed(
         a_key.cmp(&b_key)
     });
 
+    let mut prepared_entities = HashMap::with_capacity(entities_in_layout_order.len());
     for e in entities_in_layout_order {
         // Mermaid's `getData()` omits an entity whose source name collides with a subgraph id.
         if entity_name_by_id
@@ -1046,16 +1056,17 @@ fn layout_er_diagram_dagre_typed(
         {
             continue;
         }
-        let (w, h) =
-            entity_box_dimensions(e, measurer, &label_style, &attr_style, entity_measurement);
+        let measure =
+            measure_entity_box(e, measurer, &label_style, &attr_style, entity_measurement);
         g.set_node(
             e.id.clone(),
             NodeLabel {
-                width: w,
-                height: h,
+                width: measure.width,
+                height: measure.height,
                 ..Default::default()
             },
         );
+        prepared_entities.insert(e.id.clone(), measure);
     }
 
     // Apply compound membership after every node has been inserted so nested groups and group
@@ -1497,6 +1508,7 @@ fn layout_er_diagram_dagre_typed(
 
     Ok(ErDiagramLayout {
         nodes,
+        prepared_entities,
         edges: layout_edges,
         render_edges,
         clusters,
@@ -1533,7 +1545,7 @@ fn layout_er_diagram_elk_typed(
     operation_seed: Option<elk::ElkOperationSeed>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
-    let mut elk_graph = er_elk_graph(
+    let (mut elk_graph, prepared_entities) = er_elk_graph(
         model,
         effective_config,
         measurer,
@@ -1718,6 +1730,7 @@ fn layout_er_diagram_elk_typed(
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
+        prepared_entities,
         render_edges: out_edges.clone(),
         edges: out_edges,
         clusters,
@@ -1732,7 +1745,7 @@ fn er_elk_graph(
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     work_control: &mut Option<&mut OperationLayoutWorkControl>,
-) -> Result<elk::Graph> {
+) -> Result<(elk::Graph, HashMap<String, ErEntityMeasure>)> {
     let ErLayoutSettings {
         graph,
         label_style,
@@ -1810,21 +1823,22 @@ fn er_elk_graph(
         (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
     });
 
-    nodes.extend(entities.into_iter().map(|entity| {
-        let (width, height) = entity_box_dimensions(
+    let mut prepared_entities = HashMap::with_capacity(entities.len());
+    for entity in entities {
+        let measure = measure_entity_box(
             entity,
             measurer,
             label_style,
             attr_style,
             *entity_measurement,
         );
-        elk::Node {
+        nodes.push(elk::Node {
             id: entity.id.clone(),
             kind: elk::NodeKind::Leaf,
             container: Default::default(),
             label_text: None,
-            width,
-            height,
+            width: measure.width,
+            height: measure.height,
             parent: parent_by_member
                 .get(entity.id.as_str())
                 .map(|parent| (*parent).to_string()),
@@ -1833,8 +1847,9 @@ fn er_elk_graph(
             layer_constraint: None,
             port_alignment: None,
             label: None,
-        }
-    }));
+        });
+        prepared_entities.insert(entity.id.clone(), measure);
+    }
 
     if crate::config::config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false)
     {
@@ -1886,21 +1901,24 @@ fn er_elk_graph(
         });
     }
 
-    Ok(elk::Graph {
-        id: "root".to_string(),
-        direction: match graph.rankdir {
-            dugong::RankDir::LR => elk::Direction::Right,
-            dugong::RankDir::RL => elk::Direction::Left,
-            dugong::RankDir::BT => elk::Direction::Up,
-            dugong::RankDir::TB => elk::Direction::Down,
+    Ok((
+        elk::Graph {
+            id: "root".to_string(),
+            direction: match graph.rankdir {
+                dugong::RankDir::LR => elk::Direction::Right,
+                dugong::RankDir::RL => elk::Direction::Left,
+                dugong::RankDir::BT => elk::Direction::Up,
+                dugong::RankDir::TB => elk::Direction::Down,
+            },
+            nodes,
+            edges,
+            // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
+            // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
+            spacing: elk::Spacing::default(),
+            options: er_elk_layout_options(effective_config),
         },
-        nodes,
-        edges,
-        // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
-        // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
-        spacing: elk::Spacing::default(),
-        options: er_elk_layout_options(effective_config),
-    })
+        prepared_entities,
+    ))
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1960,7 +1978,7 @@ mod tests {
         let effective_config = serde_json::json!({ "layout": "elk" });
         let settings =
             super::ErConfigView::new(&effective_config).layout_settings(&model.direction);
-        let mut graph = super::er_elk_graph(
+        let (mut graph, _) = super::er_elk_graph(
             &model,
             &effective_config,
             &DeterministicTextMeasurer::default(),
@@ -2021,7 +2039,7 @@ mod tests {
                     let config = serde_json::json!({ "layout": "elk", "elk": { "keepEntryNodeOnTop": enabled } });
                     let settings =
                         super::ErConfigView::new(&config).layout_settings(&model.direction);
-                    let graph = super::er_elk_graph(
+                    let (graph, _) = super::er_elk_graph(
                         &model,
                         &config,
                         &DeterministicTextMeasurer::default(),

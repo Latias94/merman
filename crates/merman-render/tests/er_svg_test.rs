@@ -65,6 +65,131 @@ fn root_view_box(svg: &str) -> [f64; 4] {
 }
 
 #[test]
+fn er_svg_reuses_prepared_entity_geometry_without_new_measurements() {
+    use merman_render::environment::{
+        MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    struct CountingMeasurer(AtomicUsize);
+
+    impl TextMeasurer for CountingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            DeterministicTextMeasurer::default().measure(text, style)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            DeterministicTextMeasurer::default().measure_wrapped(text, style, max_width, wrap_mode)
+        }
+    }
+
+    let body = r#"erDiagram
+  EMPTY["Empty **entity**<br>second line"]
+  BOOK["Account _records_"] {
+    type~T~ generic PK, FK "Long **comment**<br>second <strong>line</strong>"
+    string plain
+  }
+"#;
+    let layouts = if cfg!(feature = "layout-elk") {
+        vec!["dagre", "elk"]
+    } else {
+        vec!["dagre"]
+    };
+    for layout in layouts {
+        for html_labels in [None, Some(false), Some(true)] {
+            for wrapping_width in [48, 200] {
+                let mut config = serde_json::json!({
+                    "layout": layout,
+                    "flowchart": {"wrappingWidth": wrapping_width},
+                });
+                if let Some(html_labels) = html_labels {
+                    config["htmlLabels"] = html_labels.into();
+                }
+                let source = format!("%%{{init: {config}}}%%\n{body}");
+                let measurer = Arc::new(CountingMeasurer::default());
+                let identity = TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.er-prepared-geometry").unwrap(),
+                    "1",
+                )
+                .unwrap();
+                let profile = TextMeasurementProfile::new(identity, measurer.clone());
+                let session = RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+                    .begin_session()
+                    .unwrap();
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .expect("parse ER labels")
+                    .expect("ER diagram");
+                let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                    .expect("prepare ER geometry");
+                let measurements = measurer.0.load(Ordering::Relaxed);
+                assert!(measurements > 0, "layout must consult the custom measurer");
+
+                let projection = artifact.layout_json().expect("ER layout projection");
+                let layout_json = &projection["layout"]["ErDiagram"];
+                let layout_object = layout_json.as_object().expect("ER layout object");
+                assert_eq!(
+                    layout_object.len(),
+                    3,
+                    "public layout schema: {layout_json}"
+                );
+                for field in ["nodes", "edges", "bounds"] {
+                    assert!(layout_object.contains_key(field), "missing {field}");
+                }
+                let roundtrip: merman_render::model::ErDiagramLayout =
+                    serde_json::from_value(layout_json.clone()).expect("deserialize layout");
+                assert_eq!(
+                    serde_json::to_value(roundtrip).expect("serialize layout"),
+                    *layout_json,
+                    "internal prepared geometry must not change the public layout JSON"
+                );
+
+                let options = SvgRenderOptions::default();
+                let debug = SvgDebugOptions::default();
+                let first = artifact.render_svg(&options, &debug).expect("emit ER SVG");
+                assert_eq!(
+                    measurer.0.load(Ordering::Relaxed),
+                    measurements,
+                    "{layout}/{html_labels:?}/{wrapping_width}: entity emission must reuse layout measurements"
+                );
+                let document = roxmltree::Document::parse(first.svg()).expect("valid SVG");
+                assert_eq!(
+                    document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    html_labels.unwrap_or(true),
+                    "the selected HTML/SVG label mode must remain unchanged"
+                );
+                for id in ["merman-entity-EMPTY-0", "merman-entity-BOOK-1"] {
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| node.attribute("id") == Some(id)),
+                        "missing entity {id}"
+                    );
+                }
+                assert!(!first.svg().contains("NaN"));
+            }
+        }
+    }
+}
+
+#[test]
 fn er_svg_renders_entities_and_relationships() {
     let path = workspace_root()
         .join("fixtures")

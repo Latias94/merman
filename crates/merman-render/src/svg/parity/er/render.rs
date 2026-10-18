@@ -493,7 +493,6 @@ pub(crate) fn render_er_diagram_svg_model(
     let title_top_margin = er_render_settings.title_top_margin;
     let use_max_width = er_render_settings.use_max_width;
     let label_style = er_render_settings.label_style.clone();
-    let attr_style = er_render_settings.attr_style.clone();
     let edge_html_labels = er_render_settings.relationship_html_labels;
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
@@ -1209,13 +1208,12 @@ pub(crate) fn render_er_diagram_svg_model(
             )
         };
 
-        let measure = crate::er::measure_entity_box(
-            entity,
-            measurer,
-            &label_style,
-            &attr_style,
-            entity_measurement,
-        );
+        let measure = layout
+            .prepared_entities
+            .get(&n.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared ER entity geometry for {}", n.id),
+            })?;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
         if (measure.width - w).abs() > 1e-3 || (measure.height - h).abs() > 1e-3 {
@@ -1580,11 +1578,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let name_w = measure.label_html_width.max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
-        let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-            measurer,
-            &label_style,
-            measure.label.markdown_input(),
-        ) + 100;
+        let name_mw_px = measure.label_text_width_px + 100;
         let _ = write!(
             &mut out,
             r#"<g class="label name" transform="translate({}, {})" {}>"#,
@@ -1631,14 +1625,15 @@ pub(crate) fn render_er_diagram_svg_model(
                 row_top + measure.text_padding / 2.0
             };
 
-            for (class, label, left) in [
+            for (index, (class, label, left)) in [
                 ("attribute-type", &row.type_label, type_left),
                 ("attribute-name", &row.name_label, name_left),
                 ("attribute-keys", &row.key_label, key_left),
                 ("attribute-comment", &row.comment_label, comment_left),
-            ] {
-                let metrics =
-                    crate::er::er_box_label_metrics(label, measurer, &attr_style, entity_wrap_mode);
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 let _ = write!(
                     &mut out,
                     r#"<g class="label {}" transform="translate({}, {})" {}>"#,
@@ -1648,15 +1643,11 @@ pub(crate) fn render_er_diagram_svg_model(
                     label_style_attr,
                 );
                 if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
-                    let max_width = crate::er::calculate_text_width_like_mermaid_px(
-                        measurer,
-                        &attr_style,
-                        label.markdown_input(),
-                    ) + 100;
+                    let max_width = row.cell_max_widths_px[index];
                     let _ = write!(
                         &mut out,
                         r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}</div></foreignObject>"#,
-                        fmt(metrics.width.max(0.0)),
+                        fmt(row.cell_widths[index]),
                         fmt(
                             if matches!(class, "attribute-keys" | "attribute-comment")
                                 && label.rendered_text().is_empty()
@@ -1980,7 +1971,7 @@ mod tests {
                 entity,
                 &measurer,
                 &settings.label_style,
-                &settings.attr_style,
+                &settings.label_style,
                 settings.entity_measurement,
             )
         };
@@ -2012,6 +2003,10 @@ mod tests {
                 },
             ],
             edges: Vec::new(),
+            prepared_entities: std::collections::HashMap::from([
+                (alpha.id.clone(), alpha_measure),
+                (zeta.id.clone(), zeta_measure),
+            ]),
             render_edges: Vec::new(),
             clusters: Vec::new(),
             bounds: Some(Bounds {

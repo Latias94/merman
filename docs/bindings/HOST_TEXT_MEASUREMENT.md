@@ -15,7 +15,9 @@ not change `SvgEnvironment::deterministic()` or authorize discovery in bindings.
 FFI, UniFFI, and WASM retain their host-independent defaults and callback conflict
 rules. The runtime clock/random policy is not a font-discovery permission.
 
-Rust hosts can supply a `NativeFontContext` to the facade. Typed PNG/JPEG/PDF
+Rust hosts can supply a reusable `NativeFontContext` to the facade. Each render gets
+an operation-local measurement cache, budget, cancellation control, and failure state.
+Typed PNG/JPEG/PDF
 requests normalize it across layout and painting: an options-only context is
 installed into a default measurement environment, different contexts are rejected,
 and explicit host measurement is never silently replaced. Direct raw-SVG exports

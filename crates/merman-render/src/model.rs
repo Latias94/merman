@@ -909,6 +909,9 @@ pub enum ClassRenderItem {
 pub struct ErDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    /// Operation-owned entity geometry shared by layout and SVG emission.
+    #[serde(default, skip)]
+    pub(crate) prepared_entities: std::collections::HashMap<String, crate::er::ErEntityMeasure>,
     /// SVG-facing edge projection.
     ///
     /// Dagre needs self-loop helper nodes and three internal edge segments to produce stable
