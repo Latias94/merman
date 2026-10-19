@@ -237,12 +237,8 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     let theme = typography_theme.css_binding();
     let title_fill = theme.title_color.as_str();
     let text_fill = theme.set_text_color.as_str();
-    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt();
-    let css = typography_theme_receipt.stylesheet(diagram_id.semantic_str(), title_fill, text_fill);
-    if let Some(receipt) = title_theme_receipt.as_mut() {
-        receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
-    }
+    let css = typography_theme.stylesheet(diagram_id.semantic_str(), title_fill, text_fill);
     out.push_str("<style>");
     super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     out.push_str("</style>");
@@ -262,9 +258,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
             text = escape_xml(title)
         );
         out.checkpoint()?;
-        if let Some(receipt) = title_theme_receipt.as_mut() {
-            receipt.record_title_text(crate::venn::VENN_TITLE_CLASS, title_fill);
-        }
+        title_theme.record_title();
         typography_theme_receipt.record_title_text(crate::venn::VENN_TITLE_CLASS, title);
     }
 
@@ -493,11 +487,6 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
 
     out.push_str("</g></svg>\n");
     let rooted = root_document.complete(out.finish()?)?;
-    if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
-        return Err(crate::Error::InvalidModel {
-            message: "Venn title theme receipt did not match the terminal SVG".to_string(),
-        });
-    }
     if !typography_theme.record_terminal(typography_theme_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Venn typography theme receipt did not match the terminal SVG".to_string(),

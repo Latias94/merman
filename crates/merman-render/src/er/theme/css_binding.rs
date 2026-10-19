@@ -10,7 +10,6 @@ pub(crate) struct ErCssBinding {
     pub(crate) render_settings: super::super::config::ErRenderSettings,
     pub(crate) common: PreparedCommonCss,
     pub(crate) font_family: String,
-    pub(crate) font_size_css: String,
     pub(crate) theme_name: String,
     pub(crate) redux_border_colors: Vec<String>,
     pub(crate) redux_background_colors: Vec<String>,
@@ -72,7 +71,6 @@ impl ErCssBinding {
                 (start, stop)
             });
         let font_family = fonts.font_family_css().to_owned();
-        let font_size_css = size.font_size_css().to_owned();
         Self {
             render_settings: super::super::ErConfigView::new(config)
                 .render_settings_with_resolved_typography(
@@ -84,11 +82,10 @@ impl ErCssBinding {
             common: PreparedCommonCss::bind(
                 config,
                 &font_family,
-                &font_size_css,
+                size.font_size_css(),
                 fonts.typed_font_stack_active(),
             ),
             font_family,
-            font_size_css,
             redux_border_colors: if redux_color_theme {
                 config_string_vec(config, &["themeVariables", "borderColorArray"])
             } else {

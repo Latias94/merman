@@ -200,7 +200,6 @@ fn venn_typed_font_stack_reaches_every_local_text_selector_and_strict_receipt() 
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -229,7 +228,6 @@ fn venn_theme_font_family_outranks_root_and_typed_font_family() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -251,7 +249,6 @@ fn venn_font_size_is_a_structured_unsupported_residual_without_a_legacy_projecti
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
@@ -292,7 +289,6 @@ fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
@@ -357,11 +353,6 @@ fn venn_typed_text_fill_reaches_visible_terminals() {
         assert_eq!(evidence.applied_count(), 1, "variant={variant:?}");
         assert_eq!(evidence.not_applicable_count(), 0, "variant={variant:?}");
         assert_eq!(evidence.theme_residual_count(), 0, "variant={variant:?}");
-        assert_eq!(
-            evidence.compatibility_residual_count(),
-            0,
-            "variant={variant:?}"
-        );
     }
 }
 

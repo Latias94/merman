@@ -10,6 +10,7 @@ use merman_core::diagrams::zenuml::{
     ZenumlStatementKind,
 };
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub(crate) use theme::{ZenumlSourceStyle, ZenumlTitleThemePlan};
@@ -65,24 +66,23 @@ pub(crate) fn resolve_zenuml_title<'a>(
         .or_else(|| diagram_title.filter(|title| !title.is_empty()))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ZenumlTypography {
     font_family: Option<String>,
     font_size: Option<f64>,
 }
 
 impl ZenumlTypography {
-    pub(crate) fn new(config: &serde_json::Value) -> Self {
+    fn from_config(config: &serde_json::Map<String, serde_json::Value>) -> Self {
         Self {
-            font_family: crate::config::config_string(
-                config,
-                &["themeVariables", "zenuml", "fontFamily"],
-            ),
-            font_size: crate::config::config_f64_css_px(
-                config,
-                &["themeVariables", "zenuml", "fontSize"],
-            )
-            .filter(|size| *size > 0.0),
+            font_family: config
+                .get("fontFamily")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            font_size: config
+                .get("fontSize")
+                .and_then(crate::config::json_f64_css_px)
+                .filter(|size| *size > 0.0),
         }
     }
 
@@ -124,22 +124,34 @@ impl ZenumlTypography {
         })
     }
 
-    fn styled_message(&self, authored: &BTreeMap<String, String>) -> TextStyle {
-        let mut style = self.message_style();
-        if self.font_family.is_some() || self.font_size.is_some() {
+    fn styled_message<'a>(
+        &self,
+        base: &'a TextStyle,
+        authored: &BTreeMap<String, String>,
+    ) -> Cow<'a, TextStyle> {
+        if (self.font_family.is_some() || self.font_size.is_some())
+            && (authored.contains_key("font-weight") || authored.contains_key("font-style"))
+        {
+            let mut style = base.clone();
             style.font_weight = authored.get("font-weight").cloned();
             style.font_style = authored.get("font-style").cloned();
+            Cow::Owned(style)
+        } else {
+            Cow::Borrowed(base)
         }
-        style
     }
 
-    fn statement_message_style(&self, comment: Option<&str>) -> TextStyle {
+    fn statement_message_style<'a>(
+        &self,
+        base: &'a TextStyle,
+        comment: Option<&str>,
+    ) -> Cow<'a, TextStyle> {
         if (self.font_family.is_some() || self.font_size.is_some())
             && let Some(comment) = comment
         {
-            self.styled_message(&parse_comment(comment).message_style)
+            self.styled_message(base, &parse_comment(comment).message_style)
         } else {
-            self.message_style()
+            Cow::Borrowed(base)
         }
     }
 }
@@ -439,7 +451,13 @@ pub(crate) fn layout_zenuml_diagram_typed(
         }
         participant.x = x;
     }
-    apply_message_width_constraints(model, &mut participants, measurer, typography);
+    apply_message_width_constraints(
+        model,
+        &mut participants,
+        measurer,
+        typography,
+        &message_geometry_style,
+    );
     let positions: HashMap<String, f64> = participants
         .iter()
         .map(|participant| (participant.name.clone(), participant.x))
@@ -503,11 +521,15 @@ pub(crate) fn layout_zenuml_diagram_typed(
             &participant_half_widths,
             measurer,
             typography,
+            &message_geometry_style,
         ))
     .max(FRAGMENT_MIN_WIDTH);
     for message in &builder.messages {
         let label_width = measurer
-            .measure(&message.label, &typography.styled_message(&message.style))
+            .measure(
+                &message.label,
+                &typography.styled_message(&message_geometry_style, &message.style),
+            )
             .width;
         content_width = content_width
             .max((message.from_x + message.to_x) / 2.0 + label_width / 2.0 + MESSAGE_LABEL_PADDING);
@@ -520,7 +542,10 @@ pub(crate) fn layout_zenuml_diagram_typed(
     for creation in &builder.creations {
         let message = &creation.message;
         let label_width = measurer
-            .measure(&message.label, &typography.styled_message(&message.style))
+            .measure(
+                &message.label,
+                &typography.styled_message(&message_geometry_style, &message.style),
+            )
             .width;
         content_width = content_width
             .max((message.from_x + message.to_x) / 2.0 + label_width / 2.0 + MESSAGE_LABEL_PADDING);
@@ -801,6 +826,7 @@ fn apply_message_width_constraints(
     participants: &mut [ZenumlParticipantLayout],
     measurer: &dyn TextMeasurer,
     typography: &ZenumlTypography,
+    message_geometry_style: &TextStyle,
 ) {
     let index: HashMap<String, usize> = participants
         .iter()
@@ -828,7 +854,10 @@ fn apply_message_width_constraints(
             (to_index, from_index)
         };
         let required = measurer
-            .measure(label, &typography.statement_message_style(comment))
+            .measure(
+                label,
+                &typography.statement_message_style(message_geometry_style, comment),
+            )
             .width
             + ARROW_HEAD_WIDTH
             + OCCURRENCE_WIDTH;
@@ -1043,6 +1072,7 @@ fn self_message_extra_width(
     half_widths: &HashMap<String, f64>,
     measurer: &dyn TextMeasurer,
     typography: &ZenumlTypography,
+    message_geometry_style: &TextStyle,
 ) -> f64 {
     let Some((right_name, right_position)) = positions
         .iter()
@@ -1065,7 +1095,10 @@ fn self_message_extra_width(
              }| {
                 positions.get(from).map(|from_position| {
                     measurer
-                        .measure(label, &typography.statement_message_style(comment))
+                        .measure(
+                            label,
+                            &typography.statement_message_style(message_geometry_style, comment),
+                        )
                         .width
                         - (right_position - from_position)
                         - right_half
@@ -2393,10 +2426,13 @@ mod tests {
         for size in [14.0, 18.0, 24.0] {
             let config = serde_json::json!({"themeVariables": {"zenuml": {"fontFamily": "Inter, sans-serif", "fontSize": format!("{size}px")}}});
             let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
-            let layout =
-                layout_zenuml_diagram_typed(model, &ZenumlTypography::new(&config), &measurer)
-                    .unwrap();
-            let typography = ZenumlTypography::new(&config);
+            let layout = layout_zenuml_diagram_typed(
+                model,
+                &ZenumlSourceStyle::new(&config).typography,
+                &measurer,
+            )
+            .unwrap();
+            let typography = ZenumlSourceStyle::new(&config).typography;
             let measurements = measurer.0.lock().unwrap();
             assert!(
                 measurements
@@ -2428,8 +2464,10 @@ mod tests {
                 )
             );
             let message = &layout.messages[0];
-            let label = DeterministicTextMeasurer::default()
-                .measure(&message.label, &typography.styled_message(&message.style));
+            let label = DeterministicTextMeasurer::default().measure(
+                &message.label,
+                &typography.styled_message(&typography.message_style(), &message.style),
+            );
             assert!(
                 message.to_x - message.from_x >= label.width + ARROW_HEAD_WIDTH + OCCURRENCE_WIDTH
             );
@@ -2457,7 +2495,7 @@ mod tests {
         let config = serde_json::json!({"themeVariables": {"zenuml": {"fontSize": "1e308px"}}});
         let error = layout_zenuml_diagram_typed(
             model,
-            &ZenumlTypography::new(&config),
+            &ZenumlSourceStyle::new(&config).typography,
             &DeterministicTextMeasurer::default(),
         )
         .expect_err("finite font size must not produce non-finite SVG geometry");
@@ -2476,7 +2514,7 @@ mod tests {
         };
         layout_zenuml_diagram_typed(
             model,
-            &ZenumlTypography::new(&serde_json::Value::Null),
+            &ZenumlTypography::default(),
             &DeterministicTextMeasurer::default(),
         )
         .unwrap()

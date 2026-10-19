@@ -338,7 +338,10 @@ fn validate_browser_reference_expansion(
             Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
         };
     checkpoint()?;
-    execution.preflight_svg_structure(summary.elements, summary.max_tree_depth)?;
+    execution
+        .resource_policy()
+        .check_svg_element_count(summary.elements)
+        .map_err(|error| execution.terminate_resource_error(error))?;
     checkpoint()
 }
 
@@ -1848,6 +1851,19 @@ mod tests {
         .unwrap();
         validate(r#"<svg id="root" width="100%" viewBox="0 0 681 400" style="max-width:681px"/>"#)
             .unwrap();
+    }
+
+    #[test]
+    fn browser_publication_uses_its_own_budget_instead_of_native_backend_tree_depth() {
+        let depth = crate::resources::MAX_RESVG_TREE_DEPTH + 1;
+        let svg = format!(
+            "<svg>{}<path/>{}</svg>",
+            "<g>".repeat(depth),
+            "</g>".repeat(depth)
+        );
+        for validator in [validate_admission_with_limits, validate_static_with_limits] {
+            validator(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        }
     }
 
     #[test]

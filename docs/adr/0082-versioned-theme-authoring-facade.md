@@ -610,6 +610,18 @@ or package registry.
 Only a concrete render or export report can report actual `Applied`, residual, portability, and
 admission results.
 
+### Runtime output and private qualification
+
+The October 2026 cleanup removes production acceptance observers and redundant document/artifact/
+target-receipt digest chains. Theme execution still reports actual unsupported requests, residuals
+and target outcomes; it does not acquire a second certification stage merely because a theme was
+selected. Ordinary byte helpers do not construct rich binding diagnostics to discard them.
+
+The private qualification crate owns scenario observations and hashes its actual source and output
+bytes. Clean-build tooling additionally binds recipe/font-catalog identity, executable, source
+revision and host. Qualification records and companions move to schema 2; old records require a
+fresh run. The theme recipe and production catalog wire versions remain independently versioned.
+
 ### 10. Assign implementation ownership narrowly
 
 - A dependency-neutral theme-contract module below both `merman-render` and
@@ -640,7 +652,7 @@ admission results.
   limits after materialization and during compilation/session admission.
 
 The Rust executable table and alpha materializer drive the C7a pre-freeze authoring witnesses. Those
-witnesses reuse production `RenderedDocument` receipts and shared observers; they prove authoring,
+witnesses inspect actual immutable `RenderedDocument` bytes with private acceptance observers; they check authoring,
 materialization, canonical light/dark replay, root canvas, compact typography, representative
 family shapes, and state isolation without establishing another rendering proof system. Alpha
 transport scaffolds may exist before candidate eligibility, but they must remain explicitly

@@ -10,12 +10,10 @@ pub use merman_core::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectColorSpace, EffectGraph,
-    EffectInput, EffectPrimitive, FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec,
-    FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
-    FontEmbeddingPermissions, FontEmbeddingRequirement, FontFaceMetadata, FontFamilyAlias,
-    FontSource, FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, GradientStop,
-    HostMeasurementFallback, HostMeasurementFallbackPolicy, InsetsPx, LineHeight, LinearGradient,
-    MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
+    EffectInput, EffectPrimitive, FontAssetSpec, FontCatalog, FontCatalogError,
+    FontCatalogFingerprint, FontCatalogSpec, FontContainer, FontEmbeddingRequirement, FontSource,
+    FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, GradientStop, InsetsPx, LineHeight,
+    LinearGradient, MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
     MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
     MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
     MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP, MAX_THEME_BASE64_BYTES_HARD_CAP,
@@ -62,12 +60,11 @@ pub use merman_render::svg::{
     ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions,
     SvgFinalizationReport, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
     SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions, SvgResourceClosure,
-    SvgResourceFingerprint, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    finalize_resvg_svg, foreign_object_label_fallback_svg_text,
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
-    TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,
@@ -140,21 +137,5 @@ mod sanitize_svg_id_tests {
         assert_eq!(sanitize_svg_id("m"), "m-untitled");
         assert_eq!(sanitize_svg_id("m-"), "m-untitled");
         assert_eq!(sanitize_svg_id("m--"), "m-untitled");
-    }
-
-    #[test]
-    fn sanitize_svg_id_isolates_prepared_text_namespace() {
-        assert_eq!(
-            sanitize_svg_id("merman-prepared-state-17"),
-            "m-user-merman-prepared-state-17"
-        );
-        assert_eq!(
-            sanitize_svg_id("merman-prepared-state-17-line-2"),
-            "m-user-merman-prepared-state-17-line-2"
-        );
-        assert_eq!(
-            sanitize_svg_id("merman--prepared-state-17"),
-            "m-user-merman-prepared-state-17"
-        );
     }
 }

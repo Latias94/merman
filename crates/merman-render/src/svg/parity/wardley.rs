@@ -753,7 +753,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = typography_theme.paint_binding();
     let background_color = theme.background_color.as_str();
-    let mut surface_receipt = typography_theme.begin_terminal_receipt(layout);
+    let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
@@ -775,8 +775,6 @@ pub(crate) fn render_wardley_diagram_svg_model(
             escape_attr_display(typography_theme.font_family_css())
         );
         out.checkpoint()?;
-        surface_receipt
-            .record_inherited_font_writer("wardley-map", typography_theme.font_family_css());
     } else {
         out.push_str(r#"<g class="wardley-map">"#);
         out.checkpoint()?;

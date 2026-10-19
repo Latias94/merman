@@ -394,7 +394,6 @@ fn assert_font_stack_evidence(
     assert_eq!(evidence.applied_count(), expected_applied);
     assert_eq!(evidence.not_applicable_count(), expected_not_applicable);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -411,7 +410,6 @@ fn assert_residual_evidence(
     assert_eq!(evidence.applied_count(), applied_count);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), residual_count);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -443,7 +441,6 @@ fn assert_single_info_text_fill(
     assert_eq!(evidence.applied_count(), expected_applied);
     assert_eq!(evidence.not_applicable_count(), expected_not_applicable);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -1025,7 +1022,6 @@ fn lenient_error_does_not_invent_compatibility_for_typed_flowchart_node_fill() {
     .expect("a retired projection must not create a phantom compatibility residual");
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 

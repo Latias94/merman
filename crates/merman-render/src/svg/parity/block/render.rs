@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::block::{
-    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan, BlockNodeShellKind,
-    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
+    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan, BlockRectangleKind,
+    BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
     block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
@@ -220,14 +220,27 @@ struct BlockEdgePoints {
     rendered_points: Vec<LayoutPoint>,
 }
 
-/// Prepare the exact path from source endpoints and final layout geometry.
-pub(crate) fn block_edge_path_data(
+/// Determine visible edge paint from the same geometry consumed by the SVG writer.
+pub(crate) fn block_edge_is_visible(
     edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
     layout_edge: &LayoutEdge,
     shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
-) -> String {
+) -> Option<bool> {
     let points = block_render_edge_points(edge, layout_edge, shape_geometries_by_id);
-    super::super::curve::curve_basis_path_d_and_bounds(&points.rendered_points).0
+    if points.rendered_points.is_empty()
+        || points
+            .rendered_points
+            .iter()
+            .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return None;
+    }
+    Some(
+        points
+            .rendered_points
+            .windows(2)
+            .any(|pair| pair[0].x != pair[1].x || pair[0].y != pair[1].y),
+    )
 }
 
 fn block_render_edge_points(
@@ -296,7 +309,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
-    node_label_paint_theme: &BlockNodeLabelPaintPlan,
+    _node_label_paint_theme: &BlockNodeLabelPaintPlan,
     edge_paint_theme: &crate::block::BlockEdgePaintPlan,
     marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
@@ -483,8 +496,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
-    let mut typography_receipt = typography_theme.begin_terminal_receipt();
+    let mut typography_visible = typography_theme.observes_visible_labels().then_some(false);
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -547,22 +559,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         Ok(())
     }
 
-    struct BlockCssEmission<'a> {
-        font_family_css: &'a str,
-        font_size_css: Box<str>,
-    }
-
-    fn write_block_css<'a>(
+    fn write_block_css(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
-        typography_theme: &'a BlockTypographyThemePlan,
+        typography_theme: &BlockTypographyThemePlan,
         label_background_theme: &BlockLabelBackgroundPlan,
         options: &SvgExecution<'_>,
-    ) -> Result<BlockCssEmission<'a>> {
+    ) -> Result<()> {
         let theme = typography_theme.css_binding();
         let font_family = typography_theme.font_family_css();
         let font_size = typography_theme.font_size_px();
-        let font_size_css: Box<str> = fmt(font_size).to_string().into();
+        let font_size_css = fmt(font_size);
         let text_color = theme.text_color.as_str();
         let node_text_color = theme.node_text_color.as_str();
         let title_color = theme.title_color.as_str();
@@ -671,10 +678,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         );
         out.checkpoint()?;
         write_block_class_css(out, diagram_id, theme, options)?;
-        Ok(BlockCssEmission {
-            font_family_css: font_family,
-            font_size_css,
-        })
+        Ok(())
     }
 
     let diagram_id = options.diagram_id_or("merman");
@@ -730,8 +734,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
     let root_context =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::BLOCK, diagram_id)
-            .with_resource_policy(options.resource_policy());
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::BLOCK, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -740,7 +743,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     options.checkpoint_emit()?;
     out.push_str("<style>");
     out.checkpoint()?;
-    let css_emission = write_block_css(
+    write_block_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
@@ -748,13 +751,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         options,
     )?;
     label_background_theme.record_stylesheet();
-    let mut node_label_receipt = node_label_paint_theme.begin_terminal_receipt();
-    let mut edge_paint_receipt = edge_paint_theme.begin_terminal_receipt();
-    let typography_css_matches = typography_theme.observe_css(
-        typography_receipt.as_mut(),
-        css_emission.font_family_css,
-        &css_emission.font_size_css,
-    );
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -762,11 +758,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .look_defs
         .write_shadow_defs(&mut out, diagram_id)?;
     node_theme.look_defs.write_gradient(&mut out, diagram_id)?;
-    let mut marker_paint_receipt = marker_paint_theme.begin_terminal_receipt();
-    if let Some(receipt) = marker_paint_receipt.as_mut() {
-        for (index, definition) in marker_paint_theme.definitions().iter().enumerate() {
+    if !marker_paint_theme.definitions().is_empty() {
+        for definition in marker_paint_theme.definitions() {
             options.checkpoint_emit()?;
-            let start = out.len();
             let mut marker = String::new();
             super::super::markers::push_base_edge_marker(
                 &mut marker,
@@ -778,12 +772,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
             out.push_str(&marker);
             out.checkpoint()?;
-            marker_paint_theme.observe_definition(
-                receipt,
-                index,
-                diagram_id.semantic_str(),
-                &out.as_str()[start..],
-            );
         }
     } else {
         let mut base_edge_markers = String::new();
@@ -804,10 +792,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let mut has_rough_path = false;
     let mut has_rendered_edge = false;
 
-    // Ordinary rendering owns terminal completeness. Keep duplicate output attempts so sink
-    // failures retain precedence over the deferred terminal error.
-    let mut checkpointed_nodes = std::collections::HashSet::new();
-    let mut node_shells_match = true;
     for (node_index, n) in layout.nodes.iter().enumerate() {
         let Some(node) = nodes_by_id.get(n.id.as_str()) else {
             continue;
@@ -834,7 +818,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
-        let node_shell_start = out.len();
         let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
         options.checkpoint_emit()?;
         let _ = write!(
@@ -853,7 +836,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
         out.push('>');
 
-        let shell_kinds: &[BlockNodeShellKind];
         match &geometry.boundary {
             BlockShapeBoundary::Rectangle {
                 width,
@@ -877,7 +859,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     fmt(*width),
                     fmt(*height)
                 );
-                shell_kinds = &[BlockNodeShellKind::Rect];
             }
             BlockShapeBoundary::Circle { radius, .. } => {
                 let _ = write!(
@@ -886,7 +867,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     escape_attr(node_box_style),
                     fmt(*radius),
                 );
-                shell_kinds = &[BlockNodeShellKind::Circle];
             }
             BlockShapeBoundary::DoubleCircle {
                 outer_radius,
@@ -902,7 +882,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     escape_attr(node_box_style),
                     fmt(*inner_radius),
                 );
-                shell_kinds = &[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle];
             }
             BlockShapeBoundary::Stadium { width, height } => {
                 let points = block_stadium_points(*width, *height);
@@ -940,7 +919,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         fmt(radius)
                     );
                 }
-                shell_kinds = &[BlockNodeShellKind::Rect];
             }
             BlockShapeBoundary::Cylinder {
                 width,
@@ -968,7 +946,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     fmt_display(-width / 2.0),
                     fmt_display(-(body_height / 2.0 + radius_y))
                 );
-                shell_kinds = &[BlockNodeShellKind::Path];
             }
             BlockShapeBoundary::Polygon {
                 points,
@@ -1016,25 +993,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         fmt_display(translation.y)
                     );
                 }
-                shell_kinds = &[BlockNodeShellKind::Polygon];
             }
         }
         out.checkpoint()?;
-        node_shells_match &= shell_kinds == geometry.boundary.canonical_shell_kinds();
-        checkpointed_nodes.insert(n.id.as_str());
-        if let Some(receipt) = node_paint_receipt.as_mut() {
-            receipt.observe_checkpointed_node(
-                node_index,
-                diagram_id.semantic_str(),
-                &out.as_str()[node_shell_start..],
-            );
-        }
-
         let label = decode_block_label_html(node.label);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_visible_label(&label);
+        if let Some(visible) = typography_visible.as_mut() {
+            *visible |= !label.trim().is_empty();
         }
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
@@ -1062,7 +1028,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
-        let label_start = out.len();
         if html_labels {
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
@@ -1112,9 +1077,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
 
         out.checkpoint()?;
-        if let Some(receipt) = node_label_receipt.as_mut() {
-            node_label_paint_theme.observe_label(receipt, node_index, &out.as_str()[label_start..]);
-        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -1123,7 +1085,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
-        let edge_start = out.len();
         let edge_points = block_render_edge_points(e, le, &shape_geometries_by_id);
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(json_stringify_points(&edge_points.data_points));
@@ -1186,22 +1147,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         options.checkpoint_emit()?;
         out.push_str("/>");
         out.checkpoint()?;
-        if let Some(receipt) = marker_paint_receipt.as_mut() {
-            marker_paint_theme.observe_path(
-                receipt,
-                edge_index,
-                diagram_id.semantic_str(),
-                &out.as_str()[edge_start..],
-            );
-        }
-        if let Some(receipt) = edge_paint_receipt.as_mut() {
-            edge_paint_theme.observe_path(
-                receipt,
-                edge_index,
-                diagram_id.semantic_str(),
-                &out.as_str()[edge_start..],
-            );
-        }
     }
 
     for e in &model.edges {
@@ -1211,8 +1156,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
             continue;
         };
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_visible_label(&e.label);
+        if let Some(visible) = typography_visible.as_mut() {
+            *visible |= !e.label.trim().is_empty();
         }
         union_block_bounds(
             &mut content_bounds,
@@ -1342,31 +1287,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
     let rooted = root_document.complete(out.finish()?)?;
-    if !node_shells_match
-        || checkpointed_nodes.len() != layout.nodes.len()
-        || !node_paint_theme.record_terminal(node_paint_receipt)
-    {
-        return Err(Error::InvalidModel {
-            message: "Block node shell paint terminal receipt was incomplete".to_string(),
-        });
-    }
-    if !typography_css_matches
-        || typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt))
-        || !node_label_paint_theme.record_terminal(node_label_receipt)
-    {
-        return Err(Error::InvalidModel {
-            message: "Block typography terminal receipt was incomplete".to_string(),
-        });
-    }
-    if !edge_paint_theme.record_terminal(edge_paint_receipt) {
-        return Err(Error::InvalidModel {
-            message: "Block edge paint terminal receipt was incomplete".to_string(),
-        });
-    }
-    if !marker_paint_theme.record_terminal(marker_paint_receipt) {
-        return Err(Error::InvalidModel {
-            message: "Block marker paint terminal receipt was incomplete".to_string(),
-        });
+    if let Some(visible) = typography_visible {
+        typography_theme.record_visible_labels(visible);
     }
     Ok(rooted)
 }

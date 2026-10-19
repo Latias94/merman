@@ -106,7 +106,6 @@ fn journey_text_fill_has_portable_terminal_evidence() {
             assert_eq!(evidence.accounted_count(), 1);
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -221,7 +220,6 @@ fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability()
                     assert_eq!(evidence.required_count(), 1);
                     assert_eq!(evidence.accounted_count(), 1);
                     assert_eq!(evidence.applied_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                     assert_eq!(evidence.theme_residual_count(), usize::from(active));
                     assert_eq!(evidence.not_applicable_count(), usize::from(!active));
                     let strict = render_journey_rules_with_requirement(
@@ -320,7 +318,6 @@ fn journey_text_fill_preserves_unsectioned_tasks_and_empty_diagram_lines() {
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -392,7 +389,6 @@ fn journey_text_fill_config_owner_and_shadowed_palette_are_accounted() {
             1 + usize::from(config_owned)
         );
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -685,7 +681,6 @@ fn journey_task_static_paint_reaches_terminal_rect_and_is_fully_accounted() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -754,7 +749,6 @@ fn journey_task_explicit_default_paint_reaches_terminal_rect_and_is_fully_accoun
         assert_eq!(evidence.accounted_count(), 2);
         assert_eq!(evidence.applied_count(), 2);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -789,7 +783,6 @@ fn journey_task_explicit_default_paint_is_not_applicable_without_tasks() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -851,7 +844,6 @@ fn journey_base_typography_drives_scoped_css_and_is_fully_accounted() {
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -893,7 +885,6 @@ fn journey_explicit_theme_font_size_owns_only_the_size_route() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -964,7 +955,6 @@ fn journey_task_palette_reaches_section_and_task_terminals_without_legacy_projec
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1054,7 +1044,6 @@ journey
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1125,7 +1114,6 @@ fn journey_task_transparent_palette_reaches_both_terminals() {
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

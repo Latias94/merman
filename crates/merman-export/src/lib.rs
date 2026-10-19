@@ -1336,7 +1336,6 @@ pub enum RasterOutputKind {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RasterExportReport {
-    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     directional_filter_transform_residual: bool,
     fallback_css_residual: bool,
@@ -1351,10 +1350,6 @@ pub struct RasterExportReport {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl RasterExportReport {
-    pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
-        self.resource_fingerprint
-    }
-
     #[doc(hidden)]
     pub const fn native_filter_receipt(
         self,
@@ -1413,7 +1408,6 @@ impl RasterExportReport {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, Copy)]
 struct RasterReportSeed {
-    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     directional_filter_transform_residual: bool,
     fallback_css_residual: bool,
@@ -1466,7 +1460,6 @@ impl PdfPagePlan {
 #[cfg(feature = "pdf")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PdfExportReport {
-    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     native_filter_fully_localized: bool,
     directional_filter_transform_residual: bool,
@@ -1482,10 +1475,6 @@ pub struct PdfExportReport {
 
 #[cfg(feature = "pdf")]
 impl PdfExportReport {
-    pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
-        self.resource_fingerprint
-    }
-
     #[doc(hidden)]
     pub const fn native_filter_receipt(
         self,
@@ -1601,7 +1590,6 @@ impl PreparedRaster {
         matte_defaulted: bool,
     ) -> RasterExportReport {
         RasterExportReport {
-            resource_fingerprint: self.report.resource_fingerprint,
             native_filter_receipt: self.report.native_filter_receipt,
             directional_filter_transform_residual: self
                 .report
@@ -1929,7 +1917,6 @@ fn prepare_raster_source_on_backend_stack(
         geometry,
         translate_min_to_origin,
         report: RasterReportSeed {
-            resource_fingerprint: svg.resource_fingerprint(),
             native_filter_receipt,
             directional_filter_transform_residual,
             fallback_css_residual,
@@ -2031,7 +2018,6 @@ fn prepare_pdf_on_backend_stack(
         control,
     )?;
     let report = PdfExportReport {
-        resource_fingerprint: svg.resource_fingerprint(),
         native_filter_receipt,
         native_filter_fully_localized,
         directional_filter_transform_residual,
@@ -3560,7 +3546,7 @@ fn configure_usvg_options_for_raster(
     let plan = if let Some(context) = &options.font_context {
         context.check()?;
         let observer = context.apply_to_usvg_options_for_export(opt, control);
-        font_environment::ExportFontPlanSeed::from_native_context(svg, context, observer)
+        font_environment::ExportFontPlanSeed::from_native_context(context, observer)
     } else {
         let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
         let plan = fonts.plan;
@@ -3604,7 +3590,7 @@ fn configure_usvg_options_for_pdf(
     let plan = if let Some(context) = &options.font_context {
         context.check()?;
         let observer = context.apply_to_usvg_options_for_export(opt, control);
-        font_environment::ExportFontPlanSeed::from_native_context(svg, context, observer)
+        font_environment::ExportFontPlanSeed::from_native_context(context, observer)
     } else {
         let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
         let plan = fonts.plan;
@@ -4761,15 +4747,13 @@ mod tests {
     }
 
     #[test]
-    fn png_report_correlates_resources_and_requested_matte() {
+    fn png_report_retains_dimensions_and_requested_matte() {
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
-        let expected_fingerprint = compatible_svg(source).resource_fingerprint();
         let (bytes, report) =
             svg_to_png_with_report(source, &RasterOptions::default().with_matte("#12345678"))
                 .unwrap();
 
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
-        assert_eq!(report.resource_fingerprint(), expected_fingerprint);
         assert_eq!(report.output(), RasterOutputKind::Png);
         assert_eq!(
             report.matte(),
@@ -4810,9 +4794,8 @@ mod tests {
     }
 
     #[test]
-    fn pdf_report_correlates_page_filter_resources_and_page_paint() {
+    fn pdf_report_retains_page_filter_plan_and_page_paint() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 20"><rect width="10" height="20" fill="black"/></svg>"#;
-        let expected_fingerprint = compatible_svg(svg).resource_fingerprint();
         let options = PdfOptions::default()
             .with_page_policy(PdfPagePolicy::Fixed {
                 width_pt: 612.0,
@@ -4822,7 +4805,6 @@ mod tests {
         let (bytes, report) = svg_to_pdf_with_report(svg, &options).unwrap();
 
         assert!(bytes.starts_with(b"%PDF-"));
-        assert_eq!(report.resource_fingerprint(), expected_fingerprint);
         assert_eq!(report.page().page_width_pt(), 612.0);
         assert_eq!(report.page().page_height_pt(), 792.0);
         assert_eq!(report.filters().filtered_groups, 0);

@@ -46,52 +46,21 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         "render.class.roughjs",
     );
     let settings = render_config;
-    let mut typography_receipt = typography_theme.begin_terminal_receipt(
-        model,
-        diagram_title,
-        settings.diagram_use_html_labels,
-        settings.edge_use_html_labels,
-        Some(mermaid_config),
-    );
-    let node_expectations = node_visual_plan.expectations();
+    let mut typography_receipt = typography_theme.begin_text_outcomes();
     if let Some(receipt) = typography_receipt.as_mut() {
-        typography_theme.bind_paint_expectations(
+        typography_theme.bind_text_paints(
             receipt,
-            node_expectations,
+            node_visual_plan.label_paints(),
             relation_theme.namespace_title_terminal(),
             model.notes.iter().map(|note| note.id.as_str()),
         );
     }
-    let relation_expectations = model
-        .relations
-        .iter()
-        .enumerate()
-        .map(|(relation_index, relation)| {
-            crate::class::ClassRelationTerminalExpectation::new(
-                relation_index,
-                class_marker_name(relation.relation.type1, true),
-                class_marker_name(relation.relation.type2, false),
-            )
-        })
-        .collect();
     let marker_expectations = if relation_theme.typed_stroke().is_some() {
-        class_marker_terminal_expectations(&model.relations, settings.look == "neo")
+        class_marker_paint_bindings(&model.relations, settings.look == "neo")
     } else {
         Vec::new()
     };
-    options.work_meter().charge(layout.clusters.len())?;
-    let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
-        node_expectations,
-        node_visual_plan.has_unique_domain(),
-        layout
-            .clusters
-            .iter()
-            .map(|cluster| cluster.id.clone())
-            .collect(),
-        relation_expectations,
-        marker_expectations,
-        settings.look == "handDrawn",
-    );
+    let mut relation_theme_receipt = relation_theme.begin_outcomes(marker_expectations);
 
     // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
     // the layout coordinates directly and keeps the viewport padding as the only outer margin.
@@ -122,16 +91,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
-    let typography_css_emission = write_class_css(
+    write_class_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,
-        typography_receipt.is_some(),
     )?;
-    if let (Some(receipt), Some(emission)) = (typography_receipt.as_mut(), typography_css_emission)
-    {
-        receipt.record_css_emission(emission);
+    if let Some(outcomes) = typography_receipt.as_mut() {
+        outcomes.record_stylesheet();
     }
     out.push_str("</style>");
     out.checkpoint()?;
@@ -251,7 +218,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         },
         relation_theme,
         text_paint: typography_theme.edge_paint(),
-        capture_text_facts: typography_theme.requires_terminal_receipt(),
+        capture_text_facts: typography_theme.requires_text_outcomes(),
         emit,
     };
 
@@ -401,15 +368,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         emit_class_render_timing(&timings, &detail, layout);
     }
     let rooted_svg = root_document.complete(out)?;
-    if !theme_evidence.record_terminal(relation_theme_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Class theme receipt did not match the terminal SVG".to_string(),
-        });
-    }
-    if !typography_theme.record_terminal(typography_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Class typography receipt did not match the terminal SVG".to_string(),
-        });
-    }
+    theme_evidence.record_outcomes(relation_theme_receipt);
+    typography_theme.record_outcomes(typography_receipt);
     Ok(rooted_svg)
 }

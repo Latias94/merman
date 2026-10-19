@@ -5,21 +5,18 @@ use crate::diagram_theme::ThemePortabilityRequirement;
 use crate::environment::RenderSession;
 
 use super::{
-    ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelineBuffer, SvgPipelinePreset,
-    SvgPostprocessExecution, SvgResourceFingerprint, final_validation, resource_closure,
+    ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelinePreset,
+    SvgPostprocessExecution, final_validation,
 };
 
-/// Terminal compatibility state for an exact standalone SVG artifact.
-///
-/// This state describes the exact sealed SVG bytes used for compatibility admission. It never
-/// describes a separately normalized SVG draft.
+/// Native compatibility of the exact selected standalone SVG bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StandaloneSvgTerminalStatus {
-    /// Native compatibility was not requested for this artifact.
+    /// Native compatibility was not requested.
     Unverified,
-    /// The exact artifact passed structural and resource-closure validation.
+    /// The selected bytes passed native structural and resource admission.
     Compatible,
-    /// Structural or resource-closure validation of the exact artifact failed.
+    /// The selected bytes do not satisfy native compatibility.
     ValidationFailed,
 }
 
@@ -33,16 +30,10 @@ impl StandaloneSvgTerminalStatus {
     }
 }
 
-/// Renderer-owned terminal artifact for the standalone SVG target.
-///
-/// The exact SVG bytes, resource fingerprint, and terminal evidence are sealed together. Ordinary
-/// output retains resource accounting without claiming native compatibility. Strict non-resvg
-/// pipelines are observed in place, without normalizing the artifact into different bytes.
+/// Immutable SVG output, with native admission only when it was requested.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandaloneSvgArtifact {
     inner: StandaloneSvgArtifactKind,
-    #[cfg(merman_internal_theme_acceptance)]
-    artifact_receipt: Option<crate::svg_artifact_receipts::SvgArtifactReceipt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,80 +45,40 @@ enum StandaloneSvgArtifactKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StandaloneSvg {
     svg: String,
-    prepared_text_evidence_valid: bool,
     selected_pipeline: SvgPipelinePreset,
     terminal_status: StandaloneSvgTerminalStatus,
     finalization_report: Option<SvgFinalizationReport>,
-    resource_fingerprint: SvgResourceFingerprint,
 }
 
 impl StandaloneSvgArtifact {
     pub(crate) fn from_resvg_compatible(svg: ResvgCompatibleSvg) -> Self {
-        #[cfg(merman_internal_theme_acceptance)]
-        let artifact_receipt =
-            crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(svg.as_str());
         Self {
             inner: StandaloneSvgArtifactKind::ResvgCompatible(svg),
-            #[cfg(merman_internal_theme_acceptance)]
-            artifact_receipt,
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn finalize_exact(
         svg: String,
-        prepared_text_evidence_valid: bool,
         pipeline: &SvgPipeline,
         session: &RenderSession,
     ) -> Result<Self> {
-        Self::finalize_exact_buffer(
-            SvgPipelineBuffer::new(svg),
-            prepared_text_evidence_valid,
-            pipeline,
-            session,
-        )
-    }
-
-    pub(crate) fn finalize_exact_buffer(
-        svg: SvgPipelineBuffer,
-        prepared_text_evidence_valid: bool,
-        pipeline: &SvgPipeline,
-        session: &RenderSession,
-    ) -> Result<Self> {
-        let (svg, xml_facts) = svg.into_parts();
-        session.checkpoint(OperationPhase::Postprocess)?;
-        let resource_fingerprint = resource_closure::fingerprint_svg_resources(
-            &svg,
-            session.font_catalog().fingerprint().as_bytes(),
-            session.font_source_policy(),
-        );
+        let execution = SvgPostprocessExecution::new(session);
+        execution.checkpoint()?;
+        execution.preflight_svg_byte_count(svg.len())?;
         let (terminal_status, finalization_report) = if session.portability_requirement()
             == ThemePortabilityRequirement::BestEffort
             && pipeline.preset() != SvgPipelinePreset::ResvgSafe
         {
-            check_exact_svg_resource_budget(
-                &svg,
-                xml_facts,
-                SvgPostprocessExecution::new(session),
-            )?;
+            // The producer owns serialization. Ordinary SVG generation does not request
+            // native admission or a second interpretation of its completed document.
             (StandaloneSvgTerminalStatus::Unverified, None)
         } else {
-            let validation = match &xml_facts {
-                Some(facts) => final_validation::validate_resvg_compatible_svg_after_xml(
-                    &svg,
-                    facts.structure(),
-                    session.resource_policy(),
-                    &mut || session.checkpoint(OperationPhase::Postprocess),
-                ),
-                None => final_validation::validate_resvg_compatible_svg_with_checkpoint(
-                    &svg,
-                    session.resource_policy(),
-                    &mut || session.checkpoint(OperationPhase::Postprocess),
-                ),
+            let validation = if pipeline.preset() == SvgPipelinePreset::ResvgSafe {
+                final_validation::validate_resvg_compatible_svg_with_execution(&svg, execution)
+            } else {
+                final_validation::observe_resvg_compatibility_with_execution(&svg, execution)
             };
-            // Native compatibility failures remain observational for non-resvg pipelines.
-            // Caller resource limits and cancellation must still fail the operation.
-            session.checkpoint(OperationPhase::Postprocess)?;
+            execution.checkpoint()?;
             match validation {
                 Ok(terminal) => (
                     StandaloneSvgTerminalStatus::Compatible,
@@ -136,51 +87,30 @@ impl StandaloneSvgArtifact {
                 Err(crate::Error::SvgPostprocess { .. })
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe =>
                 {
-                    // Compatibility can stop before walking the complete use DAG. Its
-                    // observational envelope must still admit all expanded caller-owned work.
-                    check_exact_svg_resource_budget(
-                        &svg,
-                        xml_facts,
-                        SvgPostprocessExecution::new(session),
-                    )?;
+                    final_validation::check_svg_resource_budget_with_execution(&svg, execution)?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit))
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe
                         && limit.is_svg_backend_compatibility_ceiling() =>
                 {
-                    // Compatibility can stop before walking the complete use DAG. Its
-                    // observational envelope must still admit all expanded caller-owned work.
-                    check_exact_svg_resource_budget(
-                        &svg,
-                        xml_facts,
-                        SvgPostprocessExecution::new(session),
-                    )?;
+                    final_validation::check_svg_resource_budget_with_execution(&svg, execution)?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit)) => {
-                    return Err(
-                        SvgPostprocessExecution::new(session).terminate_resource_error(limit)
-                    );
+                    return Err(execution.terminate_resource_error(limit));
                 }
                 Err(error) => return Err(error),
             }
         };
-        #[cfg(merman_internal_theme_acceptance)]
-        let artifact_receipt =
-            crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(&svg);
         session.checkpoint(OperationPhase::Postprocess)?;
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Standalone(StandaloneSvg {
                 svg,
-                prepared_text_evidence_valid,
                 selected_pipeline: pipeline.preset(),
                 terminal_status,
                 finalization_report,
-                resource_fingerprint,
             }),
-            #[cfg(merman_internal_theme_acceptance)]
-            artifact_receipt,
         })
     }
 
@@ -191,7 +121,7 @@ impl StandaloneSvgArtifact {
         }
     }
 
-    /// Returns the exact sealed SVG bytes used by native consumers.
+    /// Returns the exact selected SVG bytes.
     pub fn native_export_svg(&self) -> &str {
         self.as_str()
     }
@@ -219,20 +149,6 @@ impl StandaloneSvgArtifact {
         }
     }
 
-    pub const fn resource_fingerprint(&self) -> SvgResourceFingerprint {
-        match &self.inner {
-            StandaloneSvgArtifactKind::ResvgCompatible(svg) => svg.resource_fingerprint,
-            StandaloneSvgArtifactKind::Standalone(svg) => svg.resource_fingerprint,
-        }
-    }
-
-    pub const fn prepared_text_evidence_valid(&self) -> bool {
-        match &self.inner {
-            StandaloneSvgArtifactKind::ResvgCompatible(svg) => svg.prepared_text_evidence_valid,
-            StandaloneSvgArtifactKind::Standalone(svg) => svg.prepared_text_evidence_valid,
-        }
-    }
-
     pub fn text_fonts_are_self_contained(&self) -> bool {
         self.finalization_report()
             .is_some_and(|report| report.font_seal().is_complete())
@@ -243,15 +159,6 @@ impl StandaloneSvgArtifact {
             StandaloneSvgArtifactKind::ResvgCompatible(svg) => Some(svg),
             StandaloneSvgArtifactKind::Standalone(_) => None,
         }
-    }
-
-    /// Returns the renderer-owned observation of this exact finalized SVG when the private theme
-    /// acceptance feature is enabled.
-    #[cfg(merman_internal_theme_acceptance)]
-    pub fn svg_artifact_receipt(
-        &self,
-    ) -> Option<&crate::svg_artifact_receipts::SvgArtifactReceipt> {
-        self.artifact_receipt.as_ref()
     }
 
     pub fn into_string(self) -> String {
@@ -265,19 +172,6 @@ impl StandaloneSvgArtifact {
 impl From<ResvgCompatibleSvg> for StandaloneSvgArtifact {
     fn from(svg: ResvgCompatibleSvg) -> Self {
         Self::from_resvg_compatible(svg)
-    }
-}
-
-fn check_exact_svg_resource_budget(
-    svg: &str,
-    xml_facts: Option<final_validation::ValidatedSvgXmlFacts>,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
-    match xml_facts {
-        Some(facts) => final_validation::check_svg_resource_budget_from_xml_facts_with_execution(
-            facts, execution,
-        ),
-        None => final_validation::check_svg_resource_budget_with_execution(svg, execution),
     }
 }
 
@@ -302,449 +196,44 @@ mod tests {
             .unwrap()
     }
 
-    fn assert_max_svg_elements(error: crate::Error) {
-        let crate::Error::ResourceLimitExceeded(limit) = error else {
-            panic!("expected max_svg_elements resource failure, got {error}");
-        };
-        assert_eq!(limit.limit, "max_svg_elements");
-    }
-
-    #[cfg(feature = "diagram-flowchart")]
-    fn rendered_flowchart(session: RenderSession) -> crate::family::RenderedFamilySvg {
-        let parsed = merman_core::Engine::new()
-            .parse_diagram_for_render_model_sync(
-                "flowchart LR\nA[Alpha] --> B[Beta]\n",
-                merman_core::ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
-            .unwrap()
-            .render_svg(
-                &crate::svg::SvgRenderOptions::default(),
-                &crate::svg::SvgDebugOptions::default(),
-            )
-            .unwrap()
-    }
-
-    #[cfg(feature = "diagram-flowchart")]
     #[test]
-    fn explicit_standalone_pipeline_reuses_the_final_xml_walk() {
-        for pipeline in [SvgPipeline::parity(), SvgPipeline::readable()] {
-            let session = session_with_max_svg_elements(10_000);
-            let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
-            let metadata = super::super::SvgPostprocessMetadata::from_svg(rendered.svg())
-                .with_family_id(rendered.family_id())
-                .with_diagram_type(rendered.metadata().diagram_type.clone())
-                .with_optional_diagram_title(rendered.metadata().title.clone());
-            let source_svg = rendered.svg().to_owned();
-            let (reference, reference_work) =
-                final_validation::measure_terminal_validation_work(|| {
-                    let svg = pipeline
-                        .process_owned_to_string_with_metadata(source_svg, &metadata, &session)
-                        .unwrap();
-                    StandaloneSvgArtifact::finalize_exact(svg, true, &pipeline, &session).unwrap()
-                });
-            let (completion, reused_work) =
-                final_validation::measure_terminal_validation_work(|| {
-                    rendered
-                        .finalize_standalone(Some(&pipeline))
-                        .unwrap()
-                        .into_completion()
-                });
-
-            assert_eq!(completion.output(), &reference);
-            assert_eq!(reference_work.xml_walks, 3);
-            let expected_reused_walks = match pipeline.preset() {
-                SvgPipelinePreset::Parity => 1,
-                SvgPipelinePreset::Readable => 2,
-                SvgPipelinePreset::ResvgSafe => unreachable!(),
-            };
-            assert_eq!(reused_work.xml_walks, expected_reused_walks);
-            assert_eq!(
-                reference_work.xml_bytes - reused_work.xml_bytes,
-                reference.as_str().len() * (3 - expected_reused_walks),
-            );
-            assert_eq!(
-                reference.terminal_status(),
-                StandaloneSvgTerminalStatus::Unverified
-            );
-            assert!(reference.finalization_report().is_none());
-        }
-    }
-
-    #[cfg(feature = "diagram-flowchart")]
-    #[test]
-    fn standalone_walk_reuse_preserves_opaque_processor_evidence_invalidation() {
-        use std::borrow::Cow;
-
-        struct BorrowedOutput(Option<&'static str>);
-        impl super::super::SvgPostprocessor for BorrowedOutput {
-            fn name(&self) -> &'static str {
-                "borrowed-output"
-            }
-
-            fn process<'a>(
-                &self,
-                svg: Cow<'a, str>,
-                _ctx: &super::super::SvgPostprocessContext<'_>,
-            ) -> crate::Result<Cow<'a, str>> {
-                Ok(match self.0 {
-                    Some(output) => Cow::Borrowed(output),
-                    None => svg,
-                })
-            }
-        }
-
-        let replacement = r##"<svg><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
-        let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
-        let pipeline = SvgPipeline::parity().with_postprocessor(BorrowedOutput(Some(replacement)));
-        let (completion, work) = final_validation::measure_terminal_validation_work(|| {
-            rendered
-                .finalize_standalone(Some(&pipeline))
-                .unwrap()
-                .into_completion()
-        });
-        assert_eq!(completion.output().as_str(), replacement);
-        assert!(!completion.output().prepared_text_evidence_valid());
-        assert_eq!(work.xml_walks, 4);
-
-        let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
-        let same_bytes = rendered.svg().to_owned();
-        let pipeline = SvgPipeline::parity().with_postprocessor(BorrowedOutput(None));
-        let artifact = rendered
-            .finalize_standalone(Some(&pipeline))
-            .unwrap()
-            .into_completion();
-        assert_eq!(artifact.output().as_str(), same_bytes);
-        assert!(!artifact.output().prepared_text_evidence_valid());
-    }
-
-    #[test]
-    fn late_shrinking_processor_does_not_admit_intermediate_reference_expansion() {
-        use std::borrow::Cow;
-
-        struct Shrink;
-        impl super::super::SvgPostprocessor for Shrink {
-            fn name(&self) -> &'static str {
-                "shrink"
-            }
-
-            fn process<'a>(
-                &self,
-                _svg: Cow<'a, str>,
-                _ctx: &super::super::SvgPostprocessContext<'_>,
-            ) -> crate::Result<Cow<'a, str>> {
-                Ok(Cow::Borrowed("<svg/>"))
-            }
-        }
-
-        let long_id = "long-id-".repeat(10_000);
-        let svg = format!(
-            r##"<svg><defs><g id="{long_id}"><path/></g></defs><use href="#{long_id}"/><use href="#{long_id}"/></svg>"##
-        );
-        let pipeline = SvgPipeline::parity().with_postprocessor(Shrink);
-        let session = session_with_max_svg_elements(6);
-        let metadata = super::super::SvgPostprocessMetadata::from_svg(&svg);
-        let svg = pipeline
-            .process_owned_buffer_with_metadata_and_math_evidence(
-                SvgPipelineBuffer::new(svg),
-                &metadata,
-                &session,
-                None,
-                true,
-            )
-            .expect("only the final XML observation retains references");
-        let artifact =
-            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap();
-        assert_eq!(artifact.as_str(), "<svg/>");
-        assert_eq!(
-            artifact.terminal_status(),
-            StandaloneSvgTerminalStatus::Unverified
-        );
-    }
-
-    #[test]
-    fn standalone_other_profiles_keep_their_own_validation_scopes() {
-        let svg = "<svg/>";
-        let session = session_with_max_svg_elements(100);
-        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
-            StandaloneSvgArtifact::finalize_exact(
-                svg.to_owned(),
-                true,
-                &SvgPipeline::parity(),
-                &session,
-            )
-            .unwrap()
-        });
-        assert_eq!(work.xml_walks, 1);
-        assert_eq!(
-            artifact.terminal_status(),
-            StandaloneSvgTerminalStatus::Unverified
-        );
-
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session()
-            .unwrap();
-        let pipeline = SvgPipeline::parity();
-        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
-            let svg = pipeline
-                .process_owned_buffer_with_metadata_and_math_evidence(
-                    SvgPipelineBuffer::new(svg.to_owned()),
-                    &super::super::SvgPostprocessMetadata::from_svg(svg),
-                    &session,
-                    None,
-                    true,
-                )
-                .unwrap();
-            assert!(
-                svg.xml_facts.is_some(),
-                "exact XML facts are reused without certifying native compatibility"
-            );
-            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap()
-        });
-        assert_eq!(work.xml_walks, 2);
-        assert_eq!(
-            artifact.terminal_status(),
-            StandaloneSvgTerminalStatus::Compatible
-        );
-
-        let session = session_with_max_svg_elements(100);
-        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
-            StandaloneSvgArtifact::from_resvg_compatible(
-                SvgPipeline::resvg_safe()
-                    .process_resvg_compatible(svg, &session)
-                    .unwrap(),
-            )
-        });
-        assert_eq!(work.xml_walks, 3);
-        assert_eq!(
-            artifact.terminal_status(),
-            StandaloneSvgTerminalStatus::Compatible
-        );
-    }
-
-    #[test]
-    fn explicit_pipeline_retained_facts_keep_expanded_budget_at_terminal_admission() {
-        let svg = r##"<svg><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
-        let session = session_with_max_svg_elements(6);
-        let pipeline = SvgPipeline::parity();
-        let svg = pipeline
-            .process_owned_buffer_with_metadata_and_math_evidence(
-                SvgPipelineBuffer::new(svg.to_owned()),
-                &super::super::SvgPostprocessMetadata::from_svg(svg),
-                &session,
-                None,
-                true,
-            )
-            .expect("pipeline validation admits the six raw elements");
-        assert!(svg.xml_facts.is_some());
-        let (result, work) = resource_closure::measure_resource_fingerprint_work(|| {
-            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session)
-        });
-        assert_max_svg_elements(result.unwrap_err());
-        assert_eq!(
-            work.calls, 1,
-            "expanded admission follows terminal fingerprinting"
-        );
-    }
-
-    #[cfg(feature = "diagram-flowchart")]
-    #[test]
-    fn standalone_resource_failure_remains_terminal_after_later_cancellation() {
-        use merman_core::{Engine, OperationControl, OperationLedgerError, ParseOptions};
-
-        for portability in [
-            ThemePortabilityRequirement::BestEffort,
-            ThemePortabilityRequirement::RequirePortable,
+    #[cfg(all(feature = "diagram-class", feature = "diagram-journey"))]
+    fn ordinary_generated_svg_does_not_run_terminal_document_observers() {
+        for source in [
+            "classDiagram\nA --> B",
+            "journey\n  title Release\n  section Delivery\n    Ship: 5: Maintainer",
         ] {
-            let control = OperationControl::new();
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(portability)
-                .with_resource_policy(
-                    RenderResourcePolicy::unbounded_for_trusted_input()
-                        .with_limit(ResourceLimitId::MaxSvgElements, 1)
-                        .unwrap(),
-                )
-                .begin_session_with_control(control.clone())
-                .unwrap();
-            let parsed = Engine::new()
-                .parse_diagram_for_render_model_sync(
-                    "flowchart TD\nA --> B\n",
-                    ParseOptions::strict(),
-                )
+            let parsed = merman_core::Engine::new()
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
-            let rendered =
-                crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
-                    .unwrap()
-                    .render_svg(
-                        &crate::svg::SvgRenderOptions::default(),
-                        &crate::svg::SvgDebugOptions::default(),
-                    )
-                    .unwrap();
-            let error = rendered
-                .finalize_standalone(None)
-                .err()
-                .expect("standalone finalization must enforce the element limit");
-            assert_max_svg_elements(error);
-
-            let terminal = control
-                .terminal_checkpoint_at(OperationPhase::Export)
-                .expect_err("the finalization failure must terminate the shared operation");
-            let OperationLedgerError::ResourceLimitExceeded(limit) = &terminal else {
-                panic!("expected a resource terminal, got {terminal}");
-            };
-            assert_eq!(limit.id, "max_svg_elements");
-            assert_eq!(limit.phase, OperationPhase::Postprocess);
-            control.cancel();
-            assert_eq!(
-                control.terminal_checkpoint_at(OperationPhase::Emit),
-                Err(terminal),
-                "later cancellation must replay the first resource failure",
-            );
-        }
-    }
-
-    #[test]
-    fn omitted_pipeline_observation_propagates_svg_element_limit() {
-        let session = session_with_max_svg_elements(2);
-        // `RenderedFamilySvg::finalize_standalone(None)` reaches this direct observation path and
-        // records the implicit default as the parity preset without running a draft pipeline.
-        let error = StandaloneSvgArtifact::finalize_exact(
-            r#"<svg xmlns="http://www.w3.org/2000/svg"><g/><g/></svg>"#.to_owned(),
-            true,
-            &SvgPipeline::parity(),
-            &session,
-        )
-        .unwrap_err();
-
-        assert_max_svg_elements(error);
-    }
-
-    #[test]
-    fn readable_pipeline_observation_propagates_expanded_svg_element_limit() {
-        let session = session_with_max_svg_elements(6);
-        let pipeline = SvgPipeline::readable();
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
-        let processed = pipeline
-            .process_owned_buffer_with_metadata_and_math_evidence(
-                SvgPipelineBuffer::new(svg.to_owned()),
-                &super::super::SvgPostprocessMetadata::from_svg(svg),
-                &session,
-                None,
-                true,
-            )
-            .expect("the explicit non-resvg pipeline should stay within the raw element limit");
-        let error =
-            StandaloneSvgArtifact::finalize_exact_buffer(processed, true, &pipeline, &session)
-                .unwrap_err();
-
-        assert_max_svg_elements(error);
-    }
-
-    #[test]
-    fn foreign_object_does_not_mask_raw_svg_element_budget_failure() {
-        let session = session_with_max_svg_elements(2);
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/><g/></svg>"#;
-
-        let error = StandaloneSvgArtifact::finalize_exact(
-            svg.to_owned(),
-            true,
-            &SvgPipeline::parity(),
-            &session,
-        )
-        .expect_err("raw SVG element budgets must run before terminal compatibility checks");
-
-        assert_max_svg_elements(error);
-    }
-
-    #[test]
-    fn parity_observation_rejects_analyzable_use_expansion_over_budget() {
-        let session = session_with_max_svg_elements(10);
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/></svg>"##;
-
-        let error = StandaloneSvgArtifact::finalize_exact(
-            svg.to_owned(),
-            true,
-            &SvgPipeline::parity(),
-            &session,
-        )
-        .expect_err("an analyzable use DAG must retain its expanded resource budget");
-
-        assert_max_svg_elements(error);
-    }
-
-    #[test]
-    fn parity_observation_enforces_expansion_budget_above_native_backend_ceiling() {
-        let mut svg = String::from(r#"<svg><defs><g id="leaf"><path/></g>"#);
-        for index in 0..20 {
-            let target = if index == 0 {
-                "leaf".to_owned()
-            } else {
-                format!("branch-{}", index - 1)
-            };
-            svg.push_str(&format!(
-                r##"<g id="branch-{index}"><use href="#{target}"/><use href="#{target}"/></g>"##
-            ));
-        }
-        svg.push_str(r##"</defs><use href="#branch-19"/></svg>"##);
-        let session = session_with_max_svg_elements(crate::resources::MAX_RESVG_TREE_NODES * 2);
-        let error =
-            StandaloneSvgArtifact::finalize_exact(svg, true, &SvgPipeline::parity(), &session)
-                .expect_err("a native ceiling must not hide a larger explicit resource budget");
-        assert_max_svg_elements(error);
-    }
-
-    #[test]
-    fn strict_parity_compatibility_failure_keeps_expansion_budget_terminal() {
-        let dag = r##"<defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/>"##;
-        for (svg, carry_xml_facts) in [
-            (format!("<svg><foreignObject/>{dag}</svg>"), false),
-            (format!("<svg>{dag}<foreignObject/></svg>"), false),
-            (format!("<svg><foreignObject/>{dag}</svg>"), true),
-            (format!("<svg>{dag}<foreignObject/></svg>"), true),
-        ] {
-            let control = merman_core::OperationControl::new();
             let session = crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .with_resource_policy(
-                    RenderResourcePolicy::unbounded_for_trusted_input()
-                        .with_limit(ResourceLimitId::MaxSvgElements, 10)
-                        .unwrap(),
-                )
-                .begin_session_with_control(control.clone())
+                .begin_session()
                 .unwrap();
-            let pipeline = SvgPipeline::parity();
-            let svg = if carry_xml_facts {
-                pipeline
-                    .process_owned_buffer_with_metadata_and_math_evidence(
-                        SvgPipelineBuffer::new(svg.clone()),
-                        &super::super::SvgPostprocessMetadata::from_svg(&svg),
-                        &session,
-                        None,
-                        true,
-                    )
-                    .unwrap()
-            } else {
-                SvgPipelineBuffer::new(svg)
-            };
-            assert_max_svg_elements(
-                StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session)
-                    .expect_err("compatibility failure must not hide expanded resource work"),
-            );
-            let terminal = control
-                .terminal_checkpoint_at(OperationPhase::Export)
-                .unwrap_err();
-            assert!(
-                matches!(&terminal, merman_core::OperationLedgerError::ResourceLimitExceeded(limit) if limit.id == "max_svg_elements")
-            );
-            control.cancel();
-            assert_eq!(
-                control.terminal_checkpoint_at(OperationPhase::Emit),
-                Err(terminal)
-            );
+            let artifact = crate::family::prepare(
+                parsed,
+                &crate::LayoutOptions::headless_svg_defaults(),
+                session,
+            )
+            .unwrap();
+            let ((svg, terminal_work), xml_work) =
+                final_validation::measure_xml_validation_work(|| {
+                    final_validation::measure_terminal_validation_work(|| {
+                        artifact
+                            .render_svg(
+                                &crate::svg::SvgRenderOptions::default(),
+                                &crate::svg::SvgDebugOptions::default(),
+                            )
+                            .unwrap()
+                            .finalize_standalone(Some(&SvgPipeline::parity()))
+                            .unwrap()
+                            .into_string()
+                    })
+                });
+            assert!(!svg.is_empty());
+            assert_eq!(xml_work.calls, 0);
+            assert_eq!(terminal_work.calls, 0);
+            crate::xml_dom::Document::parse(&svg).expect("producer emits valid SVG XML");
         }
     }
 
@@ -758,7 +247,6 @@ mod tests {
             let session = session_with_max_svg_elements(64);
             let artifact = StandaloneSvgArtifact::finalize_exact(
                 svg.clone(),
-                true,
                 &SvgPipeline::parity(),
                 &session,
             )
@@ -800,7 +288,6 @@ mod tests {
                 .unwrap();
             let artifact = StandaloneSvgArtifact::finalize_exact(
                 svg.clone(),
-                true,
                 &SvgPipeline::parity(),
                 &session,
             )
@@ -812,46 +299,6 @@ mod tests {
                 control.terminal_checkpoint_at(OperationPhase::Export),
                 Ok(())
             );
-            #[cfg(merman_internal_theme_acceptance)]
-            assert!(artifact.svg_artifact_receipt().is_none());
         }
-    }
-
-    #[test]
-    fn resvg_safe_observation_cannot_downgrade_terminal_validation_failure() {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-            .begin_session()
-            .unwrap();
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>"#;
-
-        let error = StandaloneSvgArtifact::finalize_exact(
-            svg.to_owned(),
-            true,
-            &SvgPipeline::resvg_safe(),
-            &session,
-        )
-        .expect_err("a resvg-safe artifact must fail closed on terminal validation errors");
-
-        assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    #[test]
-    fn finalized_svg_artifact_owns_the_generic_theme_receipt() {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h1v1z"/></svg>"#;
-        let sealed = crate::svg::SvgPipeline::resvg_safe()
-            .process_resvg_compatible(svg, &session)
-            .unwrap();
-        let artifact = StandaloneSvgArtifact::from_resvg_compatible(sealed);
-        let receipt = artifact
-            .svg_artifact_receipt()
-            .expect("the finalized renderer artifact must retain its receipt");
-
-        assert!(receipt.proves_artifact(receipt.artifact_digest()));
-        assert_eq!(receipt.view_box(), [0.0, 0.0, 10.0, 10.0]);
     }
 }

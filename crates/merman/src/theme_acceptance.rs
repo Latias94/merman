@@ -1,15 +1,11 @@
-/// Borrowed production-owned artifact and its inseparable target admission receipt.
+/// Borrowed output bytes and the actual target result observed by qualification.
 ///
-/// The acceptance harness may inspect the exact bytes, but it cannot pair arbitrary bytes with
-/// a receipt or reconstruct the production target seal. A finalized document view also carries
-/// the generic SVG observation. Raster and PDF views intentionally expose only their own
-/// target receipt; callers that need source-document SVG facts must retain the originating
-/// `RenderedDocument` view.
-#[derive(Debug, Clone, Copy)]
+/// Qualification owns any XML observations and content identities it needs. The production facade
+/// supplies only completed bytes and the target-local outcome from the same output object.
+#[derive(Debug, Clone)]
 pub struct TargetArtifactView<'a> {
     bytes: &'a [u8],
-    receipt: &'a crate::TargetAdmissionReceipt,
-    svg_artifact_receipt: Option<&'a merman_render::__private::SvgArtifactReceipt>,
+    receipt: crate::TargetAdmissionReceipt,
 }
 
 impl<'a> TargetArtifactView<'a> {
@@ -17,7 +13,6 @@ impl<'a> TargetArtifactView<'a> {
         Self {
             bytes: document.svg().as_bytes(),
             receipt: document.standalone_svg_admission(),
-            svg_artifact_receipt: document.svg_artifact_receipt(),
         }
     }
 
@@ -25,8 +20,7 @@ impl<'a> TargetArtifactView<'a> {
     pub fn from_raster_output(output: &'a crate::RasterOutput) -> Self {
         Self {
             bytes: output.bytes(),
-            receipt: output.admission(),
-            svg_artifact_receipt: None,
+            receipt: output.admission().clone(),
         }
     }
 
@@ -34,30 +28,16 @@ impl<'a> TargetArtifactView<'a> {
     pub fn from_pdf_output(output: &'a crate::PdfOutput) -> Self {
         Self {
             bytes: output.bytes(),
-            receipt: output.admission(),
-            svg_artifact_receipt: None,
+            receipt: output.admission().clone(),
         }
     }
 
-    pub const fn bytes(self) -> &'a [u8] {
+    pub const fn bytes(&self) -> &'a [u8] {
         self.bytes
     }
 
-    pub const fn receipt(self) -> &'a crate::TargetAdmissionReceipt {
-        self.receipt
-    }
-
-    pub const fn svg_artifact_receipt(
-        self,
-    ) -> Option<&'a merman_render::__private::SvgArtifactReceipt> {
-        self.svg_artifact_receipt
-    }
-
-    pub const fn renderer_receipt_digest(self) -> [u8; 32] {
-        match self.svg_artifact_receipt {
-            Some(receipt) => receipt.digest(),
-            None => self.receipt.receipt_digest(),
-        }
+    pub const fn receipt(&self) -> &crate::TargetAdmissionReceipt {
+        &self.receipt
     }
 }
 
@@ -130,10 +110,6 @@ impl<'a> ThemeAcceptanceEvidence<'a> {
         self.projection.source_residual_count
     }
 
-    pub const fn compatibility_residual_count(&self) -> usize {
-        self.projection.compatibility_residual_count
-    }
-
     pub const fn mermaid_compatibility_residual_count(&self) -> usize {
         self.projection.mermaid_compatibility_residual_count
     }
@@ -157,16 +133,6 @@ impl<'a> ThemeAcceptanceEvidence<'a> {
             Some(report) => Some(report.portability_requirement()),
             None => None,
         }
-    }
-
-    pub const fn prepared_text_layout(
-        &self,
-    ) -> Option<&'a merman_render::text::PreparedTextLayoutReport> {
-        self.projection.prepared_text_layout
-    }
-
-    pub const fn text_layout_failure(&self) -> Option<merman_render::text::TextLayoutFailure> {
-        self.projection.text_layout_failure
     }
 
     pub const fn effective_theme_resource_policy(

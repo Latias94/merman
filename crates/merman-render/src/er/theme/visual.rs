@@ -3,27 +3,15 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ErTextVisual {
-    pub(crate) style_attr: String,
-    svg_style_attr: String,
     pub(crate) typed_style: String,
     pub(crate) wrapper_attr: String,
     pub(crate) inline_attr: String,
 }
 
 impl ErTextVisual {
-    pub(crate) fn label_style_attr(&self, html_labels: bool) -> &str {
-        if html_labels {
-            &self.style_attr
-        } else {
-            &self.svg_style_attr
-        }
-    }
-
     fn byte_len(&self) -> usize {
-        self.style_attr
+        self.typed_style
             .len()
-            .saturating_add(self.svg_style_attr.len())
-            .saturating_add(self.typed_style.len())
             .saturating_add(self.wrapper_attr.len())
             .saturating_add(self.inline_attr.len())
     }
@@ -35,7 +23,6 @@ pub(crate) struct ErRowVisual {
     pub(crate) has_fill: bool,
     pub(crate) fill_style_attr: String,
     pub(crate) border_style_attr: String,
-    pub(crate) typed_style: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -52,8 +39,6 @@ pub(crate) struct ErSourceVisual {
     pub(crate) group_style_attr: String,
     pub(crate) override_style_attr: String,
     pub(crate) base_fill_style_attr: String,
-    pub(crate) name: ErTextVisual,
-    pub(crate) attributes: Vec<[ErTextVisual; 4]>,
     pub(crate) rows: Vec<ErRowVisual>,
 }
 
@@ -75,19 +60,11 @@ impl ErSourceVisual {
         ]
         .into_iter()
         .fold(0usize, |bytes, value| bytes.saturating_add(value.len()));
-        let bytes = self
-            .attributes
-            .iter()
-            .flatten()
-            .fold(bytes.saturating_add(self.name.byte_len()), |bytes, text| {
-                bytes.saturating_add(text.byte_len())
-            });
         self.rows.iter().fold(bytes, |bytes, row| {
             bytes
                 .saturating_add(row.fill.len())
                 .saturating_add(row.fill_style_attr.len())
                 .saturating_add(row.border_style_attr.len())
-                .saturating_add(row.typed_style.len())
         })
     }
 }
@@ -141,31 +118,15 @@ fn path_attr(style: &str) -> String {
     }
 }
 
-pub(super) fn text_visual(
-    source: &ErEntitySourceStyle,
-    paint: Option<(usize, &str)>,
-) -> ErTextVisual {
+pub(super) fn text_visual(paint: Option<&str>) -> ErTextVisual {
     let typed_style = paint
-        .map(|(_, css)| format!("color:{css};fill:{css}"))
+        .map(|css| format!("color:{css};fill:{css}"))
         .unwrap_or_default();
-    let label_style = |svg_text| {
-        let mut source_style =
-            declarations_for_label_mode(&source.text_declarations, true, "; ", svg_text);
-        if !typed_style.is_empty() {
-            if !source_style.is_empty() {
-                source_style.push_str("; ");
-            }
-            source_style.push_str(&typed_style);
-        }
-        attr(&source_style)
-    };
     ErTextVisual {
-        style_attr: label_style(false),
-        svg_style_attr: label_style(true),
         inline_attr: path_attr(&typed_style),
         typed_style,
         wrapper_attr: paint
-            .map(|(_, css)| {
+            .map(|css| {
                 format!(
                     r#" style="fill:{} !important""#,
                     crate::svg::escape_attr(css)
@@ -175,19 +136,18 @@ pub(super) fn text_visual(
     }
 }
 
-pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
-    let rect = declarations(&source.rect_declarations, true, "; ");
+pub(super) fn label_style(source: &ErEntitySourceStyle, html_labels: bool) -> String {
+    crate::svg::escape_attr(&declarations_for_label_mode(
+        &source.text_declarations,
+        true,
+        "; ",
+        !html_labels,
+    ))
+}
+
+fn source_text_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     let text = declarations(&source.text_declarations, true, "; ");
-    let source_text_attr = format!(r#"style="{}""#, crate::svg::escape_xml(&text));
     ErSourceVisual {
-        rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&rect)),
-        svg_source_text_attr: attr(&declarations_for_label_mode(
-            &source.text_declarations,
-            true,
-            "; ",
-            true,
-        )),
-        source_text_attr,
         label_div_color_prefix: source
             .text_value("color")
             .map(|value| {
@@ -206,6 +166,22 @@ pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     }
 }
 
+pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
+    let rect = declarations(&source.rect_declarations, true, "; ");
+    let text = declarations(&source.text_declarations, true, "; ");
+    ErSourceVisual {
+        rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&rect)),
+        source_text_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&text)),
+        svg_source_text_attr: attr(&declarations_for_label_mode(
+            &source.text_declarations,
+            true,
+            "; ",
+            true,
+        )),
+        ..Default::default()
+    }
+}
+
 impl ErEntityThemePlan {
     pub(super) fn prepare_visuals(
         mut self,
@@ -213,13 +189,7 @@ impl ErEntityThemePlan {
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         for terminal in self.text_terminals.values_mut() {
-            terminal.visual = text_visual(
-                &ErEntitySourceStyle::default(),
-                terminal
-                    .paint
-                    .as_ref()
-                    .map(|p| (p.rule_index, p.css.as_str())),
-            );
+            terminal.visual = text_visual(terminal.paint.as_ref().map(|paint| paint.css.as_str()));
             work.charge(1usize.saturating_add(terminal.visual.byte_len()))?;
         }
         for (index, entity) in model.entities.values().enumerate() {
@@ -227,7 +197,7 @@ impl ErEntityThemePlan {
             let source = &self.entity_source_styles[index];
             let fill = self.typed_fill(index);
             let stroke = self.typed_stroke(index);
-            let mut output = source_visual(source);
+            let mut output = source_text_visual(source);
             let mut rect = Vec::new();
             if !source.rect_declarations.is_empty() {
                 rect.push(declarations(&source.rect_declarations, true, "; "));
@@ -306,23 +276,7 @@ impl ErEntityThemePlan {
                 }
                 path_attr(&parts.join("; "))
             };
-            output.name = text_visual(source, self.typed_entity_name(&entity.id));
             for row_index in 0..entity.attributes.len() {
-                output.attributes.push(std::array::from_fn(|i| {
-                    text_visual(
-                        source,
-                        self.typed_attribute_text(
-                            &entity.id,
-                            row_index,
-                            [
-                                ErAttributeTextRole::Type,
-                                ErAttributeTextRole::Name,
-                                ErAttributeTextRole::Keys,
-                                ErAttributeTextRole::Comment,
-                            ][i],
-                        ),
-                    )
-                }));
                 let baseline = if row_index.is_multiple_of(2) {
                     self.css_binding.row_odd.as_deref()
                 } else {
@@ -350,7 +304,6 @@ impl ErEntityThemePlan {
                         || typed.is_some(),
                     fill_style_attr,
                     border_style_attr,
-                    typed_style,
                 });
             }
             work.charge(output.byte_len())?;
@@ -361,16 +314,14 @@ impl ErEntityThemePlan {
             let terminal = self
                 .text_terminals
                 .get(&ErTextTerminalId::SubgraphLabel(id.clone().into()));
-            output.name = text_visual(
-                source,
-                terminal
-                    .and_then(|t| t.paint.as_ref())
-                    .map(|p| (p.rule_index, p.css.as_str())),
-            );
             output.subgraph_text_style = source
                 .text_value("color")
                 .map(|css| format!("fill:{css} !important"))
-                .unwrap_or_else(|| output.name.typed_style.clone());
+                .unwrap_or_else(|| {
+                    terminal
+                        .map(|terminal| terminal.visual.typed_style.clone())
+                        .unwrap_or_default()
+                });
             work.charge(output.byte_len())?;
             source.visual = output;
         }
@@ -381,47 +332,6 @@ impl ErEntityThemePlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn baseline_plan_prepares_source_visuals_in_both_label_modes() {
-        let model: merman_core::diagrams::er::ErDiagramRenderModel = serde_json::from_value(serde_json::json!({
-            "direction": "TB", "entities": {"A": {
-                "id": "A", "label": "A", "cssStyles": ["fill:#123456 !important", "stroke-width:2px", "color:#654321"],
-                "attributes": [{"type": "string", "name": "id", "keys": [], "comment": ""}]
-            }}
-        })).unwrap();
-        let layout: crate::model::ErDiagramLayout = serde_json::from_value(serde_json::json!({
-            "nodes": [], "edges": [], "bounds": null
-        }))
-        .unwrap();
-        for html in [false, true] {
-            let config =
-                merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels": html}));
-            let meter = OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            );
-            let plan = ErEntityThemePlan::resolve(
-                None,
-                &config,
-                InheritedFontStackPlan::resolve_property_local(None, &config),
-                ErBaseFontSizePlan::resolve(None, &config),
-                html,
-                None,
-                &model,
-                &layout,
-                &meter,
-            )
-            .unwrap();
-            let visual = &plan.source_style(0).unwrap().visual;
-            assert_eq!(visual.box_fill, "#123456");
-            assert_eq!(visual.stroke_width_attr, "2");
-            assert_eq!(visual.name.style_attr, "style=\"color:#654321 !important\"");
-            assert!(visual.name.typed_style.is_empty());
-            assert_eq!(visual.rows.len(), 1);
-            assert_eq!(visual.attributes.len(), 1);
-            assert!(visual.span_style_attr.contains("color:#654321 !important"));
-        }
-    }
 
     #[test]
     fn er_source_important_declarations_are_serialized_once() {
@@ -441,23 +351,5 @@ mod tests {
             visual.rect_style_attr,
             "style=\"fill:#123456 !important; stroke:#654321 !important\""
         );
-    }
-
-    #[test]
-    fn source_and_typed_text_preserve_declaration_order_and_proof_identity() {
-        let entity = merman_core::diagrams::er::ErEntityRenderModel {
-            css_styles: vec!["color:#123456 !important".into()],
-            ..Default::default()
-        };
-        let source = compile_er_entity_source_style(&entity, &indexmap::IndexMap::new());
-        let authored = text_visual(&source, None);
-        assert_eq!(authored.style_attr, "style=\"color:#123456 !important\"");
-        assert!(authored.typed_style.is_empty());
-        let typed = text_visual(&source, Some((7, "#123456")));
-        assert_eq!(
-            typed.style_attr,
-            "style=\"color:#123456 !important; color:#123456;fill:#123456\""
-        );
-        assert_eq!(typed.typed_style, "color:#123456;fill:#123456");
     }
 }

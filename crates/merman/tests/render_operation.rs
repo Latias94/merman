@@ -18,9 +18,6 @@ use merman::{
 };
 
 #[cfg(feature = "svg")]
-use sha2::{Digest as _, Sha256};
-
-#[cfg(feature = "svg")]
 #[derive(Debug)]
 struct CancellingTextMeasurer {
     control: OperationControl,
@@ -880,10 +877,6 @@ fn themed_state_svg_reports_verified_coarse_theme_evidence() {
 
     let admission = output.admission();
     assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
-    assert_eq!(
-        admission.artifact_digest(),
-        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
-    );
 }
 
 #[cfg(feature = "svg")]
@@ -1161,15 +1154,10 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
         merman::TargetAdmissionStatus::HostDependent
     );
     assert!(!admission.status().is_portable());
-    assert_ne!(admission.receipt_digest(), [0; 32]);
     assert!(
         admission
             .reasons()
             .contains(&merman::TargetAdmissionReason::SvgFontsNotSelfContained)
-    );
-    assert_eq!(
-        admission.artifact_digest(),
-        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
     );
 }
 
@@ -1207,7 +1195,7 @@ fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn rendered_document_retains_terminal_resource_identity() {
+fn rendered_document_retains_selected_theme_and_portability() {
     let theme = merman::svg::DiagramThemeCompiler::new()
         .compile_preset(merman::svg::ThemePreset::OneDark)
         .expect("one-dark theme should compile");
@@ -1227,36 +1215,13 @@ fn rendered_document_retains_terminal_resource_identity() {
     };
 
     assert!(document.svg().starts_with("<svg"));
-    assert_ne!(document.resource_fingerprint().as_bytes(), &[0; 32]);
     assert_eq!(
         document.portability().family_id(),
         document.evidence().family_id()
     );
     assert_eq!(
-        document.portability().resource_fingerprint(),
-        document.resource_fingerprint()
-    );
-    assert_eq!(
-        document.portability().font_catalog_fingerprint(),
-        document.evidence().font_catalog_fingerprint()
-    );
-    assert_eq!(
         document.standalone_svg_admission().artifact_kind(),
         merman::RenderArtifactKind::Svg
-    );
-    assert_eq!(
-        document.standalone_svg_admission().document_digest(),
-        document.document_digest()
-    );
-    assert_eq!(
-        document.standalone_svg_admission().resource_fingerprint(),
-        document.resource_fingerprint()
-    );
-    assert_eq!(
-        document
-            .standalone_svg_admission()
-            .font_catalog_fingerprint(),
-        document.evidence().font_catalog_fingerprint()
     );
     assert_eq!(
         document.evidence().theme_recipe_fingerprint(),
@@ -1347,87 +1312,6 @@ fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn rendered_document_digests_are_deterministic_for_one_operation_identity() {
-    fn render() -> merman::RenderedDocument {
-        let output = Renderer::new()
-            .render(RenderRequest::document(
-                "flowchart TD\nA[Start] --> B[Done]",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            ))
-            .expect("rendered document should complete");
-        let RenderOutput::Document(Some(document)) = output else {
-            panic!("expected a rendered document");
-        };
-        document
-    }
-
-    let first = render();
-    let second = render();
-    assert_eq!(first.document_digest(), second.document_digest());
-    assert_eq!(
-        first.standalone_svg_admission().target_evidence_digest(),
-        second.standalone_svg_admission().target_evidence_digest()
-    );
-    assert_eq!(
-        first.standalone_svg_admission().receipt_digest(),
-        second.standalone_svg_admission().receipt_digest()
-    );
-    assert_eq!(
-        first.standalone_svg_admission().artifact_digest(),
-        second.standalone_svg_admission().artifact_digest()
-    );
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn rendered_document_digest_binds_actual_host_measurement_identity() {
-    let first = render_host_measured_document_with_profile(
-        merman::svg::ThemePortabilityRequirement::BestEffort,
-        "merman.test-display-host-a",
-    );
-    let second = render_host_measured_document_with_profile(
-        merman::svg::ThemePortabilityRequirement::BestEffort,
-        "merman.test-display-host-b",
-    );
-
-    assert_eq!(first.svg(), second.svg());
-    assert_ne!(first.document_digest(), second.document_digest());
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn unthemed_document_digest_binds_the_effective_portability_requirement() {
-    fn render(portability: merman::svg::ThemePortabilityRequirement) -> merman::RenderedDocument {
-        let request = merman::SvgRequest {
-            environment: merman::SvgEnvironment::deterministic()
-                .with_theme_portability_requirement(portability),
-            ..merman::SvgRequest::default()
-        };
-        let output = Renderer::new()
-            .render(RenderRequest::document(
-                "info",
-                OperationControl::new(),
-                request,
-            ))
-            .expect("unthemed document should complete");
-        let RenderOutput::Document(Some(document)) = output else {
-            panic!("expected an unthemed rendered document");
-        };
-        document
-    }
-
-    let best_effort = render(merman::svg::ThemePortabilityRequirement::BestEffort);
-    let require_portable = render(merman::svg::ThemePortabilityRequirement::RequirePortable);
-    assert_eq!(best_effort.svg(), require_portable.svg());
-    assert_ne!(
-        best_effort.document_digest(),
-        require_portable.document_digest()
-    );
-}
-
-#[cfg(feature = "svg")]
-#[test]
 fn host_display_measurements_make_document_and_svg_target_host_dependent() {
     let document =
         render_host_measured_document(merman::svg::ThemePortabilityRequirement::BestEffort);
@@ -1465,6 +1349,7 @@ fn host_display_measurements_make_document_and_svg_target_host_dependent() {
 #[cfg(feature = "svg")]
 #[test]
 fn require_portable_svg_target_rejects_actual_host_display_measurements() {
+    const SOURCE: &str = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Start] --> B[Done]";
     let identity = merman::svg::TextMeasurementProfileIdentity::new(
         merman::svg::MeasurementProfileId::new("merman.test-strict-svg-host")
             .expect("test profile id"),
@@ -1488,17 +1373,23 @@ fn require_portable_svg_target_rejects_actual_host_display_measurements() {
 
     let error = Renderer::new()
         .render(
-            RenderRequest::svg(
-                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Start] --> B[Done]",
-                OperationControl::new(),
-                request,
-            )
-            .with_theme(flowchart_paint_theme()),
+            RenderRequest::svg(SOURCE, OperationControl::new(), request.clone())
+                .with_theme(flowchart_paint_theme()),
         )
         .expect_err("strict SVG admission must reject actual host measurement provenance");
+    let data_error = Renderer::new()
+        .render_svg_data(
+            RenderRequest::svg(SOURCE, OperationControl::new(), request)
+                .with_theme(flowchart_paint_theme()),
+        )
+        .expect_err("strict SVG data must reject the same host measurement provenance");
+    let RenderError::TargetAdmission(data_error) = data_error else {
+        panic!("strict SVG data rejection must retain target evidence: {data_error}");
+    };
     let RenderError::TargetAdmission(error) = error else {
         panic!("strict SVG rejection must retain target evidence: {error}");
     };
+    assert_eq!(data_error.receipt(), error.receipt());
     assert_eq!(
         error.receipt().artifact_kind(),
         merman::RenderArtifactKind::Svg
@@ -1513,6 +1404,42 @@ fn require_portable_svg_target_rejects_actual_host_display_measurements() {
             .reasons()
             .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
     );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn portable_svg_data_matches_the_result_for_a_scene_without_font_dependencies() {
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..merman::SvgRequest::default()
+    };
+    let renderer = Renderer::new();
+    let output = renderer
+        .render(RenderRequest::svg(
+            "classDiagram\n",
+            OperationControl::new(),
+            request.clone(),
+        ))
+        .expect("an empty Class scene has no unresolved font dependency");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected portable standalone SVG");
+    };
+    assert_eq!(
+        output.admission().status(),
+        merman::TargetAdmissionStatus::Portable
+    );
+    let data = renderer
+        .render_svg_data(RenderRequest::svg(
+            "classDiagram\n",
+            OperationControl::new(),
+            request,
+        ))
+        .expect("data path admits the same portable scene")
+        .expect("Class diagram detected");
+    assert_eq!(data, output.svg());
 }
 
 #[cfg(feature = "svg")]
@@ -1545,10 +1472,6 @@ fn ordinary_svg_leaves_native_admission_unverified() {
             assert!(reasons.contains(&"svg_terminal_unverified"));
             assert!(!reasons.contains(&"svg_terminal_validation_failed"));
             assert!(!reasons.contains(&"svg_fonts_not_self_contained"));
-            assert_eq!(
-                output.admission().artifact_digest(),
-                <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
-            );
         }
     }
 }
@@ -1605,9 +1528,8 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
         "{}",
         parity.svg()
     );
-    let parity_digest = <[u8; 32]>::from(Sha256::digest(parity.svg().as_bytes()));
+
     let parity_receipt = parity.admission();
-    assert_eq!(parity_receipt.artifact_digest(), parity_digest);
     assert_eq!(
         parity_receipt.status(),
         merman::TargetAdmissionStatus::Unverified
@@ -1618,7 +1540,6 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
             .contains(&merman::TargetAdmissionReason::SvgTerminalUnverified)
     );
     let parity_error = render_strict(merman::svg::SvgPipeline::parity());
-    assert_eq!(parity_error.receipt().artifact_digest(), parity_digest);
     assert_eq!(
         parity_error.receipt().status(),
         merman::TargetAdmissionStatus::Rejected
@@ -1637,9 +1558,12 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
         "{}",
         readable.svg()
     );
-    let readable_digest = <[u8; 32]>::from(Sha256::digest(readable.svg().as_bytes()));
+
     let readable_error = render_strict(merman::svg::SvgPipeline::readable());
-    assert_eq!(readable_error.receipt().artifact_digest(), readable_digest);
+    assert_eq!(
+        readable_error.receipt().status(),
+        merman::TargetAdmissionStatus::Rejected
+    );
 
     let resvg_safe = render_best_effort(merman::svg::SvgPipeline::resvg_safe());
     assert!(
@@ -1681,10 +1605,7 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
         render(merman::svg::SvgPipeline::parity().with_postprocessor(MissingFragmentPostprocessor));
     assert!(output.svg().contains("data-test-missing-fragment"));
     let admission = output.admission();
-    assert_eq!(
-        admission.artifact_digest(),
-        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
-    );
+    assert_ne!(output.svg(), baseline.svg());
     assert_eq!(admission.status(), merman::TargetAdmissionStatus::Rejected);
     assert!(
         admission
@@ -1700,14 +1621,6 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
         !admission
             .reasons()
             .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
-    );
-    assert_ne!(
-        admission.resource_fingerprint(),
-        baseline.admission().resource_fingerprint()
-    );
-    assert_ne!(
-        admission.document_digest(),
-        baseline.admission().document_digest()
     );
 
     let strict_error = Renderer::new()
@@ -1733,46 +1646,12 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
     let RenderError::TargetAdmission(strict_error) = strict_error else {
         panic!("strict rejection should retain target evidence: {strict_error}");
     };
-    assert_eq!(
-        strict_error.receipt().artifact_digest(),
-        admission.artifact_digest()
-    );
     assert!(
         strict_error
             .receipt()
             .reasons()
             .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
     );
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn standalone_svg_terminal_observation_propagates_resource_limits() {
-    for pipeline in [None, Some(merman::svg::SvgPipeline::parity())] {
-        let resources = merman::svg::RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::svg::ResourceLimitId::MaxSvgElements, 2)
-            .expect("valid SVG element limit");
-        let request = merman::SvgRequest {
-            environment: merman::SvgEnvironment::deterministic().with_resource_policy(resources),
-            pipeline,
-            ..merman::SvgRequest::default()
-        };
-        let error = Renderer::new()
-            .render(RenderRequest::svg(
-                "flowchart TD\nA --> B",
-                OperationControl::new(),
-                request,
-            ))
-            .expect_err("terminal SVG observation must not downgrade a resource limit");
-
-        assert!(matches!(
-            error,
-            RenderError::ResourceLimitExceeded(limit)
-                if limit.id == "max_svg_elements"
-                    && limit.phase == "svg_postprocess"
-                    && limit.maximum == 2
-        ));
-    }
 }
 
 #[cfg(feature = "png")]
@@ -1878,7 +1757,7 @@ fn require_portable_without_a_theme_does_not_fall_back_to_best_effort() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn strict_document_completion_preserves_the_standalone_svg_receipt() {
+fn strict_document_completion_allows_an_explicit_standalone_svg_evaluation() {
     let theme = portable_state_theme();
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
@@ -1909,10 +1788,6 @@ fn strict_document_completion_preserves_the_standalone_svg_receipt() {
         merman::TargetAdmissionStatus::Portable
     );
     assert!(!document.standalone_svg_admission().reasons().is_empty());
-    assert_eq!(
-        document.standalone_svg_admission().document_digest(),
-        document.document_digest()
-    );
 }
 
 #[cfg(feature = "png")]
@@ -1993,69 +1868,24 @@ fn one_rendered_document_projects_all_native_targets_with_atomic_receipts() {
         .expect("PDF projection should succeed");
 
     assert!(png.bytes().starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(jpeg.bytes().starts_with(b"\xff\xd8\xff"));
+    assert!(pdf.bytes().starts_with(b"%PDF-"));
     assert_eq!(png.plan(), png.export_report().raster());
     assert_eq!(jpeg.plan(), jpeg.export_report().raster());
     assert_eq!(pdf.plan(), pdf.export_report().filters());
 
-    for (kind, bytes, receipt) in [
-        (
-            merman::RenderArtifactKind::Png,
-            png.bytes(),
-            png.admission(),
-        ),
-        (
-            merman::RenderArtifactKind::Jpeg,
-            jpeg.bytes(),
-            jpeg.admission(),
-        ),
-        (
-            merman::RenderArtifactKind::Pdf,
-            pdf.bytes(),
-            pdf.admission(),
-        ),
+    for (kind, receipt) in [
+        (merman::RenderArtifactKind::Png, png.admission()),
+        (merman::RenderArtifactKind::Jpeg, jpeg.admission()),
+        (merman::RenderArtifactKind::Pdf, pdf.admission()),
     ] {
         assert_eq!(receipt.artifact_kind(), kind);
-        assert_eq!(receipt.document_digest(), document.document_digest());
-        assert_eq!(
-            receipt.resource_fingerprint(),
-            document.resource_fingerprint()
-        );
-        assert_eq!(
-            receipt.font_catalog_fingerprint(),
-            document.evidence().font_catalog_fingerprint()
-        );
-        let expected_artifact_digest: [u8; 32] = Sha256::digest(bytes).into();
-        assert_eq!(receipt.artifact_digest(), expected_artifact_digest);
-        assert_ne!(
-            receipt.target_evidence_digest(),
-            receipt.artifact_digest(),
-            "target evidence and artifact bytes are independently bound"
-        );
+
         assert_ne!(
             receipt.status(),
             merman::TargetAdmissionStatus::Rejected,
             "a successfully projected built-in target must not silently reject its own artifact"
         );
-    }
-
-    let receipts = [
-        document.standalone_svg_admission(),
-        png.admission(),
-        jpeg.admission(),
-        pdf.admission(),
-    ];
-    for receipt in &receipts {
-        assert_eq!(receipt.document_digest(), document.document_digest());
-        assert_ne!(receipt.receipt_digest(), [0; 32]);
-    }
-    for (index, receipt) in receipts.iter().enumerate() {
-        for other in &receipts[index + 1..] {
-            assert_ne!(
-                receipt.receipt_digest(),
-                other.receipt_digest(),
-                "one document's target receipts must retain distinct canonical identities"
-            );
-        }
     }
 }
 
@@ -2101,7 +1931,7 @@ fn rendered_document_prepares_each_native_target_before_encoding() {
     let pdf = pdf.encode().expect("prepared PDF should encode");
 
     for receipt in [png.admission(), jpeg.admission(), pdf.admission()] {
-        assert_eq!(receipt.document_digest(), document.document_digest());
+        assert_ne!(receipt.status(), merman::TargetAdmissionStatus::Rejected);
     }
 }
 

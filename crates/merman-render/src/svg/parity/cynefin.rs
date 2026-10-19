@@ -23,7 +23,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         .filter(|value| !value.is_empty())
         .or_else(|| diagram_title.filter(|value| !value.is_empty()));
     let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id.semantic_str());
-    let mut surface_receipt = typography_theme.begin_terminal_receipt(layout, title);
+    let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "cynefin");
@@ -59,7 +59,6 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         diagram_id,
         theme,
         typography_theme,
-        &mut surface_receipt,
     )?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
@@ -406,7 +405,6 @@ fn write_cynefin_css(
     diagram_id: SvgDiagramId<'_>,
     theme: &crate::cynefin::CynefinTheme,
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
-    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     let id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
     let text_color = &theme.text_color;
@@ -455,11 +453,5 @@ fn write_cynefin_css(
         diagram_id,
     )?;
     out.checkpoint()?;
-    surface_receipt.record_css_emission(
-        common_css.font_family(),
-        common_css.font_family(),
-        common_css.font_family(),
-        text_color,
-    );
     Ok(())
 }

@@ -282,7 +282,7 @@ impl FlowchartTextPaintPlan {
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::from_theme(self.theme.as_ref());
+        let mut evidence = FamilyThemeEvidence::outcomes();
         let Some(theme) = &self.theme else {
             return evidence;
         };

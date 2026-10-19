@@ -36,26 +36,23 @@ impl KanbanCssBinding {
         tasks: &KanbanTaskTheme,
         resolved_text_color: Option<&str>,
     ) -> crate::Result<Self> {
-        Self::with_typography(
-            config,
-            tasks.resolved_typography_for_css(),
-            resolved_text_color,
-        )
-    }
-
-    fn with_typography(
-        config: &Value,
-        typography: Option<(&str, &str)>,
-        resolved_text_color: Option<&str>,
-    ) -> crate::Result<Self> {
-        let mut common = match typography {
+        let common = match tasks.resolved_typography_for_css() {
             Some((family, size)) => PreparedCommonCss::with_resolved_typography(
                 config,
                 family.to_owned(),
                 size.to_owned(),
             ),
-            None => PreparedCommonCss::new(config, None),
+            None => PreparedCommonCss::new(config, Some(tasks.font_family_css()))
+                .with_configured_root_font_family(config),
         };
+        Self::from_common(config, common, resolved_text_color)
+    }
+
+    fn from_common(
+        config: &Value,
+        mut common: PreparedCommonCss,
+        resolved_text_color: Option<&str>,
+    ) -> crate::Result<Self> {
         if let Some(color) = resolved_text_color {
             common = common.with_text_color(color);
         }
@@ -96,7 +93,15 @@ impl KanbanCssBinding {
         config: &Value,
         typography: Option<(&str, &str)>,
     ) -> crate::Result<Self> {
-        Self::with_typography(config, typography, None)
+        let common = match typography {
+            Some((family, size)) => PreparedCommonCss::with_resolved_typography(
+                config,
+                family.to_owned(),
+                size.to_owned(),
+            ),
+            None => PreparedCommonCss::new(config, None),
+        };
+        Self::from_common(config, common, None)
     }
 }
 

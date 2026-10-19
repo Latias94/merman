@@ -31,9 +31,11 @@ impl CachedRenderEngine {
         &self,
         source: &[u8],
         control: merman::OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_svg_output(source, control)
+        self.plan
+            .render_svg_output(source, control, include_metadata)
     }
 
     pub(crate) fn layout_json(
@@ -68,9 +70,11 @@ impl CachedRenderEngine {
         &self,
         source: &[u8],
         control: merman::OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_png_output(source, control)
+        self.plan
+            .render_png_output(source, control, include_metadata)
     }
 
     #[cfg(feature = "jpeg")]
@@ -78,9 +82,11 @@ impl CachedRenderEngine {
         &self,
         source: &[u8],
         control: merman::OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_jpeg_output(source, control)
+        self.plan
+            .render_jpeg_output(source, control, include_metadata)
     }
 
     #[cfg(feature = "pdf")]
@@ -88,9 +94,11 @@ impl CachedRenderEngine {
         &self,
         source: &[u8],
         control: merman::OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_pdf_output(source, control)
+        self.plan
+            .render_pdf_output(source, control, include_metadata)
     }
 }
 

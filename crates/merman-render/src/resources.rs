@@ -28,16 +28,12 @@ const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
 /// Hard recursion cap used by the SVG backend on WebAssembly targets.
-///
-/// Icon-body admission is intentionally derived from this smallest supported backend cap so a
-/// registry accepted on native targets remains portable to WebAssembly.
 pub const WASM_RESVG_TREE_DEPTH_HARD_CAP: usize = 64;
-/// Maximum XML nesting accepted inside a portable icon body.
+/// Maximum XML nesting accepted by icon-body input admission.
 ///
-/// The icon renderer adds at least one wrapping `<g>` before whole-document validation, so this
-/// remains strictly below the WebAssembly backend hard cap.
+/// This bounds icon parsing and sanitization independently of the eventual output consumer.
+/// Native conversion separately enforces its target's resolved SVG backend tree limits.
 pub const MAX_PORTABLE_ICON_BODY_XML_DEPTH: usize = 32;
-const _: () = assert!(MAX_PORTABLE_ICON_BODY_XML_DEPTH < WASM_RESVG_TREE_DEPTH_HARD_CAP);
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const MAX_RESVG_TREE_DEPTH: usize = 256;
@@ -129,6 +125,10 @@ impl std::fmt::Display for ResourceLimitPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RenderResourceLimitId {
     MaxSvgBytes,
+    /// SVG input, postprocessing, and native reference-expansion budget.
+    ///
+    /// Ordinary diagram producers use source, model, layout-work, and serialized-byte bounds;
+    /// they do not count their emitted XML elements.
     MaxSvgElements,
     MaxLayoutWorkUnits,
     MaxPreparedTextRetainedBytes,
@@ -249,7 +249,7 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         id: ResourceLimitId::MaxSvgElements,
         stable_id: "max_svg_elements",
         phase: ResourceLimitPhase::SvgPostprocess,
-        description: "Maximum SVG element count",
+        description: "Maximum admitted SVG elements or reference-expanded work during SVG input admission, postprocessing, and native conversion",
         overridable: true,
         hard_cap: false,
         minimum_value: 1,
@@ -639,6 +639,10 @@ impl RenderResourcePolicy {
         self.check_render_limit(phase, RenderResourceLimitId::MaxSvgBytes, bytes)
     }
 
+    /// Checks native SVG backend tree admission after reference expansion.
+    ///
+    /// Ordinary SVG producers and browser publication must not inherit these backend hard caps.
+    /// Their explicit SVG admission and postprocessing stages use `max_svg_elements` separately.
     pub fn check_svg_structure(
         &self,
         elements: usize,
@@ -677,7 +681,7 @@ impl RenderResourcePolicy {
         }
         Err(ResourceLimitExceeded {
             cause: ResourceLimitCause::Ceiling,
-            phase: ResourceLimitPhase::SvgOutput,
+            phase: ResourceLimitPhase::SvgPostprocess,
             limit: SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID,
             actual: value.abs().ceil() as usize,
             max: MAX_SVG_BACKEND_COORDINATE_MAGNITUDE,
@@ -824,8 +828,8 @@ pub(crate) struct OperationWorkMeter {
 
 /// Immutable operation-owned admission for retained SVG bytes, separate from producer charges.
 ///
-/// A document writer may reuse an admitted backing capacity while observing cancellation on each
-/// write. The ceiling and its error provenance have the same lifetime as the originating meter.
+/// A document writer may reuse admitted capacity while observing cancellation at bounded work
+/// intervals. The ceiling and its error provenance share the originating meter's lifetime.
 pub(crate) struct SvgByteBudget<'a> {
     meter: &'a OperationWorkMeter,
     maximum: Option<usize>,
@@ -1228,6 +1232,17 @@ impl OperationWorkMeter {
         self.resource_checkpoint(operation_phase)?;
         self.policy
             .check_svg_structure(elements, tree_depth)
+            .map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
+    }
+
+    pub(crate) fn preflight_svg_element_count(
+        &self,
+        elements: usize,
+        operation_phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        self.policy
+            .check_svg_element_count(elements)
             .map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
     }
 

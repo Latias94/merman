@@ -8,7 +8,7 @@ mod theme;
 
 pub(crate) use config::{PacketBitOrder, PacketConfigView};
 pub(crate) use theme::{
-    PacketSurfaceReceipt, PacketTextRole, PacketTypographyThemePlan,
+    PacketTextOutput, PacketTextRole, PacketThemeOutcome, PacketTypographyThemePlan,
     deferred_mermaid_compatibility_consumptions,
 };
 

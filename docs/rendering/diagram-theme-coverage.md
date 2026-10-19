@@ -418,7 +418,7 @@ Text fallback; Class retains its namespace-label title-color projection. Block's
 solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
 text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
 four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
-PNG; family receipts and SVG integration tests cover the shared node/label/line fanout. This does
+PNG; family outcomes and SVG integration tests cover the shared node/label/line fanout. This does
 not qualify shadow-bearing nodes for native export. Version 65 adds four Timeline Text.fill routes
 (unqualified/Default, solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
 arrowhead fill. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
@@ -601,8 +601,9 @@ Important boundaries that a family-level count cannot express:
   connectors, and the activity axis. Explicit `nodeBorder` retains ownership; Classic has no
   consumer. Redux Color and Neo shapes keep their independent border/gradient colors while
   labels and lines still consume the shared stroke. A title-only Redux diagram retains its
-  activity-axis consumer. Writer-owned receipts bind the original CSS declarations to emitted
-  terminals; KTD17 v66 separately proves the visible axis in SVG and PNG. Ordinal stroke remains
+  activity-axis consumer. Successful CSS and SVG writes record the consumed properties without
+  rebuilding expected terminal inventories or rereading SVG. KTD17 v66 separately proves the
+  visible axis in SVG and PNG. Ordinal stroke remains
   Unsupported, with matching winners reported as residuals. Timeline has no family bridge;
   Title.fill remains Unsupported because Timeline has no titleColor consumer.
 - Gantt Task[Warning].stroke is typed and in KTD17. Today-marker and vertical-marker source/config
@@ -615,7 +616,7 @@ Important boundaries that a family-level count cannot express:
 | Stage | Evidence owned by the stage |
 | --- | --- |
 | Compile | Valid bounded recipe, fingerprint, declared/inferred capabilities |
-| Family/document | Applicability, property winners, source/compatibility residuals, emitted terminals, prepared-text evidence |
+| Family/document | Applicability, property winners, source and Mermaid compatibility residuals, actual applied styles and unsupported requests |
 | Export | Target-specific resource closure and SVG/PNG/JPEG/PDF admission |
 
 An unevaluated stage cannot upgrade the result to portable. The private C6a ledger covers 18
@@ -624,14 +625,13 @@ eligibility receipt requires that exact ledger; scalar cutovers and JPEG/PDF smo
 C6b equal-depth certification remains paused. Browser SVG qualification and the remaining C7a
 authoring/consumer/preset gates are not complete. These counts do not establish stable readiness.
 
-Route and raster-paint binding receipts are sealed by the opaque
-`FamilyRenderCompletion<ResvgCompatibleSvg>` before the facade separates the output and report.
-The former public seal functions accepting a report plus caller-provided artifact digests are
-removed. The `internal-theme-acceptance` Cargo feature is also removed. The private harness uses
-an explicit workspace cfg through `scripts/run_theme_acceptance.py`; producer Cargo packages
-exclude its independent acceptance modules. `scripts/verify_theme_acceptance_boundary.py` checks
-package lists and compiles a production consumer whose acceptance imports must fail. These
-boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
+Family writers own applied styles and real unsupported/residual outcomes. The private acceptance
+harness observes exact immutable output bytes instead of requiring production SVG observation
+sidecars or digest chains. It runs under the explicit workspace cfg through
+`scripts/run_theme_acceptance.py`; published producer packages exclude the private facade module.
+`scripts/verify_theme_acceptance_boundary.py` checks package lists and compiles a production
+consumer whose acceptance imports must fail. These checks do not qualify presets or close the
+remaining C7a authoring/consumer gates. The retired prepared-text marker protocol is not evidence.
 
 Support discovery now has an independent twenty-two-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest

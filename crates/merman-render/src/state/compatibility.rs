@@ -89,38 +89,10 @@ impl StateCompatibilityLook {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct StateValueProvenance {
-    selected_paths: Vec<&'static str>,
-    owned: bool,
-}
-
-impl StateValueProvenance {
-    fn selected(path: &'static str, owned: bool) -> Self {
-        Self {
-            selected_paths: vec![path],
-            owned,
-        }
-    }
-
-    fn derived<'a>(inputs: impl IntoIterator<Item = &'a Self>) -> Self {
-        let mut provenance = Self::default();
-        for input in inputs {
-            provenance.owned |= input.owned;
-            for path in &input.selected_paths {
-                if !provenance.selected_paths.contains(path) {
-                    provenance.selected_paths.push(path);
-                }
-            }
-        }
-        provenance
-    }
-}
-
 #[derive(Debug, Clone)]
 struct StateResolvedValue<T> {
     value: T,
-    provenance: StateValueProvenance,
+    source_owned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -132,21 +104,21 @@ enum StateTerminalPaintValue {
 #[derive(Debug, Clone)]
 struct StateTerminalPaintSelection {
     value: StateTerminalPaintValue,
-    provenance: StateValueProvenance,
+    source_owned: bool,
 }
 
 impl StateTerminalPaintSelection {
     fn css(value: &StateResolvedValue<String>) -> Self {
         Self {
             value: StateTerminalPaintValue::Css(value.value.clone()),
-            provenance: value.provenance.clone(),
+            source_owned: value.source_owned,
         }
     }
 
-    fn scoped_gradient(provenance: StateValueProvenance) -> Self {
+    fn scoped_gradient(source_owned: bool) -> Self {
         Self {
             value: StateTerminalPaintValue::ScopedGradient,
-            provenance,
+            source_owned,
         }
     }
 
@@ -164,14 +136,14 @@ impl<T> StateResolvedValue<T> {
     fn constant(value: T) -> Self {
         Self {
             value,
-            provenance: StateValueProvenance::default(),
+            source_owned: false,
         }
     }
 
     fn map<U>(self, map: impl FnOnce(T) -> U) -> StateResolvedValue<U> {
         StateResolvedValue {
             value: map(self.value),
-            provenance: self.provenance,
+            source_owned: self.source_owned,
         }
     }
 }
@@ -197,7 +169,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -218,7 +190,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             }
             return StateResolvedValue {
                 value: value.to_string(),
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -241,7 +213,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -260,7 +232,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value,
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -283,7 +255,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value,
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -306,7 +278,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value,
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         fallback()
@@ -319,7 +291,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: state_js_truthy(value),
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         StateResolvedValue::constant(fallback)
@@ -334,7 +306,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value,
-                provenance: StateValueProvenance::selected(path, self.path_is_owned(path)),
+                source_owned: self.path_is_owned(path),
             };
         }
         StateResolvedValue::constant(fallback)
@@ -367,7 +339,7 @@ fn state_js_truthy(value: &Value) -> bool {
 /// State's single compatibility decision for both the typed adapter and terminal SVG writer.
 ///
 /// Each fallback is resolved once. The same selected value supplies emitted compatibility CSS,
-/// while its selected path and surviving config provenance decide whether typed paint must yield.
+/// while its surviving source ownership decides whether typed paint must yield.
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityPlan {
     pub(crate) redux_palette: Vec<(String, Option<String>)>,
@@ -780,18 +752,15 @@ impl StateCompatibilityPlan {
                 &rough_default_stroke_width
             );
         }
-        let neo_gradient_stroke_provenance = StateValueProvenance::derived([
-            &use_gradient.provenance,
-            &gradient_start.provenance,
-            &gradient_stop.provenance,
-        ]);
+        let neo_gradient_stroke_owned =
+            use_gradient.source_owned || gradient_start.source_owned || gradient_stop.source_owned;
         let neo_node_stroke = if use_gradient.value {
-            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_provenance.clone())
+            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_owned)
         } else {
             StateTerminalPaintSelection::css(&node_border)
         };
         let neo_cluster_stroke = if use_gradient.value {
-            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_provenance)
+            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_owned)
         } else {
             StateTerminalPaintSelection::css(&state_border)
         };
@@ -1177,7 +1146,7 @@ impl StateCompatibilityPlan {
     ) -> bool {
         self.terminal_paints
             .get(&(surface, property))
-            .is_some_and(|selection| selection.provenance.owned)
+            .is_some_and(|selection| selection.source_owned)
     }
 
     pub(crate) fn source_shape_property_reaches(

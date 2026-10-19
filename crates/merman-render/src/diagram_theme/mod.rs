@@ -56,22 +56,20 @@ pub use merman_theme_contract::{
 
 pub(crate) use admission::ResolvedThemeAdmission;
 pub use admission::{
-    FontEmbeddingRequirement, FontSource, FontSourcePolicy, HostMeasurementFallback,
-    HostMeasurementFallbackPolicy, TextLayoutCapability, ThemeAdmissionError, ThemeAdmissionPolicy,
-    ThemeCapability, ThemeHostAdmissionReport, ThemePortabilityRequirement, ThemeRequirements,
-    TrustedThemeLane, TrustedThemeLanes,
+    FontEmbeddingRequirement, FontSource, FontSourcePolicy, TextLayoutCapability,
+    ThemeAdmissionError, ThemeAdmissionPolicy, ThemeCapability, ThemeHostAdmissionReport,
+    ThemePortabilityRequirement, ThemeRequirements, TrustedThemeLane, TrustedThemeLanes,
 };
 #[cfg(test)]
-pub(crate) use application::RootThemeEvaluation;
+pub(crate) use application::RootThemeResidualReason;
 pub use application::RootThemeVerification;
 pub(crate) use application::{
     FamilyThemeMechanismKey, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
-    RootThemeReport, RootThemeResidualReason,
+    RootThemeReport,
 };
 pub use assets::{
-    FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec, FontCatalog,
-    FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
-    FontEmbeddingPermissions, FontFaceMetadata, FontFamilyAlias, FontStyle, GenericFontFamily,
+    FontAssetSpec, FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec,
+    FontContainer, FontStyle, GenericFontFamily,
 };
 pub use canvas::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, GradientStop, InsetsPx, LinearGradient,
@@ -102,8 +100,7 @@ pub use presets::{
     describe_theme_presets, theme_preset_descriptors,
 };
 pub(crate) use resolved::{
-    MatchedThemeRules, ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect,
-    ResolvedThemeStyle,
+    ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect, ResolvedThemeStyle,
 };
 pub(crate) use resolved::{ResolvedStyleProperty, ThemeTypographyProperty};
 pub use resources::{

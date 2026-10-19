@@ -5,7 +5,6 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
-use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
@@ -14,6 +13,7 @@ use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
     RenderedDocument, Renderer,
 };
+use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
 const SOURCE: &str = "---\ntitle: Metadata title\n---\nblock\n  columns 1\n  block:group[\"Composite title\"]\n    columns 2\n    A[\"Alpha\"] B[\"Beta\"]\n    A --> B\n  end\n";
 
@@ -78,8 +78,8 @@ fn assert_no_native_consumer(target: ThemeTarget) {
                     .compile(DiagramThemeSpec::new())
                     .unwrap(),
             );
-            let view = TargetArtifactView::from_rendered_document(&baseline);
-            let receipt = view.svg_artifact_receipt().unwrap();
+            let view = SvgArtifactObservation::observe(baseline.svg()).unwrap();
+            let receipt = &view;
             assert!(receipt.has_native_text());
             assert!(!receipt.has_foreign_object());
             assert!(receipt.elements().iter().all(|element| {

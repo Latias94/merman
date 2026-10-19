@@ -1,7 +1,6 @@
 use super::shadow::write_theme_shadow_application;
 use super::*;
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
 mod context;
 mod edge;
 mod node;
@@ -71,7 +70,6 @@ struct StateRenderCtx<'a> {
     label_sidecar: &'a crate::state::StateLabelSidecar,
     effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &'a crate::state::StateStylePlan,
-    theme_receipt: RefCell<crate::state::StateThemeTerminalReceipt>,
     rough_cache: StateRoughCache,
 }
 

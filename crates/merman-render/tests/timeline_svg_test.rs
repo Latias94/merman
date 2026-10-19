@@ -290,7 +290,6 @@ fn timeline_text_fill_uses_typed_root_paint_across_looks_and_directions() {
                         let evidence =
                             merman_render::__private::family_evidence(completion.report());
                         assert_eq!(evidence.applied_count(), 1);
-                        assert_eq!(evidence.compatibility_residual_count(), 0);
                     }
                 }
             }
@@ -317,7 +316,6 @@ fn timeline_text_fill_preserves_config_and_independent_label_colors() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -343,7 +341,6 @@ fn timeline_text_fill_handles_titleless_and_zero_palette_consumers() {
             let applied = direction.is_empty() || limit == 0;
             assert_eq!(evidence.applied_count(), usize::from(applied));
             assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -1048,7 +1045,6 @@ fn timeline_event_palette_reaches_section_task_and_event_terminals() {
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1223,7 +1219,6 @@ fn timeline_typed_typography_reaches_layout_css_and_terminal_receipt() {
         assert_eq!(evidence.applied_count(), 2, "{direction}");
         assert_eq!(evidence.not_applicable_count(), 0, "{direction}");
         assert_eq!(evidence.theme_residual_count(), 0, "{direction}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "{direction}");
     }
 }
 
@@ -1319,7 +1314,6 @@ timeline
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1348,7 +1342,6 @@ fn timeline_title_only_does_not_prove_typed_base_typography() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

@@ -116,7 +116,6 @@ mod tests {
         {
             let preserves = family.is_some_and(|family| family != DiagramFamilyId::GIT_GRAPH);
             assert_eq!(pipeline.preserves_typed_theme_evidence(family), preserves);
-            assert_eq!(pipeline.preserves_prepared_text_evidence(family), preserves);
             assert!(pipeline.preserves_prepared_math_evidence(family));
         }
     }
@@ -131,11 +130,9 @@ mod tests {
         .pipeline();
         let family = Some(crate::DiagramFamilyId::SEQUENCE);
         assert!(!background.preserves_typed_theme_evidence(family));
-        assert!(!background.preserves_prepared_text_evidence(family));
         let custom =
             SvgPipeline::resvg_safe().with_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
         assert!(!custom.preserves_typed_theme_evidence(family));
-        assert!(!custom.preserves_prepared_text_evidence(family));
         assert!(!custom.preserves_prepared_math_evidence(family));
     }
 }

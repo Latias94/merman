@@ -30,8 +30,6 @@ pub use editor_language::{
     editor_search_document_symbols,
 };
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-use merman_bindings_core::TextStyle;
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 use merman_bindings_core::WrapMode;
 
@@ -531,8 +529,13 @@ fn execute_wasm_operation(
     options_json: &[u8],
     uri: Option<&[u8]>,
 ) -> Result<Vec<u8>, BindingError> {
-    execute_wasm_operation_result(operation_id, source, options_json, uri)
-        .map(BindingOperationResult::into_data)
+    let (normalized_options, timeout) = wasm_options(options_json)?;
+    wasm_artifact_contract().execute_once_data(
+        BindingOperationRequest::new(operation_id, source)
+            .with_optional_uri(uri)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+    )
 }
 
 fn execute_wasm_operation_result(
@@ -557,8 +560,13 @@ fn execute_wasm_operation_with_services(
     options_json: &[u8],
     services: merman_bindings_core::BindingEngineServices,
 ) -> Result<Vec<u8>, BindingError> {
-    execute_wasm_operation_result_with_services(operation_id, source, options_json, services)
-        .map(BindingOperationResult::into_data)
+    let (normalized_options, timeout) = wasm_options(options_json)?;
+    wasm_artifact_contract().execute_once_data_with_services(
+        BindingOperationRequest::new(operation_id, source)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+        services,
+    )
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -1583,6 +1591,30 @@ mod tests {
         assert_eq!(json["details"]["diagnostic"]["span"]["kind"], "exact");
         assert_eq!(json["details"]["diagnostic"]["field"], "edge");
         assert_eq!(json["details"]["diagnostic"]["diagram_type"], "flowchart");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_svg_data_and_result_share_bytes_and_errors() {
+        let source = b"flowchart TD\nA --> B";
+        for options in [
+            b"".as_slice(),
+            br##"{"theme":{"spec":{"canvas":{"base":"#f7f3e8"}}}}"##.as_slice(),
+        ] {
+            let full = execute_wasm_operation_result("svg", source, options, None).unwrap();
+            let data = execute_wasm_operation("svg", source, options, None).unwrap();
+            assert_eq!(data, full.data());
+            assert!(full.metadata().theme_execution_evidence().is_some());
+        }
+        for options in [
+            b"{".as_slice(),
+            br#"{"version":99}"#.as_slice(),
+            br#"{"timeout_ms":0}"#.as_slice(),
+        ] {
+            let full = execute_wasm_operation_result("svg", source, options, None).unwrap_err();
+            let data = execute_wasm_operation("svg", source, options, None).unwrap_err();
+            assert_eq!(data, full);
+        }
     }
 
     #[test]

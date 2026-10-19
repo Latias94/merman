@@ -280,7 +280,10 @@ impl BindingEngine {
         source: &[u8],
         _uri: Option<&[u8]>,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
+        #[cfg(not(any(feature = "ascii", feature = "svg")))]
+        let _ = include_metadata;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
@@ -387,7 +390,7 @@ impl BindingEngine {
                         .ascii
                         .materialize()
                         .render_ascii_output(source, control.clone())
-                        .map(BindingOperationOutput::ascii)
+                        .map(|output| BindingOperationOutput::ascii(output, include_metadata))
                         .and_then(|output| {
                             control
                                 .checkpoint_at(OperationPhase::Emit)
@@ -416,7 +419,7 @@ impl BindingEngine {
                     let render = configs.render.materialize(&self.services);
                     let output = match operation.key() {
                         crate::OperationKey::Svg => {
-                            render.render_svg_output(source, control.clone())
+                            render.render_svg_output(source, control.clone(), include_metadata)
                         }
                         crate::OperationKey::SvgPlanJson => render
                             .svg_plan_json(source, control.clone())
@@ -430,7 +433,7 @@ impl BindingEngine {
                         crate::OperationKey::Png => {
                             #[cfg(feature = "png")]
                             {
-                                render.render_png_output(source, control.clone())
+                                render.render_png_output(source, control.clone(), include_metadata)
                             }
                             #[cfg(not(feature = "png"))]
                             {
@@ -441,7 +444,7 @@ impl BindingEngine {
                         crate::OperationKey::Jpeg => {
                             #[cfg(feature = "jpeg")]
                             {
-                                render.render_jpeg_output(source, control.clone())
+                                render.render_jpeg_output(source, control.clone(), include_metadata)
                             }
                             #[cfg(not(feature = "jpeg"))]
                             {
@@ -452,7 +455,7 @@ impl BindingEngine {
                         crate::OperationKey::Pdf => {
                             #[cfg(feature = "pdf")]
                             {
-                                render.render_pdf_output(source, control.clone())
+                                render.render_pdf_output(source, control.clone(), include_metadata)
                             }
                             #[cfg(not(feature = "pdf"))]
                             {
@@ -566,15 +569,17 @@ impl BindingEngine {
         &self,
         source: &[u8],
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.render_svg_output(source, control)
+            self.render
+                .render_svg_output(source, control, include_metadata)
         }
 
         #[cfg(not(feature = "svg"))]
         {
-            let _ = (source, control);
+            let _ = (source, control, include_metadata);
             Err(common::feature_required_error("SVG rendering", "svg"))
         }
     }
@@ -594,15 +599,17 @@ impl BindingEngine {
         &self,
         source: &[u8],
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "png")]
         {
-            self.render.render_png_output(source, control)
+            self.render
+                .render_png_output(source, control, include_metadata)
         }
 
         #[cfg(not(feature = "png"))]
         {
-            let _ = (source, control);
+            let _ = (source, control, include_metadata);
             Err(common::feature_required_error("PNG rendering", "png"))
         }
     }
@@ -622,15 +629,17 @@ impl BindingEngine {
         &self,
         source: &[u8],
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "jpeg")]
         {
-            self.render.render_jpeg_output(source, control)
+            self.render
+                .render_jpeg_output(source, control, include_metadata)
         }
 
         #[cfg(not(feature = "jpeg"))]
         {
-            let _ = (source, control);
+            let _ = (source, control, include_metadata);
             Err(common::feature_required_error("JPEG rendering", "jpeg"))
         }
     }
@@ -650,15 +659,17 @@ impl BindingEngine {
         &self,
         source: &[u8],
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "pdf")]
         {
-            self.render.render_pdf_output(source, control)
+            self.render
+                .render_pdf_output(source, control, include_metadata)
         }
 
         #[cfg(not(feature = "pdf"))]
         {
-            let _ = (source, control);
+            let _ = (source, control, include_metadata);
             Err(common::feature_required_error("PDF rendering", "pdf"))
         }
     }

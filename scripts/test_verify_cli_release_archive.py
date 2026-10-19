@@ -584,8 +584,8 @@ class PresetQualificationArchiveTests(unittest.TestCase):
             } for output, scale in [("svg", 1.0), ("png", 4.0)]]
             public_qualification = {
                 "preset": "brutalist", "profile": "native-state-system-fonts-v1",
-                "qualification_schema_revision": 1, "recipe_fingerprint": "recipe-digest",
-                "resource_fingerprint": "resource-digest", "scenarios": scenarios,
+                "qualification_schema_revision": 2, "recipe_fingerprint": "recipe-digest",
+                "font_catalog_fingerprint": "resource-digest", "scenarios": scenarios,
             }
             public_catalog = valid_capabilities_payload()["theme_presets"]
             public_catalog["presets"][0]["qualified_cells"] = [{
@@ -596,10 +596,11 @@ class PresetQualificationArchiveTests(unittest.TestCase):
             def qualify(repo_root, *, cli_binary):
                 observed_binaries.append(cli_binary.read_bytes())
                 return {
+                    "schema_version": 2,
                     "source_commit": "test-source", "host": {"system": "test-host"},
-                    "qualification": {"presets": [{
+                    "qualification": {"schema_version": 2, "presets": [{
                         **public_qualification,
-                        "cells": [{**scenario, "target_receipt_digest": "private-receipt",
+                        "cells": [{**scenario, "private_observation": "private-check",
                                    "source": "private-source"} for scenario in scenarios],
                     }]},
                     "cli": {"executable_sha256": hashlib.sha256(cli_binary.read_bytes()).hexdigest(),
@@ -629,8 +630,8 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                      "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
                     for output in ("png", "svg")
                 ])
-                self.assertNotIn("target_receipt_digest", json.dumps(catalog))
-                self.assertNotIn("private-receipt", json.dumps(catalog))
+                self.assertNotIn("private_observation", json.dumps(catalog))
+                self.assertNotIn("private-check", json.dumps(catalog))
                 self.assertNotIn("private-source", json.dumps(catalog))
                 self.assertEqual(observed_binaries, [required_files(LINUX_TARGET)["merman-cli"]])
                 runtime.assert_called_once()

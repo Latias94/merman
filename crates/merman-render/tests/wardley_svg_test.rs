@@ -516,7 +516,6 @@ fn wardley_typed_font_stack_drives_measurement_group_inheritance_and_terminal_ev
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -551,7 +550,6 @@ fn wardley_direct_font_stack_exceeds_the_retired_legacy_bridge_limit_without_a_s
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -606,7 +604,6 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 

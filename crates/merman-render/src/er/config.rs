@@ -109,12 +109,6 @@ impl<'a> ErConfigView<'a> {
             insert_title_top_margin: self.title_top_margin_without_root_fallback(),
             use_max_width: self.er_bool("useMaxWidth").unwrap_or(true),
             label_style: TextStyle {
-                font_family: Some(font_family.clone()),
-                font_size,
-                font_weight: None,
-                font_style: None,
-            },
-            attr_style: TextStyle {
                 font_family: Some(font_family),
                 font_size,
                 font_weight: None,
@@ -289,7 +283,6 @@ pub(crate) struct ErRenderSettings {
     pub(crate) insert_title_top_margin: f64,
     pub(crate) use_max_width: bool,
     pub(crate) label_style: TextStyle,
-    pub(crate) attr_style: TextStyle,
     pub(crate) relationship_html_labels: bool,
     pub(crate) entity_html_label_wrap_mode: WrapMode,
     pub(crate) entity_measurement: ErEntityMeasurementSettings,

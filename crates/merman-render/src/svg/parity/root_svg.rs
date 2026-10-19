@@ -5,7 +5,8 @@ use crate::diagram_theme::{
     RootThemeMechanismKey, RootThemePlan, RootThemeReport, ThemeCapability, ThemeLength,
     paint_capabilities,
 };
-use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+use crate::resources::OperationWorkMeter;
+use std::borrow::Cow;
 use std::ops::Range;
 
 const DEFERRED_ROOT_ATTRIBUTE_VALUE: &str = "";
@@ -67,13 +68,13 @@ impl ViewBox {
         }
     }
 
-    fn from_bounds(bounds: DiagramBounds, resources: &RenderResourcePolicy) -> Result<Self> {
-        let min_x = checked_svg_coordinate(bounds.min_x, "viewBox min-x", resources)?;
-        let min_y = checked_svg_coordinate(bounds.min_y, "viewBox min-y", resources)?;
-        let width = checked_viewport_dimension(bounds.width, "viewBox width", resources)?;
-        let height = checked_viewport_dimension(bounds.height, "viewBox height", resources)?;
-        checked_svg_coordinate(min_x + width, "viewBox max-x", resources)?;
-        checked_svg_coordinate(min_y + height, "viewBox max-y", resources)?;
+    fn from_bounds(bounds: DiagramBounds) -> Result<Self> {
+        let min_x = checked_svg_coordinate(bounds.min_x, "viewBox min-x")?;
+        let min_y = checked_svg_coordinate(bounds.min_y, "viewBox min-y")?;
+        let width = checked_viewport_dimension(bounds.width, "viewBox width")?;
+        let height = checked_viewport_dimension(bounds.height, "viewBox height")?;
+        checked_svg_coordinate(min_x + width, "viewBox max-x")?;
+        checked_svg_coordinate(min_y + height, "viewBox max-y")?;
         Ok(Self::new(min_x, min_y, width, height))
     }
 
@@ -97,7 +98,7 @@ pub(super) enum RootMaxWidth {
 }
 
 impl RootMaxWidth {
-    fn format(self, view_box: Option<ViewBox>, resources: &RenderResourcePolicy) -> Result<String> {
+    fn format(self, view_box: Option<ViewBox>) -> Result<String> {
         let value = match self {
             Self::ViewBox => {
                 view_box
@@ -110,7 +111,7 @@ impl RootMaxWidth {
             | Self::CssSixSignificant(value)
             | Self::Precision { value, .. } => value,
         };
-        let value = checked_viewport_dimension(value, "root max-width", resources)?;
+        let value = checked_viewport_dimension(value, "root max-width")?;
         Ok(match self {
             Self::ViewBox | Self::SvgNumber(_) => fmt_string(value),
             Self::CssSixSignificant(_) => format_css_max_width(value),
@@ -363,7 +364,7 @@ enum RootDocumentState {
     },
     Ready {
         root_open: String,
-        plan: RootViewportPlan,
+        view_box: Option<ViewBox>,
     },
 }
 
@@ -384,14 +385,13 @@ pub(super) struct RootedSvg {
     family: DiagramFamilyId,
     diagram_id: String,
     root_open_end: usize,
-    viewport: RootViewportPlan,
+    view_box: Option<ViewBox>,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct RootViewportContext<'a> {
     family: DiagramFamilyId,
     diagram_id: RootDiagramId<'a>,
-    resources: RenderResourcePolicy,
 }
 
 impl<'a> RootViewportContext<'a> {
@@ -399,13 +399,7 @@ impl<'a> RootViewportContext<'a> {
         Self {
             family,
             diagram_id: diagram_id.into(),
-            resources: RenderResourcePolicy::unbounded_for_trusted_input(),
         }
-    }
-
-    pub(super) fn with_resource_policy(mut self, resources: RenderResourcePolicy) -> Self {
-        self.resources = resources;
-        self
     }
 
     pub(super) fn begin_document(
@@ -448,8 +442,7 @@ impl<'a> RootViewportContext<'a> {
             with_custom_properties(None, chrome.custom_properties)?
         };
         let deferred_style_suffix =
-            with_custom_properties(Some("px;".into()), chrome.custom_properties)?
-                .unwrap_or_default();
+            with_custom_properties(Some("px;"), chrome.custom_properties)?.unwrap_or_default();
         let style_placement = if responsive {
             chrome.dom.responsive_style_placement
         } else {
@@ -597,7 +590,10 @@ impl<'a> RootViewportContext<'a> {
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.as_str().to_string(),
-            state: RootDocumentState::Ready { root_open, plan },
+            state: RootDocumentState::Ready {
+                root_open,
+                view_box: Some(view_box),
+            },
         })
     }
 
@@ -635,7 +631,7 @@ impl<'a> RootViewportContext<'a> {
             });
         }
         let viewbox_attr = plan.view_box.map(ViewBox::attr);
-        let style = with_custom_properties(plan.style.clone(), chrome.custom_properties)?;
+        let style = with_custom_properties(plan.style.as_deref(), chrome.custom_properties)?;
         let width = match plan.width.as_deref() {
             None => SvgRootWidth::None,
             Some("100%") => SvgRootWidth::Percent100,
@@ -676,7 +672,7 @@ impl<'a> RootViewportContext<'a> {
             diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Ready {
                 root_open: out.as_str().to_string(),
-                plan: plan.clone(),
+                view_box: plan.view_box,
             },
         })
     }
@@ -687,7 +683,11 @@ impl<'a> RootViewportContext<'a> {
                 message: "root document belongs to a different render context".to_string(),
             });
         }
-        let RootDocumentState::Ready { root_open, plan } = document.state else {
+        let RootDocumentState::Ready {
+            root_open,
+            view_box,
+        } = document.state
+        else {
             return Err(Error::InvalidModel {
                 message: "root document viewport was not finalized".to_string(),
             });
@@ -707,7 +707,7 @@ impl<'a> RootViewportContext<'a> {
             family: self.family,
             diagram_id: self.diagram_id.as_str().to_string(),
             root_open_end: root_open.len(),
-            viewport: plan,
+            view_box,
         })
     }
 
@@ -721,25 +721,14 @@ impl<'a> RootViewportContext<'a> {
     }
 
     pub(super) fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
-        let view_box = spec
-            .view_box
-            .map(|bounds| ViewBox::from_bounds(bounds, &self.resources))
-            .transpose()?;
-        let max_width = spec.max_width.format(view_box, &self.resources)?;
+        let view_box = spec.view_box.map(ViewBox::from_bounds).transpose()?;
+        let max_width = spec.max_width.format(view_box)?;
 
         let fixed_dimensions = || {
             if let Some((width, height)) = spec.fixed_size {
                 return Ok::<_, Error>((
-                    fmt_string(checked_viewport_dimension(
-                        width,
-                        "fixed root width",
-                        &self.resources,
-                    )?),
-                    fmt_string(checked_viewport_dimension(
-                        height,
-                        "fixed root height",
-                        &self.resources,
-                    )?),
+                    fmt_string(checked_viewport_dimension(width, "fixed root width")?),
+                    fmt_string(checked_viewport_dimension(height, "fixed root height")?),
                 ));
             }
             let view_box = view_box.ok_or_else(|| Error::InvalidModel {
@@ -768,7 +757,6 @@ impl<'a> RootViewportContext<'a> {
                 Some(fmt_string(checked_viewport_dimension(
                     height,
                     "responsive root height",
-                    &self.resources,
                 )?)),
             ),
             RootSizing::Mermaid {
@@ -822,13 +810,7 @@ impl RootedSvg {
             ));
         };
         let mut application = plan.begin_svg_application();
-        let resources = work_meter.policy();
-        let canvas_prelude = CanvasPreludePlan::new(
-            plan,
-            self.diagram_id.as_str(),
-            self.viewport.view_box(),
-            &resources,
-        )?;
+        let canvas_prelude = CanvasPreludePlan::new(plan, self.diagram_id.as_str(), self.view_box)?;
         let background_edit = (plan.canvas().has_explicit_base()
             && matches!(plan.canvas().base(), CanvasPaint::Transparent))
         .then(|| {
@@ -840,7 +822,7 @@ impl RootedSvg {
         })
         .transpose()?;
 
-        let prelude_len = canvas_prelude.encoded_len(self.viewport.view_box())?;
+        let prelude_len = canvas_prelude.encoded_len(self.view_box)?;
         let background_growth = background_edit
             .as_ref()
             .map_or(0, |edit| edit.additional_len());
@@ -859,7 +841,7 @@ impl RootedSvg {
                 .map_err(|_| Error::InvalidModel {
                     message: "failed to reserve bounded root theme SVG prelude".to_string(),
                 })?;
-            canvas_prelude.write(&mut prelude, self.viewport.view_box())?;
+            canvas_prelude.write(&mut prelude, self.view_box)?;
             if prelude.len() != prelude_len {
                 return Err(Error::InvalidModel {
                     message: "root theme SVG preflight disagreed with terminal serialization"
@@ -929,7 +911,6 @@ fn supported_canvas_capabilities(
 fn validate_canvas_paint_svg_geometry(
     paint: &CanvasPaint,
     view_box: Option<ViewBox>,
-    resources: &RenderResourcePolicy,
 ) -> Result<()> {
     match paint {
         CanvasPaint::LinearGradient(gradient) => {
@@ -944,7 +925,7 @@ fn validate_canvas_paint_svg_geometry(
                 ("linear gradient x2", line.x2),
                 ("linear gradient y2", line.y2),
             ] {
-                checked_svg_coordinate(value, field, resources)?;
+                checked_svg_coordinate(value, field)?;
             }
         }
         CanvasPaint::RadialGradient(gradient) => {
@@ -954,7 +935,7 @@ fn validate_canvas_paint_svg_geometry(
                 ("radial gradient radius", gradient.radius()),
             ] {
                 if let ThemeLength::Px(value) = length {
-                    checked_svg_coordinate(f64::from(value), field, resources)?;
+                    checked_svg_coordinate(f64::from(value), field)?;
                 }
             }
             if gradient.is_repeating() {
@@ -970,7 +951,7 @@ fn validate_canvas_paint_svg_geometry(
                             .to_string(),
                     });
                 }
-                checked_svg_coordinate(radius_px, "repeating radial gradient radius", resources)?;
+                checked_svg_coordinate(radius_px, "repeating radial gradient radius")?;
             }
         }
         CanvasPaint::Transparent | CanvasPaint::Solid(_) | CanvasPaint::Pattern(_) => {}
@@ -985,12 +966,7 @@ struct CanvasPreludePlan<'a> {
 }
 
 impl<'a> CanvasPreludePlan<'a> {
-    fn new(
-        plan: &'a RootThemePlan,
-        diagram_id: &str,
-        view_box: Option<ViewBox>,
-        resources: &RenderResourcePolicy,
-    ) -> Result<Self> {
+    fn new(plan: &'a RootThemePlan, diagram_id: &str, view_box: Option<ViewBox>) -> Result<Self> {
         let mut entries = Vec::new();
         let entry_capacity = plan.canvas().layers().len() + 1;
 
@@ -998,7 +974,7 @@ impl<'a> CanvasPreludePlan<'a> {
             && supported_canvas_paint(plan.canvas().base())
             && canvas_paint_has_concrete_svg_geometry(plan.canvas().base(), view_box)
         {
-            validate_canvas_paint_svg_geometry(plan.canvas().base(), view_box, resources)?;
+            validate_canvas_paint_svg_geometry(plan.canvas().base(), view_box)?;
             entries.reserve_exact(entry_capacity);
             entries.push(CanvasPreludeEntry::Base {
                 paint: plan.canvas().base(),
@@ -1011,10 +987,10 @@ impl<'a> CanvasPreludePlan<'a> {
             {
                 continue;
             }
-            validate_canvas_paint_svg_geometry(layer.paint(), view_box, resources)?;
+            validate_canvas_paint_svg_geometry(layer.paint(), view_box)?;
             let (offset_x, offset_y) = layer.offset();
-            checked_svg_coordinate(f64::from(offset_x), "canvas layer offset-x", resources)?;
-            checked_svg_coordinate(f64::from(offset_y), "canvas layer offset-y", resources)?;
+            checked_svg_coordinate(f64::from(offset_x), "canvas layer offset-x")?;
+            checked_svg_coordinate(f64::from(offset_y), "canvas layer offset-y")?;
             if entries.capacity() == 0 {
                 entries.reserve_exact(entry_capacity);
             }
@@ -1776,11 +1752,14 @@ impl RootViewportPlan {
     }
 }
 
-fn with_custom_properties(
-    style: Option<String>,
+fn with_custom_properties<'a>(
+    style: Option<&'a str>,
     properties: &[(&str, &str)],
-) -> Result<Option<String>> {
-    let mut style = style.unwrap_or_default();
+) -> Result<Option<Cow<'a, str>>> {
+    if properties.is_empty() {
+        return Ok(style.filter(|style| !style.is_empty()).map(Cow::Borrowed));
+    }
+    let mut style = style.unwrap_or_default().to_owned();
     for (key, value) in properties {
         let declaration = format!("{key}:{value}");
         if !key.starts_with("--")
@@ -1795,7 +1774,7 @@ fn with_custom_properties(
         }
         let _ = write!(style, "{key}: {value};");
     }
-    Ok((!style.is_empty()).then_some(style))
+    Ok((!style.is_empty()).then_some(Cow::Owned(style)))
 }
 
 fn format_css_max_width(value: f64) -> String {
@@ -1854,13 +1833,8 @@ fn format_precision_fixed(value: f64, significant_digits: u8) -> String {
     format!("{value:.decimals$}")
 }
 
-fn checked_svg_coordinate(
-    value: f64,
-    field: &str,
-    resources: &RenderResourcePolicy,
-) -> Result<f64> {
+fn checked_svg_coordinate(value: f64, field: &str) -> Result<f64> {
     if value.is_finite() {
-        resources.check_svg_backend_coordinate_magnitude(value)?;
         return Ok(value);
     }
     Err(Error::InvalidModel {
@@ -1868,12 +1842,8 @@ fn checked_svg_coordinate(
     })
 }
 
-fn checked_viewport_dimension(
-    value: f64,
-    field: &str,
-    resources: &RenderResourcePolicy,
-) -> Result<f64> {
-    Ok(checked_svg_coordinate(value, field, resources)?.max(1.0))
+fn checked_viewport_dimension(value: f64, field: &str) -> Result<f64> {
+    Ok(checked_svg_coordinate(value, field)?.max(1.0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2178,6 +2148,7 @@ fn push_svg_root_open(out: &mut impl SvgOutput, attrs: SvgRootAttrs<'_>) -> SvgR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::RenderResourcePolicy;
 
     fn root_theme_meter(svg_limit: usize) -> crate::resources::OperationWorkMeter {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -2686,13 +2657,8 @@ mod tests {
             let meter = crate::resources::OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             );
-            let prelude = CanvasPreludePlan::new(
-                plan,
-                rooted.diagram_id.as_str(),
-                rooted.viewport.view_box(),
-                &meter.policy(),
-            )
-            .unwrap();
+            let prelude =
+                CanvasPreludePlan::new(plan, rooted.diagram_id.as_str(), rooted.view_box).unwrap();
             assert!(prelude.entries.is_empty());
             assert_eq!(
                 prelude.entries.capacity(),
@@ -2718,46 +2684,6 @@ mod tests {
                 "an empty serialized prelude must not erase unconsumed root work"
             );
         }
-    }
-
-    #[test]
-    fn root_plan_rejects_finite_geometry_beyond_the_svg_backend_coordinate_cap() {
-        let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE as f64;
-        let error = computed_context(DiagramFamilyId::STATE, "root-id")
-            .plan(RootViewportSpec::responsive(DiagramBounds::from_view_box(
-                maximum, 0.0, 2.0, 10.0,
-            )))
-            .unwrap_err();
-
-        let Error::ResourceLimitExceeded(limit) = error else {
-            panic!("expected backend coordinate resource limit")
-        };
-        assert_eq!(
-            limit.limit,
-            crate::resources::SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID
-        );
-        assert_eq!(
-            limit.max,
-            crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE
-        );
-        assert_eq!(limit.actual, limit.max + 2);
-    }
-
-    #[test]
-    fn root_plan_rejects_finite_max_width_beyond_the_svg_backend_coordinate_cap() {
-        let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE as f64;
-        let error = computed_context(DiagramFamilyId::INFO, "root-id")
-            .plan(RootViewportSpec::responsive_without_view_box(maximum + 1.0))
-            .unwrap_err();
-
-        let Error::ResourceLimitExceeded(limit) = error else {
-            panic!("expected backend coordinate resource limit")
-        };
-        assert_eq!(
-            limit.limit,
-            crate::resources::SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID
-        );
-        assert_eq!(limit.actual, limit.max + 1);
     }
 
     #[test]

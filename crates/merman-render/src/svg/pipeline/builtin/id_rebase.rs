@@ -45,7 +45,7 @@ impl SvgPostprocessor for RebaseSvgIdsPostprocessor {
         validate_well_formed_svg_with_controls(
             &svg,
             &mut || execution.checkpoint(),
-            &mut |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth),
+            &mut |elements, _| execution.preflight_svg_element_count(elements),
         )?;
         let mut cadence = RebaseCadence::new(execution);
         let ids = collect_ids(&svg, &mut cadence)?;

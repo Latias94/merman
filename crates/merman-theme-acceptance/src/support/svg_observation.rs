@@ -1,29 +1,21 @@
-//! Workspace-only renderer-owned observations for finalized SVG artifacts.
+//! Fixture observations owned by the private qualification runner.
 //!
-//! These observations are deliberately feature-gated. The non-published acceptance harness may
-//! evaluate its own fixture contract against these immutable facts, but it does not parse the
-//! production SVG or reimplement the renderer's DOM/CSS interpretation. Synthetic observations
-//! for unit tests are exposed only through the workspace-only acceptance feature.
+//! Production output carries no acceptance sidecar. The runner observes the exact immutable SVG
+//! it is checking; these bounded scenario helpers are not a general SVG/CSS validator.
 
-use crate::xml_dom::{Document, Node};
-use sha2::{Digest as _, Sha256};
+use roxmltree::{Document, Node};
 
-/// Renderer-owned, family-neutral observations of one finalized SVG artifact.
-///
-/// The acceptance harness receives this immutable projection instead of reparsing the terminal
-/// XML/CSS. It may interpret semantic fixture contracts over these facts, but production code
-/// cannot change the observed artifact or mint a receipt for unrelated bytes.
+const MAX_OBSERVATION_TREE_DEPTH: usize = 256;
+
+/// Family-neutral facts used only by the private scenario checkers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SvgArtifactReceipt {
-    artifact_digest: [u8; 32],
+pub struct SvgArtifactObservation {
     root_id: Option<Box<str>>,
     view_box_bits: [u64; 4],
     native_text: bool,
     has_foreign_object: bool,
-    has_prepared_tokens: bool,
     elements: Box<[SvgElementObservation]>,
     stylesheets: Box<[SvgStylesheetObservation]>,
-    digest: [u8; 32],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,34 +63,11 @@ pub struct SvgFontFaceObservation {
     declarations: Box<[SvgStyleDeclarationObservation]>,
 }
 
-impl SvgArtifactReceipt {
-    /// Observes one renderer-finalized SVG and derives the artifact digest internally.
-    ///
-    /// The terminal SVG artifact uses this entry point so the receipt is created at the renderer
-    /// boundary rather than reconstructed by a higher-level facade.
-    pub(crate) fn observe_finalized_svg(svg: &str) -> Option<Self> {
-        let artifact_digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        Self::observe_verified_svg(svg, artifact_digest)
-    }
-
-    /// Builds a synthetic receipt for renderer/acceptance unit tests.
-    ///
-    /// This constructor is deliberately unavailable to ordinary builds. Runtime acceptance must
-    /// obtain the receipt from the finalized renderer artifact instead of observing arbitrary bytes.
-    #[cfg(any(test, merman_internal_theme_acceptance))]
-    #[doc(hidden)]
-    pub fn observe_svg_for_test(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
-        if artifact_digest == [0; 32]
-            || Sha256::digest(svg.as_bytes()).as_slice() != artifact_digest
-        {
-            return None;
-        }
-        Self::observe_verified_svg(svg, artifact_digest)
-    }
-
-    fn observe_verified_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
+impl SvgArtifactObservation {
+    /// Observes the bytes supplied by the qualification runner or a scenario mutation test.
+    pub fn observe(svg: &str) -> Option<Self> {
         let max_tree_depth = svg_max_tree_depth(svg)?;
-        if max_tree_depth > crate::resources::MAX_RESVG_TREE_DEPTH {
+        if max_tree_depth > MAX_OBSERVATION_TREE_DEPTH {
             return None;
         }
         let document = Document::parse(svg).ok()?;
@@ -123,8 +92,7 @@ impl SvgArtifactReceipt {
             .filter(|node| node.has_tag_name("style"))
             .map(observe_stylesheet)
             .collect::<Vec<_>>();
-        let mut receipt = Self {
-            artifact_digest,
+        Some(Self {
             root_id: root
                 .attribute("id")
                 .map(str::to_owned)
@@ -134,25 +102,9 @@ impl SvgArtifactReceipt {
             has_foreign_object: document
                 .descendants()
                 .any(|node| node.has_tag_name("foreignObject")),
-            has_prepared_tokens: svg.contains("merman-prepared-"),
             elements: elements.into_boxed_slice(),
             stylesheets: stylesheets.into_boxed_slice(),
-            digest: [0; 32],
-        };
-        receipt.digest = receipt.canonical_digest();
-        Some(receipt)
-    }
-
-    pub const fn artifact_digest(&self) -> [u8; 32] {
-        self.artifact_digest
-    }
-
-    pub const fn digest(&self) -> [u8; 32] {
-        self.digest
-    }
-
-    pub fn proves_artifact(&self, artifact_digest: [u8; 32]) -> bool {
-        artifact_digest != [0; 32] && self.artifact_digest == artifact_digest
+        })
     }
 
     pub fn root_id(&self) -> Option<&str> {
@@ -169,10 +121,6 @@ impl SvgArtifactReceipt {
 
     pub const fn has_foreign_object(&self) -> bool {
         self.has_foreign_object
-    }
-
-    pub const fn has_prepared_tokens(&self) -> bool {
-        self.has_prepared_tokens
     }
 
     pub fn elements(&self) -> &[SvgElementObservation] {
@@ -216,84 +164,13 @@ impl SvgArtifactReceipt {
     pub fn stylesheets(&self) -> &[SvgStylesheetObservation] {
         &self.stylesheets
     }
-
-    fn canonical_digest(&self) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(b"merman.svg-artifact-receipt.v1\0");
-        hasher.update(self.artifact_digest);
-        match &self.root_id {
-            Some(root_id) => {
-                hasher.update([1]);
-                update_len_prefixed(&mut hasher, root_id.as_bytes());
-            }
-            None => hasher.update([0]),
-        }
-        for value in self.view_box_bits {
-            hasher.update(value.to_be_bytes());
-        }
-        hasher.update([
-            u8::from(self.native_text),
-            u8::from(self.has_foreign_object),
-            u8::from(self.has_prepared_tokens),
-        ]);
-        hasher.update((self.elements.len() as u64).to_be_bytes());
-        for element in self.elements.iter() {
-            hasher.update((element.index as u64).to_be_bytes());
-            update_len_prefixed(&mut hasher, element.tag.as_bytes());
-            update_optional_string(&mut hasher, element.id.as_deref());
-            hasher.update((element.classes.len() as u64).to_be_bytes());
-            for class in element.classes.iter() {
-                update_len_prefixed(&mut hasher, class.as_bytes());
-            }
-            hasher.update((element.attributes.len() as u64).to_be_bytes());
-            for attribute in element.attributes.iter() {
-                update_len_prefixed(&mut hasher, attribute.name.as_bytes());
-                update_len_prefixed(&mut hasher, attribute.value.as_bytes());
-            }
-            update_style_declarations(&mut hasher, &element.inline_styles);
-            update_len_prefixed(&mut hasher, element.text.as_bytes());
-            match element.parent_index {
-                Some(parent) => {
-                    hasher.update([1]);
-                    hasher.update((parent as u64).to_be_bytes());
-                }
-                None => hasher.update([0]),
-            }
-            match element.bounds_bits {
-                Some(bounds) => {
-                    hasher.update([1]);
-                    for value in bounds {
-                        hasher.update(value.to_be_bytes());
-                    }
-                }
-                None => hasher.update([0]),
-            }
-        }
-        hasher.update((self.stylesheets.len() as u64).to_be_bytes());
-        for stylesheet in self.stylesheets.iter() {
-            hasher.update([
-                u8::from(stylesheet.typed_font_marker),
-                u8::from(stylesheet.parse_valid),
-            ]);
-            hasher.update((stylesheet.rules.len() as u64).to_be_bytes());
-            for rule in stylesheet.rules.iter() {
-                update_len_prefixed(&mut hasher, rule.selector.as_bytes());
-                update_style_declarations(&mut hasher, &rule.declarations);
-            }
-            hasher.update((stylesheet.font_faces.len() as u64).to_be_bytes());
-            for font_face in stylesheet.font_faces.iter() {
-                update_style_declarations(&mut hasher, &font_face.declarations);
-            }
-        }
-        hasher.finalize().into()
-    }
 }
 
 /// Performs the bounded, iterative XML depth check before handing the document to `roxmltree`.
 ///
-/// `roxmltree` is useful for the rich receipt projection, but its recursive tree construction can
+/// `roxmltree` is useful for the fixture observation, but its recursive tree construction can
 /// exhaust the default test/thread stack on an otherwise well-formed SVG that is already beyond
-/// the renderer's structural depth budget. Keep this preflight iterative and fail closed before
+/// the runner's observation depth budget. Keep this preflight iterative and fail closed before
 /// invoking the recursive parser.
 fn svg_max_tree_depth(svg: &str) -> Option<usize> {
     let mut reader = quick_xml::Reader::from_str(svg);
@@ -783,30 +660,6 @@ fn accumulated_transform(node: Node<'_, '_>) -> Option<AffineTransform> {
     Some(transform)
 }
 
-fn update_len_prefixed(hasher: &mut Sha256, value: &[u8]) {
-    hasher.update((value.len() as u64).to_be_bytes());
-    hasher.update(value);
-}
-
-fn update_optional_string(hasher: &mut Sha256, value: Option<&str>) {
-    match value {
-        Some(value) => {
-            hasher.update([1]);
-            update_len_prefixed(hasher, value.as_bytes());
-        }
-        None => hasher.update([0]),
-    }
-}
-
-fn update_style_declarations(hasher: &mut Sha256, declarations: &[SvgStyleDeclarationObservation]) {
-    hasher.update((declarations.len() as u64).to_be_bytes());
-    for declaration in declarations {
-        update_len_prefixed(hasher, declaration.property.as_bytes());
-        update_len_prefixed(hasher, declaration.value.as_bytes());
-        hasher.update([u8::from(declaration.important)]);
-    }
-}
-
 fn parse_view_box(raw: &str) -> Option<[f64; 4]> {
     let values = raw
         .split_ascii_whitespace()
@@ -914,19 +767,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generic_receipt_seals_dom_relationships_inline_styles_and_stylesheet_rules() {
+    fn observes_dom_relationships_inline_styles_and_stylesheet_rules() {
         let svg = r##"<svg id="state" viewBox="0 0 40 30">
 <style data-merman-typed-fonts="v1">@font-face{font-family:"Excalifont";src:url(data:font/ttf;base64,AA==)}#state .actor{fill:#123456!important;stroke:#654321}</style>
 <g id="owner" class="actor"><rect x="2" y="3" width="10" height="8" style="fill:#abc;stroke:#111!important"/><text> Ready </text></g>
 </svg>"##.to_owned();
-        let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        let receipt =
-            SvgArtifactReceipt::observe_svg_for_test(&svg, digest).expect("generic receipt");
-        assert!(receipt.proves_artifact(digest));
-        assert!(!receipt.proves_artifact([0; 32]));
-        let other_digest = Sha256::digest(b"different artifact").into();
-        assert!(!receipt.proves_artifact(other_digest));
-        assert_eq!(receipt.clone().digest(), receipt.digest());
+        let receipt = SvgArtifactObservation::observe(&svg).expect("SVG observation");
         assert_eq!(receipt.root_id(), Some("state"));
         assert_eq!(receipt.view_box(), [0.0, 0.0, 40.0, 30.0]);
         assert_eq!(receipt.elements().len(), 5);

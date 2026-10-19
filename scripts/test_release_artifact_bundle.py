@@ -568,16 +568,17 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
         source = temp / "bundle"
         bundle.assemble_bundle(generated, verified, source, version=VERSION, source_sha=SOURCE_SHA)
         record = {
+            "schema_version": 2,
             "source_commit": SOURCE_SHA,
             "cli_archive": {"sha256": digests[archive_name("merman-cli")],
                             "target": TARGETS[-1], "version": VERSION},
             "host": {"system": "Linux", "release": "test", "machine": "x86_64"},
             "cli": {"executable_sha256": "b" * 64, "catalog": {"schema_version": 1, "presets": []},
                     "render_config": {"htmlLabels": False}, "svg_pipeline": "resvg-safe"},
-            "qualification": {"presets": [{
+            "qualification": {"schema_version": 2, "presets": [{
                 "preset": "brutalist", "profile": "native-test-host",
-                "qualification_schema_revision": 1, "recipe_fingerprint": "c" * 64,
-                "resource_fingerprint": "d" * 64,
+                "qualification_schema_revision": 2, "recipe_fingerprint": "c" * 64,
+                "font_catalog_fingerprint": "d" * 64,
                 "cells": [{"family": "state", "output": "svg", "source_id": "state",
                            "source_digest": "e" * 64, "png_scale": 1.0, "font_source": "system",
                            "private_observation": "must not be published"}],

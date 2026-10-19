@@ -158,7 +158,7 @@ fn try_render_xychart_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
 
     Ok(artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
@@ -454,8 +454,8 @@ xychart horizontal
 }
 
 #[test]
-fn xychart_huge_finite_bar_dimensions_do_not_spin_the_data_label_renderer() {
-    let error = try_render_xychart_svg_from_text(
+fn xychart_huge_finite_bar_dimensions_render_bounded_svg_and_exceed_only_the_native_domain() {
+    let svg = try_render_xychart_svg_from_text(
         r#"---
 config:
   xyChart:
@@ -468,12 +468,59 @@ xychart horizontal
   bar [73]
 "#,
     )
-    .expect_err("huge finite geometry must fail before entering the SVG backend");
+    .expect("finite geometry must remain available to ordinary SVG generation");
+    assert!(svg.len() < 64 * 1024, "one bar must produce bounded output");
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+    let document = roxmltree::Document::parse(&svg).expect("well-formed XY Chart SVG");
+    let view_box: Vec<f64> = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_ascii_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    assert_eq!(view_box.len(), 4);
+    assert!(view_box.iter().all(|value| value.is_finite()));
+    assert_eq!(view_box[3], 1e308);
+    for node in document.descendants().filter(roxmltree::Node::is_element) {
+        for attribute in node.attributes() {
+            if matches!(
+                attribute.name(),
+                "x" | "y" | "width" | "height" | "font-size" | "stroke-width"
+            ) && let Ok(value) = attribute.value().parse::<f64>()
+            {
+                assert!(value.is_finite(), "non-finite {}", attribute.name());
+            }
+        }
+    }
+
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let error = merman_render::svg::finalize_resvg_svg(&svg, &session)
+        .expect_err("native preparation must enforce its own coordinate domain");
     let merman_render::Error::ResourceLimitExceeded(limit) = error else {
-        panic!("expected typed resource-limit error, got {error}");
+        panic!("expected native coordinate limit, got {error}");
     };
     assert_eq!(limit.limit, "svg_backend_coordinate_magnitude");
     assert!(limit.actual > limit.max);
+}
+
+#[test]
+fn xychart_rejects_truly_unrepresentable_plot_geometry() {
+    let error = try_render_xychart_svg_from_text(
+        r#"---
+config:
+  xyChart:
+    height: "1.7e308"
+    plotReservedSpacePercent: 200
+---
+xychart horizontal
+  x-axis [A]
+  y-axis 0 --> 100
+  bar [73]
+"#,
+    )
+    .expect_err("a plot exceeding the finite number domain cannot be generated");
+    assert!(matches!(error, merman_render::Error::InvalidModel { .. }));
 }
 
 #[test]
@@ -758,7 +805,6 @@ fn xychart_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -881,7 +927,6 @@ fn xychart_title_fill_is_portable_and_reaches_the_final_text() {
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -1143,7 +1188,6 @@ fn xychart_text_and_axis_paint_are_portable_on_every_existing_consumer() {
                     );
                     assert_eq!(evidence.applied_count(), 1);
                     assert_eq!(evidence.theme_residual_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                 }
             }
         }

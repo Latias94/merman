@@ -508,70 +508,11 @@ fn prepare_architecture_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let native_svg_text_count = model
-        .nodes
-        .iter()
-        .filter(|node| {
-            node.node_type == diagrams::architecture::ArchitectureRenderNodeType::Service
-                && node
-                    .title
-                    .as_deref()
-                    .is_some_and(|title| !title.trim().is_empty())
-        })
-        .count()
-        .checked_add(
-            model
-                .groups
-                .iter()
-                .filter(|group| {
-                    group
-                        .title
-                        .as_deref()
-                        .is_some_and(|title| !title.trim().is_empty())
-                })
-                .count(),
-        )
-        .and_then(|count| {
-            count.checked_add(
-                model
-                    .edges
-                    .iter()
-                    .filter(|edge| {
-                        edge.title
-                            .as_deref()
-                            .is_some_and(|title| !title.trim().is_empty())
-                    })
-                    .count(),
-            )
-        })
-        .ok_or_else(|| Error::InvalidModel {
-            message: "Architecture native SVG text terminal count overflowed".to_string(),
-        })?;
-    let icon_text_count = model
-        .nodes
-        .iter()
-        .filter(|node| {
-            node.node_type == diagrams::architecture::ArchitectureRenderNodeType::Service
-                && node.icon.is_none()
-                && node
-                    .icon_text
-                    .as_deref()
-                    .is_some_and(|text| !text.trim().is_empty())
-        })
-        .count();
-    let typography_terminals = crate::architecture::ArchitectureTypographyTerminalInventory::new(
-        native_svg_text_count,
-        icon_text_count,
-    )
-    .ok_or_else(|| Error::InvalidModel {
-        message: "Architecture typography terminal count overflowed".to_string(),
-    })?;
     let group_theme = crate::architecture::ArchitectureGroupThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         model.groups.len(),
         model.edges.len(),
-        typography_terminals,
         execution.work_meter().as_ref(),
     )?;
     let layout = crate::architecture::layout_architecture_diagram_typed(
@@ -1153,18 +1094,15 @@ fn prepare_class_family(
 ) -> Result<BuiltinFamilyArtifact> {
     let relation_count = model.relations.len();
     execution.work_meter_ref().charge(model.notes.len())?;
-    let note_attachment_indices = model
+    let note_attachment_count = model
         .notes
         .iter()
-        .enumerate()
-        .filter_map(|(index, note)| {
+        .filter(|note| {
             note.class_id
                 .as_ref()
-                .filter(|class_id| model.classes.contains_key(*class_id))
-                .map(|_| index)
+                .is_some_and(|id| model.classes.contains_key(id))
         })
-        .collect::<Vec<_>>();
-    let note_attachment_count = note_attachment_indices.len();
+        .count();
     let node_count = model.classes.len();
     let needs_unsupported_table_evidence = execution.resolved_theme().is_some_and(|theme| {
         theme.family_mechanism_routes().iter().any(|route| {
@@ -1199,8 +1137,7 @@ fn prepare_class_family(
         relation_count,
         node_count,
         execution.work_meter_ref(),
-    )?
-    .with_note_attachments(note_attachment_indices);
+    )?;
     let typography_theme = crate::class::ClassTextThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

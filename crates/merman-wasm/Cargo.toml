@@ -19,6 +19,11 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.merman]
 artifact-profile-required = true
 
+[package.metadata.wasm-pack.profile.custom]
+# Binaryen 133 can assert in constraint-analysis on complex control flow (Binaryen PR 9258).
+# Keep the remaining -O passes and validation; remove this bypass after upgrading Binaryen.
+wasm-opt = ["-O", "--skip-pass=constraint-analysis"]
+
 [package.metadata.wasm-pack.profile.custom.wasm-bindgen]
 omit-default-module-path = true
 

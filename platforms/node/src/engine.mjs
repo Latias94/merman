@@ -195,39 +195,35 @@ export class MermanEngine {
   }
 
   renderSvg(source, options = {}) {
-    return this.executeOperation(
+    return this.#execute(
       { operationId: "svg", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
-    ).then((result) => result.data);
+      false,
+    );
   }
 
   renderSvgSync(source, options = {}) {
-    return this.executeOperationSync(
-      {
-        operationId: "svg",
-        source,
-        optionsJson: options.optionsJson,
-      },
+    return this.#executeSync(
+      { operationId: "svg", source, optionsJson: options.optionsJson },
       { timeoutMs: options.timeoutMs },
-    ).data;
+      false,
+    );
   }
 
   svgPlanJson(source, options = {}) {
-    return this.executeOperation(
+    return this.#execute(
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
-    ).then((result) => result.data);
+      false,
+    );
   }
 
   svgPlanJsonSync(source, options = {}) {
-    return this.executeOperationSync(
-      {
-        operationId: "svg-plan-json",
-        source,
-        optionsJson: options.optionsJson,
-      },
+    return this.#executeSync(
+      { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { timeoutMs: options.timeoutMs },
-    ).data;
+      false,
+    );
   }
 
   metadataJson(id) {
@@ -254,7 +250,11 @@ export class MermanEngine {
     return value;
   }
 
-  executeOperation(request, { signal, timeoutMs } = {}) {
+  executeOperation(request, options = {}) {
+    return this.#execute(request, options, true);
+  }
+
+  #execute(request, { signal, timeoutMs } = {}, includeMetadata) {
     try {
       this.#executor.assertOpen();
     } catch (error) {
@@ -262,7 +262,7 @@ export class MermanEngine {
     }
     const prepared = prepareOperationRequest(request, { timeoutMs });
     if (signal?.aborted) return Promise.reject(abortError());
-    const encoded = operationRequestJson(prepared);
+    const encoded = operationRequestJson(prepared, includeMetadata);
     return this.#executor.submit(
       async () => {
         // A signal can flip after queue admission but before this start microtask runs. That work
@@ -280,6 +280,7 @@ export class MermanEngine {
           throw decodeWireInvocationError(cause, "Merman operation");
         }
         return decodeWireResponse(responseJson, encoded.expectation, {
+          includeMetadata,
           allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
           requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
           availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
@@ -289,9 +290,16 @@ export class MermanEngine {
     );
   }
 
-  executeOperationSync(request, { timeoutMs } = {}) {
+  executeOperationSync(request, options = {}) {
+    return this.#executeSync(request, options, true);
+  }
+
+  #executeSync(request, { timeoutMs } = {}, includeMetadata) {
     this.#executor.assertSyncAvailable();
-    const encoded = operationRequestJson(prepareOperationRequest(request, { timeoutMs }));
+    const encoded = operationRequestJson(
+      prepareOperationRequest(request, { timeoutMs }),
+      includeMetadata,
+    );
     let responseJson;
     try {
       responseJson = this.#transport.executeSync(encoded.json, timeoutMs);
@@ -299,6 +307,7 @@ export class MermanEngine {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
     return decodeWireResponse(responseJson, encoded.expectation, {
+      includeMetadata,
       allowedCancellationReasons: invocationCancellationReasons(undefined, timeoutMs),
       requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
       availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
@@ -387,7 +396,8 @@ function prepareOperationRequest(value, { timeoutMs } = {}) {
   return { expectation, request, value };
 }
 
-function operationRequestJson({ expectation, request, value }) {
+function operationRequestJson({ expectation, request, value }, includeMetadata) {
+  if (!includeMetadata) request.include_metadata = false;
   const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
     if (typeof optionsJson !== "string") {

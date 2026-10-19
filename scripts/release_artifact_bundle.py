@@ -818,7 +818,7 @@ def _validate_catalog_binding(catalog: dict, manifest: dict) -> None:
     archive_name = release_archive_name_for("merman-cli", PRESET_CATALOG_TARGET)
     archive = next((entry for entry in manifest["assets"] if entry["name"] == archive_name), None)
     artifact = catalog.get("artifact")
-    if (type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1
+    if (type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 2
             or catalog.get("source_commit") != manifest["source_sha"]
             or not isinstance(artifact, dict) or archive is None
             or artifact.get("target") != PRESET_CATALOG_TARGET

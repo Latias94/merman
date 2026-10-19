@@ -27,6 +27,8 @@ merman-render.workspace = true
 image = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
 roxmltree.workspace = true
+quick-xml.workspace = true
+svgtypes.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

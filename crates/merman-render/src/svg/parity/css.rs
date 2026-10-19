@@ -500,13 +500,40 @@ impl PreparedCommonCss {
         font_size_css: &str,
         typed_font_stack_active: bool,
     ) -> Self {
-        let mut values = Self::with_resolved_typography(
+        Self::bind_resolved(
             effective_config,
             normalize_css_font_family(font_family),
             font_size_css.to_owned(),
-        );
+            typed_font_stack_active,
+        )
+    }
+
+    #[cfg(feature = "diagram-class")]
+    pub(crate) fn bind_normalized(
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        font_size_css: &str,
+        typed_font_stack_active: bool,
+    ) -> Self {
+        Self::bind_resolved(
+            effective_config,
+            font_family.to_owned(),
+            font_size_css.to_owned(),
+            typed_font_stack_active,
+        )
+    }
+
+    #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+    fn bind_resolved(
+        effective_config: &serde_json::Value,
+        font_family: String,
+        font_size_css: String,
+        typed_font_stack_active: bool,
+    ) -> Self {
+        let mut values =
+            Self::with_resolved_typography(effective_config, font_family, font_size_css);
         if !typed_font_stack_active {
-            values.root_font_family = crate::config::config_root_font_family_css(effective_config);
+            values = values.with_configured_root_font_family(effective_config);
         }
         values
     }
@@ -589,9 +616,17 @@ impl PreparedCommonCss {
         let mut values =
             Self::with_resolved_typography(effective_config, font_family, font_size_css);
         if resolved_font_family.is_none() {
-            values.root_font_family = crate::config::config_root_font_family_css(effective_config);
+            values = values.with_configured_root_font_family(effective_config);
         }
         values
+    }
+
+    pub(crate) fn with_configured_root_font_family(
+        mut self,
+        effective_config: &serde_json::Value,
+    ) -> Self {
+        self.root_font_family = crate::config::config_root_font_family_css(effective_config);
+        self
     }
 
     pub(crate) fn with_resolved_typography(
@@ -805,18 +840,11 @@ where
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ErCssEmission {
-    pub(super) css: String,
-    pub(super) font_family: Box<str>,
-    pub(super) font_size: Box<str>,
-}
-
 #[cfg(feature = "diagram-er")]
 pub(super) fn er_css_with_resolved_typography<I>(
     diagram_id: I,
     values: &crate::er::ErCssBinding,
-) -> Result<ErCssEmission>
+) -> Result<String>
 where
     I: SvgDiagramIdValue,
 {
@@ -826,7 +854,6 @@ where
     let id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     let font = &values.font_family;
-    let font_size_css = &values.font_size_css;
     let text_color = &values.text_color;
     let line_color = &values.line_color;
     let main_bkg = &values.main_bkg;
@@ -905,11 +932,7 @@ where
         id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
     values.common.write_root(&mut out, id, fragment_id)?;
-    Ok(ErCssEmission {
-        css: out,
-        font_family: font.clone().into_boxed_str(),
-        font_size: font_size_css.clone().into_boxed_str(),
-    })
+    Ok(out)
 }
 
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.

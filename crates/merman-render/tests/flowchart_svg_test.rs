@@ -8562,41 +8562,6 @@ fn flowchart_collapsed_hidden_edges_preserve_visible_self_loop_semantic_owner() 
 }
 
 #[test]
-fn flowchart_reserved_prepared_text_diagram_ids_are_normalized_on_public_render() {
-    for raw in [
-        "merman-prepared-state-17",
-        "merman-prepared-malformed",
-        "merman.prepared---bad",
-    ] {
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::default())
-            .unwrap()
-            .unwrap();
-        let artifact = family::prepare(
-            parsed,
-            &LayoutOptions::default(),
-            RenderEnvironment::deterministic().begin_session().unwrap(),
-        )
-        .unwrap();
-        let rendered = artifact
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some(raw.into()),
-                    ..Default::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .expect("caller id cannot enter prepared text namespace");
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        assert_eq!(
-            document.root_element().attribute("id"),
-            Some(merman_render::svg::sanitize_svg_id(raw).as_str())
-        );
-        assert_svg_ids_are_unique(rendered.svg());
-    }
-}
-
-#[test]
 fn flowchart_ancestor_descendant_routes_retain_real_segments_for_supported_curves() {
     for source in [
         include_str!(
@@ -8802,4 +8767,16 @@ fn flowchart_elk_collapsed_projection_preserves_theme_font_and_edge_padding() {
         .unwrap();
     assert!((label.width - no_padding_label.width - 18.0).abs() < 0.01);
     assert!((label.height - no_padding_label.height - 18.0).abs() < 0.01);
+}
+
+#[test]
+fn flowchart_author_text_ids_render_without_internal_font_privileges() {
+    let svg = render_dagre_flowchart_svg_from_text(
+        "flowchart TD\nA[\"<span id='merman-prepared-state-0'>label</span>\"]\n",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("id") == Some("merman-prepared-state-0") && node.text() == Some("label")
+    }));
+    assert_svg_ids_are_unique(&svg);
 }

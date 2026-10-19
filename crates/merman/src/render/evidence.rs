@@ -96,13 +96,10 @@ pub(crate) struct ThemeAcceptanceEvidenceProjection<'a> {
     pub(crate) root: ThemeEvidenceScopeProjection,
     pub(crate) family: ThemeEvidenceScopeProjection,
     pub(crate) source_residual_count: usize,
-    pub(crate) compatibility_residual_count: usize,
     pub(crate) mermaid_compatibility_residual_count: usize,
     pub(crate) recipe_report: Option<&'a merman_render::diagram_theme::ThemeRecipeReport>,
     pub(crate) host_admission_report:
         Option<&'a merman_render::diagram_theme::ThemeHostAdmissionReport>,
-    pub(crate) prepared_text_layout: Option<&'a merman_render::text::PreparedTextLayoutReport>,
-    pub(crate) text_layout_failure: Option<merman_render::text::TextLayoutFailure>,
     pub(crate) effective_theme_resource_policy:
         &'a merman_render::diagram_theme::ThemeResourcePolicy,
 }
@@ -113,7 +110,6 @@ struct ThemeAcceptanceEvidenceSnapshot {
     root: ThemeEvidenceScopeProjection,
     family: ThemeEvidenceScopeProjection,
     source_residual_count: usize,
-    compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
 }
 
@@ -130,7 +126,14 @@ pub struct RenderEvidence {
     theme_evidence: ThemeEvidenceSummary,
     theme_diagnostics: Box<[ThemeDiagnostic]>,
     required_capabilities: Box<[merman_render::RenderCapability]>,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        merman_internal_theme_acceptance
+    ))]
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_receipt: Option<merman_render::__private::ArchitectureTextReceipt>,
@@ -143,34 +146,47 @@ impl RenderEvidence {
         family: merman_render::family::FamilyRenderReport,
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
-        let session = family.session_report().clone();
         let family_id = family.family_id();
         let (root, family_scope, family_evidence) = theme_evidence_scopes(&family);
         let source_residual_count = family_evidence.source_residual_count();
-        let compatibility_residual_count = family_evidence.compatibility_residual_count();
         let mermaid_compatibility_residual_count =
             family_evidence.mermaid_compatibility_residual_count();
         let theme_evidence = summarize_theme_evidence(
             root,
             family_scope,
             source_residual_count,
-            compatibility_residual_count,
             mermaid_compatibility_residual_count,
         );
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         let root_applied_capabilities =
             merman_render::__private::root_applied_capabilities(&family);
+        #[cfg(any(
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf",
+            merman_internal_theme_acceptance
+        ))]
         let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
         #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         let architecture_text_receipt =
             merman_render::__private::architecture_text_receipt(&family).cloned();
+        let (session, theme_diagnostics) =
+            merman_render::__private::into_session_and_theme_diagnostics(family);
         Self {
             execution_path: super::OperationExecutionPath::Renderer,
             session,
             family_id,
             theme_evidence,
-            theme_diagnostics: merman_render::__private::into_theme_diagnostics(family),
+            theme_diagnostics,
             required_capabilities: required_capabilities.into_boxed_slice(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
             root_applied_capabilities,
+            #[cfg(any(
+                feature = "png",
+                feature = "jpeg",
+                feature = "pdf",
+                merman_internal_theme_acceptance
+            ))]
             native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_receipt,
@@ -179,7 +195,6 @@ impl RenderEvidence {
                 root,
                 family: family_scope,
                 source_residual_count,
-                compatibility_residual_count,
                 mermaid_compatibility_residual_count,
             },
         }
@@ -199,16 +214,12 @@ impl RenderEvidence {
         self.session().portability_requirement()
     }
 
-    pub(super) fn prepared_text_layout(
-        &self,
-    ) -> Option<&merman_render::text::PreparedTextLayoutReport> {
-        self.session().prepared_text_layout()
-    }
-
-    pub(super) fn text_layout_failure(&self) -> Option<merman_render::text::TextLayoutFailure> {
-        self.session().text_layout_failure()
-    }
-
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        merman_internal_theme_acceptance
+    ))]
     pub(crate) fn native_filter_receipt(
         &self,
     ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
@@ -288,6 +299,7 @@ impl RenderEvidence {
         &self.required_capabilities
     }
 
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(crate) fn root_applied_capabilities(
         &self,
     ) -> &[merman_render::diagram_theme::ThemeCapability] {
@@ -300,14 +312,11 @@ impl RenderEvidence {
             root: self.theme_acceptance.root,
             family: self.theme_acceptance.family,
             source_residual_count: self.theme_acceptance.source_residual_count,
-            compatibility_residual_count: self.theme_acceptance.compatibility_residual_count,
             mermaid_compatibility_residual_count: self
                 .theme_acceptance
                 .mermaid_compatibility_residual_count,
             recipe_report: self.session().theme_recipe_report(),
             host_admission_report: self.session().theme_host_admission_report(),
-            prepared_text_layout: self.session().prepared_text_layout(),
-            text_layout_failure: self.session().text_layout_failure(),
             effective_theme_resource_policy:
                 merman_render::__private::effective_theme_resource_policy(self.session()),
         }
@@ -321,7 +330,33 @@ fn theme_evidence_scopes(
     ThemeEvidenceScopeProjection,
     merman_render::__private::FamilyEvidenceSummary,
 ) {
-    let root = merman_render::__private::root_evidence(report);
+    theme_evidence_scope_projections(
+        merman_render::__private::root_evidence(report),
+        merman_render::__private::family_evidence(report),
+    )
+}
+
+pub(super) fn theme_evidence_from_summaries(
+    root: merman_render::__private::RootEvidenceSummary,
+    family: merman_render::__private::FamilyEvidenceSummary,
+) -> ThemeEvidenceSummary {
+    let (root, family_scope, family) = theme_evidence_scope_projections(root, family);
+    summarize_theme_evidence(
+        root,
+        family_scope,
+        family.source_residual_count(),
+        family.mermaid_compatibility_residual_count(),
+    )
+}
+
+fn theme_evidence_scope_projections(
+    root: merman_render::__private::RootEvidenceSummary,
+    family: merman_render::__private::FamilyEvidenceSummary,
+) -> (
+    ThemeEvidenceScopeProjection,
+    ThemeEvidenceScopeProjection,
+    merman_render::__private::FamilyEvidenceSummary,
+) {
     let root_status = match root.status() {
         merman_render::diagram_theme::RootThemeVerification::NotApplicable => {
             ThemeEvidenceStatus::NotApplicable
@@ -338,7 +373,6 @@ fn theme_evidence_scopes(
         _ => ThemeEvidenceStatus::Incomplete,
     };
 
-    let family = merman_render::__private::family_evidence(report);
     let family_status = match family.status() {
         merman_render::__private::FamilyEvidenceStatus::NotApplicable => {
             ThemeEvidenceStatus::NotApplicable
@@ -378,12 +412,10 @@ fn summarize_theme_evidence(
     root: ThemeEvidenceScopeProjection,
     family: ThemeEvidenceScopeProjection,
     source_residual_count: usize,
-    compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
 ) -> ThemeEvidenceSummary {
-    let extra_residual_count = source_residual_count
-        .saturating_add(compatibility_residual_count)
-        .saturating_add(mermaid_compatibility_residual_count);
+    let extra_residual_count =
+        source_residual_count.saturating_add(mermaid_compatibility_residual_count);
     let residual_count = root
         .residual_count
         .saturating_add(family.residual_count)
@@ -477,7 +509,7 @@ mod tests {
             output_mutated: false,
         };
 
-        let summary = summarize_theme_evidence(root, family, 1, 1, 1);
+        let summary = summarize_theme_evidence(root, family, 1, 1);
 
         assert_eq!(summary.status(), ThemeEvidenceStatus::Incomplete);
         assert!(!summary.is_satisfied());

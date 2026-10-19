@@ -29,6 +29,7 @@ except ImportError:
     from release_process import CommandRunner, run_checked
 
 ROOT = Path(__file__).resolve().parents[1]
+QUALIFICATION_SCHEMA_VERSION = 2
 QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v1"
 CYBERPUNK_QUALIFIED_PROFILE = "native-cyberpunk-full-scenes-system-fonts-v1"
 QUALIFIED_ADMISSION = "host_dependent"
@@ -60,6 +61,8 @@ def qualify_cli(
     binary: Path, qualification: dict, *, runner: CommandRunner = subprocess.run,
 ) -> dict:
     """Bind a real CLI to fresh Rust-qualified bytes, without reimplementing their checks."""
+    if type(qualification.get("schema_version")) is not int or qualification["schema_version"] != QUALIFICATION_SCHEMA_VERSION:
+        raise RuntimeError("Unsupported qualification schema; rerun the schema-2 runner")
     binary = binary.resolve(strict=True)
     digest = sha256_file(binary)
     if not qualification.get("presets"):
@@ -193,12 +196,14 @@ def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
         [str(executable)], cwd=root, env=env, check=True, capture_output=True, text=True,
     )
     result = json.loads(execution.stdout)
+    if type(result.get("schema_version")) is not int or result["schema_version"] != QUALIFICATION_SCHEMA_VERSION:
+        raise RuntimeError("Unsupported runner qualification schema; expected 2")
     cli = qualify_cli(cli_binary, result) if cli_binary is not None else None
     if (clean_revision(root) != revision or sha256_file(root / "Cargo.lock") != lock_digest
             or sha256_file(executable) != executable_digest):
         raise RuntimeError("Candidate source, lockfile, or executable changed during qualification")
     return {
-        "schema_version": 1,
+        "schema_version": QUALIFICATION_SCHEMA_VERSION,
         "source_commit": revision,
         "lockfile_sha256": lock_digest,
         "executable_sha256": executable_digest,
@@ -216,8 +221,12 @@ def archive_catalog(record: dict) -> dict:
     This projection does not validate or issue qualification. Release assembly only accepts its
     input from the successful native verification job and binds it to the verified archive.
     """
+    if (type(record.get("schema_version")) is not int or record["schema_version"] != QUALIFICATION_SCHEMA_VERSION
+            or type(record.get("qualification", {}).get("schema_version")) is not int
+            or record["qualification"]["schema_version"] != QUALIFICATION_SCHEMA_VERSION):
+        raise RuntimeError("Unsupported qualification record schema; expected 2")
     return {
-        "schema_version": 1,
+        "schema_version": QUALIFICATION_SCHEMA_VERSION,
         "source_commit": record["source_commit"],
         "artifact": {**record["cli_archive"],
                      "executable_sha256": record["cli"]["executable_sha256"]},
@@ -228,7 +237,7 @@ def archive_catalog(record: dict) -> dict:
         "qualifications": [{
             **{key: preset[key] for key in (
                 "preset", "profile", "qualification_schema_revision",
-                "recipe_fingerprint", "resource_fingerprint",
+                "recipe_fingerprint", "font_catalog_fingerprint",
             )},
             "scenarios": [{key: cell[key] for key in (
                 "family", "output", "source_id", "source_digest", "png_scale", "font_source",
@@ -238,6 +247,9 @@ def archive_catalog(record: dict) -> dict:
 
 
 def verify_record(expected: dict, actual: dict) -> None:
+    for record in (expected, actual):
+        if type(record.get("schema_version")) is not int or record["schema_version"] != QUALIFICATION_SCHEMA_VERSION:
+            raise RuntimeError("Stale qualification schema; rerun the schema-2 runner")
     # Python equality aliases bool/int and int/float; JSON types are part of the record.
     if json.dumps(expected, sort_keys=True, allow_nan=False) != json.dumps(
         actual, sort_keys=True, allow_nan=False,

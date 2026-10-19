@@ -294,19 +294,19 @@ struct SankeyTextRuleObservation {
 
 /// Milestone issued only after the final Sankey stylesheet writer completes successfully.
 #[derive(Debug)]
-pub(crate) struct SankeyTypographyCssEmission {
-    font_family_css: String,
+pub(crate) struct SankeyTypographyCssEmission<'a> {
+    font_family_css: &'a str,
     all_font_surfaces_match: bool,
-    text_fill_css: String,
-    label_foreground_fill_css: String,
+    text_fill_css: &'a str,
+    label_foreground_fill_css: &'a str,
 }
 
-impl SankeyTypographyCssEmission {
+impl<'a> SankeyTypographyCssEmission<'a> {
     pub(crate) fn from_successful_writes(
-        font_family_css: String,
+        font_family_css: &'a str,
         all_font_surfaces_match: bool,
-        text_fill_css: String,
-        label_foreground_fill_css: String,
+        text_fill_css: &'a str,
+        label_foreground_fill_css: &'a str,
     ) -> Self {
         Self {
             font_family_css,
@@ -361,7 +361,7 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
         }
     }
 
-    pub(crate) fn record_css_emission(&mut self, emission: SankeyTypographyCssEmission) {
+    pub(crate) fn record_css_emission(&mut self, emission: SankeyTypographyCssEmission<'_>) {
         self.valid &= !self.css_emitted
             && emission.all_font_surfaces_match
             && emission.font_family_css == self.expected_font_family_css
@@ -889,23 +889,23 @@ mod tests {
         receipt
     }
 
-    fn typography_css_emission(
-        font_family_css: &str,
+    fn typography_css_emission<'a>(
+        font_family_css: &'a str,
         all_font_surfaces_match: bool,
-        text_fill_css: &str,
-        label_foreground_fill_css: &str,
-    ) -> SankeyTypographyCssEmission {
+        text_fill_css: &'a str,
+        label_foreground_fill_css: &'a str,
+    ) -> SankeyTypographyCssEmission<'a> {
         SankeyTypographyCssEmission::from_successful_writes(
-            font_family_css.to_owned(),
+            font_family_css,
             all_font_surfaces_match,
-            text_fill_css.to_owned(),
-            label_foreground_fill_css.to_owned(),
+            text_fill_css,
+            label_foreground_fill_css,
         )
     }
 
     fn expected_typography_css_emission(
         plan: &SankeyTypographyThemePlan,
-    ) -> SankeyTypographyCssEmission {
+    ) -> SankeyTypographyCssEmission<'_> {
         let text_fill_css = plan.text_fill_css().unwrap_or("#333");
         typography_css_emission(plan.font_family_css(), true, text_fill_css, text_fill_css)
     }

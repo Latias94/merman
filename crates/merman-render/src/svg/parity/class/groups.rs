@@ -11,11 +11,11 @@ use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
 use rustc_hash::FxHashMap;
 
-pub(super) struct ClassSplitEdgeGroupsRenderState<'a, 'nodes> {
+pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
-    pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt<'nodes>,
-    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextThemeReceipt>,
+    pub(super) theme_receipt: &'a mut crate::class::ClassThemeOutcomes,
+    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextOutcomes>,
 }
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
@@ -47,7 +47,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
 
 pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
     out: &mut O,
-    state: ClassSplitEdgeGroupsRenderState<'_, '_>,
+    state: ClassSplitEdgeGroupsRenderState<'_>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
@@ -84,7 +84,7 @@ pub(super) fn render_class_split_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
     ctx: &ClassSplitEdgeGroupsRenderContext<'edges>,
     bounds_dx: f64,
     bounds_dy: f64,
@@ -101,8 +101,8 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
+    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,

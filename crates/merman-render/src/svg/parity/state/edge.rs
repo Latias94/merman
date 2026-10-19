@@ -556,7 +556,6 @@ fn write_state_edge_path(
     if !ctx.uses_elk_adapter_dom && le.points.len() < 2 {
         return Ok(());
     }
-    let terminal_start = out.len();
 
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
@@ -609,11 +608,6 @@ fn write_state_edge_path(
     }
     out.push_str("/>");
     out.checkpoint()?;
-    ctx.style_plan.record_edge_path_terminal_emission(
-        &mut ctx.theme_receipt.borrow_mut(),
-        edge_id,
-        terminal_start..out.len(),
-    );
     Ok(())
 }
 
@@ -911,7 +905,6 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
-    let terminal_start = out.len();
     write_visible_edge_label(
         out,
         &edge.id,
@@ -927,11 +920,6 @@ pub(super) fn render_state_edge_label(
         html_background_style,
         fallback_background_fill,
         svg_background_style,
-    );
-    ctx.style_plan.record_edge_label_terminal_emission(
-        &mut ctx.theme_receipt.borrow_mut(),
-        edge.id.as_str(),
-        terminal_start..out.len(),
     );
 }
 

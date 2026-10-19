@@ -26,7 +26,6 @@ pub(crate) use theme::{
 
 mod geometry;
 
-pub(crate) use geometry::BlockNodeShellKind;
 pub use geometry::{
     BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
 };

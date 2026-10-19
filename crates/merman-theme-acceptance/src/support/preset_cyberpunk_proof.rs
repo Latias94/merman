@@ -4,7 +4,7 @@ use merman::{DiagramFamilyId, RasterOutput, RenderedDocument};
 use super::state_proof::verify_host_admission;
 use crate::observation::C6TargetArtifact;
 use crate::runner::{
-    C6ProofError, C6ProofResult, C6RasterImage, artifact_observation::sealed_svg_receipt,
+    C6ProofError, C6ProofResult, C6RasterImage, artifact_observation::observed_svg,
     decode_bounded_png_artifact,
 };
 
@@ -23,7 +23,7 @@ pub(super) fn verify(
         "complete scenes require 1x PNG"
     );
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
-    let receipt = sealed_svg_receipt(&artifact)?;
+    let receipt = observed_svg(&artifact)?;
     scene_semantics::verify(family, receipt)?;
     let raster = decode_bounded_png_artifact(png.bytes(), png.plan())?;
     verify_pixels(family, document.svg(), &raster)
@@ -222,10 +222,9 @@ fn verify_pixels(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::svg_observation::SvgArtifactObservation;
     use merman::svg::{DiagramThemeCompiler, ThemePreset};
     use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
-    use merman_render::__private::SvgArtifactReceipt;
-    use sha2::{Digest as _, Sha256};
 
     fn document(source: &str) -> RenderedDocument {
         let theme = DiagramThemeCompiler::new()
@@ -246,9 +245,8 @@ mod tests {
         document
     }
 
-    fn observe(svg: &str) -> SvgArtifactReceipt {
-        SvgArtifactReceipt::observe_svg_for_test(svg, Sha256::digest(svg.as_bytes()).into())
-            .unwrap()
+    fn observe(svg: &str) -> SvgArtifactObservation {
+        SvgArtifactObservation::observe(svg).unwrap()
     }
 
     #[test]

@@ -83,6 +83,45 @@ struct Dimension {
 
 type Point = merman_core::geom::Point;
 
+fn finite_geometry(values: impl IntoIterator<Item = f64>) -> Result<()> {
+    if values.into_iter().all(f64::is_finite) {
+        Ok(())
+    } else {
+        Err(Error::InvalidModel {
+            message: "XY Chart geometry cannot be represented with finite coordinates".to_string(),
+        })
+    }
+}
+
+fn reserved_plot_span(span: f64, percent: f64) -> Result<f64> {
+    finite_geometry([span, percent])?;
+    let product = span * percent;
+    // Keep Mermaid's ordinary rounding, recovering only when the intermediate product overflows.
+    let reserved = if product.is_finite() {
+        product / 100.0
+    } else {
+        span * (percent / 100.0)
+    };
+    finite_geometry([reserved])?;
+    Ok(reserved.floor())
+}
+
+fn linear_scale_value(value: f64, domain: (f64, f64), range: (f64, f64)) -> f64 {
+    let (d0, d1) = domain;
+    let (r0, r1) = range;
+    if d0 == d1 {
+        return r0 + (r1 - r0) * 0.5;
+    }
+    let numerator = value - d0;
+    let denominator = d1 - d0;
+    let t = if numerator.is_finite() && denominator.is_finite() {
+        numerator / denominator
+    } else {
+        (value * 0.5 - d0 * 0.5) / (d1 * 0.5 - d0 * 0.5)
+    };
+    r0 + t * (r1 - r0)
+}
+
 fn pt(x: f64, y: f64) -> Point {
     merman_core::geom::point(x, y)
 }
@@ -411,7 +450,12 @@ fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
             return None;
         }
 
-        let step = (stop - start) / count.max(0.0);
+        let span = stop - start;
+        let step = if span.is_finite() {
+            span / count.max(0.0)
+        } else {
+            stop / count - start / count
+        };
         if !step.is_finite() || step == 0.0 {
             return None;
         }
@@ -660,12 +704,7 @@ impl Axis {
                 if matches!(self.axis_position, AxisPosition::Left) {
                     std::mem::swap(&mut d0, &mut d1);
                 }
-                let (r0, r1) = self.get_range();
-                if d0 == d1 {
-                    return r0 + (r1 - r0) * 0.5;
-                }
-                let t = (v - d0) / (d1 - d0);
-                r0 + t * (r1 - r0)
+                linear_scale_value(v, (d0, d1), self.get_range())
             }
         }
     }
@@ -684,12 +723,7 @@ impl Axis {
                 if matches!(self.axis_position, AxisPosition::Left) {
                     std::mem::swap(&mut d0, &mut d1);
                 }
-                let (r0, r1) = self.get_range();
-                if d0 == d1 {
-                    return r0 + (r1 - r0) * 0.5;
-                }
-                let t = (value - d0) / (d1 - d0);
-                r0 + t * (r1 - r0)
+                linear_scale_value(value, (d0, d1), self.get_range())
             }
             AxisKind::Band { .. } => self.get_scale_value(&format!("{value}")),
         }
@@ -1247,9 +1281,10 @@ pub(crate) fn layout_xychart_diagram_typed(
         })
         .unwrap_or_default()
         .to_owned();
-    let mut chart_width = (chart_cfg.width * chart_cfg.plot_reserved_space_percent / 100.0).floor();
+    let mut chart_width =
+        reserved_plot_span(chart_cfg.width, chart_cfg.plot_reserved_space_percent)?;
     let mut chart_height =
-        (chart_cfg.height * chart_cfg.plot_reserved_space_percent / 100.0).floor();
+        reserved_plot_span(chart_cfg.height, chart_cfg.plot_reserved_space_percent)?;
     let mut available_width = chart_cfg.width - chart_width;
     let mut available_height = chart_cfg.height - chart_height;
     let title_dimension = max_text_dimension(
@@ -1466,6 +1501,17 @@ pub(crate) fn layout_xychart_diagram_typed(
         plot_rect
     };
 
+    finite_geometry([
+        plot_rect.x,
+        plot_rect.y,
+        plot_rect.width,
+        plot_rect.height,
+        plot_rect.x + plot_rect.width,
+        plot_rect.y + plot_rect.height,
+        legend_origin.x,
+        legend_origin.y,
+    ])?;
+
     if show_chart_title {
         // The title owns a row above both plot and legend. Center it over the plot,
         // allowing a wide title to span legend columns while staying inside the chart.
@@ -1515,13 +1561,17 @@ pub(crate) fn layout_xychart_diagram_typed(
                 let bar_width = (x_axis.outer_padding * 2.0).min(x_axis.tick_distance())
                     * (1.0 - bar_padding_percent);
                 let bar_width_half = bar_width / 2.0;
+                finite_geometry([bar_width])?;
 
                 let mut rects: Vec<XyChartRectData> = Vec::with_capacity(plot.data.len());
                 for (cat, value) in &plot.data {
                     let x = x_axis.get_scale_value(cat);
                     let y = y_axis.get_scale_number(*value);
-                    if chart_cfg.chart_orientation == "horizontal" {
-                        rects.push(XyChartRectData {
+                    if value.is_some() {
+                        finite_geometry([x, y])?;
+                    }
+                    let rect = if chart_cfg.chart_orientation == "horizontal" {
+                        XyChartRectData {
                             x: plot_rect.x,
                             y: x - bar_width_half,
                             width: y - plot_rect.x,
@@ -1531,9 +1581,9 @@ pub(crate) fn layout_xychart_diagram_typed(
                             stroke_width: series_paint
                                 .stroke_width(plot_index)
                                 .expect("resolved series width"),
-                        });
+                        }
                     } else {
-                        rects.push(XyChartRectData {
+                        XyChartRectData {
                             x: x - bar_width_half,
                             y,
                             width: bar_width,
@@ -1543,8 +1593,12 @@ pub(crate) fn layout_xychart_diagram_typed(
                             stroke_width: series_paint
                                 .stroke_width(plot_index)
                                 .expect("resolved series width"),
-                        });
+                        }
+                    };
+                    if value.is_some() {
+                        finite_geometry([rect.x, rect.y, rect.width, rect.height])?;
                     }
+                    rects.push(rect);
                 }
 
                 drawables.push(XyChartDrawableElem::Rect {
@@ -1557,6 +1611,9 @@ pub(crate) fn layout_xychart_diagram_typed(
                 for (cat, value) in &plot.data {
                     let x = x_axis.get_scale_value(cat);
                     let y = y_axis.get_scale_number(*value);
+                    if value.is_some() {
+                        finite_geometry([x, y])?;
+                    }
                     points.push(if chart_cfg.chart_orientation == "horizontal" {
                         (y, x)
                     } else {
@@ -1827,6 +1884,33 @@ mod data_label_tests {
                     .max(0.0),
             );
         }
+    }
+
+    #[test]
+    fn finite_plot_reservation_recovers_only_intermediate_overflow() {
+        assert_eq!(
+            reserved_plot_span(701.0, 33.3).unwrap(),
+            (701.0_f64 * 33.3 / 100.0).floor()
+        );
+        assert_eq!(reserved_plot_span(1e308, 50.0).unwrap(), 5e307);
+        assert!(matches!(
+            reserved_plot_span(1.7e308, 200.0),
+            Err(Error::InvalidModel { .. })
+        ));
+    }
+
+    #[test]
+    fn extreme_finite_axis_domain_retains_its_linear_mapping_and_bounded_ticks() {
+        for (value, expected) in [(-1e308, 0.0), (0.0, 350.0), (1e308, 700.0)] {
+            assert_eq!(
+                linear_scale_value(value, (-1e308, 1e308), (0.0, 700.0)),
+                expected
+            );
+        }
+        let ticks = d3_ticks(-1e308, 1e308, 10);
+        assert!(!ticks.is_empty() && ticks.len() <= 20);
+        assert!(ticks.iter().all(|value| value.is_finite()));
+        assert!(ticks.first().unwrap() < &0.0 && ticks.last().unwrap() > &0.0);
     }
 
     #[test]

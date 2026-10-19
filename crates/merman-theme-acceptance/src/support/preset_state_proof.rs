@@ -9,7 +9,7 @@ use merman::{
 use crate::observation::C6TargetArtifact;
 use crate::runner::{
     C6ProofError, C6ProofResult, C6RasterImage,
-    artifact_observation::{sealed_svg_receipt, subtree_style_value},
+    artifact_observation::{observed_svg, subtree_style_value},
     decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
@@ -27,12 +27,10 @@ pub(super) fn verify(
     };
     verify_host_admission(document, png)?;
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
-    let receipt = sealed_svg_receipt(&artifact)?;
+    let receipt = observed_svg(&artifact)?;
     c6_ensure!(
         "preset-native-text",
-        receipt.has_native_text()
-            && !receipt.has_foreign_object()
-            && !receipt.has_prepared_tokens(),
+        receipt.has_native_text() && !receipt.has_foreign_object(),
         "host profile requires terminal native text"
     );
     let bases = receipt
@@ -100,7 +98,7 @@ pub(super) fn verify_host_admission(
     document: &RenderedDocument,
     png: &RasterOutput,
 ) -> C6ProofResult<()> {
-    for receipt in [document.standalone_svg_admission(), png.admission()] {
+    for receipt in [&document.standalone_svg_admission(), png.admission()] {
         c6_ensure!(
             "preset-admission",
             receipt.status() == TargetAdmissionStatus::HostDependent

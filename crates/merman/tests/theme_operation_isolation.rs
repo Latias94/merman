@@ -168,17 +168,6 @@ fn source_theme_layers_do_not_leak_between_families_or_render_targets() {
                 fresh_document.svg(),
                 "document SVG: {context}"
             );
-            assert_eq!(
-                reused_document.resource_fingerprint(),
-                fresh_document.resource_fingerprint(),
-                "retained resources: {context}"
-            );
-            // Native SVG bytes are private; document identity binds both public and native bytes.
-            assert_eq!(
-                reused_document.document_digest(),
-                fresh_document.document_digest(),
-                "public/native document identity: {context}"
-            );
         }
     }
 }

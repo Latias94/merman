@@ -1,11 +1,9 @@
+use crate::svg_observation::{SvgArtifactObservation, SvgElementObservation};
 use merman_export::RasterPlan;
-use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
-#[cfg(test)]
-use sha2::Digest as _;
 
 use super::{
     C6ProofError, C6ProofResult, C6RasterImage, C6TargetArtifact,
-    artifact_observation::sealed_svg_receipt, decode_bounded_png_artifact, parse_c6_hex_rgb,
+    artifact_observation::observed_svg, decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -47,7 +45,7 @@ pub(crate) fn prove_sequence_svg(
     contract: SequenceProofContract<'_>,
     artifact: &C6TargetArtifact<'_>,
 ) -> C6ProofResult<SequenceSvgProof> {
-    let receipt = sealed_svg_receipt(artifact)?;
+    let receipt = observed_svg(artifact)?;
     let geometry = check_sequence_svg_internal(contract, receipt)?;
     Ok(SequenceSvgProof {
         view_box: geometry.view_box,
@@ -73,8 +71,7 @@ fn check_sequence_svg(
 ) -> C6ProofResult<SequenceSvgGeometry> {
     let svg = std::str::from_utf8(bytes)
         .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
-    let digest = sha2::Sha256::digest(svg.as_bytes()).into();
-    let receipt = SvgArtifactReceipt::observe_svg_for_test(svg, digest).ok_or_else(|| {
+    let receipt = SvgArtifactObservation::observe(svg).ok_or_else(|| {
         C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
     })?;
     check_sequence_svg_internal(contract, &receipt)
@@ -82,7 +79,7 @@ fn check_sequence_svg(
 
 fn check_sequence_svg_internal(
     contract: SequenceProofContract<'_>,
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
 ) -> C6ProofResult<SequenceSvgGeometry> {
     let root_id = receipt
         .root_id()
@@ -109,15 +106,13 @@ fn check_sequence_svg_internal(
 }
 
 fn prove_native_text(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     font_family: Option<&str>,
     message_text_count: usize,
 ) -> C6ProofResult<()> {
     c6_ensure!(
         "sequence-svg-text",
-        receipt.has_native_text()
-            && !receipt.has_foreign_object()
-            && !receipt.has_prepared_tokens(),
+        receipt.has_native_text() && !receipt.has_foreign_object(),
         "Sequence did not retain terminal native SVG text"
     );
     let Some(font_family) = font_family else {
@@ -157,7 +152,7 @@ fn css_family_matches(actual: &str, expected: &str) -> bool {
 }
 
 fn prove_terminal_styles(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     root_id: &str,
     contract: SequenceProofContract<'_>,
 ) -> C6ProofResult<()> {
@@ -205,7 +200,7 @@ struct SequenceSurfaces<'a> {
 }
 
 fn prove_terminal_surfaces<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     contract: SequenceProofContract<'_>,
 ) -> C6ProofResult<SequenceSurfaces<'a>> {
     let actor_rects = receipt
@@ -398,7 +393,7 @@ fn prove_roi_color(
 }
 
 fn require_stylesheet_property(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     selector: &str,
     property: &str,
     expected: &str,
@@ -413,7 +408,7 @@ fn require_stylesheet_property(
 }
 
 fn require_stylesheet_number(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     selector: &str,
     property: &str,
     expected: f64,
@@ -433,7 +428,7 @@ fn require_stylesheet_number(
 }
 
 pub(crate) fn require_exact_writer_declaration(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     selector: &str,
     property: &str,
     expected: &str,
@@ -442,7 +437,7 @@ pub(crate) fn require_exact_writer_declaration(
 }
 
 fn exact_writer_stylesheet_property<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     selector: &str,
     property: &str,
 ) -> C6ProofResult<&'a str> {
@@ -510,7 +505,7 @@ fn middle_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
 }
 
 fn visible_lifeline_region(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     lifelines: &[&SvgElementObservation],
 ) -> C6ProofResult<[f64; 4]> {
     let blockers = receipt
@@ -604,11 +599,7 @@ mod tests {
     #[test]
     fn lifeline_sample_uses_visible_segment_beyond_top_occlusion() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120"><line class="actor-line" x1="50" y1="0" x2="50" y2="100"/><rect class="activation0" x="45" y="0" width="10" height="40"/></svg>"#;
-        let receipt = SvgArtifactReceipt::observe_svg_for_test(
-            svg,
-            sha2::Sha256::digest(svg.as_bytes()).into(),
-        )
-        .unwrap();
+        let receipt = SvgArtifactObservation::observe(svg).unwrap();
         let lines = receipt
             .elements()
             .iter()
@@ -623,11 +614,7 @@ mod tests {
     #[test]
     fn lifeline_sample_rejects_fully_occluded_lines() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120"><line class="actor-line" x1="50" y1="0" x2="50" y2="100"/><rect class="activation0" x="45" y="0" width="10" height="60"/><rect class="note" x="40" y="40" width="20" height="60"/></svg>"#;
-        let receipt = SvgArtifactReceipt::observe_svg_for_test(
-            svg,
-            sha2::Sha256::digest(svg.as_bytes()).into(),
-        )
-        .unwrap();
+        let receipt = SvgArtifactObservation::observe(svg).unwrap();
         let lines = receipt
             .elements()
             .iter()

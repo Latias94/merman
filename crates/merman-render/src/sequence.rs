@@ -780,7 +780,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_popup_widths,
         message_metrics,
         math_sidecar,
-        theme_evidence: SequenceThemeEvidenceRecorder::default(),
+        theme_evidence: SequenceThemeEvidenceRecorder::new(resolved_theme.is_some()),
         effect_evidence: Default::default(),
         expected_effect_applications: Default::default(),
         typography,

@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -19,28 +18,22 @@ mod surfaces;
 mod typography;
 
 use edge_stroke::ArchitectureEdgeStrokePlan;
-pub(crate) use edge_stroke::ArchitectureEdgeThemeReceipt;
 use surfaces::ArchitectureSurfaceThemePlan;
 pub(crate) use surfaces::{
     ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
     ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission,
     ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
-    ArchitectureServiceTerminalEmission, ArchitectureSurfaceThemeReceipt,
+    ArchitectureServiceTerminalEmission, ArchitectureSurfaceRenderState,
     ArchitectureTextTerminalEmission,
 };
-pub(crate) use typography::{
-    ArchitectureTypographyCssEmission, ArchitectureTypographyTerminalInventory,
-    ArchitectureTypographyThemePlan, ArchitectureTypographyThemeReceipt,
-};
+pub(crate) use typography::{ArchitectureTypographyEmission, ArchitectureTypographyThemePlan};
 
 /// Final Architecture group paint shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct ArchitectureGroupThemePlan {
-    group_count: usize,
     inline_style: Option<String>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    terminal_receipt: OnceLock<()>,
     edge_stroke: ArchitectureEdgeStrokePlan,
     surfaces: Box<ArchitectureSurfaceThemePlan>,
     typography: ArchitectureTypographyThemePlan,
@@ -52,13 +45,11 @@ impl ArchitectureGroupThemePlan {
         effective_config: &merman_core::MermaidConfig,
         group_count: usize,
         edge_count: usize,
-        typography_terminals: ArchitectureTypographyTerminalInventory,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let typography =
-            ArchitectureTypographyThemePlan::resolve(theme, effective_config, typography_terminals);
+        let typography = ArchitectureTypographyThemePlan::resolve(theme, effective_config);
         let Some(theme) = theme else {
-            return Ok(Self::baseline(group_count, edge_count, typography));
+            return Ok(Self::baseline(typography));
         };
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let surfaces = Box::new(ArchitectureSurfaceThemePlan::resolve(
@@ -80,11 +71,9 @@ impl ArchitectureGroupThemePlan {
                 }
             }
             return Ok(Self {
-                group_count,
                 inline_style: None,
                 evidence,
                 pending,
-                terminal_receipt: OnceLock::new(),
                 edge_stroke,
                 surfaces,
                 typography,
@@ -223,29 +212,21 @@ impl ArchitectureGroupThemePlan {
         )?;
 
         Ok(Self {
-            group_count,
             inline_style,
             evidence,
             pending,
-            terminal_receipt: OnceLock::new(),
             edge_stroke,
             surfaces,
             typography,
         })
     }
 
-    fn baseline(
-        group_count: usize,
-        edge_count: usize,
-        typography: ArchitectureTypographyThemePlan,
-    ) -> Self {
+    fn baseline(typography: ArchitectureTypographyThemePlan) -> Self {
         Self {
-            group_count,
             inline_style: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
-            terminal_receipt: OnceLock::new(),
-            edge_stroke: ArchitectureEdgeStrokePlan::baseline(edge_count),
+            edge_stroke: ArchitectureEdgeStrokePlan::baseline(),
             surfaces: Box::new(ArchitectureSurfaceThemePlan::baseline()),
             typography,
         }
@@ -255,22 +236,7 @@ impl ArchitectureGroupThemePlan {
         self.inline_style.as_deref()
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<ArchitectureGroupThemeReceipt> {
-        (!self.pending.is_empty()).then(|| {
-            ArchitectureGroupThemeReceipt::new(
-                self.group_count,
-                self.inline_style.clone().map(String::into_boxed_str),
-            )
-        })
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: ArchitectureGroupThemeReceipt) -> bool {
-        !self.pending.is_empty()
-            && receipt.proves(self.group_count)
-            && self.terminal_receipt.set(()).is_ok()
-    }
-
-    pub(crate) fn edge_stroke(&self) -> Option<(usize, &str)> {
+    pub(crate) fn edge_stroke(&self) -> Option<&str> {
         self.edge_stroke.terminal_stroke()
     }
 
@@ -278,90 +244,43 @@ impl ArchitectureGroupThemePlan {
         &self.typography
     }
 
-    pub(crate) fn begin_edge_terminal_receipt<'a>(
+    pub(crate) fn prepare_surface_styles(
         &self,
-        terminals: impl IntoIterator<Item = (usize, &'a str, &'a str)>,
-    ) -> Option<ArchitectureEdgeThemeReceipt> {
-        self.edge_stroke.begin_terminal_receipt(terminals)
-    }
-
-    pub(crate) fn record_edge_terminal(&self, receipt: ArchitectureEdgeThemeReceipt) -> bool {
-        self.edge_stroke.record_terminal(receipt)
-    }
-
-    pub(crate) fn begin_surface_terminal_receipt<'a>(
-        &self,
-        services: impl IntoIterator<Item = ArchitectureServiceTerminal<'a>>,
-        groups: impl IntoIterator<Item = ArchitectureGroupTerminal<'a>>,
-        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal<'a>>,
+        services: impl IntoIterator<Item = ArchitectureServiceTerminal>,
+        groups: impl IntoIterator<Item = ArchitectureGroupTerminal>,
+        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<Option<ArchitectureSurfaceThemeReceipt>, OperationWorkError> {
+    ) -> Result<Option<ArchitectureSurfaceRenderState>, OperationWorkError> {
         self.surfaces
-            .begin_terminal_receipt(services, groups, edges, work_meter)
+            .prepare_styles(services, groups, edges, work_meter)
     }
 
-    pub(crate) fn record_surface_terminal(&self, receipt: ArchitectureSurfaceThemeReceipt) -> bool {
-        self.surfaces.record_terminal(receipt)
-    }
-
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+    pub(crate) fn finish_evidence(
+        &self,
+        typography: Option<ArchitectureTypographyEmission>,
+        group_style_emitted: bool,
+        edge_style_emitted: bool,
+        surfaces: Option<&ArchitectureSurfaceRenderState>,
+    ) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        evidence.merge_accounted_from(self.typography.finish_evidence());
-        if self.terminal_receipt.get().is_some() {
+        evidence.merge_accounted_from(self.typography.finish_evidence(typography));
+        if group_style_emitted {
             for (key, capabilities) in &self.pending {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
             }
         }
-        self.edge_stroke.finish_evidence(&mut evidence);
-        self.surfaces.finish_evidence(&mut evidence);
+        self.edge_stroke
+            .finish_evidence(&mut evidence, edge_style_emitted);
+        self.surfaces.finish_evidence(&mut evidence, surfaces);
         evidence
     }
+}
 
+/// Theme evidence returned with the completed Architecture SVG.
+pub(crate) struct ArchitectureThemeOutcome {
+    pub(crate) evidence: FamilyThemeEvidence,
     #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn architecture_text_receipt(
-        &self,
-    ) -> Option<crate::__private::ArchitectureTextReceipt> {
-        self.surfaces.architecture_text_receipt()
-    }
-}
-
-/// Writer-owned proof that every Architecture group rect emitted the resolved inline paint state.
-#[derive(Debug)]
-pub(crate) struct ArchitectureGroupThemeReceipt {
-    expected_group_count: usize,
-    expected_inline_style: Option<Box<str>>,
-    next_group_index: usize,
-    styles_match: bool,
-}
-
-impl ArchitectureGroupThemeReceipt {
-    fn new(expected_group_count: usize, expected_inline_style: Option<Box<str>>) -> Self {
-        Self {
-            expected_group_count,
-            expected_inline_style,
-            next_group_index: 0,
-            styles_match: true,
-        }
-    }
-
-    pub(crate) fn record_checkpointed_group(
-        &mut self,
-        group_index: usize,
-        emitted_inline_style: Option<&str>,
-    ) {
-        if group_index != self.next_group_index || group_index >= self.expected_group_count {
-            self.styles_match = false;
-            return;
-        }
-        self.next_group_index = self.next_group_index.saturating_add(1);
-        self.styles_match &= emitted_inline_style == self.expected_inline_style.as_deref();
-    }
-
-    fn proves(&self, expected_group_count: usize) -> bool {
-        self.expected_group_count == expected_group_count
-            && self.next_group_index == expected_group_count
-            && self.styles_match
-    }
+    pub(crate) text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
 fn mermaid_owns_group_stroke(effective_config: &merman_core::MermaidConfig) -> bool {
@@ -483,35 +402,4 @@ struct ArchitectureGroupRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ArchitectureGroupThemeReceipt;
-
-    #[test]
-    fn group_theme_receipt_requires_each_terminal_group_once_with_the_resolved_style() {
-        let mut complete = ArchitectureGroupThemeReceipt::new(2, Some("fill:#123456;".into()));
-        complete.record_checkpointed_group(0, Some("fill:#123456;"));
-        complete.record_checkpointed_group(1, Some("fill:#123456;"));
-        assert!(complete.proves(2));
-
-        let mut incomplete = ArchitectureGroupThemeReceipt::new(2, None);
-        incomplete.record_checkpointed_group(0, None);
-        assert!(!incomplete.proves(2));
-
-        let mut duplicate = ArchitectureGroupThemeReceipt::new(1, None);
-        duplicate.record_checkpointed_group(0, None);
-        duplicate.record_checkpointed_group(0, None);
-        assert!(!duplicate.proves(1));
-
-        let mut out_of_order = ArchitectureGroupThemeReceipt::new(2, None);
-        out_of_order.record_checkpointed_group(1, None);
-        out_of_order.record_checkpointed_group(0, None);
-        assert!(!out_of_order.proves(2));
-
-        let mut mismatch = ArchitectureGroupThemeReceipt::new(1, Some("stroke:#123456;".into()));
-        mismatch.record_checkpointed_group(0, Some("stroke:#abcdef;"));
-        assert!(!mismatch.proves(1));
-    }
 }
