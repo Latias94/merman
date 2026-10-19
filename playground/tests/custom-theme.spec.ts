@@ -180,10 +180,12 @@ test("Visual edits and JSON share one draft and applying does not depend on a va
   await newRecipe(page, workbench);
   await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Object styles", exact: true }).click();
   const target = workbench.getByLabel("Semantic object", { exact: true });
   await expect(target.locator("option[value='actor']")).toHaveCount(1);
   await expect(target.locator("option[value='cluster']")).toHaveCount(1);
-  await workbench.locator('[data-theme-resource="text"] > summary').click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("button", { name: "Text", exact: true }).click();
   const text = workbench.getByRole("textbox", { name: /^text$/i });
   await text.fill("#224466");
   await text.press("Enter");
@@ -207,7 +209,8 @@ test("theme history spans Visual, invalid JSON and Apply without undoing source 
   const workbench = await editor(page);
   await newRecipe(page, workbench);
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
-  await workbench.locator('[data-theme-resource="text"] > summary').click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("button", { name: "Text", exact: true }).click();
   const text = workbench.getByRole("textbox", { name: /^text$/i });
   await text.fill("#224466");
   await text.press("Enter");
@@ -354,8 +357,10 @@ test("creating from Cyberpunk edits shared colors without losing gradient, effec
   expect(Object.values(exported.design.tokens ?? {}).some((token) => token.type === "effect")).toBe(true);
   expect(exported.design.rules?.some((entry) => entry.family === "sequence")).toBe(true);
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("button", { name: /^Core colors/ }).click();
+  await expect(workbench.getByLabel("Setting group", { exact: true })).toHaveValue("group:Core colors");
   const cyan = workbench.locator('[data-theme-resource="neon-cyan"]');
-  await cyan.locator(":scope > summary").click();
+  await workbench.getByRole("button", { name: exported.design.tokens!["neon-cyan"].label ?? "neon-cyan", exact: true }).click();
   await cyan.locator('input[type="color"]').fill("#37b24d");
   const edited = await copyRecipe(page, workbench);
   expect(edited).toEqual({
@@ -395,6 +400,7 @@ test("canvas transparency keeps layers, removal clears them, and restoration pre
   const original = await copyRecipe(page, workbench);
   expect(original.kind).toBe("design");
   if (original.kind !== "design") throw new Error("Expected a design.");
+  await workbench.getByRole("button", { name: "Canvas background", exact: true }).click();
   const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
   await base.getByLabel("Canvas base: Value source", { exact: true }).selectOption("local");
   await base.getByLabel("Paint type", { exact: true }).selectOption("transparent");
@@ -428,6 +434,7 @@ test("design canvas omission and transparent background survive JSON exchange", 
   const omitted = { ...recipe, design: { ...recipe.design, canvas: {} } };
   await newRecipe(page, workbench, JSON.stringify(omitted));
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("button", { name: "Canvas background", exact: true }).click();
   const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
   const baseMode = base.getByLabel("Canvas base: Value source", { exact: true });
   await expect(baseMode).toHaveValue("omit");
@@ -450,12 +457,12 @@ test("custom named settings and independent hard shadows use the same designer a
   const source = { ...recipe, design: { ...recipe.design, styles: { node: { fill: "#ffffff" } } } } satisfies ThemeRecipeV1;
   await newRecipe(page, workbench, JSON.stringify(source));
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
   await workbench.getByText("Add a shared value", { exact: true }).click();
   await workbench.getByRole("textbox", { name: "Setting name", exact: true }).fill("My paper shadow");
   await workbench.getByLabel("Setting type", { exact: true }).selectOption("effect");
   await workbench.getByRole("button", { name: "Create setting", exact: true }).click();
   const resource = workbench.locator('[data-theme-resource="custom-1"]');
-  await resource.locator(":scope > summary").click();
   await expect(resource.getByLabel("Shadow composition", { exact: true })).toHaveValue("independent");
   const shadow = resource.locator("[data-theme-shadow-editor]").first();
   await shadow.getByRole("spinbutton", { name: "Horizontal offset", exact: true }).fill("8");
@@ -464,6 +471,7 @@ test("custom named settings and independent hard shadows use the same designer a
   await shadow.getByRole("spinbutton", { name: "Vertical offset", exact: true }).press("Enter");
   await expect(shadow.getByRole("spinbutton", { name: "Shadow softness (px)", exact: true })).toHaveValue("0");
   await resource.getByRole("button", { name: "Add shadow", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Object styles", exact: true }).click();
   await workbench.getByLabel("Semantic object", { exact: true }).selectOption("node");
   const style = workbench.locator('[data-design-value="/styles/node/fill"]').locator("..");
   await style.getByLabel("Add a property…", { exact: true }).selectOption("effect");
@@ -486,7 +494,8 @@ test("custom named settings and independent hard shadows use the same designer a
   expect(await copyRecipe(page, workbench)).toEqual(linked);
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
   const importedResource = workbench.locator('[data-theme-resource="custom-1"]');
-  await importedResource.locator(":scope > summary").click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("button", { name: "My paper shadow", exact: true }).click();
   await importedResource.getByText("Name, group and description", { exact: true }).click();
   await importedResource.getByRole("textbox", { name: "Reference ID", exact: true }).fill("paper-shadow");
   await importedResource.getByRole("textbox", { name: "Reference ID", exact: true }).press("Enter");
@@ -652,9 +661,44 @@ test("Chinese workbench keeps preview, JSON and theme actions reachable on a nar
   await workbench.getByRole("button", { name: /^(校验并应用|应用)$/ }).click();
   await expect(workbench).toBeVisible();
   await expect.poll(() => svg(page)).toContain("#fef3c7");
+  await workbench.getByRole("tab", { name: "可视化", exact: true }).click();
+  const sections = workbench.getByRole("tablist", { name: "主题设计分区", exact: true });
+  await sections.getByRole("tab", { name: "总览", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(sections.getByRole("tab", { name: "共享设置", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await workbench.getByRole("button", { name: "Text", exact: true }).click();
+  await workbench.getByRole("button", { name: "编辑 /styles/node-label/fill/color", exact: true }).click();
+  await expect(workbench.locator('[data-design-value="/styles/node-label/fill/color"] select').first()).toBeFocused();
+  await workbench.getByRole("button", { name: "返回共享设置", exact: true }).click();
+  const text = workbench.getByRole("textbox", { name: "Text", exact: true });
+  await text.fill("invalid-color");
+  await text.press("Tab");
+  await expect(workbench.getByRole("button", { name: "复制 JSON", exact: true })).toBeDisabled();
+  await expect(text).toBeVisible();
+  await text.fill("#123456");
+  await text.press("Tab");
+  await expect.poll(() => svg(page)).toContain("#123456");
+  await workbench.getByRole("button", { name: "撤销主题编辑", exact: true }).click();
+  await expect(workbench.getByRole("button", { name: "复制 JSON", exact: true })).toBeDisabled();
+  await workbench.getByRole("button", { name: "撤销主题编辑", exact: true }).click();
+  await expect.poll(() => svg(page)).toContain("#172554");
+  await expectNoDocumentOverflow(page);
+  await page.getByRole("tab", { name: "编辑", exact: true }).click();
+  const source = page.getByRole("textbox", { name: "Mermaid 源代码", exact: true });
+  await source.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  await source.evaluate((element) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text/plain", "flowchart LR\nUserEdit[Source survives navigation] --> B");
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }));
+  });
+  await page.getByRole("tab", { name: "预览", exact: true }).click();
+  await expect.poll(() => svg(page)).toContain("Source survives navigation");
   await page.screenshot({ path: test.info().outputPath("custom-theme-mobile-zh.png") });
   await workbench.getByRole("button", { name: "取消", exact: true }).click();
   await expect(workbench).toBeHidden();
+  await expect.poll(() => svg(page)).toContain("Source survives navigation");
 });
 
 test("visual gradient bounds and invalid color edits remain recoverable", async ({ page }) => {
@@ -667,6 +711,7 @@ test("visual gradient bounds and invalid color edits remain recoverable", async 
   await newRecipe(page, workbench, JSON.stringify(document));
   await expect(workbench.getByRole("button", { name: "Copy JSON", exact: true })).toBeEnabled();
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("button", { name: "Canvas background", exact: true }).click();
   const offset = workbench.locator('[data-design-value="/canvas/base/stops/0/offset"]').getByRole("spinbutton");
   await expect(offset).toHaveAttribute("max", "0.5");
   await offset.fill("0.75");
@@ -681,4 +726,180 @@ test("visual gradient bounds and invalid color edits remain recoverable", async 
   await color.press("Tab");
   await expect(workbench.getByRole("button", { name: "Copy JSON", exact: true })).toBeEnabled();
   await expect.poll(() => svg(page)).toContain("#123456");
+});
+
+test("design sections and setting search navigate without changing the authored theme", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  const workbench = await editor(page);
+  const imported = { ...recipe, design: { ...recipe.design, tokens: {
+    ...recipe.design.tokens,
+    "paper/ink~": { type: "color", label: "Paper ink", group: "My paper", description: "Quiet text", value: "#123456" },
+  } } } satisfies ThemeRecipeV1;
+  await newRecipe(page, workbench, JSON.stringify(imported));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await expect(workbench.getByRole("tab", { name: "Overview", exact: true })).toBeVisible();
+  const before = await copyRecipe(page, workbench);
+  const beforeSvg = await svg(page);
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("searchbox", { name: "Search shared settings", exact: true }).fill("quiet");
+  await workbench.getByRole("button", { name: "Paper ink", exact: true }).click();
+  await expect(workbench.locator('[data-theme-resource="paper/ink~"]')).toBeVisible();
+  await expect(workbench.getByRole("textbox", { name: "Paper ink", exact: true })).toHaveValue("#123456");
+  await workbench.getByRole("tab", { name: "Object styles", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Overview", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(before);
+  expect(await svg(page)).toEqual(beforeSvg);
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).not.toEqual(before);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(before);
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
+test("declared consumers without visual controls reveal the exact JSON and return to their setting", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  const workbench = await editor(page);
+  const imported = { ...recipe, design: {
+    ...recipe.design,
+    tokens: { ...recipe.design.tokens, series: { type: "palette", label: "Category palette", group: "My charts", value: ["#123456", "#abcdef"] } },
+    palettes: { "chart-series": { ref: "series" } },
+  } } satisfies ThemeRecipeV1;
+  await newRecipe(page, workbench, JSON.stringify(imported));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("button", { name: "Category palette", exact: true }).click();
+  await workbench.getByRole("button", { name: "Edit /palettes/chart-series", exact: true }).click();
+  await expect(workbench.getByRole("tab", { name: "JSON", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(workbench.locator("[data-theme-json-pointer]")).toHaveAttribute("data-theme-json-pointer", "/design/palettes/chart-series");
+  await expect.poll(async () => {
+    await page.keyboard.press("ControlOrMeta+C");
+    try {
+      return JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    } catch {
+      return null;
+    }
+  }).toEqual({ ref: "series" });
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await expect(workbench.locator('[data-theme-resource="series"]')).toBeVisible();
+  await expect(workbench.locator('[data-theme-resource="series"]').locator("select").first()).toBeFocused();
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  await workbench.getByRole("button", { name: "Edit /palettes/chart-series", exact: true }).click();
+  await replaceRecipe(page, workbench, JSON.stringify(recipe));
+  await expect(workbench.getByRole("button", { name: "Return to shared setting", exact: true })).toBeDisabled();
+  await expect(workbench.locator("[data-theme-json-pointer]")).toHaveCount(0);
+  await expect(workbench.getByRole("status")).toContainText("This location is no longer available");
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await expect(workbench.locator('[data-theme-resource="series"]').locator("select").first()).toBeFocused();
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  errors.assertNone();
+});
+
+
+test("Cyberpunk bindings navigate aliases and downstream consumers before a precise local edit", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page, "cyberpunk");
+  const workbench = await editor(page);
+  await workbench.getByRole("button", { name: "Create from Cyberpunk", exact: true }).click();
+  const original = await copyRecipe(page, workbench);
+  if (original.kind !== "design") throw new Error("Expected a design.");
+  const imported = { ...original, design: { ...original.design, tokens: {
+    ...original.design.tokens,
+    unrelated: { type: "color", label: "Unrelated equal color", value: "#00f2ff" },
+  } } } satisfies ThemeRecipeV1;
+  await replaceRecipe(page, workbench, JSON.stringify(imported));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("tab", { name: "Shared settings", exact: true }).click();
+  await workbench.getByRole("button", { name: "Neon cyan", exact: true }).click();
+  await expect(workbench.getByRole("button", { name: "Edit /tokens/text/value", exact: true })).toBeVisible();
+  await expect(workbench.getByRole("button", { name: "Edit /styles/axis/fill/color", exact: true })).toBeVisible();
+  await workbench.getByRole("button", { name: "Edit /tokens/text/value", exact: true }).click();
+  await workbench.getByRole("button", { name: "Edit /styles/axis/fill/color", exact: true }).click();
+  await expect(workbench.locator('[data-design-value="/styles/axis/fill/color"] select').first()).toBeFocused();
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await expect(workbench.locator('[data-theme-resource="neon-cyan"]')).toBeVisible();
+  const pointer = "/canvas/layers/0/paint/stops/0/color";
+  await workbench.getByRole("button", { name: `Edit ${pointer}`, exact: true }).click();
+  const field = workbench.locator(`[data-design-value="${pointer}"]`);
+  await expect(field.locator("select").first()).toBeFocused();
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  await field.getByRole("button", { name: "Use a local copy", exact: true }).click();
+  await field.getByRole("textbox", { name: "Color 1", exact: true }).fill("#123456");
+  await field.getByRole("textbox", { name: "Color 1", exact: true }).press("Enter");
+  const detached = await copyRecipe(page, workbench);
+  const expected = JSON.parse(JSON.stringify(imported)) as typeof imported;
+  const layer = expected.design.canvas!.layers![0];
+  if (!("paint" in layer) || typeof layer.paint !== "object" || !("stops" in layer.paint)) throw new Error("Expected a gradient.");
+  layer.paint.stops[0].color = "#123456";
+  expect(detached).toEqual(expected);
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await expect(workbench.locator('[data-theme-resource="neon-cyan"]').locator("select").first()).toBeFocused();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  errors.assertNone();
+});
+
+
+test("imported effect bindings follow escaped IDs, rule reordering and metadata edits", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  const workbench = await editor(page);
+  const imported = {
+    schema_version: 1,
+    kind: "design",
+    design: {
+      tokens: {
+        "ink/~": { type: "color", label: "Paper ink", group: "My paper", value: "#123456" },
+        "shade/~": { type: "effect", label: "Paper shade", group: "My paper", value: {
+          kind: "shadow-stack", composition: "independent", shadows: [
+            { color: { ref: "ink/~" }, offset_x: 4, offset_y: 4, std_deviation: 0, opacity: 0.5 },
+          ],
+        } },
+      },
+      rules: [
+        { target: "node", style: { effect: { ref: "shade/~" } } },
+        { target: "node", style: { fill: "#ffffff" } },
+      ],
+    },
+  } satisfies ThemeRecipeV1;
+  await newRecipe(page, workbench, JSON.stringify(imported));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("button", { name: /^My paper/ }).click();
+  await workbench.getByRole("button", { name: "Paper ink", exact: true }).click();
+  const nested = "/tokens/shade~1~0/value/shadows/0/color";
+  await workbench.getByRole("button", { name: `Edit ${nested}`, exact: true }).click();
+  await expect(workbench.locator(`[data-design-value="${nested}"] select`).first()).toBeFocused();
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await workbench.getByRole("button", { name: "Edit /rules/0/style/effect", exact: true }).click();
+  await expect(workbench.locator('[data-design-value="/rules/0/style/effect"] select').first()).toBeFocused();
+  await workbench.getByRole("button", { name: "Move down", exact: true }).click();
+  const reordered = await copyRecipe(page, workbench);
+  if (reordered.kind !== "design") throw new Error("Expected a design.");
+  expect(reordered.design.rules?.[1]).toEqual(imported.design.rules[0]);
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  await expect(workbench.getByRole("button", { name: "Edit /rules/0/style/effect", exact: true })).toHaveCount(0);
+  await workbench.getByRole("button", { name: "Edit /rules/1/style/effect", exact: true }).click();
+  await expect(workbench.locator('[data-design-value="/rules/1/style/effect"] select').first()).toBeFocused();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  await workbench.getByRole("button", { name: "Return to shared setting", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  const resource = workbench.locator('[data-theme-resource="ink/~"]');
+  await expect(resource.getByRole("button", { name: "Remove shared value", exact: true })).toBeDisabled();
+  await resource.getByText("Name, group and description", { exact: true }).click();
+  await resource.getByRole("textbox", { name: "Group", exact: true }).fill("Reframed paper");
+  await resource.getByRole("textbox", { name: "Group", exact: true }).press("Enter");
+  await resource.getByRole("textbox", { name: "Reference ID", exact: true }).fill("renamed/~");
+  await resource.getByRole("textbox", { name: "Reference ID", exact: true }).press("Enter");
+  const renamed = await copyRecipe(page, workbench);
+  if (renamed.kind !== "design") throw new Error("Expected a design.");
+  expect(renamed.design.tokens?.["renamed/~"].group).toBe("Reframed paper");
+  expect(renamed.design.tokens?.["shade/~"].value).toMatchObject({ shadows: [{ color: { ref: "renamed/~" } }] });
+  await expect(workbench.locator('[data-theme-resource="renamed/~"]')).toBeVisible();
+  await expect(workbench.getByRole("button", { name: `Edit ${nested}`, exact: true })).toBeVisible();
+  errors.assertNone();
 });

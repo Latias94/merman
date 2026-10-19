@@ -101,7 +101,6 @@ export function classifyThemeDesignDestination(
       !Object.hasOwn(value, segment)
     )
       return json("missing");
-    // Effect graphs have no nested visual controls. The exact authored location remains available in JSON.
     if (
       Object.hasOwn(value, "kind") &&
       (value as { kind?: unknown }).kind === "graph"

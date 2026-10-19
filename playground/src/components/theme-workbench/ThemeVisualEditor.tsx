@@ -47,6 +47,8 @@ export function ThemeVisualEditor({
   facade,
   catalog,
   familyId,
+  initialTokenId,
+  onOpenJson,
   onChange,
 }: {
   document: ThemeRecipeV1;
@@ -54,11 +56,13 @@ export function ThemeVisualEditor({
   facade: MermanDomainFacade | null;
   catalog: ThemeCatalog | null;
   familyId?: string;
+  initialTokenId?: string;
+  onOpenJson?: (designRelativePointer: string, returnTokenId?: string) => void;
   onChange(document: ThemeRecipeV1): void;
 }) {
   const { t } = useTranslation();
 
-  if (document.kind === "design") return <ThemeDesignEditor document={document} disabled={disabled} facade={facade} catalog={catalog} familyId={familyId} onChange={onChange} />;
+  if (document.kind === "design") return <ThemeDesignEditor document={document} disabled={disabled} facade={facade} catalog={catalog} familyId={familyId} initialTokenId={initialTokenId} onOpenJson={onOpenJson} onChange={onChange} />;
 
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-5 disabled:opacity-60">

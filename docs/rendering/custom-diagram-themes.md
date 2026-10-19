@@ -48,6 +48,27 @@ Visual controls include gradient stops, independent/cascade shadow stacks, typog
 layers, grids, stripes, and existing rule selectors. Edits preserve unrelated fields and authored
 order. Complete-spec imports retain their concrete editor, without inferred shared bindings.
 Advanced effect graphs, assets, requirements, and compatibility fields remain available in JSON.
+
+### Find a setting and inspect its bindings
+
+For a `design`, **Visual** opens an **Overview** of its groups and focused canvas/typography
+actions. **Shared settings** searches every authored setting by name, ID, group, description,
+or type. Select a setting to edit it; arbitrary imported groups use the same controls as built-in
+themes. **Object styles** provides semantic defaults and ordered scoped rules separately.
+Opening a group or switching inspectors changes navigation only, without adding a theme undo entry.
+
+A setting's usage panel lists declared direct consumers, references from other shared values,
+and downstream consumers reached through those values. These are authoring relationships,
+not a count of rendered objects or a claim that every rule wins on the current diagram.
+Open a location to inspect the exact bound field. Use a local copy there when that consumer
+should become independent; nested references inside that copy remain explicitly linked.
+
+Locations without a visual field, including target-palette bindings and family typography,
+open the JSON editor with the exact authored value selected. **Return to shared setting**
+returns to the originating setting. An unavailable or removed location remains explicit and
+does not select an unrelated parent field. Invalid values remain repairable; unavailable
+reference inspection is not reported as zero uses.
+
 **Inspect** shows the exact displayed
 execution evidence beside catalog design scope and qualification metadata; those fields explain
 the runtime and do not gate authoring. **Omit**, **Clear**, and **Transparent** have different

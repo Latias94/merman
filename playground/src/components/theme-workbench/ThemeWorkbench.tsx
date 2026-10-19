@@ -44,6 +44,7 @@ import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { SHARE_THEME_RECIPE_BYTES } from "@/src/lib/share";
 import { themeFamilyTreatment } from "@/src/lib/theme-design";
 import { validateThemeDocument } from "@/src/lib/theme-document";
+import type { ThemeJsonRevealRequest } from "@/src/lib/theme-json-location";
 import {
   isThemeDraftChanged,
   type ThemeCandidate,
@@ -78,10 +79,10 @@ const NEW_THEME: ThemeRecipeV1 = {
   kind: "design",
   design: {
     tokens: {
-      background: { type: "paint", label: "Background", value: "#fffaf0" },
-      accent: { type: "color", label: "Accent", value: "#f16b50" },
-      surface: { type: "paint", label: "Surface", value: "#ffffff" },
-      text: { type: "paint", label: "Text", value: "#202020" },
+      background: { type: "paint", label: "Canvas paint", group: "Canvas", description: "Paint included in the exported image. Preview backing is a separate viewing preference.", value: "#fffaf0" },
+      accent: { type: "color", label: "Accent", group: "Core colors", description: "Shared by the node border and connecting lines in this starter.", value: "#f16b50" },
+      surface: { type: "paint", label: "Surface", group: "Core colors", description: "Fill of the node body, independent from its label.", value: "#ffffff" },
+      text: { type: "paint", label: "Text", group: "Core colors", description: "Paint of the node label.", value: "#202020" },
     },
     canvas: { base: { ref: "background" } },
     styles: {
@@ -135,6 +136,14 @@ export function ThemeWorkbench({
     sessionId: number;
     raw: string;
     document: ThemeRecipeV1;
+  } | null>(null);
+  const [jsonNavigation, setJsonNavigation] = useState<{
+    request: ThemeJsonRevealRequest;
+    returnTokenId?: string;
+  } | null>(null);
+  const [visualReturn, setVisualReturn] = useState<{
+    sessionId: number;
+    tokenId: string;
   } | null>(null);
 
   const catalog = useMemo(() => {
@@ -248,6 +257,13 @@ export function ThemeWorkbench({
       : null);
   const dirty = isThemeDraftChanged(session);
   const valid = session.validation === "valid" && !session.importing;
+  const activeNavigation = jsonNavigation?.request.sessionId === session.id ? jsonNavigation : null;
+  const reveal = activeNavigation?.request.revision === session.revision && activeNavigation.request.rawJson === session.rawJson
+    ? activeNavigation.request : undefined;
+  const returnTokenId = activeNavigation?.returnTokenId;
+  const canReturnToSetting = returnTokenId !== undefined && visualDocument?.kind === "design" && Object.hasOwn(visualDocument.design.tokens ?? {}, returnTokenId);
+  const initialTokenId = visualReturn?.sessionId === session.id && visualDocument?.kind === "design" && Object.hasOwn(visualDocument.design.tokens ?? {}, visualReturn.tokenId)
+    ? visualReturn.tokenId : undefined;
   const candidateLabel =
     session.candidate.kind === "none"
       ? t("themeWorkbench.none", { defaultValue: "None" })
@@ -267,6 +283,20 @@ export function ThemeWorkbench({
     const token = useAppStore.getState().editThemeDraft(raw, group);
     validateNow(raw, token);
     setTab(nextTab);
+  }
+
+  function openJsonLocation(path: string, tokenId?: string) {
+    if (session?.rawJson == null) return;
+    setJsonNavigation({ request: { sessionId: session.id, revision: session.revision, rawJson: session.rawJson, pointer: `/design${path}` }, returnTokenId: tokenId });
+    setVisualReturn(null);
+    setTab("json");
+  }
+
+  function returnToSetting() {
+    if (!session || !canReturnToSetting || returnTokenId === undefined) return;
+    setVisualReturn({ sessionId: session.id, tokenId: returnTokenId });
+    setJsonNavigation(null);
+    setTab("visual");
   }
 
   function travelHistory(direction: "undo" | "redo") {
@@ -453,6 +483,7 @@ export function ThemeWorkbench({
         }
       }}
     >
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       <header className="flex shrink-0 items-start justify-between gap-2 border-b px-3 py-3">
         <div className="min-w-0 space-y-1">
           <h2
@@ -593,8 +624,12 @@ export function ThemeWorkbench({
       </div>
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as WorkbenchTab)}
-        className="min-h-0 flex-1 gap-0"
+        onValueChange={(value) => {
+          setVisualReturn(null);
+          setJsonNavigation(null);
+          setTab(value as WorkbenchTab);
+        }}
+        className="min-h-64 flex-1 gap-0"
       >
         <div className="shrink-0 px-3 pt-2">
           <TabsList
@@ -720,6 +755,8 @@ export function ThemeWorkbench({
               facade={facade}
               catalog={catalog}
               familyId={familyId}
+              initialTokenId={initialTokenId}
+              onOpenJson={openJsonLocation}
               onChange={(document) => {
                 const raw = JSON.stringify(document, null, 2);
                 setVisualDraft({ sessionId: session.id, raw, document });
@@ -764,7 +801,13 @@ export function ThemeWorkbench({
             metadata={renderMetadata}
           />
         </TabsContent>
-        <TabsContent value="json" className="min-h-0 overflow-hidden p-0 pt-2">
+        <TabsContent value="json" className="min-h-0 overflow-hidden p-0 pt-2 data-[state=active]:flex data-[state=active]:flex-col">
+          {activeNavigation && <div className="flex shrink-0 items-center gap-2 border-b px-3 pb-2 text-xs">
+            {returnTokenId !== undefined && <Button type="button" variant="outline" size="sm" disabled={!canReturnToSetting} onClick={returnToSetting}>
+              {t("themeDesigner.returnToSetting", { defaultValue: "Return to shared setting" })}
+            </Button>}
+            {!reveal && <p role="status" className="text-muted-foreground">{t("themeDesigner.locationUnavailable", { defaultValue: "This location is no longer available. The document has not been changed." })}</p>}
+          </div>}
           {session.rawJson !== null ? (
             <LazyFeatureBoundary
               feature={t("themeWorkbench.jsonEditor", {
@@ -775,6 +818,7 @@ export function ThemeWorkbench({
               <ThemeJsonEditor
                 sessionId={session.id}
                 value={session.rawJson}
+                reveal={reveal}
                 onChange={(raw) => {
                   setActionError(null);
                   useAppStore.getState().editThemeDraft(raw, "json");
@@ -801,6 +845,7 @@ export function ThemeWorkbench({
           </p>
         </div>
       )}
+      </div>
       <div className="shrink-0 space-y-2 border-t bg-background px-3 py-2">
         <div className="flex flex-wrap gap-1.5">
           <Button
