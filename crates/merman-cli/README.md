@@ -2,9 +2,12 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.9.0` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.9.1` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-Installation examples target `0.9.0`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
+Installation examples target `0.9.1`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
+
+Compiled-theme options in this checkout are unreleased. Use the `v0.9.1` tagged guide for the
+published CLI; the [release index](../../docs/release/README.md#merman-091) records the boundary.
 
 The command line has four explicit workflows:
 
@@ -17,10 +20,10 @@ The command line has four explicit workflows:
 
 ## Install
 
-This guide targets `merman-cli 0.9.0`. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
+This guide targets `merman-cli 0.9.1`. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
 
 ```sh
-cargo binstall merman-cli@0.9.0
+cargo binstall merman-cli@0.9.1
 ```
 
 Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
@@ -39,7 +42,7 @@ Windows users can install from Scoop's main bucket:
 scoop install merman-cli
 ```
 
-External package managers update on their own schedule. Check the installed version against the [dated release record](../../docs/release/PUBLISH_ORDER.md#090-publication-snapshot).
+External package managers update on their own schedule. Check the installed version against the [dated release record](../../docs/release/PUBLISH_ORDER.md#091-publication-snapshot).
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
@@ -475,9 +478,9 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.9.0` release defaults to the standard diagram CLI with `all-diagrams`.
+The `0.9.1` release defaults to the standard diagram CLI with `all-diagrams`.
 The Rustdoc authoring command remains available in the default and release builds, as in the
-published alpha.7 archives. The commands below target `0.9.0`.
+published alpha.7 archives. The commands below target `0.9.1`.
 For a slim current-source binary, disable defaults and select the required `diagram-*` families
 plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
 explicitly:
@@ -498,7 +501,7 @@ explicitly:
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.9.0 --locked \
+cargo install merman-cli --version 0.9.1 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
@@ -655,7 +658,7 @@ omitted commands, options, and values stay omitted. A build without that feature
 
 ## License
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The `0.9.0`
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The `0.9.1`
 Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation and the
 math/font closure. Explicit lean source builds can exclude ELK by disabling default features.
 Release archives include

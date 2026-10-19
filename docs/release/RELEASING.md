@@ -373,7 +373,17 @@ linked worktree. The `set` command rejects the primary checkout, tracked or untr
 npm executable that does not match the `packageManager` pin in `playground/package.json`. Cargo and
 npm owners prepare manifests and locks in a disposable detached worktree; the coordinator validates
 the complete projected tree and source preimage, checks one binary patch, then applies that patch
-once to the caller worktree. Verify every checked-in path without supplying a second version value:
+once to the caller worktree.
+
+After a maintenance release from a separate branch, synchronize its workspace version projections
+back to `main` through the same projection command. Retain pending development changes under
+`[Unreleased]` and copy the published release notes beneath them. The version on a development
+checkout is a package baseline, not evidence that its full source was published. The `0.9.1` patch
+tag excludes the theme refactor and Mermaid `12.2.0` alignment; retain its immutable source and
+independent package mappings. Select a new version and pass immutable preflight before publishing
+the development source.
+
+Verify every checked-in path without supplying a second version value:
 
 ```bash
 python3 scripts/release-version.py set --version <version>
@@ -393,6 +403,11 @@ python3 scripts/generate_cli_assets.py --check
 cargo run -p xtask -- gen-playground-example-catalog
 cargo run -p xtask -- verify-playground-example-catalog
 ```
+
+Refresh workspace package versions in the governed dependency paths in
+`docs/security/RUSTSEC_EXCEPTIONS.json`, preserving the advisory, affected dependency versions,
+review dates, and exit conditions. Run `python3 scripts/verify_rustsec_exceptions.py` to check those
+paths against the new lockfile.
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.
 

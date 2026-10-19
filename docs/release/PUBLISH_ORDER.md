@@ -8,6 +8,12 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 
 Latest verified workspace release across CLI/LSP, Rust crates, Web, Node, Python, Flutter, Android, and Apple: `0.9.1`. Typst wrapper 0.5.0 and the other independent surfaces retain separate publication boundaries.
 
+The `main` development checkout synchronizes the `0.9.1` package version baseline and published
+notes. Its `[Unreleased]` section retains subsequent development, including compiled themes and
+Mermaid `12.2.0`; package metadata alone does not make that source the published patch. Published
+artifacts continue to bind the immutable source recorded below. Choose the next workspace version
+before preparing another release.
+
 ## 0.9.1 Publication Snapshot
 
 Published on 2026-10-18 (Asia/Shanghai) from immutable source commit `f6202f702dbde0a75049b1a62b3124feae709b3d`, tree `dc8a157907012ba99a1bbc516070b39148c264e5`. The workspace `v0.9.1` and Flutter `flutter-v0.9.1` tags resolve to that commit. This patch carries selected fixes from the `v0.9.0` line; the theme refactor and Mermaid 12.2.0 development alignment remain outside this release.

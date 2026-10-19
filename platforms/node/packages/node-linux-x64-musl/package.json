@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-linux-x64-musl",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Native Linux x64 musl binary for @mermanjs/node.",
   "engines": {
     "node": ">=22.0.0"

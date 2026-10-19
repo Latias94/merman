@@ -5,11 +5,18 @@ and native or WASM artifacts to the same Merman version.
 
 ## Release versions
 
-Merman `0.9.0` retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0` compatibility. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for changes to APIs, commands, and rendered output.
+Merman `0.9.1` is a patch on `0.9.0` and retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI
+`12.0.0` compatibility. See the [0.9.1 release notes](README.md#merman-091) for its selected fixes
+and the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for the preceding API,
+command, and output changes.
 
 The development baseline selects Mermaid `12.2.0`, retaining parser `2.0.1` and reference CLI
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
+
+The separate development theme refactor changes Options JSON to schema `3` and Web transport to
+API `6`. Those contracts and Mermaid `12.2.0` behavior are unreleased; package version metadata in
+the current checkout does not identify the published `v0.9.1` source or its artifacts.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 

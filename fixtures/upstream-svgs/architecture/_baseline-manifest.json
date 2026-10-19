@@ -257,7 +257,7 @@
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_architecture_batch5_title_accdescr_frontmatter_084": {
-      "input_sha256": "6da8d05bb95827277106b9d2085b712922fd0e9c3ea1042e8f9f3056a8b96aa7",
+      "input_sha256": "b5b19263b4fcb92d58182d7c062c30328d33cb1f7bcef454701290728b20de23",
       "svg_sha256": "177fef6d6bf7e49da9b00c59546552d7ad40a32c90404fe0b5cb05d94ab0273d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
@@ -272,7 +272,7 @@
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_architecture_batch6_disconnected_components_with_titles_089": {
-      "input_sha256": "90dc21047272ebf4e34a27229bed78c64c707f637bb9d5690be80a891739e499",
+      "input_sha256": "571124f0f1055cf3a3e2476c5c0c1248200f9630d901fcdd44d59020d19cee16",
       "svg_sha256": "5b98e4aa6ace700ffb4c3d07bec311bae88533761436b9355d8129d240fc2f44",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
