@@ -28,7 +28,7 @@ use css_binding::QuadrantChartCssBinding;
 pub(crate) struct QuadrantChartPointThemePlan {
     css: QuadrantChartCssBinding,
     common_css: crate::svg::PreparedCommonCss,
-    terminal_points: Box<[QuadrantChartPointBinding]>,
+    point_count: usize,
     points: Box<[QuadrantChartPointThemeExpectation]>,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
@@ -37,11 +37,11 @@ pub(crate) struct QuadrantChartPointThemePlan {
 }
 
 #[derive(Debug)]
-pub(crate) struct QuadrantChartPointBinding {
-    pub(crate) radius: f64,
-    pub(crate) fill: String,
-    pub(crate) stroke_color: String,
-    pub(crate) stroke_width: String,
+pub(super) struct QuadrantChartPointBinding<'a> {
+    pub(super) radius: f64,
+    pub(super) fill: &'a str,
+    pub(super) stroke_color: &'a str,
+    pub(super) stroke_width: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -130,11 +130,10 @@ impl QuadrantChartPointThemePlan {
             Some(inherited_font_stack.font_family_css()),
         );
         let Some(theme) = theme else {
-            let terminal_points = bind_points(model, effective_config, &css, &[]);
             return Ok(Self {
                 css,
                 common_css,
-                terminal_points,
+                point_count,
                 points: Vec::new().into_boxed_slice(),
                 inherited_font_stack,
                 evidence: FamilyThemeEvidence::default(),
@@ -401,11 +400,10 @@ impl QuadrantChartPointThemePlan {
             }
         }
 
-        let terminal_points = bind_points(model, effective_config, &css, &points);
         Ok(Self {
             css,
             common_css,
-            terminal_points,
+            point_count,
             points: points.into_boxed_slice(),
             inherited_font_stack,
             evidence,
@@ -418,8 +416,46 @@ impl QuadrantChartPointThemePlan {
         &self.css
     }
 
-    pub(crate) fn point_binding(&self, index: usize) -> &QuadrantChartPointBinding {
-        &self.terminal_points[index]
+    pub(super) fn point_binding<'a>(
+        &'a self,
+        index: usize,
+        point: &'a QuadrantChartPointModel,
+        class_styles: Option<&'a QuadrantChartStyles>,
+        default_radius: f64,
+    ) -> QuadrantChartPointBinding<'a> {
+        let expectation = self.points.get(index);
+        QuadrantChartPointBinding {
+            radius: point
+                .styles
+                .radius
+                .map(|value| value as f64)
+                .or_else(|| class_styles.and_then(|style| style.radius.map(|value| value as f64)))
+                .or_else(|| {
+                    expectation.and_then(|expectation| {
+                        expectation.radius.as_ref().map(|radius| radius.value_px)
+                    })
+                })
+                .unwrap_or(default_radius),
+            fill: super::point_source_fill(point, class_styles)
+                .or_else(|| {
+                    expectation.and_then(|expectation| {
+                        expectation.fill.as_ref().map(|fill| fill.css.as_ref())
+                    })
+                })
+                .unwrap_or(&self.css.quadrant_point_fill),
+            stroke_color: point
+                .styles
+                .stroke_color
+                .as_deref()
+                .or_else(|| class_styles.and_then(|style| style.stroke_color.as_deref()))
+                .unwrap_or(&self.css.quadrant_point_fill),
+            stroke_width: point
+                .styles
+                .stroke_width
+                .as_deref()
+                .or_else(|| class_styles.and_then(|style| style.stroke_width.as_deref()))
+                .unwrap_or("0px"),
+        }
     }
 
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
@@ -431,7 +467,7 @@ impl QuadrantChartPointThemePlan {
     }
 
     pub(crate) fn point_count(&self) -> usize {
-        self.terminal_points.len()
+        self.point_count
     }
 
     pub(crate) fn radius_override_px(&self, point_index: usize) -> Option<f64> {
@@ -624,61 +660,6 @@ fn typed_fill_candidate(
         rule_index: origin.rule_index(),
         capability,
     })
-}
-
-fn bind_points(
-    model: &QuadrantChartRenderModel,
-    config: &MermaidConfig,
-    css: &QuadrantChartCssBinding,
-    expectations: &[QuadrantChartPointThemeExpectation],
-) -> Box<[QuadrantChartPointBinding]> {
-    let default_radius = super::QuadrantChartConfigView::new(config.as_value())
-        .layout_settings()
-        .point_radius;
-    model
-        .points
-        .iter()
-        .enumerate()
-        .map(|(point_index, point)| {
-            let class = super::point_class_styles(model, point);
-            let expectation = expectations.get(point_index);
-            QuadrantChartPointBinding {
-                radius: point
-                    .styles
-                    .radius
-                    .map(|value| value as f64)
-                    .or_else(|| class.and_then(|style| style.radius.map(|value| value as f64)))
-                    .or_else(|| {
-                        expectation.and_then(|expectation| {
-                            expectation.radius.as_ref().map(|radius| radius.value_px)
-                        })
-                    })
-                    .unwrap_or(default_radius),
-                fill: super::point_source_fill(point, class)
-                    .or_else(|| {
-                        expectation.and_then(|expectation| {
-                            expectation.fill.as_ref().map(|fill| fill.css.as_ref())
-                        })
-                    })
-                    .unwrap_or(&css.quadrant_point_fill)
-                    .to_owned(),
-                stroke_color: point
-                    .styles
-                    .stroke_color
-                    .as_deref()
-                    .or_else(|| class.and_then(|style| style.stroke_color.as_deref()))
-                    .unwrap_or(&css.quadrant_point_fill)
-                    .to_owned(),
-                stroke_width: point
-                    .styles
-                    .stroke_width
-                    .as_deref()
-                    .or_else(|| class.and_then(|style| style.stroke_width.as_deref()))
-                    .unwrap_or("0px")
-                    .to_owned(),
-            }
-        })
-        .collect()
 }
 
 fn point_fill_expectation(
@@ -909,7 +890,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_theme_omits_point_expectations_without_dropping_terminal_points() {
+    fn no_theme_omits_point_expectations_and_layout_keeps_source_and_class_values() {
         let model: QuadrantChartRenderModel = serde_json::from_value(serde_json::json!({
             "title": null, "accTitle": null, "accDescr": null,
             "quadrants": {
@@ -942,14 +923,28 @@ mod tests {
 
         assert!(plan.points.is_empty());
         assert_eq!(plan.point_count(), 2);
-        assert_eq!(plan.point_binding(0).radius, 5.0);
-        assert_eq!(plan.point_binding(0).fill, "var(--source)");
-        assert_eq!(plan.point_binding(1).radius, 7.0);
-        assert_eq!(plan.point_binding(1).fill, "#abcdef");
+        let layout = super::super::layout_quadrantchart_diagram_typed(
+            &model,
+            None,
+            config.as_value(),
+            &plan,
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        assert_eq!(layout.points[0].radius, 5.0);
+        assert_eq!(layout.points[0].fill, "var(--source)");
+        assert_eq!(layout.points[1].radius, 7.0);
+        assert_eq!(layout.points[1].fill, "#abcdef");
+        assert_eq!(plan.point_count(), layout.points.len());
     }
 
     #[test]
-    fn point_binding_preserves_unverified_source_and_class_priority() {
+    fn point_layout_preserves_unverified_source_and_class_priority_over_typed_values() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch,
+        };
+
         let model: QuadrantChartRenderModel = serde_json::from_value(serde_json::json!({
             "title": null, "accTitle": null, "accDescr": null,
             "quadrants": { "quadrant1Text": "", "quadrant2Text": "", "quadrant3Text": "", "quadrant4Text": "" },
@@ -960,30 +955,42 @@ mod tests {
                 "strokeColor": "currentColor", "strokeWidth": "0.25em" } }
         })).unwrap();
         let config = MermaidConfig::empty_object();
-        let css = QuadrantChartCssBinding::resolve(config.as_value());
-        let points = bind_points(
-            &model,
-            &config,
-            &css,
-            &[QuadrantChartPointThemeExpectation {
-                radius: Some(QuadrantChartPointRadius {
-                    value_px: 12.0,
-                    token: Arc::from("12"),
-                    rule_index: 0,
-                }),
-                fill: Some(QuadrantChartPointFillExpectation {
-                    css: Arc::from("#ff0000"),
-                    rule_index: 0,
-                    owner: QuadrantChartPointFillOwner::Typed {
-                        capability: ThemeCapability::SolidPaint,
-                    },
-                }),
-            }],
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::ChartSeries,
+                        ThemeStylePatch {
+                            geometry: ThemeGeometryPatch {
+                                radius: Specified::Value(12.0),
+                            },
+                            ..ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+                        },
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::QUADRANT_CHART);
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        assert_eq!(points[0].fill, "var(--point)");
-        assert_eq!(points[0].radius, 7.0);
-        assert_eq!(points[0].stroke_color, "currentColor");
-        assert_eq!(points[0].stroke_width, "0.25em");
+        let plan =
+            QuadrantChartPointThemePlan::resolve(Some(&resolved), &config, &model, &work_meter)
+                .unwrap();
+        let layout = super::super::layout_quadrantchart_diagram_typed(
+            &model,
+            None,
+            config.as_value(),
+            &plan,
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        assert_eq!(layout.points[0].fill, "var(--point)");
+        assert_eq!(layout.points[0].radius, 7.0);
+        assert_eq!(layout.points[0].stroke_color, "currentColor");
+        assert_eq!(layout.points[0].stroke_width, "0.25em");
+        assert_eq!(plan.point_count(), layout.points.len());
     }
 
     fn receipt(typography_requested: bool) -> QuadrantChartPointThemeReceipt {

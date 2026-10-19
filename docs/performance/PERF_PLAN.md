@@ -17,6 +17,20 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 Quadrant checkpoint](quadrant_point_binding_macos_2026-10-20.md) removes the
+retained point-binding array and its independent traversal/settings projection. Borrowed source,
+class and prepared values flow into the necessary layout loop, with one final string copy.
+All three primaries save twelve allocations: default medium saves 384 bytes, empty authoring
+332 bytes and typed radius/fill 319 bytes. All 642 SVG/report/ordered-callback controls and 26
+errors match. Of 501 jointly stable rows, 35 improve and 466 stay unchanged; all four memory
+metrics are nonincreasing and 141 variable rows remain inconclusive. All 418 catalog cells are
+stable and exact, with eleven Quadrant improvements and 407 unchanged. Forty-five focused and
+5,612 full release tests pass, as do Clippy, full DOM, optimized full WASM, formatting and
+independent source/raw/report reviews. This removes duplicated ownership/work without a latency
+claim or historical release reclassification. Next independently measure the shared root-font
+owner, preserving separately configured and explicitly empty root values; keep the default
+GitGraph, XY paint, Pie CSS and ZenUML candidates separate.
+
 The [October 19 terminal receipt checkpoint](terminal_receipt_value_state_macos_2026-10-19.md)
 replaces copied Info/Error CSS observations with existing sticky comparison state and borrows
 Treemap's expected title fill. All three primaries save three allocations: Info/Error each save
