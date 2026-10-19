@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 PR checkpoint](theme_pr_checkpoint_macos_2026-10-19.md) records integration with
+`origin/main` at `252752f70`, the ER prepared-geometry/consumer-style merge and fresh checks on
+product revision `08688eaf5`. Release native tests pass 8,275 cases; Clippy, private theme acceptance,
+WASM, full DOM, representative feature/dependency checks, benchmark discovery, native-memory smoke,
+Node and legal/security checks pass. Earlier incremental allocation and timing receipts retain
+their original revisions; the upstream ER cache changes measurement callback count and phase.
+The all-family convergence goal remains active while the first refactor batch enters review.
+
 The [October 19 color serialization checkpoint](theme_color_serialization_macos_2026-10-19.md)
 removes temporary numeric/hex component Strings from shared theme color formatting. All 17,091
 direct color operations, 178 public-render controls and 418 catalog cells preserve exact output
