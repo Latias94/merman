@@ -17,6 +17,15 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 default font checkpoint](theme_default_font_fastpath_macos_2026-10-19.md) borrows
+configured font strings and skips CSS parsing only for the two exact built-in Mermaid default
+spellings; all custom and malformed values retain the parser and safety validation. All 178 public
+controls preserve SVG, reports and ordered measurement traces; 84/171 jointly stable memory rows
+reduce allocation count and bytes, with seven variable Flowchart rows remaining inconclusive. All
+418 cells across 35 logical families and 10 presets plus no-theme preserve output and metadata; 122
+reduce allocation count and bytes. Peak and retained growth are unchanged. This is allocation/work
+evidence, not a calibrated latency claim.
+
 The [October 19 family preparation checkpoint](family_theme_preparation_macos_2026-10-19.md)
 removes discarded/duplicated Class, Pie, Sankey, and no-theme Quadrant preparation. All 178
 public controls preserve exact SVG/report/measurement traces; 171 jointly stable rows have no
