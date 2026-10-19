@@ -27,6 +27,6 @@ and neither supports admission. The accepted catalog comparison uses a clean det
 an isolated target directory. The original pre-edit public baseline probes remain valid.
 
 Renderer nextest passes 5,201 tests with five skipped; release all-feature Clippy, formatting and
-diff checks pass. Existing public Packet theme/resource tests are also run. No latency or v0.9.0
+diff checks pass. The public Packet/Sankey theme smoke test also passes. No latency or v0.9.0
 recovery claim is made. These literal allocations existed in v0.9.0; their removal reduces shared
 cost rather than explaining a newly introduced theme regression.
