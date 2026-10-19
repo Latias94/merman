@@ -10,7 +10,7 @@ use super::{
         signal_type_at, trim_ecmascript, trim_end_ecmascript,
     },
 };
-use crate::SourceSpan;
+use crate::{SourceSpan, diagrams::scan::ScanStep};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +45,6 @@ impl<'input> SequenceScanner<'input> {
             declaration_config_allowed: false,
             after_signal_type: false,
         }
-    }
-
-    pub(super) fn position(&self) -> usize {
-        self.pos
     }
 
     fn peek(&self) -> Option<u8> {
@@ -167,6 +163,7 @@ impl<'input> SequenceScanner<'input> {
             } else {
                 self.input[self.pos..].chars().next().is_some_and(|first| {
                     first != '}'
+                        && first != '\n'
                         && first.len_utf16() == 1
                         && self.input[self.pos + first.len_utf8()..].starts_with("%%")
                 })
@@ -175,8 +172,15 @@ impl<'input> SequenceScanner<'input> {
             return false;
         }
 
-        // Directives are removed earlier; remaining percent comments follow Jison's INITIAL-only
-        // rules, while exclusive ID/LINE states retain the same bytes as authored text.
+        // Consume the recognized prefix before scanning its body. Jison's NEWLINE rule precedes
+        // the permissive [^}]%% rule; a comment must never begin on that newline.
+        self.pos += if b == b'#' {
+            1
+        } else if matches!(self.peek2(), Some([b'%', b'%'])) {
+            2
+        } else {
+            self.input[self.pos..].chars().next().unwrap().len_utf8() + 2
+        };
         while let Some(b2) = self.peek() {
             if b2 == b'\n' {
                 break;
@@ -570,14 +574,16 @@ impl<'input> SequenceScanner<'input> {
             return None;
         }
         if !self.declaration_config_allowed {
+            self.pos += 2;
             return Some(Err(LexError {
                 message: "Config objects require a whitespace-free actor id".to_string(),
-                span: SourceSpan::new(start, (start + 2).min(self.input.len())),
+                span: SourceSpan::new(start, self.pos),
             }));
         }
         self.declaration_config_allowed = false;
         self.pos += 2;
         let Some(rel_end) = self.input[self.pos..].find('}') else {
+            self.pos = self.input.len();
             return Some(Err(LexError {
                 message: "Unterminated config object; missing '}'".to_string(),
                 span: SourceSpan::new(start, self.input.len()),
@@ -787,15 +793,15 @@ impl<'input> SequenceScanner<'input> {
     fn emit(
         &mut self,
         tok: (usize, Tok, usize),
-    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    ) -> ScanStep<std::result::Result<(usize, Tok, usize), LexError>> {
         self.note_emitted_token(&tok.1);
-        Some(Ok(tok))
+        ScanStep::Emit(Ok(tok))
     }
 
     fn emit_result(
         &mut self,
         token: std::result::Result<(usize, Tok, usize), LexError>,
-    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    ) -> ScanStep<std::result::Result<(usize, Tok, usize), LexError>> {
         if let Ok((_, token, _)) = &token {
             self.note_emitted_token(token);
         } else {
@@ -803,132 +809,130 @@ impl<'input> SequenceScanner<'input> {
             self.declaration_alias_pending = false;
             self.declaration_config_allowed = false;
         }
-        Some(token)
+        ScanStep::Emit(token)
     }
 }
 
 impl<'input> SequenceScanner<'input> {
-    pub(super) fn next_token(
+    pub(super) fn scan_step(
         &mut self,
-    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    ) -> ScanStep<std::result::Result<(usize, Tok, usize), LexError>> {
         if let Some(tok) = self.pending.pop_front() {
             return self.emit(tok);
         }
 
-        loop {
-            let start = self.pos;
-            self.skip_ws();
+        let start = self.pos;
+        self.skip_ws();
 
-            if self.pos >= self.input.len() {
-                return None;
-            }
+        if self.pos >= self.input.len() {
+            return ScanStep::End;
+        }
 
-            if self.lex_comment() {
-                continue;
-            }
+        if self.lex_comment() {
+            return ScanStep::Skip;
+        }
 
-            if let Some(tok) = self.lex_multiline_acc_descr() {
-                return self.emit(tok);
-            }
+        if let Some(tok) = self.lex_multiline_acc_descr() {
+            return self.emit(tok);
+        }
 
-            if let Some(tok) = self.lex_rest_of_line() {
-                return self.emit(tok);
-            }
+        if let Some(tok) = self.lex_rest_of_line() {
+            return self.emit(tok);
+        }
 
-            if let Some(tok) = self.lex_newline() {
-                return self.emit(tok);
-            }
+        if let Some(tok) = self.lex_newline() {
+            return self.emit(tok);
+        }
 
-            if self.forced_actor_uses_id_rules()
-                && let Some(tok) = self.lex_forced_actor_id()
-            {
-                return self.emit(tok);
-            }
+        if self.forced_actor_uses_id_rules()
+            && let Some(tok) = self.lex_forced_actor_id()
+        {
+            return self.emit(tok);
+        }
 
-            if let Some(tok) = self.lex_keyword_lines() {
-                return self.emit(tok);
-            }
-            if self.pos >= self.input.len() {
-                return None;
-            }
+        if let Some(tok) = self.lex_keyword_lines() {
+            return self.emit(tok);
+        }
+        if self.pos >= self.input.len() {
+            return ScanStep::End;
+        }
 
-            if self.actor_boundary.is_some()
-                && self.initial_keyword_precedes_actor()
-                && let Some(tok) = self.lex_word_keywords()
-            {
-                return self.emit(tok);
-            }
+        if self.actor_boundary.is_some()
+            && self.initial_keyword_precedes_actor()
+            && let Some(tok) = self.lex_word_keywords()
+        {
+            return self.emit(tok);
+        }
 
-            if self.actor_boundary.is_some()
-                && let Some(tok) = self.lex_forced_actor_id()
-            {
-                return self.emit(tok);
-            }
+        if self.actor_boundary.is_some()
+            && let Some(tok) = self.lex_forced_actor_id()
+        {
+            return self.emit(tok);
+        }
 
-            if self.after_signal_type {
-                if let Some(tok) = self.lex_central_marker() {
-                    return self.emit(tok);
-                }
-                if let Some(tok) = self.lex_punct() {
-                    return self.emit(tok);
-                }
-                if let Some(tok) = self.lex_minus() {
-                    return self.emit(tok);
-                }
-                if let Some(tok) = self.lex_forced_actor_id() {
-                    return self.emit(tok);
-                }
-            }
-
+        if self.after_signal_type {
             if let Some(tok) = self.lex_central_marker() {
                 return self.emit(tok);
             }
-
-            if let Some(tok) = self.lex_actor_before_signal() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_word_keywords() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_signal_type() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_config() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_text() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_num() {
-                return self.emit(tok);
-            }
-
             if let Some(tok) = self.lex_punct() {
                 return self.emit(tok);
             }
-
-            if let Some(tok) = self.lex_central_marker() {
-                return self.emit(tok);
-            }
-
             if let Some(tok) = self.lex_minus() {
                 return self.emit(tok);
             }
-
-            if let Some(tok) = self.lex_actor() {
+            if let Some(tok) = self.lex_forced_actor_id() {
                 return self.emit(tok);
             }
-
-            let _ = self.bump();
-            return Some(Err(LexError {
-                message: format!("Unexpected character at {start}"),
-                span: SourceSpan::new(start, self.pos),
-            }));
         }
+
+        if let Some(tok) = self.lex_central_marker() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_actor_before_signal() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_word_keywords() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_signal_type() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_config() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_text() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_num() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_punct() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_central_marker() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_minus() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_actor() {
+            return self.emit(tok);
+        }
+
+        let _ = self.bump();
+        ScanStep::Emit(Err(LexError {
+            message: format!("Unexpected character at {start}"),
+            span: SourceSpan::new(start, self.pos),
+        }))
     }
 }

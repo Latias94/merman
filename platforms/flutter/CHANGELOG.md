@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
+
+### Added
+
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+
+## [0.9.1] - 2026-10-18
+
+- ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
+- Diagram lexers now make progress and honor cancellation while skipping malformed or empty input.
+- Generated HTML label IDs are scoped to the diagram root so multiple diagrams can share a document.
+
 ## [0.9.0] - 2026-10-12
 
 Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and native artifacts paired.
@@ -8,8 +25,6 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 
 - SVG-capable operations add `edge-geometry-json` for Flowchart, Swimlane, and Agentflow clipped edge points and painted label centers. `layout-json` keeps its pre-paint coordinates; inspect the installed operation catalog. [PR #174](https://github.com/Latias94/merman/pull/174), [PR #177](https://github.com/Latias94/merman/pull/177)
 - Flowchart, Swimlane, and State ASCII/Unicode node padding accepts independent X/Y overrides, including zero, separately from graph spacing. [PR #188](https://github.com/Latias94/merman/pull/188)
-- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
-- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ### Upgrade
 
@@ -23,10 +38,6 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 - ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
 
 See the [package guide](README.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
-
-### Breaking changes
-
-- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
 
 ## [0.8.0] - 2026-10-06
 

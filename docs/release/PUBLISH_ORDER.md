@@ -1,12 +1,40 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-13 (Asia/Shanghai)
+Last updated: 2026-10-18 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 ## Version Decision
 
-Latest verified published Rust workspace and CLI/LSP release: `0.9.0`. See the [0.9.0 publication snapshot](#090-publication-snapshot) for immutable source and owner receipts, and the [upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for consumer changes. Typst wrapper 0.5.0 and the other package channels retain independent publication boundaries.
+Latest verified workspace release across CLI/LSP, Rust crates, Web, Node, Python, Flutter, Android, and Apple: `0.9.1`. Typst wrapper 0.5.0 and the other independent surfaces retain separate publication boundaries.
+
+## 0.9.1 Publication Snapshot
+
+Published on 2026-10-18 (Asia/Shanghai) from immutable source commit `f6202f702dbde0a75049b1a62b3124feae709b3d`, tree `dc8a157907012ba99a1bbc516070b39148c264e5`. The workspace `v0.9.1` and Flutter `flutter-v0.9.1` tags resolve to that commit. This patch carries selected fixes from the `v0.9.0` line; the theme refactor and Mermaid 12.2.0 development alignment remain outside this release.
+
+[Immutable preflight 39105735891](https://github.com/Latias94/merman/actions/runs/39105735891) passed all 24 jobs for the exact source. Its receipt artifact is `release-preflight-f6202f702dbde0a75049b1a62b3124feae709b3d-attempt-1` (artifact `12128809512`, digest `sha256:438222076c8fa05f8fe5565b6e37450e0c9d753c504ff5c95ffc6af6e91d9fbe`). Workflow success and frozen tags do not assert registry acceptance; channel results below remain separate.
+
+| Surface | Observed publication or preparation | Owner evidence |
+| --- | --- | --- |
+| Rust workspace | All 22 coupled crates are available at `0.9.1`; the release run uploaded 20 and confirmed the two previously accepted crates. Every crates.io API checksum matches its prepared package, and each receipt checksum matches the sparse index. | [Successful publish 39121469824](https://github.com/Latias94/merman/actions/runs/39121469824), [receipt artifact 12136465487](https://github.com/Latias94/merman/actions/runs/39121469824/artifacts/12136465487), [initial Typst smoke 39109052057](https://github.com/Latias94/merman/actions/runs/39109052057), [partial publish 39111148178](https://github.com/Latias94/merman/actions/runs/39111148178), [recovery 39116306833](https://github.com/Latias94/merman/actions/runs/39116306833), [tag smoke retry 39120577158](https://github.com/Latias94/merman/actions/runs/39120577158), [PR #210](https://github.com/Latias94/merman/pull/210) |
+| CLI / LSP archives | [v0.9.1](https://github.com/Latias94/merman/releases/tag/v0.9.1) is the public stable Latest workspace release. All 21 jobs passed; the 26 published assets across five targets passed a separate complete-bundle size/SHA256/source verification after download. | [39109052185](https://github.com/Latias94/merman/actions/runs/39109052185) |
+| Web npm group | All five packages are published at `0.9.1` under `latest`. A separate observation matched all registry integrities to the original artifact; each npm provenance attestation resolves to the frozen source. Historical alpha/staging tags remain unchanged. | [39109254830](https://github.com/Latias94/merman/actions/runs/39109254830) |
+| Node npm group | All seven packages are published at `0.9.1` under `latest`, with exact manifest integrities and npm provenance. The recovery reused the original group and attempt-bound report: the accepted macOS ARM64 member was skipped and the six unattempted members were published. | [Original run 39109264837](https://github.com/Latias94/merman/actions/runs/39109264837), [recovery 39111766250](https://github.com/Latias94/merman/actions/runs/39111766250) |
+| Flutter | [pub.dev `merman 0.9.1`](https://pub.dev/packages/merman/versions/0.9.1) is published. A separate read-only archive reconciliation returned `exact`, matching file paths, executable bits, sizes and bytes with the frozen owner package. | [39109126069](https://github.com/Latias94/merman/actions/runs/39109126069) |
+| Python | PyPI `merman 0.9.1` is published with Linux x86_64, macOS ARM64 and Windows x86_64 wheels. The three registry SHA256 values match the corresponding GitHub Release assets. | [39111572953](https://github.com/Latias94/merman/actions/runs/39111572953) |
+| Android | `merman-android-v0.9.1.aar` is available on the workspace GitHub Release with SHA256 `55a7c0270f9f4fa01ec2f698e6889097a20b43fbd5dc1f924185c5f8f42c971b`. The native build, JVM contract tests and owner release-byte verification passed; this is an AAR release asset, not a Maven Central upload. | [39111583242](https://github.com/Latias94/merman/actions/runs/39111583242) |
+| Apple | `Merman.xcframework-v0.9.1.zip` and its checksum are available on the workspace GitHub Release. Exact-source Xcode 15.2 / Swift 5.9.2 validation passed, including iOS XCFramework builds and generated Swift typechecks. | [Floor check 39108265268](https://github.com/Latias94/merman/actions/runs/39108265268), [publisher 39111593825](https://github.com/Latias94/merman/actions/runs/39111593825) |
+| Independent Roughr / Tree-sitter / Typst / VS Code; external package managers and Pages | No publication is part of this patch operation. | Independent release boundaries |
+
+The first and tag-retry runs stopped at the full Typst package smoke because its independently versioned API fixture pins Merman `0.9.0`, while the release artifact correctly contains `0.9.1`. PR #210 keeps the exact artifact build and examples smoke in the workspace release gate; the version-pinned API suite remains with the Typst package owner's CI. The crates.io run's seven topological batch receipts all reached `complete`. It published `merman-core` and 19 other missing crates; `dugong-graphlib` and `manatee` were already accepted by the earlier attempt. All 22 exact `0.9.1` versions were independently visible through the crates.io API with checksums matching the prepared artifacts. The publication workflow came from PR #210 while package contents remained pinned to the immutable release tag above.
+
+The Web package-group artifact is `merman-web-npm-package-group` (artifact `12130147285`, digest `sha256:453da1d7acef9e86729ff6fb677f8746de8ceb23196540ea956fc051d615b2b9`); its manifest SHA256 is `4060abdea77b7cdb41510971ae3ddf1f249e38de0243f65d33214bfa8d5b0cbf`. The owner report reached `released`, and a subsequent read-only reconciliation returned the same result.
+
+The Flutter owner retained `merman-flutter-package` (artifact `12130837889`, digest `sha256:44ed45c190062d7a2e3e37eb7b80d00df685666bd3aaaac8bea0ccb6fefe3ebb`). Its 86,205,594-byte source/tree-bound archive has SHA256 `765c64897f4d57850d08c7713fc884017f4a67e7ffe986b948e4ca2c0674df52`; the registry-repacked archive has SHA256 `14cbf6408f97c8dc48dd92597ca99881adc6dced735e575dcc96ac0808726d65`. Their canonical contents match. The shipped README and changelog describe `0.9.1`, dated 2026-10-18.
+
+The Node recovery report `merman-node-npm-reconciliation-report-attempt-1` (artifact `12130887049`, digest `sha256:da802884c27103eb6a5e1d8862086c94baa92a2043b6021749ec45a51de92d5a`) reached `released`; its manifest SHA256 is `4913c3a0185c9ac0bb105e4c3ae09a5e7e8caa4912b59736374d9fd891f4feb3`, with one already-published member and six exact recovery uploads.
+
+The Apple release assets are `Merman.xcframework-v0.9.1.zip` (297,812,765 bytes, SHA256 `75a3c4c4431e1966685476d20d6d231235458cecee45721c2129db9761c9e8c7`) and its 96-byte checksum sidecar (SHA256 `090511f3376dbe92332c45d417a4998c8ac040394ab4d74a9008b21c91ffc99a`). This is a GitHub Release XCFramework asset; it does not establish a remote SwiftPM binary target.
 
 ## 0.9.0 Publication Snapshot
 

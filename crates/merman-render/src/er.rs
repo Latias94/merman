@@ -338,6 +338,8 @@ pub(crate) struct ErEntityMeasureRow {
     pub key_label: ErBoxLabel,
     pub comment_label: ErBoxLabel,
     pub height: f64,
+    pub cell_widths: [f64; 4],
+    pub cell_max_widths_px: [i64; 4],
 }
 
 #[derive(Debug, Clone)]
@@ -349,6 +351,8 @@ pub(crate) struct ErEntityMeasure {
     pub label_html_width: f64,
     pub label_height: f64,
     pub label_max_width_px: i64,
+    pub label_text_width_px: i64,
+    pub unformatted_label_metrics: TextMetrics,
     pub has_key: bool,
     pub has_comment: bool,
     pub type_col_w: f64,
@@ -406,6 +410,12 @@ pub(crate) fn measure_entity_box(
         // used by `drawRect`.
         let calc_w =
             calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input());
+        let unformatted_label_metrics = measurer.measure_wrapped(
+            label.rendered_text(),
+            label_style,
+            None,
+            settings.label_wrap_mode,
+        );
         let clamp_to_min_w = (calc_w as f64 + label_pad_x * 2.0) < min_w;
         let width = if clamp_to_min_w {
             min_w
@@ -425,6 +435,8 @@ pub(crate) fn measure_entity_box(
             } else {
                 wrapping_width_px
             },
+            label_text_width_px: calc_w,
+            unformatted_label_metrics,
             has_key: false,
             has_comment: false,
             type_col_w: 0.0,
@@ -508,12 +520,23 @@ pub(crate) fn measure_entity_box(
             .max(comment_m.height)
             + text_padding;
 
+        let cell_max_widths_px = if settings.label_wrap_mode == WrapMode::HtmlLike {
+            [&type_label, &name_label, &key_label, &comment_label].map(|label| {
+                calculate_text_width_like_mermaid_px(measurer, attr_style, label.markdown_input())
+                    + 100
+            })
+        } else {
+            [0; 4]
+        };
+
         rows.push(ErEntityMeasureRow {
             type_label,
             name_label,
             key_label,
             comment_label,
             height: row_h.max(1.0),
+            cell_widths: [type_w, name_w, keys_w, comment_w].map(|width| width.max(0.0)),
+            cell_max_widths_px,
         });
         total_rows_h += row_h.max(1.0);
     }
@@ -559,6 +582,11 @@ pub(crate) fn measure_entity_box(
     let width = (shape_bbox_w + padding * 2.0).max(max_width);
     let name_h = label_metrics.height + text_padding;
     let height = total_rows_h + name_h;
+    let label_text_width_px = if settings.label_wrap_mode == WrapMode::HtmlLike {
+        calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input())
+    } else {
+        0
+    };
 
     ErEntityMeasure {
         width: width.max(1.0),
@@ -568,6 +596,8 @@ pub(crate) fn measure_entity_box(
         label_html_width,
         label_height: label_metrics.height.max(0.0),
         label_max_width_px: wrapping_width_px,
+        label_text_width_px,
+        unformatted_label_metrics: label_metrics,
         has_key,
         has_comment,
         type_col_w: max_type_col_w.max(0.0),

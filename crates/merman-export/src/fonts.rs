@@ -45,6 +45,9 @@ pub struct NativeFontLimits {
     pub max_directory_entries: usize,
     pub max_directory_depth: usize,
     pub max_label_bytes: usize,
+    /// Maximum uncached, nonempty shaping probes within one operation (default: 16384).
+    /// Cache hits do not consume this budget. This provider limit is independent of render
+    /// resource profiles; set it with `NativeFontOptions::with_limits` before loading fonts.
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
@@ -66,7 +69,7 @@ impl Default for NativeFontLimits {
             max_directory_entries: 16_384,
             max_directory_depth: 16,
             max_label_bytes: 64 * 1024,
-            max_measurements: 4096,
+            max_measurements: 16_384,
             max_cache_entries: 1024,
             max_cache_bytes: 4 * 1024 * 1024,
             max_system_files: 4096,
@@ -506,6 +509,32 @@ impl NativeFontContext {
             state: Mutex::new(MeasurementState::default()),
             fatal: OnceLock::new(),
         }))
+    }
+
+    /// Starts an independently controlled export while retaining already admitted font bytes.
+    /// Source snapshots and their acquisition charges are preserved; later export failures do
+    /// not poison the source context. Existing fatal font errors are replayed before forking.
+    pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Export)?;
+        if let Some(error) = self.0.fatal.get() {
+            return Err(error.clone());
+        }
+        let context = Self(Arc::new(FontContextInner {
+            database: Arc::clone(&self.0.database),
+            initial_system_faces: self.0.initial_system_faces.clone(),
+            #[cfg(feature = "system-fonts")]
+            discovery: self.0.discovery.clone(),
+            #[cfg(feature = "system-fonts")]
+            sources: self.0.sources.for_export()?,
+            default_family: self.0.default_family.clone(),
+            identity: self.0.identity.clone(),
+            limits: self.0.limits.clone(),
+            control: control.clone(),
+            state: Mutex::new(MeasurementState::default()),
+            fatal: OnceLock::new(),
+        }));
+        control.terminal_checkpoint_at(OperationPhase::Export)?;
+        Ok(context)
     }
 
     /// Whether the explicitly authorized font set includes host-system discovery.
@@ -1315,6 +1344,13 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             context.check(),
+            Err(NativeFontError::Limit {
+                resource: "label-bytes",
+                ..
+            })
+        ));
+        assert!(matches!(
+            context.for_export(&OperationControl::new()),
             Err(NativeFontError::Limit {
                 resource: "label-bytes",
                 ..

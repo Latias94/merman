@@ -4,6 +4,20 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.
+- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
+- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
+## [0.9.1] - 2026-10-18
+
+- ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
+- Diagram lexers now make progress and honor cancellation while skipping malformed or empty input.
+- Generated HTML label IDs are scoped to the diagram root so multiple diagrams can share a document.
+
 ## [0.9.0] - 2026-10-12
 
 Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and native artifacts paired.
@@ -25,12 +39,6 @@ Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and 
 - ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
 
 See the [package guide](README.md) and [upgrade guide](../../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
-
-### Breaking changes
-
-- Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.
-- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
-- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
 
 ## [0.8.0] - 2026-10-06
 

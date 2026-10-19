@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## Unreleased
+## [Unreleased]
 
 - Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes.
   PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero.
@@ -22,9 +22,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   [#197](https://github.com/Latias94/merman/issues/197),
   [#198](https://github.com/Latias94/merman/issues/198), and
   [#199](https://github.com/Latias94/merman/issues/199).
-- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
-  Swimlane titles in PNG, JPEG, and PDF exports.
-  [#200](https://github.com/Latias94/merman/issues/200)
 - Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
   center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
   including HandDrawn circle paths with resource checks before generation;
@@ -38,6 +35,23 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   on Windows.
 - The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds
   no syntax family, Cargo feature, FFI version, or editor-facts schema version.
+
+### Theme integration
+
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
+- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline.
+- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
+- Added bounded theme resource admission and preserved the exact artifact/family/output qualification scope for alpha presets; catalog availability is not an all-family portability guarantee.
+
+## [0.9.1] - 2026-10-18
+
+- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
+- Ensure Class, Sequence, and State lexers always make progress and observe cancellation while skipping input, including empty Sequence comments and malformed declarations.
+- Update the locked `rustls` dependency to 0.23.46 and refresh generated legal materials.
+- Shorten repository paths and enforce a Windows checkout path budget for Git dependencies.
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated Swimlane titles in PNG, JPEG, and PDF exports. [#200](https://github.com/Latias94/merman/issues/200)
+- Scope generated HTML label IDs to the diagram root so multiple diagrams can share a document.
 
 ## [0.9.0] - 2026-10-12
 
@@ -75,14 +89,6 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 ### Security
 
 - Updated Playground math-rendering and source-map dependencies to resolve the audited vulnerable versions. [#169](https://github.com/Latias94/merman/pull/169), [#194](https://github.com/Latias94/merman/pull/194)
-
-### Theme integration
-
-- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
-- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
-- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline.
-- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
-- Added bounded theme resource admission and preserved the exact artifact/family/output qualification scope for alpha presets; catalog availability is not an all-family portability guarantee.
 
 ## [0.8.0] - 2026-10-06
 

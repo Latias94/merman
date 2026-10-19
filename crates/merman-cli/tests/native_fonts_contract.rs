@@ -21,6 +21,140 @@ fn svg(args: &[&str], source: &str) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+#[test]
+fn exhausted_measurement_budget_explains_how_to_retry() {
+    let font = font();
+    let source = "flowchart LR\nA[Measure this label] --> B[Destination]\n";
+    for command in ["render", "mmdc"] {
+        let input = if command == "render" {
+            "-"
+        } else {
+            "--input=-"
+        };
+        let args = [
+            command,
+            input,
+            "--output=-",
+            "--font-file",
+            &font,
+            "--font-system=off",
+            "--font-max-measurements=1",
+        ];
+        for profile in ["trusted-native", "unbounded-for-trusted-input"] {
+            let mut limited = args.to_vec();
+            limited.extend(["--resource-profile", profile]);
+            let output = run_with_stdin(&limited, source);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.code(), Some(1), "{stderr}");
+            assert!(output.stdout.is_empty(), "no partial SVG may be published");
+            assert!(stderr.contains("native_font_measurements"), "{stderr}");
+            assert!(stderr.contains("actual=2 maximum=1"), "{stderr}");
+            assert!(stderr.contains("--font-max-measurements"), "{stderr}");
+            assert!(
+                stderr.contains("resource profiles do not change"),
+                "{stderr}"
+            );
+            assert!(
+                !stderr.contains("NativeFontLimits"),
+                "CLI help must use CLI options"
+            );
+        }
+        let mut retry = args;
+        retry[6] = "--font-max-measurements=8192";
+        let output = svg(&retry, source);
+        assert!(output.contains("<svg"));
+    }
+}
+
+#[test]
+fn measurement_budget_requires_native_mermaid_measurement() {
+    let font = font();
+    for extra in [
+        vec![],
+        vec!["--font-measurement=deterministic"],
+        vec!["--font-file", &font, "--font-measurement=deterministic"],
+    ] {
+        let mut args = vec!["render", "-", "--output=-", "--font-max-measurements=1"];
+        args.extend(extra);
+        let output = run_with_stdin(&args, "flowchart LR\nA --> B\n");
+        assert_eq!(output.status.code(), Some(2), "{:?}", output);
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("--font-max-measurements"), "{stderr}");
+        assert!(stderr.contains("native"), "{stderr}");
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn raw_svg_rejects_native_measurement_budget() {
+    let font = font();
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--input-kind=svg",
+            "--format=png",
+            "--output=-",
+            "--font-file",
+            &font,
+            "--font-max-measurements=1",
+        ],
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>"#,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(output.stdout.is_empty());
+    assert!(stderr.contains("raw SVG is not relaid out"), "{stderr}");
+}
+
+#[cfg(feature = "markdown")]
+#[test]
+fn batch_measurement_budget_applies_to_each_diagram() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = (0..10)
+        .map(|i| format!("```mermaid\nflowchart LR\nA[Diagram {i}] --> B[Destination {i}]\n```\n"))
+        .collect::<String>();
+    std::fs::write(temp.path().join("input.md"), source).unwrap();
+    let font = font();
+    let mut args = vec![
+        "batch",
+        "input.md",
+        "--output-dir=generated",
+        "--font-file",
+        &font,
+        "--font-system=off",
+        "--font-max-measurements=8",
+        "--quiet",
+    ];
+    let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for i in 1..=10 {
+        assert!(
+            temp.path()
+                .join(format!("generated/input-{i}.svg"))
+                .is_file()
+        );
+    }
+    args[2] = "--output-dir=failed";
+    args[6] = "--font-max-measurements=1";
+    let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("--font-max-measurements"), "{stderr}");
+    assert!(output.stdout.is_empty());
+    assert!(
+        std::fs::read_dir(temp.path().join("failed"))
+            .unwrap()
+            .all(|entry| entry.unwrap().file_name() == ".merman.lock"),
+        "no incomplete batch may be published"
+    );
+}
+
 fn title<'a>(group: &'a usvg::Group, wanted: &str) -> Option<&'a usvg::Text> {
     for node in group.children() {
         match node {

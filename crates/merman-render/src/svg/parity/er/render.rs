@@ -162,32 +162,12 @@ fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
     }
 }
 
-fn er_svg_label_source(label: &crate::er::ErBoxLabel) -> &str {
-    label.svg_text_source()
-}
-
-fn write_er_svg_box_label(
-    out: &mut impl SvgOutput,
-    label: &crate::er::ErBoxLabel,
-    style: &crate::text::TextStyle,
-    measurer: &dyn TextMeasurer,
-    max_width_px: Option<f64>,
-) {
-    let source = er_svg_label_source(label);
-    if let Some(max_width_px) = max_width_px {
-        crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
-            out,
-            source,
-            true,
-            measurer,
-            style,
-            Some(max_width_px),
-        );
-    } else {
-        crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
-            out, source, true,
-        );
-    }
+fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel) {
+    crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
+        out,
+        label.svg_text_source(),
+        true,
+    );
 }
 
 fn write_er_svg_plain_label(out: &mut impl SvgOutput, text: &str) {
@@ -1400,12 +1380,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 paint_emission
             };
             let wrap_mode = entity_wrap_mode;
-            let label_metrics = measurer.measure_wrapped(
-                measure.label.rendered_text(),
-                &label_style,
-                None,
-                wrap_mode,
-            );
+            let label_metrics = measure.unformatted_label_metrics;
             let lw = if wrap_mode == crate::text::WrapMode::HtmlLike {
                 measure.label_html_width.max(0.0)
             } else {
@@ -1435,7 +1410,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(-lw / 2.0),
                 );
                 write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(&mut out, &measure.label, &label_style, measurer, None);
+                write_er_svg_box_label(&mut out, &measure.label);
                 out.push_str("</g></g>");
             }
             out.push_str("</g>");
@@ -1684,11 +1659,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let name_w = measure.label_html_width.max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
-        let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-            measurer,
-            &label_style,
-            measure.label.markdown_input(),
-        ) + 100;
+        let name_mw_px = measure.label_text_width_px + 100;
         let entity_name_style_attr = ErTextStyleAttr {
             source_style: &source_label_style,
             typed_style: entity_name_terminal_style,
@@ -1751,59 +1722,8 @@ pub(crate) fn render_er_diagram_svg_model(
                 row_top + measure.text_padding / 2.0
             };
 
-            let type_w = crate::er::er_box_label_metrics_with_wrap_mode(
-                &row.type_label,
-                measurer,
-                &attr_style,
-                entity_wrap_mode,
-            )
-            .width
-            .max(0.0);
-            let name_w = crate::er::er_box_label_metrics_with_wrap_mode(
-                &row.name_label,
-                measurer,
-                &attr_style,
-                entity_wrap_mode,
-            )
-            .width
-            .max(0.0);
-            let keys_w = crate::er::er_box_label_metrics_with_wrap_mode(
-                &row.key_label,
-                measurer,
-                &attr_style,
-                entity_wrap_mode,
-            )
-            .width
-            .max(0.0);
-            let comment_w = crate::er::er_box_label_metrics_with_wrap_mode(
-                &row.comment_label,
-                measurer,
-                &attr_style,
-                entity_wrap_mode,
-            )
-            .width
-            .max(0.0);
-
-            let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.type_label.markdown_input(),
-            ) + 100;
-            let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.name_label.markdown_input(),
-            ) + 100;
-            let keys_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.key_label.markdown_input(),
-            ) + 100;
-            let comment_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.comment_label.markdown_input(),
-            ) + 100;
+            let [type_w, name_w, keys_w, comment_w] = row.cell_widths;
+            let [type_mw_px, name_mw_px, keys_mw_px, comment_mw_px] = row.cell_max_widths_px;
 
             let [
                 type_terminal_style,

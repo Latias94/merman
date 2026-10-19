@@ -165,6 +165,13 @@ pub(crate) enum CliError {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     Render(merman::RenderError),
+    #[cfg(feature = "native-fonts")]
+    #[error(
+        "native font measurement budget (`native_font_measurements`) exhausted: actual={actual} maximum={maximum}\nhelp: simplify the diagram or retry with --font-max-measurements COUNT above {maximum}; actual is the first rejected probe, not the total required; render resource profiles do not change this limit",
+        actual = .0.actual,
+        maximum = .0.maximum
+    )]
+    NativeFontMeasurementLimit(merman::render::ResourceLimitExceeded),
     #[cfg(feature = "ascii")]
     #[error("{0}")]
     Ascii(merman::ascii::AsciiDiagnostic),
@@ -283,6 +290,13 @@ impl From<merman::RenderError> for CliError {
         match error {
             merman::RenderError::NoDiagram => Self::NoDiagram,
             merman::RenderError::Parse(error) => Self::Diagnostic(error),
+            #[cfg(feature = "native-fonts")]
+            merman::RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "native_font_measurements"
+                    && limit.cause == merman::ResourceLimitCause::Ceiling =>
+            {
+                Self::NativeFontMeasurementLimit(limit)
+            }
             other => Self::Render(other),
         }
     }
@@ -578,6 +592,8 @@ impl CliError {
             Self::Resource(_) => ErrorCategory::Content,
             #[cfg(any(feature = "svg", feature = "ascii"))]
             Self::Render(_) => ErrorCategory::Content,
+            #[cfg(feature = "native-fonts")]
+            Self::NativeFontMeasurementLimit(_) => ErrorCategory::Content,
         }
     }
 

@@ -153,9 +153,10 @@ clean aggregate job requires the complete matrix to succeed and reverifies the i
 before any registry candidate, attestation, or GitHub Release job can run.
 
 Stable releases additionally generate Scoop and WinGet candidates from the verified Windows
-archive. The Windows job parses the Scoop JSON and requires `winget validate` to pass without
-interactive prompts. Prereleases take an explicit successful no-candidate path. Candidate files
-remain workflow artifacts for external submission; they are not uploaded as product release assets.
+archive through the independent candidate workflow. Separate Windows jobs validate the Scoop JSON
+and the WinGet manifest. The WinGet job also installs the manifest and smoke-tests its portable
+command alias. Candidate files remain workflow artifacts for external submission; they are not
+uploaded as product release assets. Prereleases take an explicit successful no-candidate path.
 
 ## cargo-binstall
 
@@ -305,7 +306,9 @@ gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.9.0
 
 The workflow requires an existing non-draft stable release. It resolves the tag to a commit, verifies the release receipt's GitHub attestation, and checks every CLI/LSP bundle file against that receipt before generating candidates. The generator compares the Windows archive with the tagged source rather than the current branch. No binaries are rebuilt and no release assets are replaced.
 
-WinGet and Scoop validate in separate jobs. WinGet uses the explicit `1.29.380` client and the version directory (`winget/manifests/l/Latias94/MermanCLI/<VERSION>/`); Scoop uses the official schema from Scoop `v0.6.0`. Each successful job uploads its own `winget-validated-<VERSION>` or `scoop-validated-<VERSION>` artifact with the release receipt. The shared `cli-registry-candidates-<VERSION>` artifact is generated input, not proof that both validators passed. Retry only failed jobs when a validator or runner fails.
+WinGet and Scoop validate in separate jobs. WinGet uses the explicit `1.29.380` client and the version directory (`winget/manifests/l/Latias94/MermanCLI/<VERSION>/`); Scoop uses the official schema from Scoop `v0.6.0`. After `winget validate`, the WinGet job enables local manifests on its disposable hosted runner and installs the generated manifest with user scope and normal dependency/hash verification. It executes the installed `Microsoft/WinGet/Links/merman-cli.exe` alias directly, checking the exact release version, explicit help, no-argument usage, and a minimal SVG render. No-argument invocation must display usage and exit `2`; this is a CLI usage result, not a Windows file-not-found error. The version, help, and render probes must exit `0`.
+
+Only after these checks pass does the job upload `winget-validated-<VERSION>` with the release receipt. Scoop uploads its separately schema-validated `scoop-validated-<VERSION>` artifact. The shared `cli-registry-candidates-<VERSION>` artifact is generated input, not proof that either validator or installation test passed. Retry only failed jobs when a validator or runner fails. These checks do not establish upstream acceptance or catalog availability.
 
 This read-only workflow is manually dispatched so package-manager review can proceed independently of binary publication. It does not rely on a downstream `release` event from the tag publisher, and it does not submit upstream PRs or claim registry availability. Submit the validated manifests through the external repository's review process separately. A candidate-validation failure must not block or recreate the GitHub Release.
 
