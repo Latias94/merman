@@ -1149,44 +1149,39 @@ fn zenuml_css(
         r#"
 #{diagram_id} .frame-border-outer{{fill:{border}}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:{background}}}#{diagram_id} .frame-header-line{{stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:{font_family};font-size:{size_16}px;font-weight:600;fill:{title_fill}}}#{diagram_id} .participant-box{{fill:{actor_background};stroke:{actor_border};stroke-width:2}}#{diagram_id} .participant-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .participant-icon{{color:{actor_text}}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{actor_border};stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:{size_16}px}}#{diagram_id} .stereotype-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .lifeline{{stroke:{line};stroke-width:1}}#{diagram_id} .message-line{{stroke:{message_line};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .arrow-head{{fill:{message_line};stroke:{message_line};stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:{activation_background};stroke:{activation_border};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:{muted_surface};fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:{font_family};font-size:{size_14}px;font-weight:600;fill:{fragment_header_text}}}#{diagram_id} .fragment-condition{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .fragment-separator{{stroke:{separator};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .return-line{{stroke:{message_line};stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:{message_line};stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .return-icon{{fill:{text}}}#{diagram_id} .divider-line{{stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-bg{{fill:{note_background};stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-label{{font-family:{font_family};font-size:{size_14}px;fill:{note_text}}}#{diagram_id} .comment-text{{font-family:{font_family};font-size:{size_14}px;fill:{comment_text};opacity:.5}}#{diagram_id} .seq-number{{font-family:{font_family};font-size:{size_12}px;font-weight:100;fill:{subtle_text}}}#{diagram_id} .group-outline{{fill:none;stroke:{group_border}}}#{diagram_id} .group-title-bg{{fill:{group_background};stroke:none}}#{diagram_id} .group-title-text{{font-family:{font_family};font-size:{size_13}px;font-weight:400;fill:{group_text}}}
 "#,
-        title_fill = escape_xml(title_fill),
-        font_family = escape_xml(&theme.typography.css_family()),
+        font_family = theme.typography.css_family(),
         size_16 = fmt(theme.typography.size(16.0)),
         size_14 = fmt(theme.typography.size(14.0)),
         size_12 = fmt(theme.typography.size(12.0)),
         size_13 = fmt(theme.typography.size(13.0)),
-        border = escape_xml(theme.color("borderColor", "#666")),
-        background = escape_xml(theme.color("backgroundColor", "#fff")),
-        text = escape_xml(theme.color("textColor", "#222")),
-        actor_background = escape_xml(theme.color("actorBackgroundColor", "#fff")),
-        actor_border = escape_xml(theme.color("actorBorderColor", "#666")),
-        actor_text = escape_xml(theme.color("actorTextColor", "#222")),
-        line = escape_xml(theme.color("lineColor", "#666")),
-        message_line = escape_xml(theme.color("lineColor", "#000")),
-        activation_background = escape_xml(theme.color("activationBackgroundColor", "#dedede")),
-        activation_border = escape_xml(theme.color("activationBorderColor", "#666")),
-        muted_surface = escape_xml(theme.color("mutedSurfaceColor", "#dedede")),
-        fragment_text = escape_xml(theme.color("textColor", "#000")),
-        fragment_header_text = escape_xml(theme.color("fragmentTextColor", "#000")),
-        group_text = escape_xml(theme.color("groupTextColor", "#222")),
-        separator = escape_xml(theme.color("borderColor", "#e5e7eb")),
-        note_border = escape_xml(theme.color("noteBorderColor", "#aa3")),
-        note_background = escape_xml(theme.color("noteBackgroundColor", "#fff5ad")),
-        note_text = escape_xml(theme.color("noteTextColor", "#333")),
-        comment_text = escape_xml(theme.color("subtleTextColor", "#333")),
-        subtle_text = escape_xml(theme.color("subtleTextColor", "#6b7280")),
-        group_border = escape_xml(theme.color("groupBorderColor", "#666")),
-        group_background = escape_xml(theme.color("groupBackgroundColor", "#fff")),
+        border = theme.color("borderColor", "#666"),
+        background = theme.color("backgroundColor", "#fff"),
+        text = theme.color("textColor", "#222"),
+        actor_background = theme.color("actorBackgroundColor", "#fff"),
+        actor_border = theme.color("actorBorderColor", "#666"),
+        actor_text = theme.color("actorTextColor", "#222"),
+        line = theme.color("lineColor", "#666"),
+        message_line = theme.color("lineColor", "#000"),
+        activation_background = theme.color("activationBackgroundColor", "#dedede"),
+        activation_border = theme.color("activationBorderColor", "#666"),
+        muted_surface = theme.color("mutedSurfaceColor", "#dedede"),
+        fragment_text = theme.color("textColor", "#000"),
+        fragment_header_text = theme.color("fragmentTextColor", "#000"),
+        group_text = theme.color("groupTextColor", "#222"),
+        separator = theme.color("borderColor", "#e5e7eb"),
+        note_border = theme.color("noteBorderColor", "#aa3"),
+        note_background = theme.color("noteBackgroundColor", "#fff5ad"),
+        note_text = theme.color("noteTextColor", "#333"),
+        comment_text = theme.color("subtleTextColor", "#333"),
+        subtle_text = theme.color("subtleTextColor", "#6b7280"),
+        group_border = theme.color("groupBorderColor", "#666"),
+        group_background = theme.color("groupBackgroundColor", "#fff"),
     );
     if let Some(color) = theme
         .configured_color("fragmentTextColor")
         .or_else(|| theme.configured_color("textColor"))
     {
-        let _ = write!(
-            &mut css,
-            "#{diagram_id} .fragment-icon{{color:{}}}",
-            escape_xml(color)
-        );
+        let _ = write!(&mut css, "#{diagram_id} .fragment-icon{{color:{}}}", color);
     }
     css
 }

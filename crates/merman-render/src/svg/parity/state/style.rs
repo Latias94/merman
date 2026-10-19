@@ -128,7 +128,7 @@ where
         }
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
-        let terminal_start = out.len();
+
         if compatibility.is_neo() {
             let _ = write!(
                 out,
@@ -148,11 +148,6 @@ where
                 style
             );
         }
-        style_plan.record_edge_marker_terminal_emission(
-            &mut ctx.theme_receipt.borrow_mut(),
-            edge.id.as_str(),
-            terminal_start..out.len(),
-        );
     }
 }
 

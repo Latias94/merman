@@ -506,7 +506,6 @@ fn assert_er_typed_font_size_output(rendered: family::RenderedFamilySvg) {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn first_er_entity_rect_size(svg: &str) -> (f64, f64) {
@@ -1478,7 +1477,6 @@ erDiagram
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1560,7 +1558,6 @@ fn er_entity_source_font_size_remains_a_fail_closed_layout_residual() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let strict = try_prepare_er_family_with_theme_and_engine_requirement(
         source,
@@ -1748,7 +1745,6 @@ fn er_base_typography_is_typed_for_font_stack_and_font_size() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1830,7 +1826,6 @@ fn er_configured_font_family_is_not_applicable_with_a_typed_font_size_sibling() 
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1988,7 +1983,6 @@ fn er_table_odd_even_fill_reaches_each_matching_row() {
                     let evidence = merman_render::__private::family_evidence(completion.report());
                     assert_eq!(evidence.applied_count(), 1);
                     assert_eq!(evidence.theme_residual_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                 }
             }
         }
@@ -2105,7 +2099,6 @@ fn er_table_unqualified_fill_reaches_both_row_writers() {
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -2607,7 +2600,6 @@ erDiagram
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let strict_result = try_prepare_er_family_with_theme_and_engine_requirement(
         titled_source,
@@ -2644,7 +2636,6 @@ erDiagram
     assert_eq!(untitled_evidence.applied_count(), 0);
     assert_eq!(untitled_evidence.not_applicable_count(), 1);
     assert_eq!(untitled_evidence.theme_residual_count(), 0);
-    assert_eq!(untitled_evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -2731,7 +2722,6 @@ fn er_relation_fill_fallback_reaches_visible_paths_and_referenced_markers() {
                 let evidence = merman_render::__private::family_evidence(completion.report());
                 assert_eq!(evidence.applied_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -2833,7 +2823,6 @@ fn er_text_fill_tracks_the_visible_title_and_its_own_configuration() {
             let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(evidence.applied_count(), usize::from(!owned));
             assert_eq!(evidence.not_applicable_count(), usize::from(owned));
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -2987,7 +2976,6 @@ fn er_derived_theme_colors_do_not_claim_raw_paint_defaults() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 3);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

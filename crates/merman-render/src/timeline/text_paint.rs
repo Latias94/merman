@@ -13,7 +13,6 @@ use crate::family::{
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
-use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug)]
@@ -21,7 +20,7 @@ pub(crate) struct TimelineTextPaintPlan {
     fill: Option<DirectStaticPaint>,
     evidence: FamilyThemeEvidence,
     pending: Vec<TimelinePendingTextMechanism>,
-    terminal: OnceLock<TimelineTextPaintTerminalSeal>,
+    terminal: OnceLock<TimelineTextPaintOutcome>,
 }
 
 #[derive(Debug)]
@@ -32,26 +31,20 @@ struct TimelinePendingTextMechanism {
 }
 
 #[derive(Debug)]
-struct TimelineTextPaintTerminalSeal {
+pub(crate) struct TimelineTextPaintOutcome {
     inherited_fill_seen: bool,
     text_seen: bool,
     source_colors_static: bool,
 }
 
-#[derive(Debug)]
-pub(crate) struct TimelineTextPaintReceipt<'a> {
-    expected_fill: Option<&'a str>,
-    expected_title: Option<&'a str>,
-    expected_nodes: usize,
-    nodes: usize,
-    css_seen: bool,
-    title_seen: bool,
-    marker_seen: bool,
-    marker_referenced: bool,
-    inherited_fill_seen: bool,
-    text_seen: bool,
-    source_colors_static: bool,
-    valid: bool,
+impl Default for TimelineTextPaintOutcome {
+    fn default() -> Self {
+        Self {
+            inherited_fill_seen: false,
+            text_seen: false,
+            source_colors_static: true,
+        }
+    }
 }
 
 impl TimelineTextPaintPlan {
@@ -62,7 +55,7 @@ impl TimelineTextPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
             fill: None,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeEvidence::outcomes(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
         };
@@ -168,70 +161,29 @@ impl TimelineTextPaintPlan {
         self.fill.as_ref().map(DirectStaticPaint::css)
     }
 
-    pub(crate) fn begin_terminal_receipt<'a>(
-        &'a self,
-        layout: &'a TimelineDiagramLayout,
-        work: &OperationWorkMeter,
-    ) -> Result<Option<TimelineTextPaintReceipt<'a>>, OperationWorkError> {
-        if self.pending.is_empty() {
-            return Ok(None);
-        }
-        let mut expected_nodes = layout.sections.len();
-        for task in layout
-            .sections
-            .iter()
-            .flat_map(|section| &section.tasks)
-            .chain(&layout.orphan_tasks)
-        {
-            work.charge(1)?;
-            expected_nodes += 1 + task.events.len();
-        }
-        Ok(Some(TimelineTextPaintReceipt {
-            expected_fill: self.fill_css(),
-            expected_title: layout
-                .title
-                .as_deref()
-                .filter(|title| !title.trim().is_empty()),
-            expected_nodes,
-            nodes: 0,
-            css_seen: false,
-            title_seen: false,
-            marker_seen: false,
-            marker_referenced: false,
-            inherited_fill_seen: false,
-            text_seen: false,
-            source_colors_static: true,
-            valid: true,
-        }))
+    pub(crate) fn begin_emission(&self) -> Option<TimelineTextPaintOutcome> {
+        (!self.pending.is_empty()).then(TimelineTextPaintOutcome::default)
     }
 
-    pub(crate) fn record_terminal(&self, receipt: TimelineTextPaintReceipt<'_>) -> bool {
-        receipt.is_complete()
-            && self
-                .terminal
-                .set(TimelineTextPaintTerminalSeal {
-                    inherited_fill_seen: receipt.inherited_fill_seen || receipt.marker_referenced,
-                    text_seen: receipt.text_seen,
-                    source_colors_static: receipt.source_colors_static,
-                })
-                .is_ok()
+    pub(crate) fn record_emission(&self, outcome: TimelineTextPaintOutcome) {
+        let _ = self.terminal.set(outcome);
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         for pending in &self.pending {
             match self.terminal.get() {
-                Some(receipt)
-                    if !receipt.inherited_fill_seen
+                Some(outcome)
+                    if !outcome.inherited_fill_seen
                         && if pending.inherited_fill_only {
-                            receipt.source_colors_static
+                            outcome.source_colors_static
                         } else {
-                            !receipt.text_seen
+                            !outcome.text_seen
                         } =>
                 {
                     evidence.mark_not_applicable(pending.key.clone());
                 }
-                Some(receipt) if receipt.source_colors_static && pending.residual.is_none() => {
+                Some(outcome) if outcome.source_colors_static && pending.residual.is_none() => {
                     if let Some(fill) = &self.fill {
                         evidence.mark_applied_with_capabilities(
                             pending.key.clone(),
@@ -256,34 +208,14 @@ impl TimelineTextPaintPlan {
     }
 }
 
-impl TimelineTextPaintReceipt<'_> {
-    fn is_complete(&self) -> bool {
-        self.valid
-            && self.css_seen
-            && self.marker_seen
-            && self.nodes == self.expected_nodes
-            && self.title_seen == self.expected_title.is_some()
-    }
-
-    pub(crate) fn record_css(&mut self, fill: &str) {
-        self.valid &= !self.css_seen && self.expected_fill.is_none_or(|expected| expected == fill);
-        self.css_seen = true;
-    }
-
-    pub(crate) fn record_title(&mut self, title: &str) {
-        self.valid &= !self.title_seen && self.expected_title == Some(title);
-        self.title_seen = true;
+impl TimelineTextPaintOutcome {
+    pub(crate) fn record_title(&mut self) {
         self.text_seen = true;
         self.inherited_fill_seen = true;
     }
 
-    pub(crate) fn record_marker(&mut self) {
-        self.valid &= !self.marker_seen;
-        self.marker_seen = true;
-    }
-
-    pub(crate) fn record_marker_reference(&mut self, reference_matches: bool) {
-        self.marker_referenced |= reference_matches;
+    pub(crate) fn record_marker_reference(&mut self) {
+        self.inherited_fill_seen = true;
     }
 
     pub(crate) fn record_node(
@@ -292,7 +224,6 @@ impl TimelineTextPaintReceipt<'_> {
         label_fill: Option<&str>,
         has_visible_label: bool,
     ) {
-        self.nodes += 1;
         self.record_fill(shape_fill);
         if has_visible_label {
             self.text_seen = true;
@@ -322,85 +253,22 @@ impl TimelineTextPaintReceipt<'_> {
 mod tests {
     use super::*;
 
-    fn receipt() -> TimelineTextPaintReceipt<'static> {
-        TimelineTextPaintReceipt {
-            expected_fill: Some("#123456"),
-            expected_title: Some("Title"),
-            expected_nodes: 1,
-            nodes: 0,
-            css_seen: false,
-            title_seen: false,
-            marker_seen: false,
-            marker_referenced: false,
-            inherited_fill_seen: false,
-            text_seen: false,
-            source_colors_static: true,
-            valid: true,
-        }
-    }
-
-    fn complete_receipt() -> TimelineTextPaintReceipt<'static> {
-        let mut receipt = receipt();
-        receipt.record_css("#123456");
-        receipt.record_title("Title");
-        receipt.record_marker();
-        receipt.record_node(Some("#abcdef"), Some("#fedcba"), true);
-        receipt
-    }
-
-    #[test]
-    fn text_receipt_rejects_missing_duplicate_and_mismatched_writer_facts() {
-        assert!(complete_receipt().is_complete());
-        assert!(!receipt().is_complete());
-        for nodes in [0, 2] {
-            let mut receipt = complete_receipt();
-            receipt.nodes = nodes;
-            assert!(!receipt.is_complete());
-        }
-        let mut wrong_css = receipt();
-        wrong_css.record_css("#654321");
-        assert!(!wrong_css.valid);
-        let mut wrong_title = receipt();
-        wrong_title.record_title("Other");
-        assert!(!wrong_title.valid);
-        let mut duplicate_css = complete_receipt();
-        duplicate_css.record_css("#123456");
-        assert!(!duplicate_css.is_complete());
-        let mut duplicate_title = complete_receipt();
-        duplicate_title.record_title("Title");
-        assert!(!duplicate_title.is_complete());
-        let mut duplicate_marker = complete_receipt();
-        duplicate_marker.record_marker();
-        assert!(!duplicate_marker.is_complete());
-    }
-
-    #[test]
-    fn unused_marker_does_not_supply_inherited_fill_evidence() {
-        let mut receipt = receipt();
-        receipt.record_marker();
-        receipt.record_marker_reference(false);
-        assert!(!receipt.marker_referenced);
-        assert!(!receipt.inherited_fill_seen);
-        receipt.record_marker_reference(true);
-        assert!(receipt.marker_referenced);
-    }
-
     #[test]
     fn inherited_and_dynamic_colors_have_distinct_evidence() {
         for fill in [None, Some(" Inherit "), Some("UNSET")] {
-            let mut receipt = receipt();
-            receipt.record_node(fill, Some("#abcdef"), true);
-            assert!(receipt.inherited_fill_seen);
-            assert!(receipt.source_colors_static);
+            let mut outcome = TimelineTextPaintOutcome::default();
+            outcome.record_node(fill, Some("#abcdef"), true);
+            assert!(outcome.inherited_fill_seen);
+            assert!(outcome.source_colors_static);
         }
         for fill in ["#abcdef", "transparent", "none", "initial"] {
-            let mut receipt = receipt();
-            receipt.record_node(Some(fill), Some(fill), true);
-            assert!(!receipt.inherited_fill_seen);
-            assert!(receipt.source_colors_static);
+            let mut outcome = TimelineTextPaintOutcome::default();
+            outcome.record_node(Some(fill), Some(fill), true);
+            assert!(!outcome.inherited_fill_seen);
+            assert!(outcome.source_colors_static);
         }
-        let mut receipt = receipt();
-        receipt.record_node(Some("currentColor"), Some("#abcdef"), true);
-        assert!(!receipt.source_colors_static);
+        let mut outcome = TimelineTextPaintOutcome::default();
+        outcome.record_node(Some("currentColor"), Some("#abcdef"), true);
+        assert!(!outcome.source_colors_static);
     }
 }

@@ -46,6 +46,11 @@ for exploration, but its internal samples are not independent base/head observat
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
 
+The `profile_render` example's `--stage render` loop includes artifact preparation in whole-process
+samples and elapsed time. Only its `profile_render::emit_prepared_svg` subtree matches the emission
+and output-consumption boundary timed by Criterion's `render/*` group; preparation runs outside
+that frame. Keep this boundary explicit when attributing a stage benchmark to a sampled CPU owner.
+
 ### Theme compilation and discovery
 
 `merman-bindings-core`'s `theme_operations` Criterion bench separates definition compilation,
@@ -405,6 +410,33 @@ bounds for `r = ln(head/base)` and `d = head-base` are below `-T_r` and `-T_d`. 
 AB/BA pair count from both thresholds using the normal power procedure, with at least eight pairs
 and a preregistered cap no greater than 64. Do not reuse discovery or A/A observations, remove rows,
 change the lifecycle, or extend the budget after seeing confirmation.
+
+Use `--low-latency-baseline-ns FIXTURE=NS` once for every selected row to opt into this contract.
+The value is the baseline estimate frozen in the experiment ledger before confirmation, not an
+estimate selected from A/A or fresh A/B. For example, if the preregistered complete-operation
+baseline for `kanban_medium` is 40,000 ns:
+
+```bash
+python3 tools/bench/compare_self.py \
+  --base-dir ../merman-base --head-dir . \
+  --group end_to_end --filter '^end_to_end/kanban_medium$' \
+  --evidence-mode confirmation --preset long \
+  --low-latency-baseline-ns kanban_medium=40000 \
+  --calibration-pairs 8 --max-pairs 32 \
+  --out target/perf/kanban-confirmation.md \
+  --json-out target/perf/kanban-confirmation.json
+```
+
+This mode requires clean frozen revisions and registered public-operation lane metadata on both
+sides. It rejects baselines at or above 500 us, a cap above 64, incomplete row registration, and
+manual threshold overrides. A/A uses a simultaneous confidence family covering both runners,
+identity and order effects, and both metrics (`8R` components for `R` rows). Its identity-zero and
+noise checks are stricter than generic equivalence calibration; generic confirmation keeps its
+existing behavior. After both A/A schedules finish, the report records each frozen baseline,
+noise floor, derived thresholds, and fixed power count before fresh balanced A/B starts. If any
+selected row fails calibration, fresh A/B is blocked for the entire selected set. No rows are
+removed to continue confirmation. JSON `method.materiality_contract` and the Markdown
+"Low-latency Materiality" table own the effective gate; generic threshold fields are unset.
 
 The low-latency gate handles measurement scale; it does not erase engineering cost. A candidate
 that adds persistent state or a large owner implementation must also preregister and pass a concrete

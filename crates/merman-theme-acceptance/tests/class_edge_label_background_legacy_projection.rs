@@ -2,7 +2,6 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
-use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
@@ -11,6 +10,7 @@ use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
     RenderedDocument, Renderer,
 };
+use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
 const SOURCE: &str = "classDiagram\nnamespace Alpha {\nclass A\n}\nnamespace Beta {\nclass B\n}\nA --> B : relates\n";
 
@@ -77,8 +77,8 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                         .compile(DiagramThemeSpec::new())
                         .unwrap(),
                 );
-                let view = TargetArtifactView::from_rendered_document(&baseline);
-                let receipt = view.svg_artifact_receipt().unwrap();
+                let view = SvgArtifactObservation::observe(baseline.svg()).unwrap();
+                let receipt = &view;
                 assert!(receipt.has_native_text());
                 assert!(!receipt.has_foreign_object());
                 assert!(baseline.svg().contains("relates"));
@@ -121,8 +121,8 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                             stylesheet(baseline.svg()),
                             "direct paint must leave the retired and parity CSS projections unchanged"
                         );
-                        let view = TargetArtifactView::from_rendered_document(&document);
-                        let receipt = view.svg_artifact_receipt().unwrap();
+                        let view = SvgArtifactObservation::observe(document.svg()).unwrap();
+                        let receipt = &view;
                         let expected = if transparent {
                             "transparent"
                         } else {

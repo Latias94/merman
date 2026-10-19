@@ -837,7 +837,7 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
 }
 
 #[test]
-fn architecture_near_integer_font_size_uses_one_canonical_css_receipt() {
+fn architecture_near_integer_font_size_uses_one_canonical_css_value() {
     let font_stack =
         FontStack::new(["Architecture Canonical", "monospace"]).expect("valid Architecture font");
     let theme = architecture_typography_theme(
@@ -1173,7 +1173,7 @@ fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only
 }
 
 #[test]
-fn repair_u7_architecture_without_theme_skips_unused_service_receipt_measurements() {
+fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
     let source = "architecture-beta\nservice api(server)[API]";
     let host = Arc::new(CountingArchitectureHost::default());
     let environment = counting_architecture_environment(Arc::clone(&host));
@@ -1218,6 +1218,53 @@ fn repair_u7_architecture_without_theme_skips_unused_service_receipt_measurement
             .descendants()
             .any(|node| node.has_tag_name("tspan") && node.text() == Some("API"))
     );
+}
+
+#[test]
+#[cfg(not(merman_internal_theme_acceptance))]
+fn architecture_requested_text_style_does_not_repeat_viewport_measurements() {
+    let source = "architecture-beta\nservice api(server)[API]";
+    let themes = [
+        architecture_text_fill_theme(CanvasPaint::solid("#123456").unwrap(), None),
+        architecture_typography_theme(
+            ThemeTextStyle::default()
+                .with_font_stack(FontStack::single("Architecture Typed").unwrap())
+                .with_font_size_px(24.0)
+                .unwrap(),
+        ),
+    ];
+    for theme in themes {
+        let host = Arc::new(CountingArchitectureHost::default());
+        let artifact = prepare_architecture_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            counting_architecture_environment(Arc::clone(&host)),
+        );
+        host.operations.lock().unwrap().clear();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let operations = host.operations.lock().unwrap();
+        for operation in [
+            TextMeasurementOperation::BBoxX,
+            TextMeasurementOperation::TspanBBoxHeight,
+            TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
+        ] {
+            assert_eq!(
+                operations
+                    .iter()
+                    .filter(|actual| **actual == operation)
+                    .count(),
+                1,
+                "the final viewport owns the only {operation:?} measurement: {operations:?}",
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert!(evidence.applied_count() > 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]

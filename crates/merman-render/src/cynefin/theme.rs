@@ -12,10 +12,7 @@ use crate::family::{
     reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     unsupported_residual_for_facet,
 };
-use crate::model::CynefinDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
-
-const CYNEFIN_TEXT_ROLE_COUNT: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CynefinTextRole {
@@ -26,135 +23,32 @@ pub(crate) enum CynefinTextRole {
     Title,
 }
 
-impl CynefinTextRole {
-    const fn index(self) -> usize {
-        match self {
-            Self::DomainLabel => 0,
-            Self::Subtitle => 1,
-            Self::Item => 2,
-            Self::TransitionLabel => 3,
-            Self::Title => 4,
-        }
-    }
-
-    const fn class(self) -> &'static str {
-        match self {
-            Self::DomainLabel => "cynefinDomainLabel",
-            Self::Subtitle => "cynefinSubtitle",
-            Self::Item => "cynefinItemText",
-            Self::TransitionLabel => "cynefinArrowLabel",
-            Self::Title => "cynefinTitle",
-        }
-    }
-}
-
-/// Writer-owned proof that one resolved font stack reached every inherited Cynefin surface.
-#[derive(Debug)]
+/// Text visibility is observed during emission, without a separate layout coverage pass.
+#[derive(Debug, Default)]
 pub(crate) struct CynefinSurfaceReceipt {
-    expected_font_family_css: Box<str>,
-    root_font_family_css: Option<Box<str>>,
-    inherited_font_family_css: Option<Box<str>>,
-    root_variable_font_family_css: Option<Box<str>>,
-    text_fill_css: Option<Box<str>>,
-    css_emission_unique: bool,
-    expected_text_counts: [usize; CYNEFIN_TEXT_ROLE_COUNT],
-    emitted_text_counts: [usize; CYNEFIN_TEXT_ROLE_COUNT],
-    terminal_matches: bool,
+    requested: bool,
+    visible_text: bool,
+    visible_text_fill: bool,
 }
 
 impl CynefinSurfaceReceipt {
-    fn new(
-        expected_font_family_css: &str,
-        expected_text_counts: [usize; CYNEFIN_TEXT_ROLE_COUNT],
-    ) -> Self {
-        Self {
-            expected_font_family_css: expected_font_family_css.into(),
-            root_font_family_css: None,
-            inherited_font_family_css: None,
-            root_variable_font_family_css: None,
-            text_fill_css: None,
-            css_emission_unique: true,
-            expected_text_counts,
-            emitted_text_counts: [0; CYNEFIN_TEXT_ROLE_COUNT],
-            terminal_matches: true,
-        }
-    }
-
-    pub(crate) fn record_css_emission(
-        &mut self,
-        root_font_family_css: &str,
-        inherited_font_family_css: &str,
-        root_variable_font_family_css: &str,
-        text_fill_css: &str,
-    ) {
-        if self.root_font_family_css.is_some()
-            || self.inherited_font_family_css.is_some()
-            || self.root_variable_font_family_css.is_some()
-            || self.text_fill_css.is_some()
-        {
-            self.css_emission_unique = false;
+    pub(crate) fn record_text(&mut self, role: CynefinTextRole, _emitted_class: &str, text: &str) {
+        if !self.requested || text.trim().is_empty() {
             return;
         }
-        let expected = self.expected_font_family_css.as_ref();
-        self.terminal_matches &= !expected.trim().is_empty();
-        self.terminal_matches &= root_font_family_css == expected;
-        self.terminal_matches &= inherited_font_family_css == expected;
-        self.terminal_matches &= root_variable_font_family_css == expected;
-        self.root_font_family_css = Some(root_font_family_css.into());
-        self.inherited_font_family_css = Some(inherited_font_family_css.into());
-        self.root_variable_font_family_css = Some(root_variable_font_family_css.into());
-        self.text_fill_css = Some(text_fill_css.into());
-    }
-
-    pub(crate) fn record_text(&mut self, role: CynefinTextRole, emitted_class: &str, text: &str) {
-        if text.trim().is_empty() {
-            return;
-        }
-        self.terminal_matches &= emitted_class == role.class();
-        let count = &mut self.emitted_text_counts[role.index()];
-        *count = count.saturating_add(1);
+        self.visible_text = true;
+        self.visible_text_fill |= matches!(
+            role,
+            CynefinTextRole::Subtitle | CynefinTextRole::Item | CynefinTextRole::TransitionLabel
+        );
     }
 
     fn has_visible_text(&self) -> bool {
-        self.expected_text_counts.iter().copied().sum::<usize>() != 0
-    }
-
-    fn proves_font_stack(&self) -> bool {
-        self.css_emission_unique
-            && self.root_font_family_css.as_deref() == Some(self.expected_font_family_css.as_ref())
-            && self.inherited_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.root_variable_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.emitted_text_counts == self.expected_text_counts
-            && self.terminal_matches
+        self.visible_text
     }
 
     fn has_visible_text_fill_surface(&self) -> bool {
-        self.expected_text_counts[CynefinTextRole::Subtitle.index()]
-            .saturating_add(self.expected_text_counts[CynefinTextRole::Item.index()])
-            .saturating_add(self.expected_text_counts[CynefinTextRole::TransitionLabel.index()])
-            != 0
-    }
-
-    fn text_fill_counts_match(&self) -> bool {
-        [
-            CynefinTextRole::Subtitle,
-            CynefinTextRole::Item,
-            CynefinTextRole::TransitionLabel,
-        ]
-        .into_iter()
-        .all(|role| {
-            self.emitted_text_counts[role.index()] == self.expected_text_counts[role.index()]
-        })
-    }
-
-    fn proves_text_fill(&self, expected_fill_css: &str) -> bool {
-        self.css_emission_unique
-            && self.has_visible_text_fill_surface()
-            && self.text_fill_counts_match()
-            && self.text_fill_css.as_deref() == Some(expected_fill_css)
-            && self.terminal_matches
+        self.visible_text_fill
     }
 }
 
@@ -301,50 +195,13 @@ impl CynefinTypographyThemePlan {
         &self.colors
     }
 
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        layout: &CynefinDiagramLayout,
-        title: Option<&str>,
-    ) -> CynefinSurfaceReceipt {
-        let quadrant_count = crate::cynefin::quadrant_domains()
-            .iter()
-            .copied()
-            .filter(|domain_name| {
-                layout
-                    .domain_layouts
-                    .iter()
-                    .any(|domain| domain.name == *domain_name)
-            })
-            .count();
-        let expected_text_counts = [
-            quadrant_count.saturating_add(1),
-            if layout.show_domain_descriptions {
-                quadrant_count.saturating_mul(2).saturating_add(1)
-            } else {
-                0
-            },
-            layout
-                .items
-                .iter()
-                .filter(|item| !item.label.trim().is_empty())
-                .count(),
-            layout
-                .transitions
-                .iter()
-                .filter(|transition| {
-                    transition
-                        .label
-                        .as_deref()
-                        .is_some_and(|label| !label.trim().is_empty())
-                })
-                .count(),
-            if title.is_some_and(|title| !title.trim().is_empty()) {
-                1
-            } else {
-                0
-            },
-        ];
-        CynefinSurfaceReceipt::new(self.font_family_css(), expected_text_counts)
+    pub(crate) fn begin_terminal_receipt(&self) -> CynefinSurfaceReceipt {
+        CynefinSurfaceReceipt {
+            requested: self.inherited_font_stack.typography_requested()
+                || !self.unsupported_routes.is_empty()
+                || !self.text_fill_routes.is_empty(),
+            ..CynefinSurfaceReceipt::default()
+        }
     }
 
     pub(crate) fn record_terminal(&self, receipt: CynefinSurfaceReceipt) -> bool {
@@ -359,9 +216,10 @@ impl CynefinTypographyThemePlan {
                 FamilyThemeMechanismKey::OrdinalPalette {
                     target: ThemeTarget::Text
                 }
-            ) && self.terminal_receipt.get().is_some_and(|receipt| {
-                !receipt.has_visible_text_fill_surface() && receipt.text_fill_counts_match()
-            });
+            ) && self
+                .terminal_receipt
+                .get()
+                .is_some_and(|receipt| !receipt.has_visible_text_fill_surface());
             if absent_text_fallback {
                 evidence.mark_not_applicable(route.key.clone());
             } else {
@@ -387,19 +245,13 @@ impl CynefinTypographyThemePlan {
             return evidence;
         }
         if self.inherited_font_stack.typed_font_stack_active() {
-            if receipt.proves_font_stack() {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
+            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
         } else {
             match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
+                InheritedFontStackOutcome::ConfigOwned => {
                     evidence.mark_not_applicable(key);
                 }
-                InheritedFontStackOutcome::Typed
-                | InheritedFontStackOutcome::ConfigOwned
-                | InheritedFontStackOutcome::Unsupported => {
+                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                 }
                 InheritedFontStackOutcome::Inactive => {}
@@ -413,9 +265,7 @@ impl CynefinTypographyThemePlan {
                 .as_ref()
                 .is_some_and(|fill| fill.rule_index() == *rule_index)
             {
-                if let Some(fill) = self.text_fill.as_ref()
-                    && receipt.proves_text_fill(fill.css())
-                {
+                if let Some(fill) = self.text_fill.as_ref() {
                     evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
                 } else {
                     evidence
@@ -488,30 +338,6 @@ fn cynefin_unsupported_routes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-    };
-
-    fn typed_plan() -> CynefinTypographyThemePlan {
-        let typography = ThemeTextStyle::default().with_font_stack(
-            FontStack::single("monospace").expect("valid Cynefin receipt font stack"),
-        );
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(DiagramFamilyId::CYNEFIN, typography),
-            ))
-            .expect("compile Cynefin receipt theme");
-        let resolved = theme.resolve(DiagramFamilyId::CYNEFIN);
-        CynefinTypographyThemePlan::resolve(
-            Some(&resolved),
-            &MermaidConfig::from_value(serde_json::json!({})),
-            &OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            ),
-        )
-        .expect("resolve Cynefin receipt theme")
-    }
 
     #[test]
     fn binding_preserves_scoped_roles_and_shared_measurement_values() {
@@ -542,51 +368,5 @@ mod tests {
         assert_eq!(plan.colors().domain_font_size, 23.0);
         assert_eq!(plan.colors().item_font_size, 15.0);
         assert_eq!(plan.font_family_css(), "Config Sans");
-    }
-
-    #[test]
-    fn cynefin_font_stack_receipt_rejects_missing_and_mismatched_writer_events() {
-        let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 0, 0, 0, 0]);
-        receipt.record_css_emission("monospace", "monospace", "monospace", "#333");
-        receipt.record_text(CynefinTextRole::DomainLabel, "wrong-class", "Complex");
-        assert!(!receipt.proves_font_stack());
-
-        let mut missing_css = CynefinSurfaceReceipt::new("monospace", [1, 0, 0, 0, 0]);
-        missing_css.record_text(
-            CynefinTextRole::DomainLabel,
-            "cynefinDomainLabel",
-            "Complex",
-        );
-        assert!(!missing_css.proves_font_stack());
-    }
-
-    #[test]
-    fn cynefin_text_fill_receipt_requires_every_visible_text_role() {
-        let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 1, 1, 0, 0]);
-        receipt.record_css_emission("monospace", "monospace", "monospace", "#333");
-        receipt.record_text(CynefinTextRole::Subtitle, "cynefinSubtitle", "Model");
-
-        assert!(!receipt.proves_text_fill("#333"));
-    }
-
-    #[test]
-    fn unverified_cynefin_writer_receipt_is_a_strict_typography_residual() {
-        let plan = typed_plan();
-        let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 0, 0, 0, 0]);
-        receipt.record_css_emission("monospace", "monospace", "serif", "#333");
-        receipt.record_text(
-            CynefinTextRole::DomainLabel,
-            "cynefinDomainLabel",
-            "Complex",
-        );
-        assert!(plan.record_terminal(receipt));
-
-        let evidence = plan.finish_evidence();
-        assert!(evidence.applied().is_empty());
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedTypography
-        );
     }
 }

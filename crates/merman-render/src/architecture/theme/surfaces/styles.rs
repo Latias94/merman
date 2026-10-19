@@ -1,39 +1,35 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    ResolvedStyleProperty, ResolvedThemeEffect, Specified, ThemeCapability, ThemeTarget,
-    ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
+    ResolvedThemeEffect, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
+#[cfg(merman_internal_theme_acceptance)]
 use crate::model::Bounds;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureServiceTerminal<'a> {
+pub(crate) struct ArchitectureServiceTerminal {
     pub(crate) index: usize,
-    pub(crate) id: &'a str,
     pub(crate) has_background: bool,
     pub(crate) has_title: bool,
-    pub(crate) has_icon_text: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureGroupTerminal<'a> {
+pub(crate) struct ArchitectureGroupTerminal {
     pub(crate) index: usize,
-    pub(crate) id: &'a str,
     pub(crate) has_title: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureEdgeTerminal<'a> {
+pub(crate) struct ArchitectureEdgeTerminal {
     pub(crate) index: usize,
-    pub(crate) lhs_id: &'a str,
-    pub(crate) rhs_id: &'a str,
     pub(crate) has_label: bool,
     pub(crate) has_lhs_arrow: bool,
     pub(crate) has_rhs_arrow: bool,
@@ -46,46 +42,48 @@ pub(crate) enum ArchitectureArrowSide {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitecturePaintTerminalEmission<'a> {
+pub(crate) struct ArchitecturePaintTerminalEmission {
     pub(crate) emitted: bool,
-    pub(crate) style: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureTextTerminalEmission<'a> {
+#[derive(Debug)]
+pub(crate) struct ArchitectureTextTerminalEmission {
     pub(crate) emitted: bool,
-    pub(crate) style: Option<&'a str>,
-    pub(crate) bounds: Option<&'a Bounds>,
+    #[cfg(merman_internal_theme_acceptance)]
+    pub(crate) bounds: Option<Bounds>,
     #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fragment_digest: Option<[u8; 32]>,
     #[cfg(merman_internal_theme_acceptance)]
     pub(crate) run_count: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureServiceTerminalEmission<'a> {
+#[derive(Debug)]
+pub(crate) struct ArchitectureServiceTerminalEmission {
     pub(crate) index: usize,
-    pub(crate) id: &'a str,
-    pub(crate) background: ArchitecturePaintTerminalEmission<'a>,
-    pub(crate) title: ArchitectureTextTerminalEmission<'a>,
-    pub(crate) has_icon_text: bool,
+    #[cfg(merman_internal_theme_acceptance)]
+    pub(crate) id: Box<str>,
+    pub(crate) background: ArchitecturePaintTerminalEmission,
+    pub(crate) title: ArchitectureTextTerminalEmission,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureGroupTerminalEmission<'a> {
+#[derive(Debug)]
+pub(crate) struct ArchitectureGroupTerminalEmission {
     pub(crate) index: usize,
-    pub(crate) id: &'a str,
-    pub(crate) title: ArchitectureTextTerminalEmission<'a>,
+    #[cfg(merman_internal_theme_acceptance)]
+    pub(crate) id: Box<str>,
+    pub(crate) title: ArchitectureTextTerminalEmission,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureEdgeTerminalEmission<'a> {
+#[derive(Debug)]
+pub(crate) struct ArchitectureEdgeTerminalEmission {
     pub(crate) index: usize,
-    pub(crate) lhs_id: &'a str,
-    pub(crate) rhs_id: &'a str,
-    pub(crate) label: ArchitectureTextTerminalEmission<'a>,
-    pub(crate) lhs_arrow: ArchitecturePaintTerminalEmission<'a>,
-    pub(crate) rhs_arrow: ArchitecturePaintTerminalEmission<'a>,
+    #[cfg(merman_internal_theme_acceptance)]
+    pub(crate) lhs_id: Box<str>,
+    #[cfg(merman_internal_theme_acceptance)]
+    pub(crate) rhs_id: Box<str>,
+    pub(crate) label: ArchitectureTextTerminalEmission,
+    pub(crate) lhs_arrow: ArchitecturePaintTerminalEmission,
+    pub(crate) rhs_arrow: ArchitecturePaintTerminalEmission,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -97,7 +95,6 @@ pub(super) struct ArchitectureSurfaceOwnership {
 
 struct ArchitectureTextResolution<'a> {
     theme: &'a ResolvedDiagramTheme,
-    direct_rule_facets: &'a BTreeSet<(usize, ThemeTarget, FamilyThemeRuleFacet)>,
     source_owned: bool,
     ordinal: &'a mut usize,
     work_meter: &'a OperationWorkMeter,
@@ -111,25 +108,17 @@ struct ArchitectureTerminalMechanisms {
     active_effects: BTreeSet<FamilyThemeMechanismKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ArchitectureExpectedPaint {
-    rule_index: usize,
-    target: ThemeTarget,
-    css: Box<str>,
-}
-
 #[derive(Debug, Clone)]
-struct ArchitectureServiceSurfaceExpectation {
+struct ArchitectureServiceSurfaceStyle {
+    #[cfg(merman_internal_theme_acceptance)]
     id: Box<str>,
-    has_background: bool,
     background_style: Option<Box<str>>,
-    background_fill: Option<ArchitectureExpectedPaint>,
-    background_stroke: Option<ArchitectureExpectedPaint>,
-    has_title: bool,
+    background_fill: Option<FamilyThemeMechanismKey>,
+    background_stroke: Option<FamilyThemeMechanismKey>,
     title_style: Option<Box<str>>,
-    title_fill: Option<ArchitectureExpectedPaint>,
-    has_icon_text: bool,
-    checkpointed: bool,
+    title_fill: Option<FamilyThemeMechanismKey>,
+    #[cfg(merman_internal_theme_acceptance)]
+    title_fill_css: Option<Box<str>>,
     #[cfg(merman_internal_theme_acceptance)]
     title_bounds: Option<Bounds>,
     #[cfg(merman_internal_theme_acceptance)]
@@ -139,12 +128,13 @@ struct ArchitectureServiceSurfaceExpectation {
 }
 
 #[derive(Debug, Clone)]
-struct ArchitectureGroupTextExpectation {
+struct ArchitectureGroupTextStyle {
+    #[cfg(merman_internal_theme_acceptance)]
     id: Box<str>,
-    has_title: bool,
     title_style: Option<Box<str>>,
-    title_fill: Option<ArchitectureExpectedPaint>,
-    checkpointed: bool,
+    title_fill: Option<FamilyThemeMechanismKey>,
+    #[cfg(merman_internal_theme_acceptance)]
+    title_fill_css: Option<Box<str>>,
     #[cfg(merman_internal_theme_acceptance)]
     title_bounds: Option<Bounds>,
     #[cfg(merman_internal_theme_acceptance)]
@@ -154,19 +144,19 @@ struct ArchitectureGroupTextExpectation {
 }
 
 #[derive(Debug, Clone)]
-struct ArchitectureEdgeSurfaceExpectation {
+struct ArchitectureEdgeSurfaceStyle {
+    #[cfg(merman_internal_theme_acceptance)]
     lhs_id: Box<str>,
+    #[cfg(merman_internal_theme_acceptance)]
     rhs_id: Box<str>,
-    has_label: bool,
     label_style: Option<Box<str>>,
-    label_fill: Option<ArchitectureExpectedPaint>,
-    has_lhs_arrow: bool,
+    label_fill: Option<FamilyThemeMechanismKey>,
+    #[cfg(merman_internal_theme_acceptance)]
+    label_fill_css: Option<Box<str>>,
     lhs_arrow_style: Option<Box<str>>,
-    lhs_arrow_fill: Option<ArchitectureExpectedPaint>,
-    has_rhs_arrow: bool,
+    lhs_arrow_fill: Option<FamilyThemeMechanismKey>,
     rhs_arrow_style: Option<Box<str>>,
-    rhs_arrow_fill: Option<ArchitectureExpectedPaint>,
-    checkpointed: bool,
+    rhs_arrow_fill: Option<FamilyThemeMechanismKey>,
     #[cfg(merman_internal_theme_acceptance)]
     label_bounds: Option<Bounds>,
     #[cfg(merman_internal_theme_acceptance)]
@@ -191,54 +181,30 @@ enum ArchitectureMechanismOutcome {
     Incomplete,
 }
 
-/// Writer-owned exact receipt for every family-local Architecture surface occurrence.
+/// Resolved output styles and the rules observed by successful surface writers.
 #[derive(Debug)]
-pub(crate) struct ArchitectureSurfaceThemeReceipt {
-    services: Vec<ArchitectureServiceSurfaceExpectation>,
-    groups: Vec<ArchitectureGroupTextExpectation>,
-    edges: Vec<ArchitectureEdgeSurfaceExpectation>,
+pub(crate) struct ArchitectureSurfaceRenderState {
+    services: Vec<ArchitectureServiceSurfaceStyle>,
+    groups: Vec<ArchitectureGroupTextStyle>,
+    edges: Vec<ArchitectureEdgeSurfaceStyle>,
     mechanism_outcomes: BTreeMap<FamilyThemeMechanismKey, ArchitectureMechanismOutcome>,
-    expected_by_rule: BTreeMap<FamilyThemeMechanismKey, usize>,
-    emitted_by_rule: BTreeMap<FamilyThemeMechanismKey, usize>,
-    terminals_match: bool,
+    emitted_rules: BTreeSet<FamilyThemeMechanismKey>,
 }
 
-impl ArchitectureSurfaceThemeReceipt {
-    pub(super) fn build<'a>(
+impl ArchitectureSurfaceRenderState {
+    pub(super) fn build(
         theme: &ResolvedDiagramTheme,
         ownership: ArchitectureSurfaceOwnership,
-        services: impl IntoIterator<Item = ArchitectureServiceTerminal<'a>>,
-        groups: impl IntoIterator<Item = ArchitectureGroupTerminal<'a>>,
-        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal<'a>>,
+        services: impl IntoIterator<Item = ArchitectureServiceTerminal>,
+        groups: impl IntoIterator<Item = ArchitectureGroupTerminal>,
+        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut mechanisms = ArchitectureTerminalMechanisms::default();
-        let mut expected_by_rule = BTreeMap::new();
-        let direct_rule_facets = theme
-            .family_mechanism_routes()
-            .iter()
-            .filter_map(|route| match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target,
-                    selector,
-                    facet,
-                } if route.disposition() == FamilyThemeDisposition::TypedAdapter
-                    && direct_surface_facet(target, selector, facet) =>
-                {
-                    Some((rule_index, target, facet))
-                }
-                FamilyThemeMechanism::BaseTypography(_)
-                | FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => None,
-            })
-            .collect::<BTreeSet<_>>();
-
-        let mut service_expectations = Vec::new();
+        let mut service_styles = Vec::new();
         let mut text_ordinal = 0usize;
         for service in services {
-            debug_assert_eq!(service.index, service_expectations.len());
+            debug_assert_eq!(service.index, service_styles.len());
             let ordinal = service.index.saturating_add(1);
             let (background_fill, background_stroke) = if service.has_background {
                 let style = theme.style_with_work_meter(
@@ -258,14 +224,19 @@ impl ArchitectureSurfaceThemeReceipt {
                     ],
                 );
                 (
-                    typed_terminal_paint(&direct_rule_facets, ThemeTarget::Node, &style, false),
+                    resolve_direct_static_fill(
+                        theme,
+                        &style,
+                        &[ThemeTarget::Node],
+                        DirectStaticSelectorDomain::Unqualified,
+                    ),
                     (!ownership.service_stroke)
                         .then(|| {
-                            typed_terminal_paint(
-                                &direct_rule_facets,
-                                ThemeTarget::Node,
+                            resolve_direct_static_stroke(
+                                theme,
                                 &style,
-                                true,
+                                &[ThemeTarget::Node],
+                                DirectStaticSelectorDomain::Unqualified,
                             )
                         })
                         .flatten(),
@@ -275,14 +246,11 @@ impl ArchitectureSurfaceThemeReceipt {
             };
             let background_style =
                 compose_paint_style(background_fill.as_ref(), background_stroke.as_ref());
-            count_expected(&mut expected_by_rule, background_fill.as_ref());
-            count_expected(&mut expected_by_rule, background_stroke.as_ref());
 
             let title_fill = resolve_text_fill(
                 service.has_title,
                 &mut ArchitectureTextResolution {
                     theme,
-                    direct_rule_facets: &direct_rule_facets,
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
@@ -290,19 +258,23 @@ impl ArchitectureSurfaceThemeReceipt {
                 },
             )?;
             let title_style = compose_paint_style(title_fill.as_ref(), None);
-            count_expected(&mut expected_by_rule, title_fill.as_ref());
 
-            service_expectations.push(ArchitectureServiceSurfaceExpectation {
-                id: service.id.into(),
-                has_background: service.has_background,
+            service_styles.push(ArchitectureServiceSurfaceStyle {
+                #[cfg(merman_internal_theme_acceptance)]
+                id: Box::default(),
                 background_style,
-                background_fill,
-                background_stroke,
-                has_title: service.has_title,
+                background_fill: background_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Node)),
+                background_stroke: background_stroke
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Node)),
                 title_style,
-                title_fill,
-                has_icon_text: service.has_icon_text,
-                checkpointed: false,
+                title_fill: title_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Text)),
+                #[cfg(merman_internal_theme_acceptance)]
+                title_fill_css: title_fill.map(|paint| paint.into_parts().0),
                 #[cfg(merman_internal_theme_acceptance)]
                 title_bounds: None,
                 #[cfg(merman_internal_theme_acceptance)]
@@ -312,14 +284,13 @@ impl ArchitectureSurfaceThemeReceipt {
             });
         }
 
-        let mut group_expectations = Vec::new();
+        let mut group_styles = Vec::new();
         for group in groups {
-            debug_assert_eq!(group.index, group_expectations.len());
+            debug_assert_eq!(group.index, group_styles.len());
             let title_fill = resolve_text_fill(
                 group.has_title,
                 &mut ArchitectureTextResolution {
                     theme,
-                    direct_rule_facets: &direct_rule_facets,
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
@@ -327,13 +298,15 @@ impl ArchitectureSurfaceThemeReceipt {
                 },
             )?;
             let title_style = compose_paint_style(title_fill.as_ref(), None);
-            count_expected(&mut expected_by_rule, title_fill.as_ref());
-            group_expectations.push(ArchitectureGroupTextExpectation {
-                id: group.id.into(),
-                has_title: group.has_title,
+            group_styles.push(ArchitectureGroupTextStyle {
+                #[cfg(merman_internal_theme_acceptance)]
+                id: Box::default(),
                 title_style,
-                title_fill,
-                checkpointed: false,
+                title_fill: title_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Text)),
+                #[cfg(merman_internal_theme_acceptance)]
+                title_fill_css: title_fill.map(|paint| paint.into_parts().0),
                 #[cfg(merman_internal_theme_acceptance)]
                 title_bounds: None,
                 #[cfg(merman_internal_theme_acceptance)]
@@ -344,14 +317,13 @@ impl ArchitectureSurfaceThemeReceipt {
         }
 
         let mut marker_ordinal = 0usize;
-        let mut edge_expectations = Vec::new();
+        let mut edge_styles = Vec::new();
         for edge in edges {
-            debug_assert_eq!(edge.index, edge_expectations.len());
+            debug_assert_eq!(edge.index, edge_styles.len());
             let label_fill = resolve_text_fill(
                 edge.has_label,
                 &mut ArchitectureTextResolution {
                     theme,
-                    direct_rule_facets: &direct_rule_facets,
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
@@ -359,10 +331,9 @@ impl ArchitectureSurfaceThemeReceipt {
                 },
             )?;
             let label_style = compose_paint_style(label_fill.as_ref(), None);
-            count_expected(&mut expected_by_rule, label_fill.as_ref());
 
             let mut arrow_fill =
-                |present: bool| -> Result<Option<ArchitectureExpectedPaint>, OperationWorkError> {
+                |present: bool| -> Result<Option<DirectStaticPaint>, OperationWorkError> {
                     if !present {
                         return Ok(None);
                     }
@@ -382,11 +353,11 @@ impl ArchitectureSurfaceThemeReceipt {
                     );
                     Ok((!ownership.arrow_fill)
                         .then(|| {
-                            typed_terminal_paint(
-                                &direct_rule_facets,
-                                ThemeTarget::Marker,
+                            resolve_direct_static_fill(
+                                theme,
                                 &style,
-                                false,
+                                &[ThemeTarget::Marker],
+                                DirectStaticSelectorDomain::Unqualified,
                             )
                         })
                         .flatten())
@@ -395,22 +366,26 @@ impl ArchitectureSurfaceThemeReceipt {
             let rhs_arrow_fill = arrow_fill(edge.has_rhs_arrow)?;
             let lhs_arrow_style = compose_paint_style(lhs_arrow_fill.as_ref(), None);
             let rhs_arrow_style = compose_paint_style(rhs_arrow_fill.as_ref(), None);
-            count_expected(&mut expected_by_rule, lhs_arrow_fill.as_ref());
-            count_expected(&mut expected_by_rule, rhs_arrow_fill.as_ref());
 
-            edge_expectations.push(ArchitectureEdgeSurfaceExpectation {
-                lhs_id: edge.lhs_id.into(),
-                rhs_id: edge.rhs_id.into(),
-                has_label: edge.has_label,
+            edge_styles.push(ArchitectureEdgeSurfaceStyle {
+                #[cfg(merman_internal_theme_acceptance)]
+                lhs_id: Box::default(),
+                #[cfg(merman_internal_theme_acceptance)]
+                rhs_id: Box::default(),
                 label_style,
-                label_fill,
-                has_lhs_arrow: edge.has_lhs_arrow,
+                label_fill: label_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Text)),
+                #[cfg(merman_internal_theme_acceptance)]
+                label_fill_css: label_fill.map(|paint| paint.into_parts().0),
                 lhs_arrow_style,
-                lhs_arrow_fill,
-                has_rhs_arrow: edge.has_rhs_arrow,
+                lhs_arrow_fill: lhs_arrow_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Marker)),
                 rhs_arrow_style,
-                rhs_arrow_fill,
-                checkpointed: false,
+                rhs_arrow_fill: rhs_arrow_fill
+                    .as_ref()
+                    .map(|paint| paint_key(paint, ThemeTarget::Marker)),
                 #[cfg(merman_internal_theme_acceptance)]
                 label_bounds: None,
                 #[cfg(merman_internal_theme_acceptance)]
@@ -420,235 +395,117 @@ impl ArchitectureSurfaceThemeReceipt {
             });
         }
 
-        let mechanism_outcomes = resolve_mechanism_outcomes(theme, &mechanisms, &expected_by_rule);
+        let mechanism_outcomes = resolve_mechanism_outcomes(theme, &mechanisms);
 
         Ok(Self {
-            services: service_expectations,
-            groups: group_expectations,
-            edges: edge_expectations,
+            services: service_styles,
+            groups: group_styles,
+            edges: edge_styles,
             mechanism_outcomes,
-            expected_by_rule,
-            emitted_by_rule: BTreeMap::new(),
-            terminals_match: true,
+            emitted_rules: BTreeSet::new(),
         })
     }
 
-    pub(crate) fn service_background_style(&self, service_index: usize, id: &str) -> Option<&str> {
+    pub(crate) fn service_background_style(&self, service_index: usize) -> Option<&str> {
         self.services
             .get(service_index)
-            .filter(|expectation| expectation.id.as_ref() == id)
-            .and_then(|expectation| expectation.background_style.as_deref())
+            .and_then(|style| style.background_style.as_deref())
     }
 
-    pub(crate) fn service_title_style(&self, service_index: usize, id: &str) -> Option<&str> {
+    pub(crate) fn service_title_style(&self, service_index: usize) -> Option<&str> {
         self.services
             .get(service_index)
-            .filter(|expectation| expectation.id.as_ref() == id)
-            .and_then(|expectation| expectation.title_style.as_deref())
+            .and_then(|style| style.title_style.as_deref())
     }
 
-    pub(crate) fn group_title_style(&self, group_index: usize, id: &str) -> Option<&str> {
+    pub(crate) fn group_title_style(&self, group_index: usize) -> Option<&str> {
         self.groups
             .get(group_index)
-            .filter(|expectation| expectation.id.as_ref() == id)
-            .and_then(|expectation| expectation.title_style.as_deref())
+            .and_then(|style| style.title_style.as_deref())
     }
 
-    pub(crate) fn edge_label_style(
-        &self,
-        edge_index: usize,
-        lhs_id: &str,
-        rhs_id: &str,
-    ) -> Option<&str> {
-        self.edge(edge_index, lhs_id, rhs_id)
-            .and_then(|expectation| expectation.label_style.as_deref())
+    pub(crate) fn edge_label_style(&self, edge_index: usize) -> Option<&str> {
+        self.edges
+            .get(edge_index)
+            .and_then(|style| style.label_style.as_deref())
     }
 
     pub(crate) fn edge_arrow_style(
         &self,
         edge_index: usize,
-        lhs_id: &str,
-        rhs_id: &str,
         side: ArchitectureArrowSide,
     ) -> Option<&str> {
-        let expectation = self.edge(edge_index, lhs_id, rhs_id)?;
+        let style = self.edges.get(edge_index)?;
         match side {
-            ArchitectureArrowSide::Lhs => expectation.lhs_arrow_style.as_deref(),
-            ArchitectureArrowSide::Rhs => expectation.rhs_arrow_style.as_deref(),
+            ArchitectureArrowSide::Lhs => style.lhs_arrow_style.as_deref(),
+            ArchitectureArrowSide::Rhs => style.rhs_arrow_style.as_deref(),
         }
     }
 
     pub(crate) fn record_checkpointed_service(
         &mut self,
-        emission: ArchitectureServiceTerminalEmission<'_>,
+        emission: ArchitectureServiceTerminalEmission,
     ) {
-        let Some(expectation) = self.services.get_mut(emission.index) else {
-            self.terminals_match = false;
-            return;
-        };
-        self.terminals_match &= !expectation.checkpointed && expectation.id.as_ref() == emission.id;
-        expectation.checkpointed = true;
-        self.terminals_match &= expectation.has_background == emission.background.emitted;
-        self.terminals_match &=
-            expectation.background_style.as_deref() == emission.background.style;
-        self.terminals_match &= expectation.has_title == emission.title.emitted;
-        self.terminals_match &= expectation.title_style.as_deref() == emission.title.style;
-        record_text_bounds(
-            expectation.has_title,
-            emission.title.bounds,
-            &mut self.terminals_match,
-        );
+        let style = &mut self.services[emission.index];
+        if emission.background.emitted {
+            record_paint(style.background_fill.as_ref(), &mut self.emitted_rules);
+            record_paint(style.background_stroke.as_ref(), &mut self.emitted_rules);
+        }
+        if emission.title.emitted {
+            record_paint(style.title_fill.as_ref(), &mut self.emitted_rules);
+        }
         #[cfg(merman_internal_theme_acceptance)]
         {
-            expectation.title_bounds = emission.title.bounds.cloned();
-            expectation.title_fragment_digest = emission.title.fragment_digest;
-            expectation.title_run_count = emission.title.run_count;
-            self.terminals_match &= emission.title.emitted
-                == emission.title.fragment_digest.is_some()
-                && (!emission.title.emitted || emission.title.run_count != 0);
+            style.id = emission.id.into();
+            style.title_bounds = emission.title.bounds;
+            style.title_fragment_digest = emission.title.fragment_digest;
+            style.title_run_count = emission.title.run_count;
         }
-        self.terminals_match &= expectation.has_icon_text == emission.has_icon_text;
-        record_paint(
-            expectation.background_fill.as_ref(),
-            emission.background.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
-        record_paint(
-            expectation.background_stroke.as_ref(),
-            emission.background.style,
-            "stroke",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
-        record_paint(
-            expectation.title_fill.as_ref(),
-            emission.title.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
     }
 
     pub(crate) fn record_checkpointed_group(
         &mut self,
-        emission: ArchitectureGroupTerminalEmission<'_>,
+        emission: ArchitectureGroupTerminalEmission,
     ) {
-        let Some(expectation) = self.groups.get_mut(emission.index) else {
-            self.terminals_match = false;
-            return;
-        };
-        self.terminals_match &= !expectation.checkpointed && expectation.id.as_ref() == emission.id;
-        expectation.checkpointed = true;
-        self.terminals_match &= expectation.has_title == emission.title.emitted;
-        self.terminals_match &= expectation.title_style.as_deref() == emission.title.style;
-        record_text_bounds(
-            expectation.has_title,
-            emission.title.bounds,
-            &mut self.terminals_match,
-        );
+        let style = &mut self.groups[emission.index];
+        if emission.title.emitted {
+            record_paint(style.title_fill.as_ref(), &mut self.emitted_rules);
+        }
         #[cfg(merman_internal_theme_acceptance)]
         {
-            expectation.title_bounds = emission.title.bounds.cloned();
-            expectation.title_fragment_digest = emission.title.fragment_digest;
-            expectation.title_run_count = emission.title.run_count;
-            self.terminals_match &= emission.title.emitted
-                == emission.title.fragment_digest.is_some()
-                && (!emission.title.emitted || emission.title.run_count != 0);
+            style.id = emission.id.into();
+            style.title_bounds = emission.title.bounds;
+            style.title_fragment_digest = emission.title.fragment_digest;
+            style.title_run_count = emission.title.run_count;
         }
-        record_paint(
-            expectation.title_fill.as_ref(),
-            emission.title.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
     }
 
-    pub(crate) fn record_checkpointed_edge(
-        &mut self,
-        emission: ArchitectureEdgeTerminalEmission<'_>,
-    ) {
-        let Some(expectation) = self.edges.get_mut(emission.index) else {
-            self.terminals_match = false;
-            return;
-        };
-        self.terminals_match &= !expectation.checkpointed
-            && expectation.lhs_id.as_ref() == emission.lhs_id
-            && expectation.rhs_id.as_ref() == emission.rhs_id;
-        expectation.checkpointed = true;
-        self.terminals_match &= expectation.has_label == emission.label.emitted;
-        self.terminals_match &= expectation.label_style.as_deref() == emission.label.style;
-        record_text_bounds(
-            expectation.has_label,
-            emission.label.bounds,
-            &mut self.terminals_match,
-        );
+    pub(crate) fn record_checkpointed_edge(&mut self, emission: ArchitectureEdgeTerminalEmission) {
+        let style = &mut self.edges[emission.index];
+        if emission.label.emitted {
+            record_paint(style.label_fill.as_ref(), &mut self.emitted_rules);
+        }
+        if emission.lhs_arrow.emitted {
+            record_paint(style.lhs_arrow_fill.as_ref(), &mut self.emitted_rules);
+        }
+        if emission.rhs_arrow.emitted {
+            record_paint(style.rhs_arrow_fill.as_ref(), &mut self.emitted_rules);
+        }
         #[cfg(merman_internal_theme_acceptance)]
         {
-            expectation.label_bounds = emission.label.bounds.cloned();
-            expectation.label_fragment_digest = emission.label.fragment_digest;
-            expectation.label_run_count = emission.label.run_count;
-            self.terminals_match &= emission.label.emitted
-                == emission.label.fragment_digest.is_some()
-                && (!emission.label.emitted || emission.label.run_count != 0);
+            style.lhs_id = emission.lhs_id.into();
+            style.rhs_id = emission.rhs_id.into();
+            style.label_bounds = emission.label.bounds;
+            style.label_fragment_digest = emission.label.fragment_digest;
+            style.label_run_count = emission.label.run_count;
         }
-        self.terminals_match &= expectation.has_lhs_arrow == emission.lhs_arrow.emitted;
-        self.terminals_match &= expectation.lhs_arrow_style.as_deref() == emission.lhs_arrow.style;
-        self.terminals_match &= expectation.has_rhs_arrow == emission.rhs_arrow.emitted;
-        self.terminals_match &= expectation.rhs_arrow_style.as_deref() == emission.rhs_arrow.style;
-        record_paint(
-            expectation.label_fill.as_ref(),
-            emission.label.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
-        record_paint(
-            expectation.lhs_arrow_fill.as_ref(),
-            emission.lhs_arrow.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
-        record_paint(
-            expectation.rhs_arrow_fill.as_ref(),
-            emission.rhs_arrow.style,
-            "fill",
-            &mut self.emitted_by_rule,
-            &mut self.terminals_match,
-        );
-    }
-
-    fn edge(
-        &self,
-        edge_index: usize,
-        lhs_id: &str,
-        rhs_id: &str,
-    ) -> Option<&ArchitectureEdgeSurfaceExpectation> {
-        self.edges.get(edge_index).filter(|expectation| {
-            expectation.lhs_id.as_ref() == lhs_id && expectation.rhs_id.as_ref() == rhs_id
-        })
-    }
-
-    pub(super) fn proves_complete(&self) -> bool {
-        self.terminals_match
-            && self.services.iter().all(|entry| entry.checkpointed)
-            && self.groups.iter().all(|entry| entry.checkpointed)
-            && self.edges.iter().all(|entry| entry.checkpointed)
-    }
-
-    fn proves_rule(&self, key: &FamilyThemeMechanismKey) -> bool {
-        self.expected_by_rule.get(key).copied().unwrap_or(0) != 0
-            && self.expected_by_rule.get(key) == self.emitted_by_rule.get(key)
     }
 
     pub(super) fn apply_to_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         for (key, outcome) in &self.mechanism_outcomes {
             match outcome {
                 ArchitectureMechanismOutcome::AppliedCandidate(capabilities)
-                    if self.proves_rule(key) =>
+                    if self.emitted_rules.contains(key) =>
                 {
                     evidence
                         .mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
@@ -666,19 +523,16 @@ impl ArchitectureSurfaceThemeReceipt {
     }
 
     #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn architecture_text_receipt(
+    pub(crate) fn architecture_text_receipt(
         &self,
     ) -> Option<crate::__private::ArchitectureTextReceipt> {
-        if !self.proves_complete() {
-            return None;
-        }
         let mut terminals = Vec::new();
         for service in &self.services {
             append_text_receipt_terminal(
                 &mut terminals,
                 crate::__private::ArchitectureTextRole::Service,
                 service.id.as_ref(),
-                service.title_fill.as_ref(),
+                service.title_fill_css.as_deref(),
                 service.title_bounds.as_ref(),
                 service.title_fragment_digest,
                 service.title_run_count,
@@ -689,7 +543,7 @@ impl ArchitectureSurfaceThemeReceipt {
                 &mut terminals,
                 crate::__private::ArchitectureTextRole::GroupTitle,
                 group.id.as_ref(),
-                group.title_fill.as_ref(),
+                group.title_fill_css.as_deref(),
                 group.title_bounds.as_ref(),
                 group.title_fragment_digest,
                 group.title_run_count,
@@ -701,7 +555,7 @@ impl ArchitectureSurfaceThemeReceipt {
                 &mut terminals,
                 crate::__private::ArchitectureTextRole::EdgeLabel,
                 &identity,
-                edge.label_fill.as_ref(),
+                edge.label_fill_css.as_deref(),
                 edge.label_bounds.as_ref(),
                 edge.label_fragment_digest,
                 edge.label_run_count,
@@ -716,22 +570,19 @@ fn append_text_receipt_terminal(
     terminals: &mut Vec<crate::__private::ArchitectureTextTerminal>,
     role: crate::__private::ArchitectureTextRole,
     identity: &str,
-    paint: Option<&ArchitectureExpectedPaint>,
+    fill_css: Option<&str>,
     bounds: Option<&Bounds>,
     fragment_digest: Option<[u8; 32]>,
     run_count: usize,
 ) -> Option<()> {
-    let paint = paint?;
-    if paint.target != ThemeTarget::Text {
-        return None;
-    }
+    let fill_css = fill_css?;
     let bounds = bounds?;
     let fragment_digest = fragment_digest?;
     terminals.push(
         crate::__private::ArchitectureTextTerminal::with_writer_facts(
             role,
             identity,
-            paint.css.as_ref(),
+            fill_css,
             [
                 bounds.min_x,
                 bounds.min_y,
@@ -743,18 +594,6 @@ fn append_text_receipt_terminal(
         )?,
     );
     Some(())
-}
-
-fn record_text_bounds(expected: bool, emitted: Option<&Bounds>, terminals_match: &mut bool) {
-    *terminals_match &= expected == emitted.is_some();
-    let Some(bounds) = emitted else {
-        return;
-    };
-    *terminals_match &= [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y]
-        .into_iter()
-        .all(f64::is_finite)
-        && bounds.max_x >= bounds.min_x
-        && bounds.max_y >= bounds.min_y;
 }
 
 impl ArchitectureTerminalMechanisms {
@@ -808,7 +647,6 @@ impl ArchitectureTerminalMechanisms {
 fn resolve_mechanism_outcomes(
     theme: &ResolvedDiagramTheme,
     mechanisms: &ArchitectureTerminalMechanisms,
-    expected_by_rule: &BTreeMap<FamilyThemeMechanismKey, usize>,
 ) -> BTreeMap<FamilyThemeMechanismKey, ArchitectureMechanismOutcome> {
     let mut rules = BTreeMap::<FamilyThemeMechanismKey, ArchitectureRuleOutcome>::new();
     let mut other = BTreeMap::new();
@@ -840,8 +678,7 @@ fn resolve_mechanism_outcomes(
                             .get_or_insert(unsupported_residual_for_facet(facet));
                     }
                     FamilyThemeDisposition::TypedAdapter
-                        if direct_surface_facet(target, selector, facet)
-                            && expected_by_rule.get(&key).copied().unwrap_or(0) != 0 =>
+                        if direct_surface_facet(target, selector, facet) =>
                     {
                         add_capabilities(&mut observation.capabilities, facet);
                     }
@@ -908,7 +745,7 @@ fn resolve_mechanism_outcomes(
 fn resolve_text_fill(
     present: bool,
     resolution: &mut ArchitectureTextResolution<'_>,
-) -> Result<Option<ArchitectureExpectedPaint>, OperationWorkError> {
+) -> Result<Option<DirectStaticPaint>, OperationWorkError> {
     if !present {
         return Ok(None);
     }
@@ -928,117 +765,48 @@ fn resolve_text_fill(
     );
     Ok((!resolution.source_owned)
         .then(|| {
-            typed_terminal_paint(
-                resolution.direct_rule_facets,
-                ThemeTarget::Text,
+            resolve_direct_static_fill(
+                resolution.theme,
                 &style,
-                false,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Default,
             )
         })
         .flatten())
 }
 
-fn typed_terminal_paint(
-    direct_rule_facets: &BTreeSet<(usize, ThemeTarget, FamilyThemeRuleFacet)>,
-    target: ThemeTarget,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-    stroke: bool,
-) -> Option<ArchitectureExpectedPaint> {
-    let resolution = if stroke {
-        style.stroke_resolution()
-    } else {
-        style.fill_resolution()
-    };
-    let origin = resolution.winner()?;
-    let facet = if stroke {
-        FamilyThemeRuleFacet::stroke(resolution.specified())?
-    } else {
-        FamilyThemeRuleFacet::fill(resolution.specified())?
-    };
-    if origin.target() != target
-        || !direct_rule_facets.contains(&(origin.rule_index(), target, facet))
-    {
-        return None;
-    }
-    let css = match resolution.specified() {
-        Specified::Value(CanvasPaint::Transparent) => "transparent".into(),
-        Specified::Value(CanvasPaint::Solid(color)) => color.as_css().into_boxed_str(),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => return None,
-    };
-    Some(ArchitectureExpectedPaint {
-        rule_index: origin.rule_index(),
+fn paint_key(paint: &DirectStaticPaint, target: ThemeTarget) -> FamilyThemeMechanismKey {
+    FamilyThemeMechanismKey::Rule {
+        index: paint.rule_index(),
         target,
-        css,
-    })
-}
-
-fn count_expected(
-    counts: &mut BTreeMap<FamilyThemeMechanismKey, usize>,
-    paint: Option<&ArchitectureExpectedPaint>,
-) {
-    if let Some(paint) = paint {
-        *counts
-            .entry(FamilyThemeMechanismKey::Rule {
-                index: paint.rule_index,
-                target: paint.target,
-            })
-            .or_default() += 1;
     }
 }
 
 fn record_paint(
-    expected: Option<&ArchitectureExpectedPaint>,
-    style: Option<&str>,
-    property: &str,
-    emitted: &mut BTreeMap<FamilyThemeMechanismKey, usize>,
-    terminals_match: &mut bool,
+    key: Option<&FamilyThemeMechanismKey>,
+    emitted: &mut BTreeSet<FamilyThemeMechanismKey>,
 ) {
-    let Some(expected) = expected else {
-        return;
-    };
-    let matches = terminal_paint(style, property) == Some(expected.css.as_ref());
-    *terminals_match &= matches;
-    if matches {
-        *emitted
-            .entry(FamilyThemeMechanismKey::Rule {
-                index: expected.rule_index,
-                target: expected.target,
-            })
-            .or_default() += 1;
+    if let Some(key) = key {
+        emitted.insert(key.clone());
     }
 }
 
 fn compose_paint_style(
-    fill: Option<&ArchitectureExpectedPaint>,
-    stroke: Option<&ArchitectureExpectedPaint>,
+    fill: Option<&DirectStaticPaint>,
+    stroke: Option<&DirectStaticPaint>,
 ) -> Option<Box<str>> {
     let mut style = String::new();
     if let Some(fill) = fill {
         style.push_str("fill:");
-        style.push_str(&fill.css);
+        style.push_str(fill.css());
         style.push(';');
     }
     if let Some(stroke) = stroke {
         style.push_str("stroke:");
-        style.push_str(&stroke.css);
+        style.push_str(stroke.css());
         style.push(';');
     }
     (!style.is_empty()).then(|| style.into_boxed_str())
-}
-
-fn terminal_paint<'a>(style: Option<&'a str>, property: &str) -> Option<&'a str> {
-    style?
-        .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
-        .filter(|declaration| declaration.property() == property)
-        .map(|declaration| declaration.value())
-        .next_back()
 }
 
 fn direct_surface_facet(

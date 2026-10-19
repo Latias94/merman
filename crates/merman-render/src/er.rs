@@ -23,7 +23,7 @@ use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 pub(crate) use theme::{
     ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntityThemePlan, ErEntityThemeReceipt,
-    ErRelationTerminalExpectation, subgraph_svg_text_facts,
+    subgraph_svg_text_facts,
 };
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;

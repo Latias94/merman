@@ -28,13 +28,10 @@ enum FlowchartBaseTypographyOccurrence {
 struct FlowchartBaseTypographyReceipt {
     stylesheet_font_stack_verified: bool,
     stylesheet_font_size_verified: bool,
-    visible_text_occurrences: BTreeSet<FlowchartBaseTypographyOccurrence>,
-    unidentified_visible_text: bool,
-    font_stack_occurrences: BTreeSet<FlowchartBaseTypographyOccurrence>,
-    font_stack_shadowed: BTreeSet<FlowchartBaseTypographyOccurrence>,
+    visible_text: bool,
+    font_stack_applied: bool,
     font_stack_unverified: bool,
-    font_size_occurrences: BTreeSet<FlowchartBaseTypographyOccurrence>,
-    font_size_shadowed: BTreeSet<FlowchartBaseTypographyOccurrence>,
+    font_size_applied: bool,
     font_size_unverified: bool,
 }
 
@@ -344,11 +341,7 @@ impl FlowchartBaseTypographyPlan {
             .terminal_receipt
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(owner) = emission.owner {
-            receipt.visible_text_occurrences.insert(owner);
-        } else {
-            receipt.unidentified_visible_text = true;
-        }
+        receipt.visible_text = true;
         if self.inner.typed_font_stack_selected {
             match property_occurrence_status(
                 emission.owner,
@@ -356,12 +349,10 @@ impl FlowchartBaseTypographyPlan {
                 emission.source_font_stack,
                 emission.target_font_stack_selected || emission.local_font_stack_shadowed,
             ) {
-                FlowchartBaseTypographyOccurrenceStatus::Applied(owner) => {
-                    receipt.font_stack_occurrences.insert(owner);
+                FlowchartBaseTypographyOccurrenceStatus::Applied => {
+                    receipt.font_stack_applied = true;
                 }
-                FlowchartBaseTypographyOccurrenceStatus::Shadowed(owner) => {
-                    receipt.font_stack_shadowed.insert(owner);
-                }
+                FlowchartBaseTypographyOccurrenceStatus::Shadowed => {}
                 FlowchartBaseTypographyOccurrenceStatus::Unverified => {
                     receipt.font_stack_unverified = true;
                 }
@@ -374,12 +365,10 @@ impl FlowchartBaseTypographyPlan {
                 emission.source_font_size,
                 emission.target_font_size_selected || emission.local_font_size_shadowed,
             ) {
-                FlowchartBaseTypographyOccurrenceStatus::Applied(owner) => {
-                    receipt.font_size_occurrences.insert(owner);
+                FlowchartBaseTypographyOccurrenceStatus::Applied => {
+                    receipt.font_size_applied = true;
                 }
-                FlowchartBaseTypographyOccurrenceStatus::Shadowed(owner) => {
-                    receipt.font_size_shadowed.insert(owner);
-                }
+                FlowchartBaseTypographyOccurrenceStatus::Shadowed => {}
                 FlowchartBaseTypographyOccurrenceStatus::Unverified => {
                     receipt.font_size_unverified = true;
                 }
@@ -391,13 +380,14 @@ impl FlowchartBaseTypographyPlan {
         &self,
         theme: Option<&ResolvedDiagramTheme>,
     ) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        let mut evidence = FamilyThemeEvidence::outcomes();
+        let _ = theme;
         let receipt = self
             .inner
             .terminal_receipt
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if receipt.visible_text_occurrences.is_empty() && !receipt.unidentified_visible_text {
+        if !receipt.visible_text {
             if self.inner.typed_font_stack_requested {
                 evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
                     ThemeTypographyProperty::FontStack,
@@ -419,19 +409,13 @@ impl FlowchartBaseTypographyPlan {
                 let font_stack = property_terminal_status(
                     self.inner.typed_font_stack_selected,
                     receipt.stylesheet_font_stack_verified,
-                    &receipt.visible_text_occurrences,
-                    receipt.unidentified_visible_text,
-                    &receipt.font_stack_occurrences,
-                    &receipt.font_stack_shadowed,
+                    receipt.font_stack_applied,
                     receipt.font_stack_unverified,
                 );
                 let font_size = property_terminal_status(
                     self.inner.typed_font_size_selected,
                     receipt.stylesheet_font_size_verified,
-                    &receipt.visible_text_occurrences,
-                    receipt.unidentified_visible_text,
-                    &receipt.font_size_occurrences,
-                    &receipt.font_size_shadowed,
+                    receipt.font_size_applied,
                     receipt.font_size_unverified,
                 );
                 for (property, requested, selected, status) in [
@@ -492,8 +476,8 @@ impl FlowchartBaseTypographyPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlowchartBaseTypographyOccurrenceStatus {
-    Applied(FlowchartBaseTypographyOccurrence),
-    Shadowed(FlowchartBaseTypographyOccurrence),
+    Applied,
+    Shadowed,
     Unverified,
 }
 
@@ -503,13 +487,13 @@ fn property_occurrence_status(
     source: super::FlowchartSourceFacetStatus,
     target_selected: bool,
 ) -> FlowchartBaseTypographyOccurrenceStatus {
-    let Some(owner) = owner else {
+    let Some(_) = owner else {
         return FlowchartBaseTypographyOccurrenceStatus::Unverified;
     };
     if !source.is_absent() || target_selected {
-        FlowchartBaseTypographyOccurrenceStatus::Shadowed(owner)
+        FlowchartBaseTypographyOccurrenceStatus::Shadowed
     } else if writer_verified {
-        FlowchartBaseTypographyOccurrenceStatus::Applied(owner)
+        FlowchartBaseTypographyOccurrenceStatus::Applied
     } else {
         FlowchartBaseTypographyOccurrenceStatus::Unverified
     }
@@ -536,31 +520,18 @@ impl FlowchartBaseTypographyPropertyStatus {
 fn property_terminal_status(
     selected: bool,
     stylesheet_verified: bool,
-    visible: &BTreeSet<FlowchartBaseTypographyOccurrence>,
-    unidentified_visible: bool,
-    applied: &BTreeSet<FlowchartBaseTypographyOccurrence>,
-    shadowed: &BTreeSet<FlowchartBaseTypographyOccurrence>,
+    applied: bool,
     unverified: bool,
 ) -> FlowchartBaseTypographyPropertyStatus {
     if !selected {
-        return FlowchartBaseTypographyPropertyStatus::Inactive;
+        FlowchartBaseTypographyPropertyStatus::Inactive
+    } else if !stylesheet_verified || unverified {
+        FlowchartBaseTypographyPropertyStatus::Unverified
+    } else if applied {
+        FlowchartBaseTypographyPropertyStatus::Applied
+    } else {
+        FlowchartBaseTypographyPropertyStatus::NotApplicable
     }
-    if !stylesheet_verified || unidentified_visible || unverified || visible.is_empty() {
-        return FlowchartBaseTypographyPropertyStatus::Unverified;
-    }
-    if !visible
-        .iter()
-        .all(|owner| applied.contains(owner) || shadowed.contains(owner))
-    {
-        return FlowchartBaseTypographyPropertyStatus::Unverified;
-    }
-    if !applied.is_empty() {
-        return FlowchartBaseTypographyPropertyStatus::Applied;
-    }
-    if visible.iter().all(|owner| shadowed.contains(owner)) {
-        return FlowchartBaseTypographyPropertyStatus::NotApplicable;
-    }
-    FlowchartBaseTypographyPropertyStatus::Unverified
 }
 
 #[cfg(test)]
@@ -627,41 +598,7 @@ mod tests {
             .expect("inactive receipt lock");
         assert!(!receipt.stylesheet_font_stack_verified);
         assert!(!receipt.stylesheet_font_size_verified);
-        assert!(receipt.visible_text_occurrences.is_empty());
-    }
-
-    #[test]
-    fn property_evidence_requires_every_visible_occurrence_to_be_accounted() {
-        let first =
-            FlowchartBaseTypographyOccurrence::Label(super::super::FlowchartSvgLabelOwner::Node(0));
-        let second =
-            FlowchartBaseTypographyOccurrence::Label(super::super::FlowchartSvgLabelOwner::Node(1));
-        let visible = BTreeSet::from([first, second]);
-
-        assert_eq!(
-            property_terminal_status(
-                true,
-                true,
-                &visible,
-                false,
-                &BTreeSet::from([first]),
-                &BTreeSet::new(),
-                false,
-            ),
-            FlowchartBaseTypographyPropertyStatus::Unverified,
-        );
-        assert_eq!(
-            property_terminal_status(
-                true,
-                true,
-                &visible,
-                false,
-                &BTreeSet::from([first]),
-                &BTreeSet::from([second]),
-                false,
-            ),
-            FlowchartBaseTypographyPropertyStatus::Applied,
-        );
+        assert!(!receipt.visible_text);
     }
 
     #[test]

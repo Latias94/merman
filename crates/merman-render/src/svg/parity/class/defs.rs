@@ -240,10 +240,10 @@ fn class_marker_has_transparent_terminal_fill(marker_name: &str) -> bool {
     )
 }
 
-pub(super) fn class_marker_terminal_expectations(
+pub(super) fn class_marker_paint_bindings(
     relations: &[ClassSvgRelation],
     include_margin_markers: bool,
-) -> Vec<crate::class::ClassMarkerTerminalExpectation> {
+) -> Vec<crate::class::ClassMarkerPaintBinding> {
     let referenced = relations
         .iter()
         .flat_map(|relation| {
@@ -262,12 +262,7 @@ pub(super) fn class_marker_terminal_expectations(
             (ordinary.is_none() || include_margin_markers)
                 && referenced.contains(ordinary.unwrap_or(name))
         })
-        .map(|name| {
-            crate::class::ClassMarkerTerminalExpectation::new(
-                name,
-                class_marker_fill_follows_stroke(name),
-            )
-        })
+        .map(crate::class::ClassMarkerPaintBinding::new)
         .collect()
 }
 
@@ -277,15 +272,15 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     diagram_marker_class: &str,
     include_margin_markers: bool,
     relation_theme: &crate::class::ClassRelationThemePlan,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
-    struct MarkerContext<'a, 'nodes, O: SvgOutput, I: SvgDiagramIdValue> {
+    struct MarkerContext<'a, O: SvgOutput, I: SvgDiagramIdValue> {
         out: &'a mut O,
         diagram_id: I,
         diagram_marker_class: &'a str,
         relation_theme: &'a crate::class::ClassRelationThemePlan,
-        theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt<'nodes>,
+        theme_receipt: &'a mut crate::class::ClassThemeOutcomes,
     }
 
     enum MarkerShape<'a> {
@@ -316,7 +311,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     }
 
     fn marker<O: SvgOutput, I: SvgDiagramIdValue>(
-        ctx: &mut MarkerContext<'_, '_, O, I>,
+        ctx: &mut MarkerContext<'_, O, I>,
         spec: MarkerSpec<'_>,
     ) -> Result<()> {
         let typed_stroke = if ctx.theme_receipt.themes_marker(spec.name) {
@@ -453,14 +448,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ctx.out.push_str("</defs>");
         }
         ctx.out.checkpoint()?;
-        if typed_stroke.is_some() {
-            ctx.theme_receipt.record_marker(
-                spec.name,
-                fill_follows_stroke,
-                typed_stroke,
-                terminal_style.as_deref(),
-            );
-        }
         Ok(())
     }
 
@@ -837,7 +824,7 @@ mod tests {
         let relation_theme = crate::class::ClassRelationThemePlan::default();
         {
             let mut svg = String::new();
-            let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
+            let mut receipt = relation_theme.begin_outcomes(Vec::new());
             class_markers(
                 &mut svg,
                 "diagram",
@@ -952,7 +939,7 @@ mod tests {
     fn class_markers_stop_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
         let relation_theme = crate::class::ClassRelationThemePlan::default();
-        let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
+        let mut receipt = relation_theme.begin_outcomes(Vec::new());
 
         let error = class_markers(
             &mut out,

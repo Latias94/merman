@@ -1,6 +1,5 @@
 use super::{ExportError, Result};
-use merman_render::__private::PreparedTextLabelId;
-use merman_render::diagram_theme::{FontCatalog, FontCatalogFingerprint, FontSource};
+use merman_render::diagram_theme::{FontCatalog, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
 use std::collections::{BTreeSet, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,12 +11,6 @@ use std::sync::{Arc, OnceLock};
 pub enum ExportFontMode {
     /// Resolve only from fonts discovered on the host system.
     SystemOnly,
-    /// Resolve only from immutable font assets retained by the rendered document.
-    EmbeddedOnly,
-    /// Prefer retained font assets, then consult host system fonts.
-    EmbeddedThenSystem,
-    /// Prefer host system fonts, then consult retained font assets.
-    SystemThenEmbedded,
     /// A caller-provided native context supplied both measurement and painting fonts.
     NativeContext,
 }
@@ -27,64 +20,28 @@ impl ExportFontMode {
     pub const fn id(self) -> &'static str {
         match self {
             Self::SystemOnly => "system-only",
-            Self::EmbeddedOnly => "embedded-only",
-            Self::EmbeddedThenSystem => "embedded-then-system",
-            Self::SystemThenEmbedded => "system-then-embedded",
             Self::NativeContext => "native-context",
         }
-    }
-
-    /// Returns whether this mode permits retained document fonts.
-    pub const fn allows_embedded_fonts(self) -> bool {
-        !matches!(self, Self::SystemOnly | Self::NativeContext)
-    }
-
-    /// Returns whether this mode permits host system fonts.
-    pub const fn allows_system_fonts(self) -> bool {
-        !matches!(self, Self::EmbeddedOnly)
     }
 }
 
 /// Frozen font-resolution evidence for one concrete native export target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportFontPlan {
-    catalog_fingerprint: FontCatalogFingerprint,
     source_mode: ExportFontMode,
-    loaded_embedded_face_count: usize,
-    used_embedded_fonts: bool,
     used_system_fonts: bool,
     family_fallback_used: bool,
     glyph_fallback_used: bool,
     unresolved_font_request: bool,
     unresolved_glyph_fallback: bool,
-    prepared_label_expected_count: usize,
-    prepared_label_verified_count: usize,
-    prepared_label_mismatch_count: usize,
-    prepared_label_host_dependent_count: usize,
-    prepared_label_terminal_incomplete_count: usize,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
 }
 
 impl ExportFontPlan {
-    /// Returns the exact retained catalog identity used to build the exporter font database.
-    pub const fn catalog_fingerprint(self) -> FontCatalogFingerprint {
-        self.catalog_fingerprint
-    }
-
-    /// Returns the admitted source order after intersecting host policy and catalog availability.
+    /// Returns the admitted source mode for the native operation.
     pub const fn source_mode(self) -> ExportFontMode {
         self.source_mode
-    }
-
-    /// Returns the number of retained faces loaded into this exporter operation.
-    pub const fn loaded_embedded_face_count(self) -> usize {
-        self.loaded_embedded_face_count
-    }
-
-    /// Returns whether the final usvg tree contains a visible glyph from a retained face.
-    pub const fn used_embedded_fonts(self) -> bool {
-        self.used_embedded_fonts
     }
 
     /// Returns whether the final usvg tree contains a visible glyph from a host system face.
@@ -112,39 +69,6 @@ impl ExportFontPlan {
         self.unresolved_glyph_fallback
     }
 
-    /// Returns the number of renderer-owned prepared labels expected in this native artifact.
-    ///
-    /// The current system-font renderer produces no prepared labels, so this count is zero.
-    pub const fn prepared_label_expected_count(self) -> usize {
-        self.prepared_label_expected_count
-    }
-
-    /// Returns the number of prepared labels verified in the parsed artifact.
-    ///
-    /// The current system-font renderer produces no prepared labels, so this count is zero.
-    pub const fn prepared_label_verified_count(self) -> usize {
-        self.prepared_label_verified_count
-    }
-
-    /// Returns the count of unexpected or malformed reserved text tokens in the parsed artifact.
-    pub const fn prepared_label_mismatch_count(self) -> usize {
-        self.prepared_label_mismatch_count
-    }
-
-    /// Returns the number of prepared labels produced by a host-dependent backend.
-    ///
-    /// The current system-font renderer produces no prepared labels, so this count is zero.
-    pub const fn prepared_label_host_dependent_count(self) -> usize {
-        self.prepared_label_host_dependent_count
-    }
-
-    /// Returns the number of prepared labels whose terminal proof is incomplete.
-    ///
-    /// The current system-font renderer produces no prepared labels, so this count is zero.
-    pub const fn prepared_label_terminal_incomplete_count(self) -> usize {
-        self.prepared_label_terminal_incomplete_count
-    }
-
     /// Returns the number of final font faces absent from the operation's admitted sources.
     pub const fn unclassified_face_count(self) -> usize {
         self.unclassified_face_count
@@ -155,24 +79,9 @@ impl ExportFontPlan {
         self.notdef_glyph_count
     }
 
-    /// Returns whether all prepared-label evidence survived native parsing unchanged.
-    pub const fn prepared_text_evidence_matches(self) -> bool {
-        self.prepared_label_mismatch_count == 0
-            && self.prepared_label_verified_count == self.prepared_label_expected_count
-    }
-
-    /// Returns whether every prepared label has a complete terminal proof for Portable admission.
-    pub const fn prepared_text_terminal_proof_complete(self) -> bool {
-        self.prepared_text_evidence_matches() && self.prepared_label_terminal_incomplete_count == 0
-    }
-
-    /// Returns whether the concrete parsed output is host-dependent or lacks complete native text
-    /// proof and therefore cannot be treated as Portable.
+    /// Returns whether the concrete parsed output depends on caller-owned or system fonts.
     pub const fn is_host_dependent(self) -> bool {
-        matches!(self.source_mode, ExportFontMode::NativeContext)
-            || self.used_system_fonts
-            || self.prepared_label_host_dependent_count != 0
-            || self.prepared_label_terminal_incomplete_count != 0
+        matches!(self.source_mode, ExportFontMode::NativeContext) || self.used_system_fonts
     }
 }
 
@@ -185,7 +94,6 @@ struct FontResolutionRecorder {
 }
 
 pub(crate) struct ExportFontPlanSeed {
-    catalog_fingerprint: FontCatalogFingerprint,
     source_mode: ExportFontMode,
     system_fonts: Arc<usvg::fontdb::Database>,
     recorder: Arc<FontResolutionRecorder>,
@@ -196,12 +104,10 @@ pub(crate) struct ExportFontPlanSeed {
 impl ExportFontPlanSeed {
     #[cfg(feature = "native-fonts")]
     pub(crate) fn from_native_context(
-        svg: &ResvgCompatibleSvg,
         context: &crate::NativeFontContext,
         observer: crate::fonts::NativeExportFontObserver,
     ) -> Self {
         Self {
-            catalog_fingerprint: svg.font_catalog().fingerprint(),
             source_mode: ExportFontMode::NativeContext,
             // Native contexts classify faces through the operation-local observer, including
             // COW-installed discovery faces that are absent from this initial database snapshot.
@@ -237,12 +143,7 @@ impl ExportFontPlanSeed {
         let native_facts: Option<(bool, bool, bool, bool)> = None;
 
         ExportFontPlan {
-            catalog_fingerprint: self.catalog_fingerprint,
             source_mode: self.source_mode,
-            loaded_embedded_face_count: 0,
-            // Native contexts are explicitly caller-owned, even if their policy permits system
-            // discovery. They must never be mistaken for a theme-retained font catalog.
-            used_embedded_fonts: false,
             // Native contexts derive this from visible final glyphs and the exact resolver's
             // operation-local admission record, not from an initial fontdb snapshot.
             used_system_fonts: evidence.used_system_fonts,
@@ -257,12 +158,6 @@ impl ExportFontPlanSeed {
                 || native_facts.is_some_and(|facts| facts.2),
             unresolved_glyph_fallback: unresolved_glyph_fallback
                 || native_facts.is_some_and(|facts| facts.3),
-            prepared_label_expected_count: 0,
-            prepared_label_verified_count: 0,
-            prepared_label_mismatch_count: evidence.prepared_labels.len()
-                + evidence.invalid_prepared_token_count,
-            prepared_label_host_dependent_count: 0,
-            prepared_label_terminal_incomplete_count: 0,
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
         }
@@ -274,8 +169,6 @@ struct FinalTreeFontEvidence {
     used_system_fonts: bool,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
-    invalid_prepared_token_count: usize,
-    prepared_labels: HashSet<PreparedTextLabelId>,
 }
 
 impl FinalTreeFontEvidence {
@@ -370,15 +263,6 @@ impl FinalTreeFontEvidence {
         caller_faces: &BTreeSet<usvg::fontdb::ID>,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
     ) {
-        let prepared_token = PreparedTextLabelId::from_svg_id(text.id());
-        if PreparedTextLabelId::is_svg_id_candidate(text.id()) && prepared_token.is_none() {
-            self.invalid_prepared_token_count = self.invalid_prepared_token_count.saturating_add(1);
-        }
-
-        if let Some(id) = prepared_token {
-            self.prepared_labels.insert(id);
-        }
-
         for span in text.layouted().iter().filter(|span| span.visible) {
             for glyph in &span.positioned_glyphs {
                 if glyph.id.0 == 0 {
@@ -434,7 +318,6 @@ impl ExportFontEnvironment {
             default_family,
             resolver,
             plan: ExportFontPlanSeed {
-                catalog_fingerprint: catalog.fingerprint(),
                 source_mode: ExportFontMode::SystemOnly,
                 system_fonts: fontdb,
                 recorder,
@@ -804,11 +687,6 @@ mod tests {
         assert_eq!(plan.unclassified_face_count(), 0);
         assert_eq!(plan.notdef_glyph_count(), 0);
         assert!(!plan.unresolved_glyph_fallback());
-        assert!(plan.prepared_text_evidence_matches());
-        assert_eq!(plan.prepared_label_expected_count(), 0);
-        assert_eq!(plan.prepared_label_verified_count(), 0);
-        assert_eq!(plan.prepared_label_host_dependent_count(), 0);
-        assert_eq!(plan.prepared_label_terminal_incomplete_count(), 0);
 
         let unadmitted = FinalTreeFontEvidence::collect(&tree, &usvg::fontdb::Database::new());
         assert!(!unadmitted.used_system_fonts);
@@ -822,57 +700,30 @@ mod tests {
     }
 
     #[test]
-    fn native_tree_observes_reserved_and_malformed_label_ids() {
+    fn author_ids_do_not_change_native_font_classification() {
         let environment = fixture_font_environment();
         let options = usvg::Options {
             fontdb: Arc::clone(&environment.fontdb),
             font_resolver: environment.resolver,
             ..usvg::Options::default()
         };
-        let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100">
-            <text id="merman-prepared-flowchart-7" x="0" y="20" font-family="DejaVu Serif">Request</text>
-            <text id="merman-prepared-flowchart-7-line-2" x="0" y="40" font-family="DejaVu Serif">Volume</text>
-            <text id="merman-prepared-flowchart-7-line-invalid" x="0" y="60" font-family="DejaVu Serif">Request</text>
-            <text id="ordinary-label" x="0" y="80" font-family="DejaVu Serif">Volume</text>
-        </svg>"#;
-        let tree = usvg::Tree::from_str(source, &options).unwrap();
-        let evidence = FinalTreeFontEvidence::collect(&tree, &environment.fontdb);
-        assert_eq!(evidence.prepared_labels.len(), 1);
-        assert!(
-            evidence.prepared_labels.contains(
-                &PreparedTextLabelId::from_svg_id("merman-prepared-flowchart-7").unwrap()
-            )
-        );
-        assert_eq!(evidence.invalid_prepared_token_count, 1);
-
-        let plan = environment.plan.finish_with_tree(&tree);
-        assert_eq!(plan.prepared_label_mismatch_count(), 2);
-        assert!(!plan.prepared_text_evidence_matches());
-        assert!(!plan.prepared_text_terminal_proof_complete());
-
-        let line_only = r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100">
-            <text id="merman-prepared-flowchart-7-line-2" x="0" y="40" font-family="DejaVu Serif">Volume</text>
-        </svg>"#;
-        let line_tree = usvg::Tree::from_str(line_only, &options).unwrap();
-        let line_evidence = FinalTreeFontEvidence::collect(&line_tree, &environment.fontdb);
-        assert_eq!(line_evidence.prepared_labels, evidence.prepared_labels);
-        assert_eq!(line_evidence.invalid_prepared_token_count, 0);
-        let line_plan = environment.plan.finish_with_tree(&line_tree);
-        assert_eq!(line_plan.prepared_label_mismatch_count(), 1);
-        assert!(!line_plan.prepared_text_evidence_matches());
-
-        // Raw SVG admission and usvg's entity-decoded identities are distinct boundaries.
-        let entity_encoded = source.replace("merman-prepared", "merman&#x2d;prepared");
-        let session = merman_render::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let sealed = merman_render::svg::finalize_resvg_svg(&entity_encoded, &session).unwrap();
-        let decoded_tree = usvg::Tree::from_str(sealed.as_str(), &options).unwrap();
-        let decoded_plan = environment.plan.finish_with_tree(&decoded_tree);
-        assert_eq!(decoded_plan.prepared_label_expected_count(), 0);
-        assert_eq!(decoded_plan.prepared_label_mismatch_count(), 2);
-        assert!(!decoded_plan.prepared_text_evidence_matches());
-        assert!(!decoded_plan.prepared_text_terminal_proof_complete());
+        let plan = |id| {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text id="{id}" x="0" y="20" font-family="DejaVu Serif">Request Volume</text></svg>"#,
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            environment.plan.finish_with_tree(&tree)
+        };
+        let ordinary = plan("ordinary-label");
+        assert!(ordinary.used_system_fonts());
+        assert!(ordinary.is_host_dependent());
+        for id in [
+            "merman-prepared-flowchart-7",
+            "merman-prepared-flowchart-7-line-invalid",
+            "merman&#x2d;prepared-flowchart-7",
+        ] {
+            assert_eq!(plan(id), ordinary, "author ID {id}");
+        }
     }
 
     #[cfg(feature = "native-fonts")]
@@ -883,10 +734,9 @@ mod tests {
             .with_font_file("tests/fonts/Cousine-Regular.ttf")
             .load(&control)
             .expect("explicit fixture font loads");
-        let svg = sealed_svg(FontCatalog::system_fonts(), FontSourcePolicy::system_only());
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
-        let seed = ExportFontPlanSeed::from_native_context(&svg, &context, observer);
+        let seed = ExportFontPlanSeed::from_native_context(&context, observer);
         let tree = usvg::Tree::from_str(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">native context</text></svg>"#,
             &options,
@@ -910,7 +760,6 @@ mod tests {
         let plan = seed.finish_with_tree(&tree);
 
         assert_eq!(plan.source_mode(), ExportFontMode::NativeContext);
-        assert!(!plan.used_embedded_fonts());
         assert!(!plan.used_system_fonts());
         assert_eq!(plan.unclassified_face_count(), 0);
         assert!(plan.is_host_dependent());

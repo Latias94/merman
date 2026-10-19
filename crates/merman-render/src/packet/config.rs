@@ -74,32 +74,16 @@ impl<'a> PacketConfigView<'a> {
 
     pub(crate) fn style_settings(&self) -> PacketStyleSettings {
         PacketStyleSettings {
-            byte_font_size: self.packet_style("byteFontSize", "font-size", DEFAULT_BYTE_FONT_SIZE),
-            start_byte_color: self.packet_style("startByteColor", "fill", DEFAULT_START_BYTE_COLOR),
-            end_byte_color: self.packet_style("endByteColor", "fill", DEFAULT_END_BYTE_COLOR),
-            label_color: self.packet_style("labelColor", "fill", DEFAULT_LABEL_COLOR),
-            label_font_size: self.packet_style(
-                "labelFontSize",
-                "font-size",
-                DEFAULT_LABEL_FONT_SIZE,
-            ),
-            title_color: self.packet_style("titleColor", "fill", DEFAULT_TITLE_COLOR),
-            title_font_size: self.packet_style(
-                "titleFontSize",
-                "font-size",
-                DEFAULT_TITLE_FONT_SIZE,
-            ),
-            block_stroke_color: self.packet_style(
-                "blockStrokeColor",
-                "stroke",
-                DEFAULT_BLOCK_STROKE_COLOR,
-            ),
-            block_stroke_width: self.packet_style(
-                "blockStrokeWidth",
-                "stroke-width",
-                DEFAULT_BLOCK_STROKE_WIDTH,
-            ),
-            block_fill_color: self.packet_style("blockFillColor", "fill", DEFAULT_BLOCK_FILL_COLOR),
+            byte_font_size: self.packet_style("byteFontSize", DEFAULT_BYTE_FONT_SIZE),
+            start_byte_color: self.packet_style("startByteColor", DEFAULT_START_BYTE_COLOR),
+            end_byte_color: self.packet_style("endByteColor", DEFAULT_END_BYTE_COLOR),
+            label_color: self.packet_style("labelColor", DEFAULT_LABEL_COLOR),
+            label_font_size: self.packet_style("labelFontSize", DEFAULT_LABEL_FONT_SIZE),
+            title_color: self.packet_style("titleColor", DEFAULT_TITLE_COLOR),
+            title_font_size: self.packet_style("titleFontSize", DEFAULT_TITLE_FONT_SIZE),
+            block_stroke_color: self.packet_style("blockStrokeColor", DEFAULT_BLOCK_STROKE_COLOR),
+            block_stroke_width: self.packet_style("blockStrokeWidth", DEFAULT_BLOCK_STROKE_WIDTH),
+            block_fill_color: self.packet_style("blockFillColor", DEFAULT_BLOCK_FILL_COLOR),
         }
     }
 
@@ -115,15 +99,17 @@ impl<'a> PacketConfigView<'a> {
         self.packet_config.get(key)?.as_i64()
     }
 
-    fn packet_style(&self, key: &str, property: &str, default_value: &str) -> String {
-        let Some(value) = config_css_number_or_string(self.packet_config, &[key]) else {
+    fn packet_style(&self, key: &str, default_value: &str) -> String {
+        let Some(mut value) = config_css_number_or_string(self.packet_config, &[key]) else {
             return default_value.to_string();
         };
-        let declaration = format!("{property}:{value}");
-        merman_core::style::parse_safe_style_decl(&declaration)
-            .filter(|(parsed_property, _)| parsed_property.eq_ignore_ascii_case(property))
-            .map(|(_, parsed_value)| parsed_value.to_string())
-            .unwrap_or_else(|| default_value.to_string())
+        // Preserve the declaration parser's second delimiter normalization after JSON projection.
+        value.truncate(value.trim_end_matches(';').trim_end().len());
+        if merman_core::style::is_safe_css_declaration_value(&value) {
+            value
+        } else {
+            default_value.to_string()
+        }
     }
 }
 
@@ -262,5 +248,24 @@ mod tests {
         assert_eq!(settings.block_stroke_color, "#555555");
         assert_eq!(settings.block_stroke_width, "2");
         assert_eq!(settings.block_fill_color, "#666666");
+    }
+
+    #[test]
+    fn packet_style_values_preserve_normalization_and_reject_declaration_injection() {
+        for (value, expected) in [
+            (json!(" red; ; "), "red"),
+            (json!("red !important"), "red !important"),
+            (json!("a:b"), "a:b"),
+            (json!(-0.0), "0"),
+            (json!("red;font-family:serif"), "black"),
+            (json!("uRl(javascript:alert(1))"), "black"),
+            (json!("ExPrEsSiOn(1)"), "black"),
+            (json!("red\u{1}"), "black"),
+            (json!(""), "black"),
+        ] {
+            let config = json!({"packet": {"labelColor": value}});
+            let settings = PacketConfigView::new(&config).style_settings();
+            assert_eq!(settings.label_color, expected, "value={value}");
+        }
     }
 }

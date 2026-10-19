@@ -68,7 +68,10 @@ fn is_safe_css_property_name(key: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn is_safe_css_declaration_value(value: &str) -> bool {
+/// Returns whether a value satisfies Mermaid's source-style structural policy.
+///
+/// This checks the value without parsing a property name or normalizing trailing delimiters.
+pub fn is_safe_css_declaration_value(value: &str) -> bool {
     let value = value.trim();
     if value.is_empty() {
         return false;

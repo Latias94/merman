@@ -1,15 +1,15 @@
 //! Bounded terminal checks for the catalog's native Flowchart host profile.
 
+use crate::svg_observation::{SvgArtifactObservation, SvgElementObservation};
 use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::ThemePreset;
 use merman::{RasterOutput, RenderedDocument};
-use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
 
 use super::state_proof::verify_host_admission;
 use crate::observation::C6TargetArtifact;
 use crate::runner::{
     C6ProofError, C6ProofResult, C6RasterImage,
-    artifact_observation::{local_fragment_id, sealed_svg_receipt},
+    artifact_observation::{local_fragment_id, observed_svg},
     c6_sequence_proof::require_exact_writer_declaration,
     decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
@@ -82,7 +82,7 @@ pub(super) fn verify(
     );
     let palette = Palette::for_preset(preset)?;
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
-    let receipt = sealed_svg_receipt(&artifact)?;
+    let receipt = observed_svg(&artifact)?;
     let geometry = check_svg(receipt, palette)?;
     let raster = decode_bounded_png_artifact(png.bytes(), png.plan())?;
     check_pixels(&raster, &geometry, palette)
@@ -95,12 +95,10 @@ struct Geometry {
     background: [f64; 4],
 }
 
-fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Geometry> {
+fn check_svg(receipt: &SvgArtifactObservation, palette: Palette) -> C6ProofResult<Geometry> {
     c6_ensure!(
         "preset-flowchart-svg",
-        receipt.has_native_text()
-            && !receipt.has_foreign_object()
-            && !receipt.has_prepared_tokens(),
+        receipt.has_native_text() && !receipt.has_foreign_object(),
         "Flowchart requires native text"
     );
 
@@ -283,7 +281,7 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
 }
 
 fn require_text(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     owner: &SvgElementObservation,
     label: &str,
     color: &str,
@@ -495,7 +493,6 @@ mod tests {
     use super::*;
     use merman::svg::DiagramThemeCompiler;
     use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
-    use sha2::Digest as _;
 
     fn document(preset: ThemePreset) -> RenderedDocument {
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
@@ -517,9 +514,8 @@ mod tests {
         document
     }
 
-    fn observe(svg: &str) -> SvgArtifactReceipt {
-        SvgArtifactReceipt::observe_svg_for_test(svg, sha2::Sha256::digest(svg.as_bytes()).into())
-            .unwrap()
+    fn observe(svg: &str) -> SvgArtifactObservation {
+        SvgArtifactObservation::observe(svg).unwrap()
     }
 
     #[test]

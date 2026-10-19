@@ -172,7 +172,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
     ctx: &ClassEdgeGroupsRenderContext<'edges>,
 ) -> crate::Result<ClassEdgePathEmission<'edges>> {
     let mut edge_points_json_buf = String::new();
@@ -196,6 +196,12 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let missing_section = ctx.missing_section_points.get(e.id.as_str());
         let source_points = missing_section.map(Vec::as_slice).unwrap_or(&e.points);
         if source_points.is_empty() || (missing_section.is_none() && source_points.len() < 2) {
+            if e.id.starts_with("edgeNote") || ctx.relations_by_id.contains_key(e.id.as_str()) {
+                theme_receipt.record_unavailable_path(
+                    ctx.relation_theme.typed_stroke().map(|(rule, _)| rule),
+                    ctx.relation_theme.relation_width().terminal_css().is_some(),
+                );
+            }
             continue;
         }
 
@@ -499,30 +505,12 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         out.push_str("/>");
         out.checkpoint()?;
         if is_note_edge {
-            let note_index =
-                e.id.strip_prefix("edgeNote")
-                    .and_then(|index| index.parse::<usize>().ok())
-                    .unwrap_or(usize::MAX);
-            theme_receipt.record_note_attachment(
-                note_index,
-                typed_stroke,
-                &terminal_style,
-                hand_drawn_stroke,
-            );
+            theme_receipt.record_stroke(typed_stroke);
         } else if relation.is_some() {
-            let relation_index = ctx
-                .relation_index_by_id
-                .get(e.id.as_str())
-                .copied()
-                .and_then(|index| index.checked_sub(1))
-                .unwrap_or(usize::MAX);
-            theme_receipt.record_relation(crate::class::ClassRelationTerminalEvent {
-                relation_index,
+            theme_receipt.record_relation(crate::class::ClassRelationPaintOutcome {
                 start_marker: start_marker_name,
                 end_marker: end_marker_name,
                 emitted_stroke: typed_stroke,
-                terminal_style: &terminal_style,
-                hand_drawn_stroke,
                 typed_width_emitted: typed_stroke_width.is_some(),
             });
         }
@@ -543,8 +531,8 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
+    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     path_emission: &ClassEdgePathEmission<'_>,
 ) -> crate::Result<()> {
@@ -572,11 +560,8 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 .any(|text| !text.is_empty() && text != "none")
         });
         if ctx.uses_elk_adapter_dom && label_text.is_empty() && !has_terminal_label {
-            if let Some(&index) = ctx.relation_index_by_id.get(e.id.as_str()) {
-                theme_receipt.record_edge_label_background(
-                    index.checked_sub(1).unwrap_or(usize::MAX),
-                    false,
-                );
+            if ctx.relation_index_by_id.contains_key(e.id.as_str()) {
+                theme_receipt.record_edge_label_background(false);
             }
             if relation.is_some()
                 && let Some(receipt) = typography_receipt.as_mut()
@@ -627,11 +612,8 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 .and_then(|index| index.checked_sub(1)),
         );
         out.checkpoint()?;
-        if let Some(&index) = ctx.relation_index_by_id.get(e.id.as_str()) {
-            theme_receipt.record_edge_label_background(
-                index.checked_sub(1).unwrap_or(usize::MAX),
-                background_visible,
-            );
+        if ctx.relation_index_by_id.contains_key(e.id.as_str()) {
+            theme_receipt.record_edge_label_background(background_visible);
         }
         if relation.is_some()
             && let Some(receipt) = typography_receipt.as_mut()
@@ -707,7 +689,7 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-    receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    receipt: &mut crate::class::ClassThemeOutcomes,
     relation_index: Option<usize>,
 ) -> (crate::class::ClassTextTerminalFacts, bool) {
     let normalized = if ctx.uses_elk_adapter_dom {
@@ -776,15 +758,8 @@ fn render_class_edge_label_group(
                 },
             );
             out.push_str("</div></foreignObject></g></g>");
-            if let Some(index) = relation_index.filter(|_| background_visible) {
-                receipt.record_edge_label_background_paint(
-                    index,
-                    background.map(|(rule, _)| rule),
-                    &[
-                        (&div_style, "background-color"),
-                        (emitted_style.unwrap_or(""), "background-color"),
-                    ],
-                );
+            if relation_index.is_some() && background_visible {
+                receipt.record_edge_label_background_paint(background.map(|(rule, _)| rule));
             }
         } else {
             let _ = write!(
@@ -839,12 +814,8 @@ fn render_class_edge_label_group(
             ctx.text_paint.map(|paint| paint.style()),
         );
         out.push_str("</g></g></g>");
-        if let Some(index) = relation_index.filter(|_| background_visible) {
-            receipt.record_edge_label_background_paint(
-                index,
-                background.map(|(rule, _)| rule),
-                &[(&background_style, "fill")],
-            );
+        if relation_index.is_some() && background_visible {
+            receipt.record_edge_label_background_paint(background.map(|(rule, _)| rule));
         }
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -878,7 +849,7 @@ fn render_class_edge_terminals(
     is_start: bool,
     content_bounds: &mut Option<Bounds>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
 ) -> crate::Result<()> {
     let Some(relation) = ctx.relations_by_id.get(edge.id.as_str()).copied() else {
         return Ok(());

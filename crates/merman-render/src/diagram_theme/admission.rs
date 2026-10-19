@@ -197,42 +197,56 @@ impl std::fmt::Display for FontSource {
 /// the order of the receiver, so an operation cannot replace host priority with request priority.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontSourcePolicy {
-    priority: Vec<FontSource>,
+    priority: &'static [FontSource],
 }
 
 impl FontSourcePolicy {
     pub fn new(
         priority: impl IntoIterator<Item = FontSource>,
     ) -> Result<Self, ThemeAdmissionError> {
-        let priority = priority.into_iter().collect::<Vec<_>>();
-        if priority.is_empty() {
-            return Err(ThemeAdmissionError::EmptyFontSourcePolicy);
+        let mut priority = priority.into_iter();
+        let first = priority
+            .next()
+            .ok_or(ThemeAdmissionError::EmptyFontSourcePolicy)?;
+        let Some(second) = priority.next() else {
+            return Ok(match first {
+                FontSource::Embedded => Self::embedded_only(),
+                FontSource::System => Self::system_only(),
+            });
+        };
+        if first == second {
+            return Err(ThemeAdmissionError::DuplicateFontSource(second));
         }
-        reject_duplicate_font_sources(&priority)?;
-        Ok(Self { priority })
+        if let Some(duplicate) = priority.next() {
+            return Err(ThemeAdmissionError::DuplicateFontSource(duplicate));
+        }
+        Ok(match first {
+            FontSource::Embedded => Self::embedded_then_system(),
+            FontSource::System => Self::system_then_embedded(),
+        })
     }
 
     pub fn embedded_only() -> Self {
         Self {
-            priority: vec![FontSource::Embedded],
+            priority: &[FontSource::Embedded],
         }
     }
 
     pub fn system_only() -> Self {
         Self {
-            priority: vec![FontSource::System],
+            priority: &[FontSource::System],
         }
     }
 
     pub fn embedded_then_system() -> Self {
         Self {
-            priority: vec![FontSource::Embedded, FontSource::System],
+            priority: &[FontSource::Embedded, FontSource::System],
         }
     }
 
     pub fn system_then_embedded() -> Self {
         Self {
-            priority: vec![FontSource::System, FontSource::Embedded],
+            priority: &[FontSource::System, FontSource::Embedded],
         }
     }
 
@@ -256,93 +270,29 @@ impl FontSourcePolicy {
         &self,
         allowed: impl IntoIterator<Item = FontSource>,
     ) -> Result<Self, ThemeAdmissionError> {
-        let allowed = allowed.into_iter().collect::<BTreeSet<_>>();
-        let priority = self
-            .priority
-            .iter()
-            .copied()
-            .filter(|source| allowed.contains(source))
-            .collect::<Vec<_>>();
-        if priority.is_empty() {
-            return Err(ThemeAdmissionError::EmptyFontSourceIntersection);
+        let mut embedded = false;
+        let mut system = false;
+        for source in allowed {
+            match source {
+                FontSource::Embedded => embedded = true,
+                FontSource::System => system = true,
+            }
         }
-        Ok(Self { priority })
+        match (
+            embedded && self.contains(FontSource::Embedded),
+            system && self.contains(FontSource::System),
+        ) {
+            (true, true) => Ok(self.clone()),
+            (true, false) => Ok(Self::embedded_only()),
+            (false, true) => Ok(Self::system_only()),
+            (false, false) => Err(ThemeAdmissionError::EmptyFontSourceIntersection),
+        }
     }
 }
 
 impl Default for FontSourcePolicy {
     fn default() -> Self {
         Self::embedded_then_system()
-    }
-}
-
-/// Fallback applied after a host text-layout backend is unavailable, rejects, or lacks evidence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum HostMeasurementFallback {
-    AcceptHostDependent,
-}
-
-impl HostMeasurementFallback {
-    pub const ALL: &'static [Self] = &[Self::AcceptHostDependent];
-
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::AcceptHostDependent => "accept-host-dependent",
-        }
-    }
-}
-
-impl std::fmt::Display for HostMeasurementFallback {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.id())
-    }
-}
-
-/// Ordered host-owned measurement fallback policy.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct HostMeasurementFallbackPolicy {
-    priority: Vec<HostMeasurementFallback>,
-}
-
-impl HostMeasurementFallbackPolicy {
-    pub(crate) const EMPTY: Self = Self {
-        priority: Vec::new(),
-    };
-
-    pub fn new(
-        priority: impl IntoIterator<Item = HostMeasurementFallback>,
-    ) -> Result<Self, ThemeAdmissionError> {
-        let priority = priority.into_iter().collect::<Vec<_>>();
-        reject_duplicate_fallbacks(&priority)?;
-        Ok(Self { priority })
-    }
-
-    pub fn priority(&self) -> impl ExactSizeIterator<Item = HostMeasurementFallback> + '_ {
-        self.priority.iter().copied()
-    }
-
-    pub fn contains(&self, fallback: HostMeasurementFallback) -> bool {
-        self.priority.contains(&fallback)
-    }
-
-    pub fn first(&self) -> Option<HostMeasurementFallback> {
-        self.priority.first().copied()
-    }
-
-    pub fn restrict_with(&self, restriction: &Self) -> Self {
-        let allowed = restriction
-            .priority
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>();
-        let priority = self
-            .priority
-            .iter()
-            .copied()
-            .filter(|fallback| allowed.contains(fallback))
-            .collect();
-        Self { priority }
     }
 }
 
@@ -485,6 +435,64 @@ impl Default for ThemeRequirements {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ThemeCapabilities(u32);
+
+impl Iterator for ThemeCapabilities {
+    type Item = ThemeCapability;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+        let index = self.0.trailing_zeros() as usize;
+        self.0 &= self.0 - 1;
+        Some(ThemeCapability::ALL[index])
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.0.count_ones() as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ThemeCapabilities {}
+
+impl std::fmt::Debug for ThemeCapabilities {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(*self).finish()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct TextLayoutCapabilities(u32);
+
+impl Iterator for TextLayoutCapabilities {
+    type Item = TextLayoutCapability;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+        let index = self.0.trailing_zeros() as usize;
+        self.0 &= self.0 - 1;
+        Some(TextLayoutCapability::ALL[index])
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.0.count_ones() as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for TextLayoutCapabilities {}
+
+impl std::fmt::Debug for TextLayoutCapabilities {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(*self).finish()
+    }
+}
+
 /// Host-owned monotonic ceiling for typed theme and trusted-lane capabilities.
 ///
 /// Font sources, host measurement fallbacks, and portability admission remain separate typed
@@ -492,16 +500,18 @@ impl Default for ThemeRequirements {
 /// disguised font-source or fallback policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeAdmissionPolicy {
-    allowed_capabilities: BTreeSet<ThemeCapability>,
-    allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
+    allowed_capabilities: ThemeCapabilities,
+    allowed_text_capabilities: TextLayoutCapabilities,
     trusted_lanes: TrustedThemeLanes,
 }
 
 impl ThemeAdmissionPolicy {
     pub fn permissive() -> Self {
         Self {
-            allowed_capabilities: ThemeCapability::ALL.iter().copied().collect(),
-            allowed_text_capabilities: TextLayoutCapability::ALL.iter().copied().collect(),
+            allowed_capabilities: ThemeCapabilities((1 << ThemeCapability::ALL.len()) - 1),
+            allowed_text_capabilities: TextLayoutCapabilities(
+                (1 << TextLayoutCapability::ALL.len()) - 1,
+            ),
             trusted_lanes: TrustedThemeLanes::none(),
         }
     }
@@ -510,7 +520,11 @@ impl ThemeAdmissionPolicy {
         mut self,
         allowed: impl IntoIterator<Item = ThemeCapability>,
     ) -> Self {
-        self.allowed_capabilities = allowed.into_iter().collect();
+        self.allowed_capabilities = ThemeCapabilities(
+            allowed
+                .into_iter()
+                .fold(0, |mask, capability| mask | (1 << capability as u32)),
+        );
         self
     }
 
@@ -518,7 +532,11 @@ impl ThemeAdmissionPolicy {
         mut self,
         allowed: impl IntoIterator<Item = TextLayoutCapability>,
     ) -> Self {
-        self.allowed_text_capabilities = allowed.into_iter().collect();
+        self.allowed_text_capabilities = TextLayoutCapabilities(
+            allowed
+                .into_iter()
+                .fold(0, |mask, capability| mask | (1 << capability as u32)),
+        );
         self
     }
 
@@ -528,13 +546,13 @@ impl ThemeAdmissionPolicy {
     }
 
     pub fn allowed_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.allowed_capabilities.iter().copied()
+        self.allowed_capabilities
     }
 
     pub fn allowed_text_capabilities(
         &self,
     ) -> impl ExactSizeIterator<Item = TextLayoutCapability> + '_ {
-        self.allowed_text_capabilities.iter().copied()
+        self.allowed_text_capabilities
     }
 
     pub const fn trusted_lanes(&self) -> &TrustedThemeLanes {
@@ -544,16 +562,12 @@ impl ThemeAdmissionPolicy {
     /// Applies an operation-level restriction without allowing any host axis to be widened.
     pub fn restrict_with(&self, restriction: &Self) -> Self {
         Self {
-            allowed_capabilities: self
-                .allowed_capabilities
-                .intersection(&restriction.allowed_capabilities)
-                .copied()
-                .collect(),
-            allowed_text_capabilities: self
-                .allowed_text_capabilities
-                .intersection(&restriction.allowed_text_capabilities)
-                .copied()
-                .collect(),
+            allowed_capabilities: ThemeCapabilities(
+                self.allowed_capabilities.0 & restriction.allowed_capabilities.0,
+            ),
+            allowed_text_capabilities: TextLayoutCapabilities(
+                self.allowed_text_capabilities.0 & restriction.allowed_text_capabilities.0,
+            ),
             trusted_lanes: self.trusted_lanes.restrict_with(&restriction.trusted_lanes),
         }
     }
@@ -571,7 +585,6 @@ pub(crate) struct ResolvedThemeAdmission {
     host_allowed_capabilities: BTreeSet<ThemeCapability>,
     host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
     font_sources: FontSourcePolicy,
-    measurement_fallbacks: HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
     trusted_lanes: TrustedThemeLanes,
 }
@@ -585,15 +598,15 @@ pub(crate) fn resolve_theme_admission(
 ) -> Result<ResolvedThemeAdmission, ThemeAdmissionError> {
     if let Some(capability) = requirements
         .required_capabilities
-        .difference(&admission.allowed_capabilities)
-        .next()
+        .iter()
+        .find(|capability| admission.allowed_capabilities.0 & (1 << **capability as u32) == 0)
     {
         return Err(ThemeAdmissionError::ThemeCapabilityDenied(*capability));
     }
     if let Some(capability) = requirements
         .required_text_capabilities
-        .difference(&admission.allowed_text_capabilities)
-        .next()
+        .iter()
+        .find(|capability| admission.allowed_text_capabilities.0 & (1 << **capability as u32) == 0)
     {
         return Err(ThemeAdmissionError::TextLayoutCapabilityDenied(*capability));
     }
@@ -602,7 +615,6 @@ pub(crate) fn resolve_theme_admission(
         host_allowed_capabilities: requirements.required_capabilities.clone(),
         host_allowed_text_capabilities: requirements.required_text_capabilities.clone(),
         font_sources: font_sources.restrict_to(catalog.available_sources())?,
-        measurement_fallbacks: HostMeasurementFallbackPolicy::default(),
         portability,
         trusted_lanes: admission.trusted_lanes.clone(),
     })
@@ -614,7 +626,6 @@ impl ResolvedThemeAdmission {
             host_allowed_capabilities: self.host_allowed_capabilities.clone(),
             host_allowed_text_capabilities: self.host_allowed_text_capabilities.clone(),
             font_sources: self.font_sources.clone(),
-            measurement_fallbacks: self.measurement_fallbacks.clone(),
             portability: self.portability,
             trusted_lanes: self.trusted_lanes.clone(),
         }
@@ -622,10 +633,6 @@ impl ResolvedThemeAdmission {
 
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_sources
-    }
-
-    pub const fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
-        &self.measurement_fallbacks
     }
 
     pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
@@ -646,7 +653,6 @@ pub struct ThemeHostAdmissionReport {
     host_allowed_capabilities: BTreeSet<ThemeCapability>,
     host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
     font_sources: FontSourcePolicy,
-    measurement_fallbacks: HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
     trusted_lanes: TrustedThemeLanes,
 }
@@ -664,10 +670,6 @@ impl ThemeHostAdmissionReport {
 
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_sources
-    }
-
-    pub const fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
-        &self.measurement_fallbacks
     }
 
     pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
@@ -690,8 +692,6 @@ pub enum ThemeAdmissionError {
     EmptyThemeFontSources,
     #[error("theme and host font-source policies have no source in common")]
     EmptyFontSourceIntersection,
-    #[error("measurement fallback policy contains duplicate fallback `{0}`")]
-    DuplicateMeasurementFallback(HostMeasurementFallback),
     #[error("theme capability `{0}` is disabled by the host")]
     ThemeCapabilityDenied(ThemeCapability),
     #[error("text-layout capability `{0}` is disabled by the host")]
@@ -700,38 +700,12 @@ pub enum ThemeAdmissionError {
     TrustedThemeLaneDenied(TrustedThemeLane),
 }
 
-fn reject_duplicate_font_sources(priority: &[FontSource]) -> Result<(), ThemeAdmissionError> {
-    let mut seen = BTreeSet::new();
-    for source in priority {
-        if !seen.insert(*source) {
-            return Err(ThemeAdmissionError::DuplicateFontSource(*source));
-        }
-    }
-    Ok(())
-}
-
-fn reject_duplicate_fallbacks(
-    priority: &[HostMeasurementFallback],
-) -> Result<(), ThemeAdmissionError> {
-    let mut seen = BTreeSet::new();
-    for fallback in priority {
-        if !seen.insert(*fallback) {
-            return Err(ThemeAdmissionError::DuplicateMeasurementFallback(*fallback));
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn source_policy(values: &[FontSource]) -> FontSourcePolicy {
         FontSourcePolicy::new(values.iter().copied()).unwrap()
-    }
-
-    fn fallback_policy(values: &[HostMeasurementFallback]) -> HostMeasurementFallbackPolicy {
-        HostMeasurementFallbackPolicy::new(values.iter().copied()).unwrap()
     }
 
     fn resolve(
@@ -789,61 +763,25 @@ mod tests {
     }
 
     #[test]
-    fn source_and_fallback_policies_reject_duplicates() {
+    fn source_policies_reject_duplicates() {
         assert_eq!(
-            FontSourcePolicy::new([FontSource::Embedded, FontSource::Embedded]),
-            Err(ThemeAdmissionError::DuplicateFontSource(
-                FontSource::Embedded
-            ))
+            FontSourcePolicy::new([]),
+            Err(ThemeAdmissionError::EmptyFontSourcePolicy)
         );
-        assert_eq!(
-            HostMeasurementFallbackPolicy::new([
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::AcceptHostDependent
-            ]),
-            Err(ThemeAdmissionError::DuplicateMeasurementFallback(
-                HostMeasurementFallback::AcceptHostDependent
-            ))
-        );
-    }
-
-    #[test]
-    fn fallback_intersection_is_complete_and_preserves_host_priority() {
-        let all = HostMeasurementFallback::ALL;
-        let mask_count = 1_usize << all.len();
-        for host_mask in 0..mask_count {
-            for restriction_mask in 0..mask_count {
-                let host_values = all
-                    .iter()
-                    .enumerate()
-                    .filter(|(index, _)| host_mask & (1 << index) != 0)
-                    .map(|(_, value)| *value)
-                    .collect::<Vec<_>>();
-                let restriction_values = all
-                    .iter()
-                    .rev()
-                    .enumerate()
-                    .filter(|(index, _)| restriction_mask & (1 << index) != 0)
-                    .map(|(_, value)| *value)
-                    .collect::<Vec<_>>();
-                let host = fallback_policy(&host_values);
-                let restriction = fallback_policy(&restriction_values);
-                let actual = host
-                    .restrict_with(&restriction)
-                    .priority()
-                    .collect::<Vec<_>>();
-                let expected = host_values
-                    .iter()
-                    .copied()
-                    .filter(|value| restriction_values.contains(value))
-                    .collect::<Vec<_>>();
-                assert_eq!(actual, expected);
-            }
+        for source in FontSource::ALL.iter().copied() {
+            assert_eq!(
+                FontSourcePolicy::new([source, source]),
+                Err(ThemeAdmissionError::DuplicateFontSource(source))
+            );
+            assert_eq!(
+                FontSourcePolicy::new([FontSource::Embedded, FontSource::System, source]),
+                Err(ThemeAdmissionError::DuplicateFontSource(source))
+            );
         }
     }
 
     #[test]
-    fn system_font_catalog_has_no_prepared_layout_fallbacks() {
+    fn system_font_catalog_resolves_system_sources() {
         let resolved = resolve_theme_admission(
             &ThemeAdmissionPolicy::permissive(),
             &FontSourcePolicy::default(),
@@ -857,13 +795,6 @@ mod tests {
             resolved.font_source_policy(),
             &FontSourcePolicy::system_only()
         );
-        assert!(
-            resolved
-                .measurement_fallback_policy()
-                .priority()
-                .next()
-                .is_none()
-        );
     }
 
     #[test]
@@ -876,10 +807,14 @@ mod tests {
         );
         let restriction = ThemeAdmissionPolicy::permissive()
             .with_allowed_capabilities([
+                ThemeCapability::SemanticRules,
                 ThemeCapability::Typography,
                 ThemeCapability::SemanticRules,
             ])
-            .with_allowed_text_capabilities([TextLayoutCapability::CatalogBinding])
+            .with_allowed_text_capabilities([
+                TextLayoutCapability::CatalogBinding,
+                TextLayoutCapability::CatalogBinding,
+            ])
             .with_trusted_lanes(TrustedThemeLanes::from_allowed([
                 TrustedThemeLane::RawThemeCss,
                 TrustedThemeLane::ArbitrarySvg,
@@ -887,6 +822,17 @@ mod tests {
 
         let resolved = host.restrict_with(&restriction);
 
+        let mut allowed = resolved.allowed_capabilities();
+        assert_eq!(allowed.len(), 2);
+        assert_eq!(allowed.next(), Some(ThemeCapability::Typography));
+        assert_eq!(allowed.len(), 1);
+        let mut allowed_text = resolved.allowed_text_capabilities();
+        assert_eq!(allowed_text.len(), 1);
+        assert_eq!(
+            allowed_text.next(),
+            Some(TextLayoutCapability::CatalogBinding)
+        );
+        assert_eq!(allowed_text.len(), 0);
         assert_eq!(
             resolved.allowed_capabilities().collect::<Vec<_>>(),
             vec![ThemeCapability::Typography, ThemeCapability::SemanticRules]
@@ -907,15 +853,6 @@ mod tests {
                 .priority()
                 .collect::<Vec<_>>(),
             vec![FontSource::Embedded]
-        );
-        assert_eq!(
-            fallback_policy(&[HostMeasurementFallback::AcceptHostDependent,])
-                .restrict_with(&fallback_policy(&[
-                    HostMeasurementFallback::AcceptHostDependent
-                ]))
-                .priority()
-                .collect::<Vec<_>>(),
-            vec![HostMeasurementFallback::AcceptHostDependent]
         );
         assert_eq!(
             ThemePortabilityRequirement::BestEffort
@@ -964,6 +901,12 @@ mod tests {
 
     #[test]
     fn every_theme_capability_is_admitted_only_by_set_intersection() {
+        assert_eq!(
+            ThemeAdmissionPolicy::permissive()
+                .allowed_capabilities()
+                .collect::<Vec<_>>(),
+            ThemeCapability::ALL
+        );
         for capability in ThemeCapability::ALL.iter().copied() {
             let requirements =
                 ThemeRequirements::default().with_required_capabilities([capability]);
@@ -981,6 +924,12 @@ mod tests {
 
     #[test]
     fn every_text_capability_is_admitted_only_by_set_intersection() {
+        assert_eq!(
+            ThemeAdmissionPolicy::permissive()
+                .allowed_text_capabilities()
+                .collect::<Vec<_>>(),
+            TextLayoutCapability::ALL
+        );
         for capability in TextLayoutCapability::ALL.iter().copied() {
             let requirements =
                 ThemeRequirements::default().with_required_text_capabilities([capability]);

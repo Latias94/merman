@@ -1,10 +1,7 @@
-#[cfg(test)]
 mod audit;
 
 use crate::DiagramFamilyId;
-#[cfg(test)]
 use audit::*;
-#[cfg(test)]
 use merman_theme_contract::{
     ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1,
 };
@@ -24,14 +21,12 @@ pub(crate) enum FamilyThemeDisposition {
     Unsupported,
 }
 
-#[cfg(test)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FamilyThemeSupportSummary {
     typed: bool,
     unsupported: bool,
 }
 
-#[cfg(test)]
 impl FamilyThemeSupportSummary {
     fn record(&mut self, disposition: FamilyThemeDisposition) {
         match disposition {
@@ -60,7 +55,6 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
-    #[cfg(test)]
     pub(crate) const ALL: [Self; 6] = [
         Self::Clear,
         Self::Transparent,
@@ -495,7 +489,6 @@ fn classify_ordinal_palette(
 ///
 /// This deliberately returns only aggregate disposition presence. Selectors, paint classes, route
 /// identities, and writer evidence remain private implementation details.
-#[cfg(test)]
 pub(super) fn summarize_theme_support(
     family: DiagramFamilyId,
     target: ThemeTarget,
@@ -537,7 +530,6 @@ pub(super) fn summarize_theme_support(
 ///
 /// The property match is only a contract-to-renderer vocabulary translation. Route ownership
 /// remains exclusively defined by `classify_base_typography`.
-#[cfg(test)]
 pub(super) fn summarize_base_typography_support(
     family: DiagramFamilyId,
     property: ThemeSupportBaseTypographyPropertyV1,
@@ -564,7 +556,6 @@ pub(super) fn summarize_base_typography_support(
     summary
 }
 
-#[cfg(test)]
 fn for_each_public_rule_facet(
     facet: ThemeRuleFacetV1,
     mut visit: impl FnMut(FamilyThemeRuleFacet),

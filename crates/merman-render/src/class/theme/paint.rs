@@ -1,6 +1,6 @@
 use crate::diagram_theme::{CanvasPaint, ResolvedStyleProperty, ResolvedThemeStyle, Specified};
 
-use super::terminal::ExpectedPaint;
+use super::outcomes::ClassSelectedPaint;
 
 #[derive(Debug, Clone, Default)]
 pub(super) enum ClassPaintAction {
@@ -25,7 +25,7 @@ pub(super) struct ClassPaintBinding {
     compatibility_css: String,
     config_origin: Option<&'static str>,
     action: ClassPaintAction,
-    typed: Option<ExpectedPaint>,
+    typed: Option<ClassSelectedPaint>,
     selected_property: Option<ResolvedStyleProperty>,
 }
 
@@ -49,7 +49,7 @@ impl ClassPaintBinding {
         &mut self,
         style: &ResolvedThemeStyle,
         stroke: bool,
-        candidate: Option<ExpectedPaint>,
+        candidate: Option<ClassSelectedPaint>,
     ) {
         if self.config_origin.is_some() {
             return;
@@ -92,17 +92,12 @@ impl ClassPaintBinding {
         self.config_origin.is_some()
     }
 
-    pub(super) fn typed(&self) -> Option<&ExpectedPaint> {
+    pub(super) fn typed(&self) -> Option<&ClassSelectedPaint> {
         self.typed.as_ref()
     }
 
-    pub(super) fn stroke_receipt(&self) -> Option<super::terminal::ExpectedStroke> {
-        let typed = self.typed()?;
-        Some(super::terminal::ExpectedStroke {
-            rule_index: typed.rule_index,
-            property: self.selected_property?,
-            css: typed.css.clone(),
-        })
+    pub(super) fn stroke_property(&self) -> Option<ResolvedStyleProperty> {
+        self.typed.as_ref().and(self.selected_property)
     }
 
     pub(super) fn css(&self) -> &str {

@@ -454,7 +454,6 @@ fn tree_view_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -487,7 +486,6 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
     assert_eq!(generic_evidence.applied_count(), 1);
     assert_eq!(generic_evidence.not_applicable_count(), 0);
     assert_eq!(generic_evidence.theme_residual_count(), 0);
-    assert_eq!(generic_evidence.compatibility_residual_count(), 0);
 
     let label_color = CanvasPaint::solid("#654321").expect("valid NodeLabel color");
     let cascade_theme = tree_view_rules_theme([
@@ -531,7 +529,6 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -592,11 +589,6 @@ fn tree_view_explicit_default_scalar_paints_reach_typed_css_and_portable_evidenc
         assert_eq!(evidence.applied_count(), 1, "target={target:?}");
         assert_eq!(evidence.not_applicable_count(), 0, "target={target:?}");
         assert_eq!(evidence.theme_residual_count(), 0, "target={target:?}");
-        assert_eq!(
-            evidence.compatibility_residual_count(),
-            0,
-            "target={target:?}"
-        );
         assert_eq!(
             evidence.mermaid_compatibility_residual_count(),
             0,
@@ -915,11 +907,6 @@ fn tree_view_typed_marker_paint_reaches_icon_terminal_and_portable_evidence() {
         assert_eq!(evidence.not_applicable_count(), 0, "variant={variant:?}");
         assert_eq!(evidence.theme_residual_count(), 0, "variant={variant:?}");
         assert_eq!(
-            evidence.compatibility_residual_count(),
-            0,
-            "variant={variant:?}"
-        );
-        assert_eq!(
             evidence.mermaid_compatibility_residual_count(),
             0,
             "variant={variant:?}"
@@ -950,7 +937,6 @@ fn tree_view_typed_marker_paint_is_not_applicable_without_icon_terminals() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 

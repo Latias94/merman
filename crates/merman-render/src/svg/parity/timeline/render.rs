@@ -2,25 +2,17 @@ use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
 use crate::timeline::TimelineCssBinding;
 
-fn timeline_css(
+fn write_timeline_css(
+    out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
     theme: &TimelineCssBinding,
     typography: &crate::timeline::TimelineTypographyThemePlan,
     event_emission: &mut TimelineEventEmissionState<'_>,
-) -> TimelineCss {
+) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     let common = typography.common_css();
-    let mut out = String::new();
-    let base_emission = common
-        .write_prefix_with_font_emission(&mut out, diagram_id)
-        .expect("String-backed Timeline base CSS writer");
-    let mut root_rule = String::new();
-    common
-        .write_root_with_font_emission(&mut root_rule, diagram_id, diagram_id)
-        .expect("String-backed Timeline root CSS writer");
-    let root_typography_emitted = !root_rule.is_empty();
-
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
+    common.write_prefix_with_font_emission(out, diagram_id)?;
+    let _ = write!(out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
     for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
         let sw = 17 - 3 * (i as i64);
@@ -32,49 +24,51 @@ fn timeline_css(
                 Some(theme.node_border.as_str())
             };
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{diagram_id} .section-{section} rect,#{diagram_id} .section-{section} path,#{diagram_id} .section-{section} circle{{"#,
             );
             if let Some(fill) = timeline_section_fill(theme, i, false) {
-                let _ = write!(&mut out, "fill:{fill};");
+                let _ = write!(out, "fill:{fill};");
             }
-            if let Some(receipt) = &mut event_emission.receipt {
-                let _ = receipt.write_shape_stroke_css(&mut out, i, redux_stroke);
-            } else if let Some(stroke) = redux_stroke {
-                let _ = write!(&mut out, "stroke:{stroke};");
+            if let Some(stroke) = event_emission
+                .theme
+                .shape_stroke_for_redux()
+                .or(redux_stroke)
+            {
+                let _ = write!(out, "stroke:{stroke};");
             }
             let _ = write!(
-                &mut out,
+                out,
                 r#"stroke-width:{};filter:{};}}#{diagram_id} .section-{section} text{{"#,
                 theme.stroke_width,
                 scoped_svg_url(diagram_id, "drop-shadow"),
             );
-            if let Some(receipt) = &mut event_emission.receipt {
-                let _ = receipt.write_label_fill_css(&mut out, i, &theme.node_border);
-            } else {
-                let _ = write!(&mut out, "fill:{};", theme.node_border);
-            }
+            let typed_stroke = event_emission.theme.stroke_for_redux();
+            let node_border = typed_stroke.unwrap_or(&theme.node_border);
+            let _ = write!(out, "fill:{node_border};");
             let _ = write!(
-                &mut out,
+                out,
                 r#"font-weight:{};}}#{diagram_id} .node-icon-{section}{{font-size:40px;color:{};}}#{diagram_id} .section-edge-{section}{{stroke:{};}}#{diagram_id} .edge-depth-{section}{{stroke-width:{sw};}}#{diagram_id} .section-{section} line{{stroke:{};stroke-width:3;}}#{diagram_id} .lineWrapper line{{"#,
                 theme.font_weight,
                 section_theme.c_scale_label,
                 section_theme.c_scale,
                 section_theme.c_scale_inv,
             );
-            if let Some(receipt) = &mut event_emission.receipt {
-                let _ = receipt.write_line_stroke_css(&mut out, i, &theme.node_border);
-            } else {
-                let _ = write!(&mut out, "stroke:{};", theme.node_border);
+            let _ = write!(out, "stroke:{node_border};");
+            out.checkpoint()?;
+            if typed_stroke.is_some()
+                && let Some(outcome) = &mut event_emission.outcome
+            {
+                outcome.record_stroke_css();
             }
             let _ = write!(
-                &mut out,
+                out,
                 r#"stroke-width:{};}}#{diagram_id} .disabled,#{diagram_id} .disabled circle,#{diagram_id} .disabled text{{fill:{};}}#{diagram_id} .disabled text{{fill:{};}}"#,
                 theme.stroke_width, theme.disabled_fill, theme.disabled_text_fill,
             );
         } else {
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
                 diagram_id,
                 section,
@@ -110,6 +104,7 @@ fn timeline_css(
                 theme.disabled_text_fill,
             );
         }
+        out.checkpoint()?;
     }
 
     if theme.use_neo_gradient {
@@ -117,7 +112,7 @@ fn timeline_css(
         for (i, _) in theme.sections.iter().enumerate() {
             let section = i as i64 - 1;
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} .section-{}[data-look="neo"] rect,#{} .section-{}[data-look="neo"] path,#{} .section-{}[data-look="neo"] circle{{fill:{};stroke:{};stroke-width:2;}}#{} .section-{}[data-look="neo"] line{{stroke:{};stroke-width:2;}}"#,
                 diagram_id,
                 section,
@@ -131,11 +126,12 @@ fn timeline_css(
                 section,
                 gradient,
             );
+            out.checkpoint()?;
         }
     }
 
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
         diagram_id,
         diagram_id,
@@ -148,24 +144,9 @@ fn timeline_css(
         diagram_id
     );
 
-    out.push_str(&root_rule);
-    TimelineCss {
-        css: out,
-        font_family_css: base_emission.diagram_root_font_family_css().to_owned(),
-        font_size_css: base_emission.diagram_root_font_size_css().to_owned(),
-        base_typography_emitted: true,
-        root_typography_emitted,
-        text_color: common.text_color().to_owned(),
-    }
-}
-
-struct TimelineCss {
-    css: String,
-    font_family_css: String,
-    font_size_css: String,
-    base_typography_emitted: bool,
-    root_typography_emitted: bool,
-    text_color: String,
+    out.checkpoint()?;
+    common.write_root_with_font_emission(out, diagram_id, diagram_id)?;
+    Ok(())
 }
 
 fn timeline_section_fill(
@@ -205,48 +186,36 @@ struct TimelineTextPaintEmissionState<'a> {
     theme: &'a TimelineCssBinding,
     neo_gradient: bool,
     event_stroke: Option<&'a str>,
-    receipt: Option<crate::timeline::TimelineTextPaintReceipt<'a>>,
+    outcome: Option<crate::timeline::TimelineTextPaintOutcome>,
 }
 
 impl TimelineTextPaintEmissionState<'_> {
-    fn record_node(&mut self, node: &TimelineNodeLayout, inline_fill: Option<&str>) {
-        let Some(receipt) = &mut self.receipt else {
+    fn record_node(
+        &mut self,
+        node: &TimelineNodeLayout,
+        slot: Option<usize>,
+        inline_fill: Option<&str>,
+    ) {
+        let Some(outcome) = &mut self.outcome else {
             return;
         };
-        let slot = node
-            .section_class
-            .strip_prefix("section-")
-            .and_then(|suffix| suffix.parse::<i64>().ok())
-            .and_then(|section| section.checked_add(1))
-            .and_then(|slot| usize::try_from(slot).ok());
         let shape_fill = inline_fill.or_else(|| {
             slot.and_then(|slot| timeline_section_fill(self.theme, slot, self.neo_gradient))
         });
         let label_fill =
             slot.and_then(|slot| timeline_section_label_fill(self.theme, slot, self.event_stroke));
-        receipt.record_node(
+        outcome.record_node(
             shape_fill,
             label_fill,
             node.label_lines.iter().any(|line| !line.trim().is_empty()),
         );
     }
 
-    fn finish(self) -> Result<()> {
-        if let Some(receipt) = self.receipt
-            && !self.plan.record_terminal(receipt)
-        {
-            return Err(crate::Error::InvalidModel {
-                message: "Timeline text paint receipt did not match the terminal SVG".to_string(),
-            });
+    fn finish(self) {
+        if let Some(outcome) = self.outcome {
+            self.plan.record_emission(outcome);
         }
-        Ok(())
     }
-}
-
-/// Exact inline paint supplied to the node-background writer after output admission.
-#[derive(Debug)]
-struct TimelineNodeEmission {
-    inline_fill: Option<Box<str>>,
 }
 
 fn write_timeline_connector(
@@ -280,12 +249,11 @@ fn write_timeline_connector(
     out.checkpoint()
 }
 
-fn write_timeline_event_wrapper_open<'a>(
+fn write_timeline_event_wrapper_open(
     out: &mut impl SvgOutput,
     event: &TimelineNodeLayout,
-    opacity_token: Option<&'a str>,
-) -> Result<(Option<&'a str>, bool)> {
-    let output_start = out.len();
+    opacity_token: Option<&str>,
+) -> Result<()> {
     match opacity_token {
         Some(opacity_token) => {
             let _ = write!(
@@ -305,21 +273,7 @@ fn write_timeline_event_wrapper_open<'a>(
             );
         }
     }
-    out.checkpoint()?;
-    let opening = out
-        .as_str()
-        .get(output_start..)
-        .and_then(|output| output.split_once('>').map(|(opening, _)| opening))
-        .unwrap_or_default();
-    let actual_opacity = opening
-        .split_once(" opacity=\"")
-        .and_then(|(_, rest)| rest.split_once('"').map(|(value, _)| value));
-    let opacity_matches = opening.contains("class=\"eventWrapper\"")
-        && match opacity_token {
-            Some(expected) => actual_opacity == Some(expected),
-            None => actual_opacity.is_none(),
-        };
-    Ok((opacity_token, opacity_matches))
+    out.checkpoint()
 }
 
 fn negative_radius_token(token: &str, radius_value: f64) -> String {
@@ -330,250 +284,70 @@ fn negative_radius_token(token: &str, radius_value: f64) -> String {
     }
 }
 
-fn observe_timeline_event_radius<'a>(
-    output: &str,
-    event: &TimelineNodeLayout,
-    event_radius: Option<(&'a str, f64)>,
-    is_redux_theme: bool,
-) -> (Option<&'a str>, bool) {
-    let Some(path_d) = output
-        .split_once("class=\"node-bkg node-undefined\" d=\"")
-        .and_then(|(_, rest)| rest.split_once('"').map(|(path, _)| path))
-    else {
-        return (None, false);
-    };
-
-    let w = event.width.max(1.0);
-    let h = event.height.max(1.0);
-    let expected_tokens = match event_radius {
-        Some((radius_token, radius_value)) => {
-            let negative_token = negative_radius_token(radius_token, radius_value);
-            vec![
-                "M0".to_string(),
-                fmt(h - radius_value).to_string(),
-                format!("v{}", fmt(-h + 2.0 * radius_value)),
-                format!("q0,{negative_token}"),
-                format!("{radius_token},{negative_token}"),
-                format!("h{}", fmt(w - 2.0 * radius_value)),
-                format!("q{radius_token},0"),
-                format!("{radius_token},{radius_token}"),
-                format!("v{}", fmt(h - radius_value)),
-                "H0".to_string(),
-                "Z".to_string(),
-            ]
-        }
-        None if is_redux_theme => {
-            let radius = crate::timeline::MERMAID_EVENT_RADIUS_PX;
-            vec![
-                "M0".to_string(),
-                fmt(h - radius).to_string(),
-                format!("v{}", fmt(-(h - radius))),
-                format!("h{}", fmt(w)),
-                format!("v{}", fmt(h)),
-                "H0".to_string(),
-                "Z".to_string(),
-            ]
-        }
-        None => {
-            let radius = crate::timeline::MERMAID_EVENT_RADIUS_PX;
-            vec![
-                "M0".to_string(),
-                fmt(h - radius).to_string(),
-                format!("v{}", fmt(-h + 2.0 * radius)),
-                format!("q0,-{}", crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
-                format!(
-                    "{token},-{token}",
-                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
-                ),
-                format!("h{}", fmt(w - 2.0 * radius)),
-                format!(
-                    "q{token},0",
-                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
-                ),
-                format!(
-                    "{token},{token}",
-                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
-                ),
-                format!("v{}", fmt(h - radius)),
-                "H0".to_string(),
-                "Z".to_string(),
-            ]
-        }
-    };
-    let actual_tokens = path_d.split_whitespace().collect::<Vec<_>>();
-    let matches = actual_tokens.len() == expected_tokens.len()
-        && actual_tokens
-            .iter()
-            .zip(expected_tokens.iter())
-            .all(|(actual, expected)| *actual == expected);
-
-    match event_radius {
-        Some((token, _)) => (matches.then_some(token), matches),
-        None if is_redux_theme => (None, matches),
-        None => (
-            matches.then_some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
-            matches,
-        ),
-    }
-}
-
 struct TimelineEventEmissionState<'a> {
     theme: &'a crate::timeline::TimelineEventTheme,
     next_event_index: usize,
-    receipt: Option<crate::timeline::TimelineEventThemeReceipt>,
+    outcome: Option<crate::timeline::TimelineEventThemeOutcome>,
 }
 
 struct TimelineTypographyEmissionState<'a> {
     plan: &'a crate::timeline::TimelineTypographyThemePlan,
-    receipt: Option<crate::timeline::TimelineTypographyThemeReceipt<'a>>,
+    outcome: Option<crate::timeline::TimelineTypographyOutcome>,
 }
 
 impl<'a> TimelineTypographyEmissionState<'a> {
-    fn new(
-        plan: &'a crate::timeline::TimelineTypographyThemePlan,
-        layout: &'a TimelineDiagramLayout,
-    ) -> Self {
+    fn new(plan: &'a crate::timeline::TimelineTypographyThemePlan) -> Self {
         Self {
             plan,
-            receipt: plan.begin_terminal_receipt(layout),
-        }
-    }
-
-    fn record_css(&mut self, css: &TimelineCss) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_css_emission(
-                &css.font_family_css,
-                &css.font_size_css,
-                css.base_typography_emitted,
-                css.root_typography_emitted,
-            );
-        }
-    }
-
-    fn record_text_run(&mut self, text: &str) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_text_run(text);
+            outcome: plan.begin_emission(),
         }
     }
 
     fn record_base_text_run(&mut self, text: &str) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_base_text_run(text);
+        if let Some(outcome) = &mut self.outcome {
+            outcome.record_base_text_run(text);
         }
     }
 
-    fn finish(self) -> Result<()> {
-        if self
-            .receipt
-            .is_some_and(|receipt| !self.plan.record_terminal(receipt))
-        {
-            return Err(crate::Error::InvalidModel {
-                message: "Timeline typography receipt did not match the terminal SVG".to_string(),
-            });
+    fn finish(self) {
+        if let Some(outcome) = self.outcome {
+            self.plan.record_emission(outcome);
         }
-        Ok(())
     }
 }
 
 impl<'a> TimelineEventEmissionState<'a> {
-    fn new(theme: &'a crate::timeline::TimelineEventTheme, is_redux_theme: bool) -> Self {
+    fn new(theme: &'a crate::timeline::TimelineEventTheme) -> Self {
         Self {
             theme,
             next_event_index: 0,
-            receipt: theme.begin_terminal_receipt(is_redux_theme),
-        }
-    }
-
-    fn write_event_wrapper_open(
-        &self,
-        out: &mut impl SvgOutput,
-        event: &TimelineNodeLayout,
-    ) -> Result<(usize, Option<&'a str>, bool)> {
-        let event_index = self.next_event_index;
-        let expected_opacity_token = self.theme.opacity_token_for_event(event_index);
-        let (emitted_opacity_token, emitted_opacity_matches) =
-            write_timeline_event_wrapper_open(out, event, expected_opacity_token)?;
-        Ok((event_index, emitted_opacity_token, emitted_opacity_matches))
-    }
-
-    fn palette_slot_for_node(&self, node: &TimelineNodeLayout) -> Option<usize> {
-        self.theme.palette_slot_for_section(&node.section_class)
-    }
-
-    fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
-        self.theme.palette_fill_for_slot(slot)
-    }
-
-    fn record_stroke_node(&mut self, node: &TimelineNodeLayout) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_stroke_node(node);
+            outcome: theme.begin_emission(),
         }
     }
 
     fn record_stroke_line(&mut self) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_stroke_line();
+        if let Some(outcome) = &mut self.outcome {
+            outcome.record_stroke_line();
         }
     }
 
-    fn fill_for_event(&self, event_index: usize) -> Option<&str> {
-        self.theme.fill_for_event(event_index)
-    }
-
-    fn palette_line_stroke_for_slot(&self, slot: usize) -> Option<&str> {
-        self.theme.palette_line_stroke_for_slot(slot)
-    }
-
-    fn record_palette_node(
-        &mut self,
-        slot: Option<usize>,
-        emitted_fill: Option<&str>,
-        emitted_line_stroke: Option<&str>,
-    ) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_palette_node(slot, emitted_fill, emitted_line_stroke);
+    fn record_palette_node(&mut self, slot: Option<usize>, palette_fill_written: bool) {
+        if let Some(outcome) = &mut self.outcome {
+            outcome.record_palette_node(self.theme, slot, palette_fill_written);
         }
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-    )]
-    fn record_event_terminal(
-        &mut self,
-        event_index: usize,
-        emitted_opacity_token: Option<&str>,
-        emitted_opacity_matches: bool,
-        emitted_radius_token: Option<&str>,
-        emitted_radius_geometry_matches: bool,
-        emitted_fill: Option<&str>,
-        emitted_fill_matches: bool,
-    ) {
-        if let Some(receipt) = self.receipt.as_mut() {
-            receipt.record_checkpointed_event(
-                event_index,
-                emitted_opacity_token,
-                emitted_opacity_matches,
-                emitted_radius_token,
-                emitted_radius_geometry_matches,
-                emitted_fill,
-                emitted_fill_matches,
-            );
+    fn record_event(&mut self, event_index: usize) {
+        if let Some(outcome) = &mut self.outcome {
+            outcome.record_event(self.theme, event_index);
         }
         self.next_event_index += 1;
     }
 
-    fn finish(self) -> Result<()> {
-        if self
-            .receipt
-            .is_some_and(|receipt| !self.theme.record_terminal(receipt))
-        {
-            return Err(crate::Error::InvalidModel {
-                message: "Timeline event terminal receipt did not match the terminal SVG"
-                    .to_string(),
-            });
+    fn finish(self) {
+        if let Some(outcome) = self.outcome {
+            self.theme.record_emission(outcome);
         }
-        Ok(())
     }
 }
 
@@ -622,7 +396,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
         text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
-    ) -> Result<TimelineNodeEmission> {
+    ) -> Result<()> {
         let node_local_id = format!("node-{node_count}");
         let node_id = scoped_svg_id(diagram_id, &node_local_id);
         *node_count += 1;
@@ -652,29 +426,21 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 "M0 {y0} v{v1} q0,-{radius} {radius},-{radius} h{hw} q{radius},0 {radius},{radius} v{v2} H0 Z",
                 y0 = fmt(h - rd),
                 v1 = fmt(-h + 2.0 * rd),
-                radius = fmt(crate::timeline::MERMAID_EVENT_RADIUS_PX),
+                radius = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN,
                 hw = fmt(w - 2.0 * rd),
                 v2 = fmt(h - rd),
             )
         };
 
-        let node_palette_slot = event_emission.palette_slot_for_node(n);
-        let palette_fill = node_palette_slot
-            .and_then(|slot| event_emission.palette_fill_for_slot(slot))
-            .map(Box::<str>::from);
-        let palette_line_stroke = node_palette_slot
-            .and_then(|slot| event_emission.palette_line_stroke_for_slot(slot))
-            .map(str::to_owned);
-        let emitted_palette_slot = palette_fill.as_ref().and(node_palette_slot);
-        let direct_fill = event_index
-            .and_then(|event_index| event_emission.fill_for_event(event_index))
-            .map(Box::<str>::from);
-        let effective_fill = direct_fill.as_deref().or(palette_fill.as_deref());
-        let emitted_palette_fill = if direct_fill.is_none() {
-            palette_fill.as_deref()
-        } else {
-            None
-        };
+        let event_theme = event_emission.theme;
+        let node_palette_slot = event_theme.palette_slot_for_section(&n.section_class);
+        let palette_fill =
+            node_palette_slot.and_then(|slot| event_theme.palette_fill_for_slot(slot));
+        let palette_line_stroke =
+            node_palette_slot.and_then(|slot| event_theme.palette_line_stroke_for_slot(slot));
+        let direct_fill =
+            event_index.and_then(|event_index| event_theme.fill_for_event(event_index));
+        let effective_fill = direct_fill.or(palette_fill);
         let fill_style = effective_fill
             .map(|fill| format!(r#" style="fill:{};""#, escape_attr(fill)))
             .unwrap_or_default();
@@ -697,9 +463,8 @@ pub(crate) fn render_timeline_diagram_svg_model(
             fill_style = fill_style,
         );
         out.checkpoint()?;
-        let emitted_line_stroke = if !is_redux_theme {
+        if !is_redux_theme {
             let line_style = palette_line_stroke
-                .as_deref()
                 .map(|stroke| format!(r#" style="stroke:{};""#, escape_attr(stroke)))
                 .unwrap_or_default();
             let _ = write!(
@@ -711,10 +476,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 x2 = fmt(w)
             );
             out.checkpoint()?;
-            palette_line_stroke.as_deref()
-        } else {
-            None
-        };
+        }
         out.push_str("</g>");
         out.checkpoint()?;
 
@@ -751,62 +513,12 @@ pub(crate) fn render_timeline_diagram_svg_model(
         out.push_str("</text></g></g>");
         out.checkpoint()?;
         event_emission.record_palette_node(
-            emitted_palette_slot,
-            emitted_palette_fill,
-            emitted_line_stroke,
+            node_palette_slot,
+            direct_fill.is_none() && palette_fill.is_some(),
         );
-        text_emission.record_node(n, effective_fill);
-        event_emission.record_stroke_node(n);
+        text_emission.record_node(n, node_palette_slot, effective_fill);
         options.checkpoint_emit()?;
-        Ok(TimelineNodeEmission {
-            inline_fill: is_event.then(|| direct_fill.or(palette_fill)).flatten(),
-        })
-    }
-
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-    )]
-    fn render_event_node<'a>(
-        out: &mut impl SvgOutput,
-        diagram_id: SvgDiagramId<'_>,
-        node_count: &mut usize,
-        event: &TimelineNodeLayout,
-        is_redux_theme: bool,
-        is_neo: bool,
-        event_index: usize,
-        expected_effective_fill: Option<&str>,
-        event_radius: Option<(&'a str, f64)>,
-        event_emission: &mut TimelineEventEmissionState<'_>,
-        typography_emission: &mut TimelineTypographyEmissionState<'_>,
-        text_emission: &mut TimelineTextPaintEmissionState<'_>,
-        options: &SvgExecution<'_>,
-    ) -> Result<(Option<&'a str>, bool, bool)> {
-        let output_start = out.len();
-        let emission = render_node(
-            out,
-            diagram_id,
-            node_count,
-            event,
-            is_redux_theme,
-            is_neo,
-            true,
-            Some(event_index),
-            event_radius,
-            event_emission,
-            typography_emission,
-            text_emission,
-            options,
-        )?;
-        let output = out.as_str().get(output_start..).unwrap_or_default();
-        let radius_observation =
-            observe_timeline_event_radius(output, event, event_radius, is_redux_theme);
-        let emitted_fill_matches = emission.inline_fill.as_deref() == expected_effective_fill;
-        Ok((
-            radius_observation.0,
-            radius_observation.1,
-            emitted_fill_matches,
-        ))
+        Ok(())
     }
 
     #[allow(
@@ -825,45 +537,31 @@ pub(crate) fn render_timeline_diagram_svg_model(
         text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
-        let (event_index, emitted_opacity_token, emitted_opacity_matches) =
-            event_emission.write_event_wrapper_open(out, event)?;
-        let event_radius = event_emission.theme.radius_for_event(event_index);
-        let event_fill = event_emission
-            .fill_for_event(event_index)
-            .map(str::to_owned);
-        let effective_fill = event_fill.clone().or_else(|| {
-            event_emission
-                .palette_slot_for_node(event)
-                .and_then(|slot| event_emission.palette_fill_for_slot(slot))
-                .map(str::to_owned)
-        });
-        let (emitted_radius_token, emitted_radius_geometry_matches, emitted_fill_matches) =
-            render_event_node(
-                out,
-                diagram_id,
-                node_count,
-                event,
-                is_redux_theme,
-                is_neo,
-                event_index,
-                effective_fill.as_deref(),
-                event_radius,
-                event_emission,
-                typography_emission,
-                text_emission,
-                options,
-            )?;
+        let event_index = event_emission.next_event_index;
+        let event_theme = event_emission.theme;
+        write_timeline_event_wrapper_open(
+            out,
+            event,
+            event_theme.opacity_token_for_event(event_index),
+        )?;
+        render_node(
+            out,
+            diagram_id,
+            node_count,
+            event,
+            is_redux_theme,
+            is_neo,
+            true,
+            Some(event_index),
+            event_theme.radius_for_event(event_index),
+            event_emission,
+            typography_emission,
+            text_emission,
+            options,
+        )?;
         out.push_str("</g>");
         out.checkpoint()?;
-        event_emission.record_event_terminal(
-            event_index,
-            emitted_opacity_token,
-            emitted_opacity_matches,
-            emitted_radius_token,
-            emitted_radius_geometry_matches,
-            event_fill.as_deref(),
-            emitted_fill_matches,
-        );
+        event_emission.record_event(event_index);
         Ok(())
     }
 
@@ -892,7 +590,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             y = fmt(node.y)
         );
         out.checkpoint()?;
-        let _ = render_node(
+        render_node(
             out,
             diagram_id,
             node_count,
@@ -997,7 +695,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         };
     options.checkpoint_emit()?;
 
-    let mut event_emission = TimelineEventEmissionState::new(event_theme, is_redux_theme);
+    let mut event_emission = TimelineEventEmissionState::new(event_theme);
 
     // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
     // marker initialization without a diagram id. Preserve both observable source behaviors.
@@ -1014,24 +712,31 @@ pub(crate) fn render_timeline_diagram_svg_model(
         event_emission.record_stroke_line();
     }
 
-    let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme, layout);
+    let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme);
     let mut text_emission = TimelineTextPaintEmissionState {
         plan: text_paint,
         theme,
         neo_gradient: use_neo_gradient,
         event_stroke: event_theme.stroke_for_redux(),
-        receipt: text_paint.begin_terminal_receipt(layout, options.work_meter())?,
+        outcome: text_paint.begin_emission(),
     };
-    let css = timeline_css(diagram_id, theme, typography_theme, &mut event_emission);
     options.checkpoint_emit()?;
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css.css);
+    out.checkpoint()?;
+    {
+        let mut css = String::new();
+        write_timeline_css(
+            &mut css,
+            diagram_id,
+            theme,
+            typography_theme,
+            &mut event_emission,
+        )?;
+        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    }
+    out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;
-    typography_emission.record_css(&css);
-    if let Some(receipt) = &mut text_emission.receipt {
-        receipt.record_css(&css.text_color);
-    }
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     out.push_str(r#"<g/>"#);
@@ -1043,9 +748,6 @@ pub(crate) fn render_timeline_diagram_svg_model(
         escape_attr(&arrowhead_id)
     );
     out.checkpoint()?;
-    if let Some(receipt) = &mut text_emission.receipt {
-        receipt.record_marker();
-    }
     if is_redux_theme {
         let flood_opacity = if is_neo && theme.is_dark_theme {
             "0.2"
@@ -1095,7 +797,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             y = fmt(node.y)
         );
         out.checkpoint()?;
-        let _ = render_node(
+        render_node(
             &mut out,
             diagram_id,
             &mut node_count,
@@ -1158,9 +860,8 @@ pub(crate) fn render_timeline_diagram_svg_model(
             text = escape_xml(title)
         );
         out.checkpoint()?;
-        typography_emission.record_text_run(title);
-        if let Some(receipt) = &mut text_emission.receipt {
-            receipt.record_title(title);
+        if let Some(outcome) = &mut text_emission.outcome {
+            outcome.record_title();
         }
     }
 
@@ -1177,19 +878,17 @@ pub(crate) fn render_timeline_diagram_svg_model(
         );
         out.checkpoint()?;
         event_emission.record_stroke_line();
-        if let Some(receipt) = &mut text_emission.receipt {
-            receipt.record_marker_reference(
-                arrowhead_id == scoped_svg_id(diagram_id, "arrowhead").to_string(),
-            );
+        if let Some(outcome) = &mut text_emission.outcome {
+            outcome.record_marker_reference();
         }
     }
 
     out.push_str("</svg>\n");
     options.checkpoint_emit()?;
     let rooted_svg = root_document.complete(out.finish()?)?;
-    event_emission.finish()?;
-    typography_emission.finish()?;
-    text_emission.finish()?;
+    event_emission.finish();
+    typography_emission.finish();
+    text_emission.finish();
     Ok(rooted_svg)
 }
 
@@ -1197,7 +896,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;
-    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout};
+    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
     use std::fmt;
     use std::ops::Range;
 
@@ -1260,44 +959,6 @@ mod tests {
         }
     }
 
-    fn test_event_node(width: f64, height: f64) -> TimelineNodeLayout {
-        TimelineNodeLayout {
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-            content_width: width,
-            padding: 0.0,
-            section_class: "section-0".to_string(),
-            label: "event".to_string(),
-            label_lines: vec!["event".to_string()],
-            kind: "event".to_string(),
-        }
-    }
-
-    #[test]
-    fn timeline_radius_observer_rejects_incomplete_custom_path() {
-        let event = test_event_node(100.0, 50.0);
-        let output = r#"<path class="node-bkg node-undefined" d="q0,-12 12,-12 q12,0 12,12"/>"#;
-
-        let (token, matches) =
-            observe_timeline_event_radius(output, &event, Some(("12", 12.0)), false);
-
-        assert_eq!(token, None);
-        assert!(!matches);
-    }
-
-    #[test]
-    fn timeline_radius_observer_rejects_truncated_redux_path() {
-        let event = test_event_node(100.0, 50.0);
-        let output = r#"<path class="node-bkg node-undefined" d="M0 0"/>"#;
-
-        let (token, matches) = observe_timeline_event_radius(output, &event, None, true);
-
-        assert_eq!(token, None);
-        assert!(!matches);
-    }
-
     #[test]
     fn timeline_connector_stops_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
@@ -1317,6 +978,29 @@ mod tests {
             out.write_attempts, 1,
             "Timeline connector emission must stop at the first failed sink checkpoint"
         );
+    }
+
+    #[test]
+    fn timeline_css_writer_stops_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+        let typography = crate::timeline::TimelineTypographyThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::default(),
+        );
+        let event_theme = crate::timeline::TimelineEventTheme::baseline();
+        let mut event_emission = TimelineEventEmissionState::new(&event_theme);
+
+        let error = write_timeline_css(
+            &mut super::super::super::output::XmlTextOutput::new(&mut out),
+            "timelineCssFailure",
+            typography.css_binding(),
+            &typography,
+            &mut event_emission,
+        )
+        .expect_err("the rejecting sink must stop Timeline stylesheet emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(out.write_attempts, 1);
     }
 
     fn test_axis_layout() -> TimelineDiagramLayout {

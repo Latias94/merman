@@ -156,6 +156,29 @@ impl DiagramThemeCompiler {
         Ok(self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::None)?)
     }
 
+    pub(super) fn validate_preset(
+        &self,
+        preset: super::ThemePreset,
+    ) -> Result<(), super::ThemeDefinitionCompileError> {
+        let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
+        self.validate_preset_spec_wire(spec)?;
+        Ok(())
+    }
+
+    fn validate_preset_spec_wire(
+        &self,
+        spec: super::DiagramThemeSpecWireV1,
+    ) -> Result<(), ThemeCompileError> {
+        // Built-in recipes do not supply embedded font assets. Validate their decoded spec
+        // without constructing a family cache, compatibility plan, or recipe fingerprint.
+        let (spec, _) = super::wire_decode::decode(
+            spec,
+            &self.resources,
+            super::source::ThemeWireSources::None,
+        )?;
+        self.validate_spec(&spec)
+    }
+
     /// Compiles a saved recipe through the same authoring and complete-spec admission paths.
     pub fn compile_recipe(
         &self,
@@ -181,15 +204,8 @@ impl DiagramThemeCompiler {
         merman_theme_contract::ThemeMaterializationErrorV1,
     > {
         let complete_spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
-        // Export validates the same complete recipe without constructing a compiled theme,
-        // family cache or fingerprint. Built-in recipes never supply embedded font assets.
-        let (spec, _) = super::wire_decode::decode(
-            complete_spec.clone(),
-            &self.resources,
-            super::source::ThemeWireSources::None,
-        )
-        .map_err(preset_export_error)?;
-        self.validate_spec(&spec).map_err(preset_export_error)?;
+        self.validate_preset_spec_wire(complete_spec.clone())
+            .map_err(preset_export_error)?;
         Ok(merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec })
     }
 }

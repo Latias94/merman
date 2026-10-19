@@ -290,12 +290,12 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@v1.2.0
+        uses: sigoden/install-binary@v1.3.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt

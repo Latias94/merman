@@ -39,3 +39,7 @@ consolidating them must not change machine admission unless a structured owner c
 
 The [12.2 fixture coverage review](FIXTURE_COVERAGE_12_2.md) explains changed-behavior coverage,
 primary versus family-local evidence, and useful follow-up combinations.
+
+The [fixture version policy](../../fixtures/README.md) distinguishes historical input comments
+from the selected runtime and generated SVG provenance. Old authoring or normalization versions
+do not select the current behavior baseline.

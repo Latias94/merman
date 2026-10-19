@@ -107,13 +107,6 @@ impl FamilyThemeProgram {
                 .compile_rule(ThemeRuleOrigin::new(rule_index, rule), rule.style());
         }
 
-        for slot in slots.values_mut() {
-            slot.common_static.freeze_static_matches();
-            for style in slot.variant_static.values_mut() {
-                style.freeze_static_matches();
-            }
-        }
-
         let mut ordinal_palette_indices = BTreeMap::new();
         let mut ordinal_palette_dispositions = BTreeMap::new();
         for (index, (target, _)) in spec.styles().ordinal_palettes().iter().enumerate() {

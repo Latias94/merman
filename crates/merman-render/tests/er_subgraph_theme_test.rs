@@ -68,7 +68,6 @@ fn render_cluster_with_spec(
     if matches!(requirement, ThemePortabilityRequirement::RequirePortable) {
         assert_eq!(evidence.theme_residual_count(), 0);
     }
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     Ok((
         svg,
         evidence.applied_count(),

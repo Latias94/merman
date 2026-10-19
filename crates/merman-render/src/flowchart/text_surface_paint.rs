@@ -58,7 +58,6 @@ pub(super) fn cluster_effect<'a>(
 pub(crate) struct FlowchartTextSurfacePaintPlan {
     pub(crate) background: crate::family::EdgeLabelBackgroundPlan,
     pub(crate) generic_text: super::FlowchartTextPaintPlan,
-    evidence: FamilyThemeEvidence,
     theme: Option<ResolvedDiagramTheme>,
     style: Option<ResolvedThemeStyle>,
     fill: Option<DirectStaticPaint>,
@@ -74,9 +73,6 @@ impl FlowchartTextSurfacePaintPlan {
         node_config_owned: bool,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        // All collaborating consumers retain the same complete family request set, even when
-        // their own target filter is empty.
-        let evidence = FamilyThemeEvidence::from_theme(theme);
         let background = crate::family::EdgeLabelBackgroundPlan::resolve(theme, config, work)?;
         let generic_text =
             super::FlowchartTextPaintPlan::resolve(theme, config, node_config_owned, work)?;
@@ -110,7 +106,6 @@ impl FlowchartTextSurfacePaintPlan {
         Ok(Self {
             background,
             generic_text,
-            evidence,
             theme: theme.cloned(),
             style,
             fill,
@@ -136,31 +131,17 @@ impl FlowchartTextSurfacePaintPlan {
 
     pub(crate) fn begin_terminal_emission(
         &self,
-        expected: impl IntoIterator<Item = impl Into<String>>,
         work: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         if !self.requested() {
             return Ok(());
         }
-        work.charge(
-            self.theme
-                .as_ref()
-                .map_or(0, |theme| theme.family_mechanism_routes().len()),
-        )?;
-        let mut terminals = BTreeMap::new();
-        let mut valid = true;
-        for id in expected {
-            work.charge(1)?;
-            valid &= terminals.insert(id.into(), false).is_none();
-        }
+        work.checkpoint(merman_core::OperationPhase::Emit)?;
         let mut terminal = self
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        valid &= terminal.is_none();
         *terminal = Some(FlowchartTextSurfacePaintReceipt {
-            terminals,
-            valid,
             css_emitted: [false; 2],
             ordinal: 0,
             winners: BTreeSet::new(),
@@ -199,7 +180,6 @@ impl FlowchartTextSurfacePaintPlan {
             .as_mut()
         {
             terminal.css_emitted[usize::from(html)] |= result.is_ok();
-            terminal.valid &= result.is_ok();
         }
         result
     }
@@ -214,20 +194,8 @@ impl FlowchartTextSurfacePaintPlan {
         if !self.requested() {
             return Ok(());
         }
-        let mut receipt = self
-            .terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(terminal) = receipt.as_mut() else {
-            return Ok(());
-        };
+        let _ = id;
         work.charge(1 + facts.visible_run_count())?;
-        let Some(seen) = terminal.terminals.get_mut(id) else {
-            terminal.valid = false;
-            return Ok(());
-        };
-        terminal.valid &= !*seen;
-        *seen = true;
         if facts.parse_valid() && !facts.has_visible_runs() {
             return Ok(());
         }
@@ -238,6 +206,13 @@ impl FlowchartTextSurfacePaintPlan {
             work,
         )?;
         let Some(theme) = self.theme.as_ref() else {
+            return Ok(());
+        };
+        let mut receipt = self
+            .terminal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(terminal) = receipt.as_mut() else {
             return Ok(());
         };
         terminal.ordinal += 1;
@@ -298,7 +273,13 @@ impl FlowchartTextSurfacePaintPlan {
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+        let mut evidence = FamilyThemeEvidence::outcomes();
+        if self.background.requested() {
+            evidence.merge_accounted_from(self.background.finish_evidence());
+        }
+        if self.generic_text.requested() {
+            evidence.merge_accounted_from(self.generic_text.finish_evidence());
+        }
         let receipt = self
             .terminal
             .lock()
@@ -306,17 +287,8 @@ impl FlowchartTextSurfacePaintPlan {
         let Some(terminal) = receipt.as_ref() else {
             return evidence;
         };
-        if !terminal.valid
-            || terminal.css_emitted != [true, true]
-            || !terminal.terminals.values().all(|seen| *seen)
-        {
+        if terminal.css_emitted != [true, true] {
             return evidence;
-        }
-        if self.background.requested() {
-            evidence.merge_accounted_from(self.background.finish_evidence());
-        }
-        if self.generic_text.requested() {
-            evidence.merge_accounted_from(self.generic_text.finish_evidence());
         }
         let Some(theme) = self.theme.as_ref() else {
             return evidence;
@@ -403,8 +375,6 @@ impl FlowchartTextSurfacePaintPlan {
 
 #[derive(Debug)]
 struct FlowchartTextSurfacePaintReceipt {
-    terminals: BTreeMap<String, bool>,
-    valid: bool,
     css_emitted: [bool; 2],
     ordinal: usize,
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -423,7 +393,7 @@ mod tests {
     };
 
     #[test]
-    fn text_surface_consumers_preserve_the_complete_family_request_set() {
+    fn text_surface_consumers_merge_only_their_own_outcomes() {
         for targets in [
             vec![ThemeTarget::Text],
             vec![ThemeTarget::Title],
@@ -458,8 +428,7 @@ mod tests {
                 &work,
             )
             .unwrap();
-            plan.begin_terminal_emission(std::iter::empty::<&str>(), &work)
-                .unwrap();
+            plan.begin_terminal_emission(&work).unwrap();
             let mut css = String::new();
             plan.write_css(&mut css, "black", false).unwrap();
             plan.write_css(&mut css, "black", true).unwrap();
@@ -513,8 +482,7 @@ mod tests {
             &work,
         )
         .unwrap();
-        plan.begin_terminal_emission(["known", "unknown"], &work)
-            .unwrap();
+        plan.begin_terminal_emission(&work).unwrap();
         let mut css = String::new();
         plan.write_css(&mut css, "black", false).unwrap();
         plan.write_css(&mut css, "black", true).unwrap();
@@ -536,53 +504,5 @@ mod tests {
         let evidence = plan.finish_evidence();
         assert!(evidence.applied().is_empty());
         assert_eq!(evidence.residuals().len(), 1);
-    }
-
-    #[test]
-    fn missing_or_duplicate_cluster_receipts_do_not_certify_the_stylesheet() {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::ClusterLabel,
-                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
-                    ),
-                )),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::FLOWCHART);
-        for duplicate in [false, true] {
-            let work = OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            );
-            let plan = FlowchartTextSurfacePaintPlan::resolve(
-                Some(&theme),
-                &MermaidConfig::default(),
-                false,
-                &work,
-            )
-            .unwrap();
-            plan.begin_terminal_emission(["first", "second"], &work)
-                .unwrap();
-            let mut css = String::new();
-            plan.write_css(&mut css, "black", false).unwrap();
-            plan.write_css(&mut css, "black", true).unwrap();
-            for id in if duplicate {
-                vec!["first", "first", "second"]
-            } else {
-                vec!["first"]
-            } {
-                plan.record_label(
-                    id,
-                    &VisibleTextStyleFacts::plain_text("label"),
-                    super::super::FlowchartSourceFacetStatus::Absent,
-                    &work,
-                )
-                .unwrap();
-            }
-            let evidence = plan.finish_evidence();
-            assert!(evidence.applied().is_empty());
-            assert!(evidence.not_applicable_mechanisms().is_empty());
-        }
     }
 }

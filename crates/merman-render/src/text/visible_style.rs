@@ -15,6 +15,8 @@ pub(crate) struct VisibleTextStyleFacts {
     unverified_portable_color_runs: usize,
     inherited_font_family_runs: usize,
     inherited_font_size_runs: usize,
+    inherited_font_weight_runs: usize,
+    inherited_font_style_runs: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,8 @@ struct VisibleTextOwners {
     color: VisibleTextColorOwner,
     font_family: VisibleTextTypographyOwner,
     font_size: VisibleTextTypographyOwner,
+    font_weight: VisibleTextTypographyOwner,
+    font_style: VisibleTextTypographyOwner,
 }
 
 impl VisibleTextOwners {
@@ -42,6 +46,8 @@ impl VisibleTextOwners {
         color: VisibleTextColorOwner::Inherited,
         font_family: VisibleTextTypographyOwner::Inherited,
         font_size: VisibleTextTypographyOwner::Inherited,
+        font_weight: VisibleTextTypographyOwner::Inherited,
+        font_style: VisibleTextTypographyOwner::Inherited,
     };
 }
 
@@ -62,6 +68,8 @@ impl VisibleTextStyleFacts {
             unverified_portable_color_runs: 0,
             inherited_font_family_runs: 0,
             inherited_font_size_runs: 0,
+            inherited_font_weight_runs: 0,
+            inherited_font_style_runs: 0,
         }
     }
 
@@ -145,6 +153,12 @@ impl VisibleTextStyleFacts {
     pub(crate) const fn unverified_font_size_run_count(&self) -> usize {
         self.visible_runs - self.inherited_font_size_runs
     }
+    pub(crate) const fn unverified_font_weight_run_count(&self) -> usize {
+        self.visible_runs - self.inherited_font_weight_runs
+    }
+    pub(crate) const fn unverified_font_style_run_count(&self) -> usize {
+        self.visible_runs - self.inherited_font_style_runs
+    }
     #[cfg(test)]
     fn non_inherited_color_run_count(&self) -> usize {
         self.visible_runs - self.inherited_color_runs
@@ -162,6 +176,10 @@ impl VisibleTextStyleFacts {
             usize::from(owners.font_family == VisibleTextTypographyOwner::Inherited);
         self.inherited_font_size_runs +=
             usize::from(owners.font_size == VisibleTextTypographyOwner::Inherited);
+        self.inherited_font_weight_runs +=
+            usize::from(owners.font_weight == VisibleTextTypographyOwner::Inherited);
+        self.inherited_font_style_runs +=
+            usize::from(owners.font_style == VisibleTextTypographyOwner::Inherited);
     }
 }
 
@@ -169,6 +187,7 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
     // roxmltree's descendants are a flat preorder range. Each ancestor state is pushed and
     // popped once, retaining inheritance without recursion or repeated ancestor scans.
     let mut parents = Vec::<(crate::xml_dom::NodeId, VisibleTextOwners)>::new();
+    let mut stylesheet_present = false;
     for node in root.descendants() {
         let parent = node.parent().map(|parent| parent.id());
         while parents.last().map(|(id, _)| *id) != parent && !parents.is_empty() {
@@ -178,6 +197,7 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
             .last()
             .map_or(VisibleTextOwners::INHERITED, |(_, owners)| *owners);
         let owners = if node.is_element() {
+            stylesheet_present |= node.tag_name().name().eq_ignore_ascii_case("style");
             let has_css_class = node
                 .attribute("class")
                 .is_some_and(|class| !class.trim().is_empty());
@@ -223,6 +243,20 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
                     &local_size,
                     has_css_class,
                 ),
+                font_weight: inline_typography_owner(
+                    node.attribute("style"),
+                    "font-weight",
+                    inherited.font_weight,
+                    has_css_class || matches!(node.tag_name().name(), "b" | "strong"),
+                    has_css_class,
+                ),
+                font_style: inline_typography_owner(
+                    node.attribute("style"),
+                    "font-style",
+                    inherited.font_style,
+                    has_css_class || matches!(node.tag_name().name(), "i" | "em"),
+                    has_css_class,
+                ),
             }
         } else {
             inherited
@@ -231,6 +265,9 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
             facts.observe(owners);
         }
         if node.is_text()
+            && !node
+                .parent()
+                .is_some_and(|parent| parent.tag_name().name().eq_ignore_ascii_case("style"))
             && node
                 .text()
                 .is_some_and(|text| !trim_html_collapsible_ascii_whitespace(text).is_empty())
@@ -240,6 +277,56 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
         if node.is_element() {
             parents.push((node.id(), owners));
         }
+    }
+    if stylesheet_present {
+        // An adopted stylesheet may target any visible run. Do not interpret arbitrary CSS.
+        facts.inherited_color_runs = 0;
+        facts.unverified_color_runs = facts.visible_runs;
+        facts.unverified_portable_color_runs = facts.visible_runs;
+        facts.inherited_font_family_runs = 0;
+        facts.inherited_font_size_runs = 0;
+        facts.inherited_font_weight_runs = 0;
+        facts.inherited_font_style_runs = 0;
+    }
+}
+
+fn inline_typography_owner(
+    style: Option<&str>,
+    property: &str,
+    inherited: VisibleTextTypographyOwner,
+    source_default: bool,
+    has_css_class: bool,
+) -> VisibleTextTypographyOwner {
+    let local = if source_default {
+        VisibleTextTypographyOwner::UnmeasuredSource
+    } else {
+        inherited
+    };
+    let Some(style) = style else {
+        return local;
+    };
+    let mut winner: Option<(bool, &str)> = None;
+    crate::mermaid_style::visit_parsed_style_declarations(style, |declaration| {
+        let reset = declaration.property() == "all"
+            && ["inherit", "initial", "unset", "revert", "revert-layer"]
+                .iter()
+                .any(|keyword| declaration.value().trim().eq_ignore_ascii_case(keyword));
+        if (declaration.property() == property || declaration.property() == "font" || reset)
+            && winner.is_none_or(|(important, _)| declaration.important() || !important)
+        {
+            winner = Some((declaration.important(), declaration.value()));
+        }
+    });
+    match winner {
+        None => local,
+        Some((important, value))
+            if (value.trim().eq_ignore_ascii_case("inherit")
+                || value.trim().eq_ignore_ascii_case("unset"))
+                && (!has_css_class || important) =>
+        {
+            inherited
+        }
+        Some(_) => VisibleTextTypographyOwner::UnmeasuredSource,
     }
 }
 
@@ -580,5 +667,32 @@ mod tests {
         assert_eq!(facts.unverified_font_family_run_count(), 0);
         assert_eq!(facts.inherited_font_size_run_count(), 1);
         assert_eq!(facts.unverified_font_size_run_count(), 0);
+    }
+
+    #[test]
+    fn author_weight_style_and_stylesheets_keep_source_ownership() {
+        for (fragment, weight, style) in [
+            ("<span>Inherited</span>", 0, 0),
+            ("<b>Weight</b>", 1, 0),
+            ("<em>Style</em>", 0, 1),
+            ("<span style='font-weight:700'>Weight</span>", 1, 0),
+            ("<span style='font-style:italic'>Style</span>", 0, 1),
+            ("<span style='all:initial'>Reset</span>", 1, 1),
+            ("<span class='host'>Unknown</span>", 1, 1),
+            ("<b style='font-weight:INHERIT'>Inherited</b>", 0, 0),
+            (
+                "<style>span{font-weight:700}</style><span>Unknown</span>",
+                1,
+                1,
+            ),
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(
+                facts.unverified_font_weight_run_count(),
+                weight,
+                "{fragment}"
+            );
+            assert_eq!(facts.unverified_font_style_run_count(), style, "{fragment}");
+        }
     }
 }

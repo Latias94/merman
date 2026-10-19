@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "css_binding.rs"]
 mod css_binding;
 pub(crate) use css_binding::BlockCssThemeBinding;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 use merman_core::diagrams::block::BlockClassDefRenderModel;
@@ -13,19 +13,16 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::model::BlockDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::BlockNodeShellKind;
-
-/// Block edge-label background owner; it shares the proven receipt implementation
-/// with Flowchart while remaining a family-local plan.
+/// Block edge-label background owner, shared with Flowchart.
 #[derive(Debug)]
 pub(crate) struct BlockLabelBackgroundPlan(crate::family::EdgeLabelBackgroundPlan, Box<str>);
 
@@ -67,26 +64,11 @@ impl BlockLabelBackgroundPlan {
     }
 }
 
-/// Per-node label paint, resolved against source ownership and verified after SVG emission.
+/// Per-node label paint, resolved against source ownership for the SVG writer.
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
-    expectations: Arc<[Option<BlockNodeLabelExpectation>]>,
-    html_labels: bool,
+    paints: Box<[Option<Box<str>>]>,
     evidence: FamilyThemeEvidence,
-    pending: BTreeMap<(usize, ThemeTarget), ThemeCapability>,
-    terminal: OnceLock<BlockNodeLabelPaintReceipt>,
-}
-
-#[derive(Debug)]
-struct BlockNodeLabelExpectation {
-    paint: DirectPaintExpectation,
-    text: String,
-}
-
-#[derive(Debug)]
-pub(crate) struct BlockNodeLabelPaintReceipt {
-    seen: Vec<bool>,
-    valid: bool,
 }
 
 impl BlockNodeLabelPaintPlan {
@@ -99,11 +81,8 @@ impl BlockNodeLabelPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let html_labels = crate::config::config_effective_html_labels(config.as_value());
         let mut plan = Self {
-            expectations: Arc::from([]),
-            html_labels,
+            paints: Box::new([]),
             evidence: FamilyThemeEvidence::from_theme(theme),
-            pending: BTreeMap::new(),
-            terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
         if !theme.family_mechanism_routes().iter().any(|route| {
@@ -154,7 +133,7 @@ impl BlockNodeLabelPaintPlan {
         let mut winners = BTreeSet::new();
         let mut capabilities = BTreeMap::new();
         let mut source_owned = Vec::with_capacity(layout.nodes.len());
-        let mut expectations = Vec::with_capacity(layout.nodes.len());
+        let mut paints = Vec::with_capacity(layout.nodes.len());
         for (index, node) in layout.nodes.iter().enumerate() {
             work.charge(1)?;
             let source = sources.get(node.id.as_str());
@@ -227,7 +206,7 @@ impl BlockNodeLabelPaintPlan {
             {
                 capabilities.insert((paint.rule_index(), origin.target()), paint.capability());
             }
-            expectations.push(paint.map(|paint| BlockNodeLabelExpectation { paint, text }));
+            paints.push(paint.map(|paint| paint.css().into()));
         }
         let mut observations = BTreeMap::<(usize, ThemeTarget), NodeRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -278,7 +257,8 @@ impl BlockNodeLabelPaintPlan {
             } else if !observation.incomplete
                 && let Some(capability) = observation.capabilities.get(&ResolvedStyleProperty::Fill)
             {
-                plan.pending.insert((index, target), *capability);
+                plan.evidence
+                    .mark_applied_with_capabilities(key, [*capability]);
             }
         }
         reconcile_unsupported_terminal_domains(
@@ -298,117 +278,16 @@ impl BlockNodeLabelPaintPlan {
             ],
             work,
         )?;
-        plan.expectations = expectations.into();
+        plan.paints = paints.into();
         Ok(plan)
     }
 
     pub(crate) fn color(&self, node_index: usize) -> Option<&str> {
-        self.expectations
-            .get(node_index)?
-            .as_ref()
-            .map(|expected| expected.paint.css())
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockNodeLabelPaintReceipt> {
-        self.expectations
-            .iter()
-            .any(Option::is_some)
-            .then(|| BlockNodeLabelPaintReceipt {
-                seen: vec![false; self.expectations.len()],
-                valid: true,
-            })
-    }
-
-    /// Inspect the checkpointed label fragment, never a separately recomputed CSS value.
-    pub(crate) fn observe_label(
-        &self,
-        receipt: &mut BlockNodeLabelPaintReceipt,
-        node_index: usize,
-        fragment: &str,
-    ) {
-        let Some(seen) = receipt.seen.get_mut(node_index) else {
-            receipt.valid = false;
-            return;
-        };
-        receipt.valid &= !*seen;
-        *seen = true;
-        let Some(expected) = self.expectations[node_index].as_ref() else {
-            return;
-        };
-        receipt.valid &= self.label_matches(expected, fragment);
-    }
-
-    fn label_matches(&self, expected: &BlockNodeLabelExpectation, fragment: &str) -> bool {
-        let Ok(document) = crate::xml_dom::Document::parse(fragment) else {
-            return false;
-        };
-        let mut terminals = document
-            .descendants()
-            .filter(|node| node.has_tag_name(if self.html_labels { "p" } else { "text" }));
-        let Some(terminal) = terminals.next() else {
-            return false;
-        };
-        if terminals.next().is_some() {
-            return false;
-        }
-        let property = if self.html_labels { "color" } else { "fill" };
-        let actual_paint = terminal
-            .attribute("style")
-            .unwrap_or("")
-            .split(';')
-            .filter_map(|raw| raw.split_once(':'))
-            .filter(|(key, _)| key.trim() == property)
-            .map(|(_, value)| value.trim())
-            .next_back();
-        if actual_paint != Some(expected.paint.css()) {
-            return false;
-        }
-        if self.html_labels
-            && !document.descendants().any(|node| {
-                node.has_tag_name("foreignObject")
-                    && ["width", "height"].into_iter().all(|name| {
-                        node.attribute(name)
-                            .and_then(|value| value.parse::<f64>().ok())
-                            .is_some_and(|value| value.is_finite() && value > 0.0)
-                    })
-            })
-        {
-            return false;
-        }
-        terminal
-            .descendants()
-            .filter(|node| node.is_text())
-            .flat_map(|node| node.text().unwrap_or("").chars())
-            .filter(|ch| !ch.is_whitespace())
-            .eq(expected.text.chars().filter(|ch| !ch.is_whitespace()))
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: Option<BlockNodeLabelPaintReceipt>) -> bool {
-        let Some(receipt) = receipt else {
-            return self.expectations.iter().all(Option::is_none);
-        };
-        let complete = receipt.valid
-            && self
-                .expectations
-                .iter()
-                .enumerate()
-                .all(|(index, expected)| {
-                    expected.is_none() || receipt.seen.get(index) == Some(&true)
-                });
-        complete && self.terminal.set(receipt).is_ok()
+        self.paints.get(node_index)?.as_deref()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        if self.terminal.get().is_some() {
-            for (&(index, target), &capability) in &self.pending {
-                evidence.mark_applied_with_capabilities(
-                    FamilyThemeMechanismKey::Rule { index, target },
-                    [capability],
-                );
-            }
-        }
-        evidence
+        self.evidence.clone()
     }
 }
 
@@ -424,7 +303,7 @@ enum BlockTypographyOutcome {
     ConfigOwned,
 }
 
-/// Final Block typography shared by layout measurement, SVG CSS, and terminal evidence.
+/// Final Block typography shared by layout measurement and SVG CSS.
 #[derive(Debug)]
 pub(crate) struct BlockTypographyThemePlan {
     css_binding: BlockCssThemeBinding,
@@ -437,13 +316,7 @@ pub(crate) struct BlockTypographyThemePlan {
     typed_font_size_requested: bool,
     config_owns_font_stack: bool,
     config_owns_font_size: bool,
-    terminal_receipt: OnceLock<BlockTypographyReceipt>,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct BlockTypographyReceipt {
-    css_matches: Option<bool>,
-    has_visible_label: bool,
+    visible_labels: OnceLock<bool>,
 }
 
 impl BlockTypographyThemePlan {
@@ -481,7 +354,7 @@ impl BlockTypographyThemePlan {
                 typed_font_size_requested: false,
                 config_owns_font_stack: false,
                 config_owns_font_size: false,
-                terminal_receipt: OnceLock::new(),
+                visible_labels: OnceLock::new(),
             });
         };
 
@@ -559,7 +432,7 @@ impl BlockTypographyThemePlan {
             typed_font_size_requested: typed_font_size,
             config_owns_font_stack,
             config_owns_font_size,
-            terminal_receipt: OnceLock::new(),
+            visible_labels: OnceLock::new(),
         })
     }
 
@@ -579,40 +452,22 @@ impl BlockTypographyThemePlan {
         self.text_style.font_size
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockTypographyReceipt> {
-        (self.typed_font_stack_requested
+    pub(crate) fn observes_visible_labels(&self) -> bool {
+        self.typed_font_stack_requested
             || self.typed_font_size_requested
-            || !self.unsupported_properties.is_empty())
-        .then(BlockTypographyReceipt::default)
+            || !self.unsupported_properties.is_empty()
     }
 
-    pub(crate) fn observe_css(
-        &self,
-        receipt: Option<&mut BlockTypographyReceipt>,
-        font_family_css: &str,
-        font_size_css: &str,
-    ) -> bool {
-        let matches = !self.font_family_css().trim().is_empty()
-            && font_family_css == self.font_family_css()
-            && font_size_css.parse::<f64>().ok().is_some_and(|value| {
-                value.is_finite() && (value - self.font_size_px()).abs() < 1e-6
-            });
-        if let Some(receipt) = receipt {
-            receipt.css_matches = Some(matches && receipt.css_matches.is_none());
-        }
-        matches
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: BlockTypographyReceipt) -> bool {
-        receipt.proves_css() && self.terminal_receipt.set(receipt).is_ok()
+    pub(crate) fn record_visible_labels(&self, visible: bool) {
+        let _ = self.visible_labels.set(visible);
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let receipt = self.terminal_receipt.get();
+        let visible = self.visible_labels.get().copied();
         for property in &self.unsupported_properties {
             let key = FamilyThemeMechanismKey::Typography(*property);
-            if receipt.is_some_and(|receipt| !receipt.has_visible_label()) {
+            if visible == Some(false) {
                 evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
@@ -641,14 +496,14 @@ impl BlockTypographyThemePlan {
                 BlockTypographyOutcome::Typed if config_owned => {
                     evidence.mark_not_applicable(key);
                 }
-                BlockTypographyOutcome::Typed => match receipt {
-                    Some(receipt) if receipt.proves_css() && receipt.has_visible_label() => {
+                BlockTypographyOutcome::Typed => match visible {
+                    Some(true) => {
                         evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
                     }
-                    Some(receipt) if receipt.proves_css() && !receipt.has_visible_label() => {
+                    Some(false) => {
                         evidence.mark_not_applicable(key);
                     }
-                    Some(_) | None => {
+                    None => {
                         evidence
                             .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                     }
@@ -660,39 +515,18 @@ impl BlockTypographyThemePlan {
     }
 }
 
-impl BlockTypographyReceipt {
-    pub(crate) fn record_visible_label(&mut self, text: &str) {
-        self.has_visible_label = self.has_visible_label || !text.trim().is_empty();
-    }
-
-    fn proves_css(&self) -> bool {
-        self.css_matches == Some(true)
-    }
-
-    fn has_visible_label(&self) -> bool {
-        self.has_visible_label
-    }
+#[derive(Debug, Clone, Default)]
+struct BlockNodePaint {
+    fill: Option<Box<str>>,
+    stroke: Option<Box<str>>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct NodeExpectation {
-    fill: Option<DirectPaintExpectation>,
-    stroke: Option<DirectPaintExpectation>,
-    shells: Box<[BlockNodeShellKind]>,
-    id: String,
-    transform: String,
-    composite: bool,
-    rectangle_attributes: Option<[String; 6]>,
-}
-
-/// Block node shell paint resolved once and shared by the SVG writer and terminal evidence.
+/// Block node shell paint resolved once for the SVG writer.
 #[derive(Debug)]
 pub(crate) struct BlockNodePaintThemePlan {
     bindings: Box<[Option<super::node_binding::BlockNodeTerminalBinding>]>,
-    expectations: Option<Arc<[NodeExpectation]>>,
+    paints: Box<[BlockNodePaint]>,
     evidence: FamilyThemeEvidence,
-    pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
-    terminal_receipt: OnceLock<Option<BlockNodePaintThemeReceipt>>,
 }
 
 impl BlockNodePaintThemePlan {
@@ -709,7 +543,21 @@ impl BlockNodePaintThemePlan {
             plan.bindings = plan.bind_terminals(model, layout, labels, work_meter)?;
             return Ok(plan);
         };
-        let mut expectations = terminal_domain(layout);
+        let mut paints = vec![BlockNodePaint::default(); layout.nodes.len()];
+        let composites = layout
+            .shape_geometries
+            .iter()
+            .filter_map(|geometry| {
+                matches!(
+                    geometry.boundary,
+                    super::BlockShapeBoundary::Rectangle {
+                        kind: super::BlockRectangleKind::Composite,
+                        ..
+                    }
+                )
+                .then_some(geometry.id.as_str())
+            })
+            .collect::<BTreeSet<_>>();
         let sources = super::resolve_block_node_sources(model);
         let ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
         let node_config_fill = mermaid_owns_node_fill(effective_config);
@@ -743,14 +591,14 @@ impl BlockNodePaintThemePlan {
         )?;
         let mut winners = BTreeSet::new();
         let mut capabilities = BTreeMap::new();
-        let mut node_owned_fill = Vec::with_capacity(expectations.len());
-        let mut node_owned_stroke = Vec::with_capacity(expectations.len());
+        let mut node_owned_fill = Vec::with_capacity(paints.len());
+        let mut node_owned_stroke = Vec::with_capacity(paints.len());
         let mut cluster_owned_fill = Vec::new();
         let mut cluster_owned_stroke = Vec::new();
         let mut cluster_index = 0;
-        for (node_index, expectation) in expectations.iter_mut().enumerate() {
+        for (node_index, paint) in paints.iter_mut().enumerate() {
             work_meter.charge(1)?;
-            let source = sources.get(expectation.id.as_str());
+            let source = sources.get(layout.nodes[node_index].id.as_str());
             let source_fill = source.is_some_and(|source| {
                 ownership.owns_fill(
                     source
@@ -791,17 +639,16 @@ impl BlockNodePaintThemePlan {
                 ThemeTarget::Node,
                 owned_fill,
                 owned_stroke,
-                expectation,
+                paint,
                 &mut winners,
                 &mut capabilities,
             );
-            if expectation.composite {
+            if composites.contains(layout.nodes[node_index].id.as_str()) {
                 cluster_index += 1;
                 // Node paint that actually reached this shell owns its property. Node
                 // capability gaps do not erase its residual or block Cluster's fallback.
-                let owned_fill = source_fill || cluster_config_fill || expectation.fill.is_some();
-                let owned_stroke =
-                    source_stroke || cluster_config_stroke || expectation.stroke.is_some();
+                let owned_fill = source_fill || cluster_config_fill || paint.fill.is_some();
+                let owned_stroke = source_stroke || cluster_config_stroke || paint.stroke.is_some();
                 cluster_owned_fill.push(owned_fill);
                 cluster_owned_stroke.push(owned_stroke);
                 let ordinal_cluster_style;
@@ -822,7 +669,7 @@ impl BlockNodePaintThemePlan {
                     ThemeTarget::Cluster,
                     owned_fill,
                     owned_stroke,
-                    expectation,
+                    paint,
                     &mut winners,
                     &mut capabilities,
                 );
@@ -874,7 +721,7 @@ impl BlockNodePaintThemePlan {
             &[
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Node,
-                    TerminalVariantDomain::uniform(expectations.len(), ThemeVariant::Default),
+                    TerminalVariantDomain::uniform(paints.len(), ThemeVariant::Default),
                 )
                 .with_source_owned_fill(&node_owned_fill)
                 .with_source_owned_stroke(&node_owned_stroke),
@@ -896,22 +743,20 @@ impl BlockNodePaintThemePlan {
             ],
             work_meter,
         )?;
-        let mut pending = BTreeMap::new();
         for (key, observation) in observations {
             if !observation.applicable {
                 evidence.mark_not_applicable(key);
             } else if let Some(reason) = observation.residual {
                 evidence.mark_residual(key, reason);
             } else if !observation.incomplete && !observation.capabilities.is_empty() {
-                pending.insert(key, observation.capabilities);
+                evidence
+                    .mark_applied_with_capabilities(key, observation.capabilities.into_values());
             }
         }
         let mut plan = Self {
             bindings: Box::new([]),
-            expectations: Some(expectations.into()),
+            paints: paints.into(),
             evidence,
-            pending,
-            terminal_receipt: OnceLock::new(),
         };
         plan.bindings = plan.bind_terminals(model, layout, labels, work_meter)?;
         Ok(plan)
@@ -920,10 +765,8 @@ impl BlockNodePaintThemePlan {
     fn unthemed() -> Self {
         Self {
             bindings: Box::new([]),
-            expectations: None,
+            paints: Box::new([]),
             evidence: FamilyThemeEvidence::default(),
-            pending: BTreeMap::new(),
-            terminal_receipt: OnceLock::new(),
         }
     }
 
@@ -981,144 +824,27 @@ impl BlockNodePaintThemePlan {
     }
 
     fn typed_paint(&self, node_index: usize, property: ResolvedStyleProperty) -> Option<&str> {
-        self.expectations
-            .as_ref()?
-            .get(node_index)?
-            .paint(property)
-            .map(DirectPaintExpectation::css)
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockNodePaintThemeReceipt> {
-        if !self.requires_terminal_receipt() {
-            return None;
-        }
-        self.expectations
-            .as_ref()
-            .map(|expectations| BlockNodePaintThemeReceipt::new(Arc::clone(expectations)))
-    }
-
-    fn requires_terminal_receipt(&self) -> bool {
-        // Typed paint still needs observation when another facet of the same rule is residual.
-        self.expectations.as_ref().is_some_and(|expectations| {
-            expectations
-                .iter()
-                .any(|expectation| expectation.fill.is_some() || expectation.stroke.is_some())
-        })
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: Option<BlockNodePaintThemeReceipt>) -> bool {
-        let complete = match receipt.as_ref() {
-            Some(receipt) => self.requires_terminal_receipt() && receipt.proves_complete(),
-            None => !self.requires_terminal_receipt(),
-        };
-        complete && self.terminal_receipt.set(receipt).is_ok()
+        self.paints.get(node_index)?.paint(property)
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        let Some(Some(receipt)) = self.terminal_receipt.get() else {
-            return evidence;
-        };
-        for (key, properties) in &self.pending {
-            let rule_index = match key {
-                FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography(_)
-                | FamilyThemeMechanismKey::OrdinalPalette { .. }
-                | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
-            };
-            // record_terminal admitted the complete receipt before moving it into OnceLock.
-            let mut capabilities = BTreeSet::new();
-            let mut all_properties_match = true;
-            for (property, capability) in properties {
-                if receipt.has_matching_property(rule_index, *property) {
-                    capabilities.insert(*capability);
-                } else {
-                    all_properties_match = false;
-                }
-            }
-            if all_properties_match {
-                evidence.mark_applied_with_capabilities(key.clone(), capabilities);
-            } else if !receipt.has_effective_rule(rule_index) {
-                evidence.mark_not_applicable(key.clone());
-            }
-        }
-        evidence
+        self.evidence.clone()
     }
 }
 
-impl NodeExpectation {
-    fn paint(&self, property: ResolvedStyleProperty) -> Option<&DirectPaintExpectation> {
+impl BlockNodePaint {
+    fn paint(&self, property: ResolvedStyleProperty) -> Option<&str> {
         match property {
-            ResolvedStyleProperty::Fill => self.fill.as_ref(),
-            ResolvedStyleProperty::Stroke => self.stroke.as_ref(),
+            ResolvedStyleProperty::Fill => self.fill.as_deref(),
+            ResolvedStyleProperty::Stroke => self.stroke.as_deref(),
             _ => None,
         }
     }
 }
 
-fn terminal_domain(layout: &BlockDiagramLayout) -> Vec<NodeExpectation> {
-    let geometries = layout
-        .shape_geometries
-        .iter()
-        .map(|geometry| (geometry.id.as_str(), geometry))
-        .collect::<BTreeMap<_, _>>();
-    layout
-        .nodes
-        .iter()
-        .map(|node| {
-            let geometry = geometries.get(node.id.as_str());
-            let boundary = geometry.map(|geometry| &geometry.boundary);
-            let rectangle_attributes = match boundary {
-                Some(super::BlockShapeBoundary::Rectangle {
-                    width,
-                    height,
-                    radius,
-                    ..
-                }) => Some(
-                    [
-                        -width / 2.0,
-                        -height / 2.0,
-                        *width,
-                        *height,
-                        *radius,
-                        *radius,
-                    ]
-                    .map(|value| crate::number_format::canonical_number(value).to_string()),
-                ),
-                _ => None,
-            };
-            NodeExpectation {
-                fill: None,
-                stroke: None,
-                shells: boundary
-                    .map(|boundary| boundary.canonical_shell_kinds().into())
-                    .unwrap_or_default(),
-                id: node.id.clone(),
-                transform: geometry
-                    .map(|geometry| {
-                        format!(
-                            "translate({}, {})",
-                            crate::number_format::canonical_number(geometry.allocated.x),
-                            crate::number_format::canonical_number(geometry.allocated.y),
-                        )
-                    })
-                    .unwrap_or_default(),
-                composite: matches!(
-                    boundary,
-                    Some(super::BlockShapeBoundary::Rectangle {
-                        kind: super::BlockRectangleKind::Composite,
-                        ..
-                    })
-                ),
-                rectangle_attributes,
-            }
-        })
-        .collect()
-}
-
 #[allow(
     clippy::too_many_arguments,
-    reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    reason = "Shell paint resolution reconciles theme rules and source ownership."
 )]
 fn observe_shell_style(
     theme: &ResolvedDiagramTheme,
@@ -1126,7 +852,7 @@ fn observe_shell_style(
     target: ThemeTarget,
     owns_fill: bool,
     owns_stroke: bool,
-    expectation: &mut NodeExpectation,
+    expectation: &mut BlockNodePaint,
     winners: &mut BTreeSet<(usize, ResolvedStyleProperty)>,
     capabilities: &mut BTreeMap<(usize, ResolvedStyleProperty), ThemeCapability>,
 ) {
@@ -1159,9 +885,9 @@ fn observe_shell_style(
         if let Some(paint) = paint.map(DirectPaintExpectation::from_paint) {
             capabilities.insert((paint.rule_index(), property), paint.capability());
             if property == ResolvedStyleProperty::Fill {
-                expectation.fill = Some(paint);
+                expectation.fill = Some(paint.css().into());
             } else {
-                expectation.stroke = Some(paint);
+                expectation.stroke = Some(paint.css().into());
             }
         }
     }
@@ -1253,211 +979,6 @@ fn source_owns_property(
             .any(|assigned| owning_classes.contains(assigned))
 }
 
-/// Writer-owned proof that every semantic Block node reached every canonical SVG shell.
-#[derive(Debug, Clone)]
-pub(crate) struct BlockNodePaintThemeReceipt {
-    expectations: Arc<[NodeExpectation]>,
-    checkpointed_nodes: Vec<bool>,
-    attributes_match: bool,
-    paint_ledger: DirectPaintTerminalLedger,
-}
-
-impl BlockNodePaintThemeReceipt {
-    fn new(expectations: impl Into<Arc<[NodeExpectation]>>) -> Self {
-        let expectations = expectations.into();
-        Self {
-            checkpointed_nodes: vec![false; expectations.len()],
-            expectations,
-            attributes_match: true,
-            paint_ledger: DirectPaintTerminalLedger::default(),
-        }
-    }
-
-    pub(crate) fn observe_checkpointed_node(
-        &mut self,
-        node_index: usize,
-        diagram_id: &str,
-        fragment: &str,
-    ) {
-        let Some(checkpointed) = self.checkpointed_nodes.get_mut(node_index) else {
-            self.attributes_match = false;
-            return;
-        };
-        if *checkpointed {
-            self.attributes_match = false;
-            return;
-        }
-        *checkpointed = true;
-        let expectation = &self.expectations[node_index];
-        // The checkpoint stops after the shell, before the label. Close only the already
-        // emitted node group to parse that fragment, never fabricate shell attributes.
-        let closed = format!("{fragment}</g>");
-        let Ok(document) = crate::xml_dom::Document::parse(&closed) else {
-            self.attributes_match = false;
-            return;
-        };
-        let group = document.root_element();
-        let id = if diagram_id.is_empty() {
-            expectation.id.clone()
-        } else {
-            format!("{diagram_id}-{}", expectation.id)
-        };
-        let has_class = |node: crate::xml_dom::Node<'_, '_>, class| {
-            node.attribute("class")
-                .unwrap_or("")
-                .split_ascii_whitespace()
-                .any(|candidate| candidate == class)
-        };
-        let mut matches = group.has_tag_name("g")
-            && group.attribute("id") == Some(id.as_str())
-            && has_class(group, "node")
-            && group.attribute("transform") == Some(expectation.transform.as_str());
-        let direct = group
-            .children()
-            .filter(crate::xml_dom::Node::is_element)
-            .collect::<Vec<_>>();
-        let mut terminals = Vec::new();
-        if direct.len() == 1 && direct[0].has_tag_name("g") {
-            let wrapper = direct[0];
-            let children = wrapper
-                .children()
-                .filter(crate::xml_dom::Node::is_element)
-                .collect::<Vec<_>>();
-            if has_class(wrapper, "outer-path") {
-                // RoughJS represents one canonical shell with a fill and outline path.
-                matches &= expectation.shells.len() == 1
-                    && children.len() == 2
-                    && children.iter().all(|child| child.has_tag_name("path"));
-                if let Some(kind) = expectation.shells.first().copied() {
-                    terminals.extend(children.into_iter().map(|node| (kind, node)));
-                }
-            } else {
-                let child_count = children.len();
-                terminals.extend(
-                    children
-                        .into_iter()
-                        .filter_map(|node| shell_kind(node).map(|kind| (kind, node))),
-                );
-                matches &=
-                    terminals.len() == child_count && terminals.len() == expectation.shells.len();
-                matches &= terminals
-                    .iter()
-                    .map(|(kind, _)| *kind)
-                    .eq(expectation.shells.iter().copied());
-            }
-        } else {
-            terminals.extend(
-                direct
-                    .iter()
-                    .filter_map(|node| shell_kind(*node).map(|kind| (kind, *node))),
-            );
-            matches &= direct.len() == terminals.len()
-                && terminals
-                    .iter()
-                    .map(|(kind, _)| *kind)
-                    .eq(expectation.shells.iter().copied());
-        }
-        if expectation.composite {
-            matches &= terminals.len() == 1
-                && terminals.first().is_some_and(|(_, node)| {
-                    node.has_tag_name("rect")
-                        && has_class(*node, "composite")
-                        && has_class(*node, "cluster")
-                });
-        }
-        if let Some(attributes) = &expectation.rectangle_attributes {
-            if let Some((_, rect)) = terminals
-                .first()
-                .filter(|(_, node)| node.has_tag_name("rect"))
-            {
-                matches &= ["x", "y", "width", "height", "rx", "ry"]
-                    .into_iter()
-                    .zip(attributes)
-                    .all(|(name, expected)| rect.attribute(name) == Some(expected.as_str()));
-            } else if expectation.composite {
-                matches = false;
-            }
-        }
-        for (_, terminal) in &terminals {
-            let (fill, stroke) = terminal_paints(terminal.attribute("style").unwrap_or(""));
-            if let Some(expected) = &expectation.fill {
-                matches &= fill == Some(expected.css());
-            }
-            if let Some(expected) = &expectation.stroke {
-                matches &= stroke == Some(expected.css());
-            }
-        }
-        self.attributes_match &= matches && !terminals.is_empty();
-        let actual_style = terminals
-            .first()
-            .map(|(_, node)| node.attribute("style").unwrap_or(""));
-        let (fill, stroke) = terminal_paints(actual_style.unwrap_or(""));
-        self.attributes_match &= self.paint_ledger.record(
-            expectation.fill.as_ref(),
-            false,
-            expectation
-                .fill
-                .as_ref()
-                .and_then(|expected| fill.map(|css| (expected.rule_index(), css))),
-            ResolvedStyleProperty::Fill,
-        );
-        self.attributes_match &= self.paint_ledger.record(
-            expectation.stroke.as_ref(),
-            false,
-            expectation
-                .stroke
-                .as_ref()
-                .and_then(|expected| stroke.map(|css| (expected.rule_index(), css))),
-            ResolvedStyleProperty::Stroke,
-        );
-    }
-
-    fn proves_complete(&self) -> bool {
-        self.attributes_match && self.checkpointed_nodes.iter().all(|entry| *entry)
-    }
-
-    fn has_effective_rule(&self, rule_index: usize) -> bool {
-        self.paint_ledger.has_effective_rule(rule_index)
-    }
-
-    #[cfg(test)]
-    fn proves_rule(&self, rule_index: usize) -> bool {
-        self.paint_ledger
-            .proves_rule(self.proves_complete(), rule_index)
-    }
-
-    fn has_matching_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
-        self.paint_ledger
-            .proves_property(true, rule_index, property)
-    }
-}
-
-fn shell_kind(node: crate::xml_dom::Node<'_, '_>) -> Option<BlockNodeShellKind> {
-    match node.tag_name().name() {
-        "rect" => Some(BlockNodeShellKind::Rect),
-        "circle" => Some(BlockNodeShellKind::Circle),
-        "path" => Some(BlockNodeShellKind::Path),
-        "polygon" => Some(BlockNodeShellKind::Polygon),
-        _ => None,
-    }
-}
-
-fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
-    let mut fill = None;
-    let mut stroke = None;
-    for declaration in style
-        .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
-    {
-        match declaration.property() {
-            "fill" => fill = Some(declaration.value()),
-            "stroke" => stroke = Some(declaration.value()),
-            _ => {}
-        }
-    }
-    (fill, stroke)
-}
-
 #[cfg(test)]
 mod tests {
     fn resolve_node_paint(
@@ -1472,105 +993,6 @@ mod tests {
     }
 
     use super::*;
-
-    fn node_label_receipt_plan(html_labels: bool) -> BlockNodeLabelPaintPlan {
-        BlockNodeLabelPaintPlan {
-            expectations: ["Alpha", "Beta"]
-                .into_iter()
-                .map(|text| {
-                    Some(BlockNodeLabelExpectation {
-                        paint: DirectPaintExpectation::new(
-                            0,
-                            "#123456",
-                            ThemeCapability::SolidPaint,
-                        ),
-                        text: text.to_owned(),
-                    })
-                })
-                .collect::<Vec<_>>()
-                .into(),
-            html_labels,
-            evidence: FamilyThemeEvidence::default(),
-            pending: BTreeMap::new(),
-            terminal: OnceLock::new(),
-        }
-    }
-
-    #[test]
-    fn node_label_receipt_requires_each_checkpointed_terminal_exactly_once() {
-        for html in [false, true] {
-            let fragments = ["Alpha", "Beta"].map(|text| if html {
-                format!(r##"<g><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><span><p style="color:#123456;">{text}</p></span></div></foreignObject></g>"##)
-            } else {
-                format!(r##"<g><text style="fill:#123456;"><tspan>{text}</tspan></text></g>"##)
-            });
-            for mutation in [
-                "none",
-                "missing",
-                "duplicate",
-                "paint",
-                "content",
-                "identity",
-                "zero-area",
-            ] {
-                if !html && mutation == "zero-area" {
-                    continue;
-                }
-                let plan = node_label_receipt_plan(html);
-                let mut receipt = plan.begin_terminal_receipt().unwrap();
-                let first = match mutation {
-                    "paint" => fragments[0].replace("#123456", "#abcdef"),
-                    "content" => fragments[0].replace("Alpha", "Wrong"),
-                    "zero-area" => fragments[0].replace("width=\"40\"", "width=\"0\""),
-                    _ => fragments[0].clone(),
-                };
-                let index = if mutation == "identity" { 1 } else { 0 };
-                plan.observe_label(&mut receipt, index, &first);
-                if mutation == "duplicate" {
-                    plan.observe_label(&mut receipt, 0, &fragments[0]);
-                }
-                if mutation != "missing" {
-                    plan.observe_label(&mut receipt, 1, &fragments[1]);
-                }
-                assert_eq!(
-                    plan.record_terminal(Some(receipt)),
-                    mutation == "none",
-                    "{html}: {mutation}"
-                );
-                if mutation == "none" {
-                    let mut duplicate = plan.begin_terminal_receipt().unwrap();
-                    plan.observe_label(&mut duplicate, 0, &fragments[0]);
-                    plan.observe_label(&mut duplicate, 1, &fragments[1]);
-                    assert!(
-                        !plan.record_terminal(Some(duplicate)),
-                        "a finalized plan cannot be resealed"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn typography_css_checks_reject_mismatches_and_duplicate_emissions() {
-        let plan =
-            BlockTypographyThemePlan::resolve(None, &merman_core::MermaidConfig::empty_object())
-                .unwrap();
-        for (family, size, expected) in [
-            (plan.font_family_css(), "16", true),
-            ("wrong-font", "16", false),
-            (plan.font_family_css(), "17", false),
-            (plan.font_family_css(), "NaN", false),
-            (plan.font_family_css(), "invalid", false),
-        ] {
-            assert_eq!(plan.observe_css(None, family, size), expected);
-            let mut receipt = BlockTypographyReceipt::default();
-            assert!(!receipt.proves_css());
-            assert_eq!(plan.observe_css(Some(&mut receipt), family, size), expected);
-            assert_eq!(receipt.proves_css(), expected);
-            plan.observe_css(Some(&mut receipt), family, size);
-            assert!(!receipt.proves_css());
-        }
-    }
 
     #[test]
     fn explicit_default_font_size_remains_a_typed_request() {
@@ -1606,9 +1028,8 @@ mod tests {
         assert_eq!(plan.font_family_css(), "Config Sans,Arial");
         assert_eq!(plan.font_size_px(), 24.0);
         assert_eq!(plan.padding(), 12.0);
-        assert!(plan.begin_terminal_receipt().is_none());
-        assert!(plan.observe_css(None, "Config Sans,Arial", "24"));
-        assert!(plan.terminal_receipt.get().is_none());
+        assert!(!plan.observes_visible_labels());
+        assert!(plan.visible_labels.get().is_none());
     }
 
     #[test]
@@ -1632,12 +1053,8 @@ mod tests {
                 &merman_core::MermaidConfig::empty_object(),
             )
             .unwrap();
-            let mut receipt = plan
-                .begin_terminal_receipt()
-                .expect("unsupported obligation");
-            assert!(plan.observe_css(Some(&mut receipt), plan.font_family_css(), "16"));
-            receipt.record_visible_label(label);
-            assert!(plan.record_terminal(receipt));
+            assert!(plan.observes_visible_labels());
+            plan.record_visible_labels(!label.trim().is_empty());
             let evidence = plan.finish_evidence();
             assert_eq!(
                 evidence.not_applicable_mechanisms().contains(&key),
@@ -1719,379 +1136,6 @@ mod tests {
             assert!(!evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(!evidence.residuals().is_empty());
         }
-    }
-
-    #[test]
-    fn unthemed_node_paint_plan_keeps_no_per_node_evidence() {
-        let parsed = merman_core::Engine::new()
-            .parse_diagram_for_render_model_sync(
-                "block\n  A[\"Alpha\"] --> B[\"Beta\"]\n",
-                merman_core::ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
-            panic!("expected a Block render model");
-        };
-        let config = &parsed.metadata().effective_config;
-        let layout = crate::block::layout_block_diagram_typed(
-            model,
-            config.as_value(),
-            &crate::text::DeterministicTextMeasurer::default(),
-        )
-        .unwrap();
-        assert!(!layout.nodes.is_empty());
-        let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let plan = resolve_node_paint(None, config, model, &layout, &work_meter)
-            .expect("resolve unthemed Block paint");
-        assert!(plan.expectations.is_none());
-        assert!(plan.pending.is_empty());
-        assert!(plan.begin_terminal_receipt().is_none());
-        assert!(plan.record_terminal(None));
-        assert!(matches!(plan.terminal_receipt.get(), Some(None)));
-        assert!(!plan.record_terminal(None));
-    }
-
-    #[test]
-    fn node_paint_receipt_tracks_actual_paint_demand_without_changing_writer_evidence() {
-        use crate::diagram_theme::{
-            CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec, Specified,
-            ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
-            TypographySpec,
-        };
-
-        const SOURCE: &str = "block\n  A[\"Alpha\"] B[\"Beta\"]\n";
-        const OWNED_SOURCE: &str =
-            "block\n  A[\"Alpha\"] B[\"Beta\"]\n  classDef default fill:#bb0000,stroke:#00bb00\n";
-        let paint = ThemeStylePatch::default()
-            .with_fill(CanvasPaint::solid("#123456").unwrap())
-            .with_stroke(CanvasPaint::solid("#654321").unwrap());
-        let paint_spec = |patch| {
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
-            )
-        };
-        let font_spec =
-            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
-                crate::DiagramFamilyId::BLOCK,
-                ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
-            ));
-        let mut partial_paint = paint.clone();
-        partial_paint.geometry = ThemeGeometryPatch {
-            radius: Specified::Value(8.0),
-        };
-        for (name, spec, source, needed, residual) in [
-            (
-                "canvas-only",
-                DiagramThemeSpec::new().with_canvas(CanvasSpec::solid("#fafafa").unwrap()),
-                SOURCE,
-                false,
-                false,
-            ),
-            ("font-only", font_spec, SOURCE, false, false),
-            (
-                "source-owned",
-                paint_spec(paint.clone()),
-                OWNED_SOURCE,
-                false,
-                false,
-            ),
-            (
-                "typed-paint",
-                paint_spec(paint.clone()),
-                SOURCE,
-                true,
-                false,
-            ),
-            (
-                "paint-with-unsupported-geometry",
-                paint_spec(partial_paint),
-                SOURCE,
-                true,
-                true,
-            ),
-        ] {
-            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
-            let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
-            let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new())
-                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
-                .unwrap()
-                .unwrap();
-            let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
-                panic!("expected a Block render model");
-            };
-            let mut typography = BlockTypographyThemePlan::resolve(
-                Some(&resolved),
-                &parsed.metadata().effective_config,
-            )
-            .unwrap();
-            typography.prepare_class_definitions(&model.class_defs);
-            let layout = crate::block::layout_block_diagram_typed_with_text_style(
-                model,
-                typography.padding(),
-                crate::block::BlockShapeSettings::resolve(
-                    parsed.metadata().effective_config.as_value(),
-                ),
-                typography.css_binding().html_labels,
-                typography.text_style().clone(),
-                &crate::text::DeterministicTextMeasurer::default(),
-            )
-            .unwrap();
-            let work = OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            );
-            let plan = resolve_node_paint(
-                Some(&resolved),
-                &parsed.metadata().effective_config,
-                model,
-                &layout,
-                &work,
-            )
-            .unwrap();
-            assert_eq!(plan.begin_terminal_receipt().is_some(), needed, "{name}");
-            if residual {
-                assert!(plan.pending.is_empty());
-            }
-            let rendered = crate::family::prepare(
-                parsed,
-                &crate::LayoutOptions::headless_svg_defaults(),
-                crate::environment::RenderEnvironment::deterministic()
-                    .begin_session_with_theme(&theme)
-                    .unwrap(),
-            )
-            .unwrap()
-            .render_svg(
-                &crate::svg::SvgRenderOptions {
-                    diagram_id: Some("paint-demand".into()),
-                    ..crate::svg::SvgRenderOptions::default()
-                },
-                &crate::svg::SvgDebugOptions::default(),
-            )
-            .unwrap();
-            let document = crate::xml_dom::Document::parse(rendered.svg()).unwrap();
-            // Read each real shell checkpoint from the emitted SVG. A full observer still
-            // accepts the cases that omit paint observation; their local evidence is unchanged.
-            let mut receipt =
-                BlockNodePaintThemeReceipt::new(Arc::clone(plan.expectations.as_ref().unwrap()));
-            let mut fragments = Vec::new();
-            for (index, node) in layout.nodes.iter().enumerate() {
-                let id = format!("paint-demand-{}", node.id);
-                let group = document
-                    .descendants()
-                    .find(|element| element.attribute("id") == Some(id.as_str()))
-                    .unwrap();
-                let shell = group
-                    .children()
-                    .find(crate::xml_dom::Node::is_element)
-                    .unwrap();
-                let fragment = &rendered.svg()[group.range().start..shell.range().end];
-                receipt.observe_checkpointed_node(index, "paint-demand", fragment);
-                fragments.push(fragment);
-            }
-            assert!(receipt.proves_complete(), "{name}");
-            let before = plan.finish_evidence();
-            if needed {
-                assert!(!plan.record_terminal(None));
-                assert!(!plan.record_terminal(plan.begin_terminal_receipt()));
-                for mutation in ["duplicate", "paint"] {
-                    let mut rejected = plan.begin_terminal_receipt().unwrap();
-                    for (index, fragment) in fragments.iter().enumerate() {
-                        let fragment = if mutation == "paint" {
-                            fragment.replace("#123456", "#abcdef")
-                        } else {
-                            (*fragment).to_string()
-                        };
-                        rejected.observe_checkpointed_node(index, "paint-demand", &fragment);
-                    }
-                    if mutation == "duplicate" {
-                        rejected.observe_checkpointed_node(0, "paint-demand", fragments[0]);
-                    }
-                    assert!(!plan.record_terminal(Some(rejected)), "{name}: {mutation}");
-                    assert!(plan.terminal_receipt.get().is_none());
-                }
-                let duplicate = receipt.clone();
-                assert!(plan.record_terminal(Some(receipt)), "{name}");
-                assert!(!plan.record_terminal(Some(duplicate)));
-            } else {
-                assert!(!plan.record_terminal(Some(receipt)));
-                assert!(plan.record_terminal(None), "{name}");
-                assert!(!plan.record_terminal(None));
-                let after = plan.finish_evidence();
-                assert_eq!(after.applied(), before.applied());
-                assert_eq!(
-                    after.not_applicable_mechanisms(),
-                    before.not_applicable_mechanisms()
-                );
-                assert_eq!(after.residuals(), before.residuals());
-            }
-            let key = FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Node,
-            };
-            let report = rendered.style_report();
-            assert_eq!(
-                report.theme_applied_mechanisms().contains(&key),
-                needed && !residual
-            );
-            assert_eq!(
-                report.theme_residuals().iter().any(|entry| {
-                    entry.key() == &key
-                        && entry.reason() == FamilyThemeResidualReason::UnsupportedGeometry
-                }),
-                residual,
-                "{name}"
-            );
-            if name == "source-owned" {
-                assert!(report.theme_not_applicable_mechanisms().contains(&key));
-                assert!(rendered.svg().contains("fill:#bb0000!important"));
-                assert!(rendered.svg().contains("stroke:#00bb00!important"));
-            } else if name == "font-only" {
-                assert!(report.theme_applied_mechanisms().contains(
-                    &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize)
-                ));
-            } else if name == "canvas-only" {
-                assert!(rendered.svg().contains("#fafafa"));
-            }
-        }
-    }
-
-    fn paint(rule_index: usize, css: &str) -> DirectPaintExpectation {
-        DirectPaintExpectation::new(
-            rule_index,
-            css,
-            if css == "transparent" {
-                ThemeCapability::TransparentPaint
-            } else {
-                ThemeCapability::SolidPaint
-            },
-        )
-    }
-
-    fn paint_expectation(shells: &[BlockNodeShellKind]) -> NodeExpectation {
-        NodeExpectation {
-            fill: Some(paint(3, "#654321")),
-            stroke: Some(paint(3, "#123456")),
-            shells: shells.into(),
-            id: "node".to_string(),
-            transform: "translate(10, 20)".to_string(),
-            ..NodeExpectation::default()
-        }
-    }
-
-    #[test]
-    fn composite_receipt_reads_actual_shell_identity_paints_and_geometry() {
-        let expectation = NodeExpectation {
-            fill: Some(paint(3, "#654321")),
-            stroke: Some(paint(4, "#123456")),
-            shells: vec![BlockNodeShellKind::Rect].into(),
-            id: "group".to_string(),
-            transform: "translate(10, 20)".to_string(),
-            composite: true,
-            rectangle_attributes: Some(["-20", "-10", "40", "20", "0", "0"].map(str::to_string)),
-        };
-        let fragment = r##"<g class="node default" id="test-group" transform="translate(10, 20)"><rect class="basic cluster composite label-container" style="fill:#654321;stroke:#123456;" x="-20" y="-10" width="40" height="20" rx="0" ry="0"/>"##;
-        let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation.clone()]);
-        receipt.observe_checkpointed_node(0, "test", fragment);
-        assert!(receipt.proves_complete());
-        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
-        assert!(receipt.has_matching_property(4, ResolvedStyleProperty::Stroke));
-        for mutated in [
-            fragment.replace("test-group", "test-other"),
-            fragment.replace("translate(10, 20)", "translate(20, 10)"),
-            fragment.replace("#654321", "#abcdef"),
-            fragment.replace("#123456", "#abcdef"),
-            fragment.replace("composite", "ordinary"),
-            fragment.replace("width=\"40\"", "width=\"20\""),
-            fragment.replace("<rect", "<circle"),
-            fragment.split("<rect").next().unwrap().to_string(),
-        ] {
-            let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation.clone()]);
-            receipt.observe_checkpointed_node(0, "test", &mutated);
-            assert!(!receipt.proves_complete(), "{mutated}");
-        }
-        receipt.observe_checkpointed_node(0, "test", fragment);
-        assert!(!receipt.proves_complete(), "duplicate shell checkpoint");
-    }
-
-    #[test]
-    fn receipt_requires_every_real_shell_with_the_final_paints() {
-        for (kinds, shells) in [
-            (
-                vec![BlockNodeShellKind::Rect],
-                r##"<rect style="fill:#654321;stroke:#123456;"/>"##,
-            ),
-            (
-                vec![BlockNodeShellKind::Circle, BlockNodeShellKind::Circle],
-                r##"<g class="basic label-container"><circle style="fill:#654321;stroke:#123456;"/><circle style="fill:#654321;stroke:#123456;"/></g>"##,
-            ),
-            (
-                vec![BlockNodeShellKind::Polygon],
-                r##"<g class="basic label-container outer-path"><path style="fill:#654321;stroke:#123456;"/><path style="fill:#654321;stroke:#123456;"/></g>"##,
-            ),
-        ] {
-            let mut receipt = BlockNodePaintThemeReceipt::new(vec![paint_expectation(&kinds)]);
-            let fragment =
-                format!(r#"<g class="node" id="test-node" transform="translate(10, 20)">{shells}"#);
-            receipt.observe_checkpointed_node(0, "test", &fragment);
-            assert!(receipt.proves_complete());
-            assert!(receipt.proves_rule(3));
-            assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
-            assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
-        }
-    }
-
-    #[test]
-    fn receipt_rejects_missing_wrong_duplicate_and_unwritten_shells() {
-        let expectation =
-            paint_expectation(&[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle]);
-        let fragment = r##"<g class="node" id="test-node" transform="translate(10, 20)"><g class="basic label-container"><circle style="fill:#654321;stroke:#123456;"/><circle style="fill:#654321;stroke:#123456;"/></g>"##;
-        for mutated in [
-            fragment.replacen(r##"<circle style="fill:#654321;stroke:#123456;"/>"##, "", 1),
-            fragment.replacen("<circle", "<path", 1),
-            fragment.replacen("fill:#654321;", "", 1),
-            fragment.replacen("fill:#654321;", "fill:#abcdef;", 1),
-            fragment.replace("translate(10, 20)", "translate(20, 10)"),
-        ] {
-            let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation.clone()]);
-            receipt.observe_checkpointed_node(0, "test", &mutated);
-            assert!(!receipt.proves_complete(), "{mutated}");
-        }
-        let mut duplicate = BlockNodePaintThemeReceipt::new(vec![expectation.clone()]);
-        duplicate.observe_checkpointed_node(0, "test", fragment);
-        duplicate.observe_checkpointed_node(0, "test", fragment);
-        assert!(!duplicate.proves_complete());
-        assert!(!BlockNodePaintThemeReceipt::new(vec![expectation]).proves_complete());
-    }
-
-    #[test]
-    fn source_owned_fill_is_independent_from_effective_typed_stroke() {
-        let mut expectation = paint_expectation(&[BlockNodeShellKind::Polygon]);
-        expectation.fill = None;
-        let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation]);
-        receipt.observe_checkpointed_node(0, "test",
-            r##"<g class="node" id="test-node" transform="translate(10, 20)"><polygon style="fill:#abcdef;stroke:#123456;"/>"##);
-        assert!(receipt.proves_complete());
-        assert!(receipt.has_effective_rule(3));
-        assert!(receipt.proves_rule(3));
-        assert!(!receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
-        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
-    }
-
-    #[test]
-    fn source_owned_stroke_is_independent_from_effective_typed_fill() {
-        let mut expectation = paint_expectation(&[BlockNodeShellKind::Rect]);
-        expectation.stroke = None;
-        let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation]);
-        receipt.observe_checkpointed_node(0, "test",
-            r##"<g class="node" id="test-node" transform="translate(10, 20)"><rect style="fill:#654321;stroke:#abcdef;"/>"##);
-        assert!(receipt.proves_complete());
-        assert!(receipt.has_effective_rule(3));
-        assert!(receipt.proves_rule(3));
-        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
-        assert!(!receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
     }
 
     #[test]

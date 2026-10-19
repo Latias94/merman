@@ -23,9 +23,7 @@ mod theme;
 
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
-pub(crate) use theme::{
-    IshikawaCssBinding, IshikawaTextThemePlan, IshikawaTextThemeReceipt, IshikawaTypographyTerminal,
-};
+pub(crate) use theme::{IshikawaCssBinding, IshikawaTextThemePlan};
 
 pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,

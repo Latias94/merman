@@ -24,22 +24,12 @@ pub(crate) struct KanbanTextPaintPlan {
     evidence: FamilyThemeEvidence,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
     text_keys: BTreeSet<FamilyThemeMechanismKey>,
-    expected: KanbanTextPaintFacts,
-    terminal: OnceLock<()>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum KanbanTextPaintRole {
-    Section,
-    Title,
-    Ticket,
-    Assigned,
+    terminal: OnceLock<KanbanTextPaintOutcome>,
 }
 
 /// Aggregate facts reuse preparation's XHTML classification, without retaining terminal IDs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct KanbanTextPaintFacts {
-    labels: [usize; 4],
     visible_runs: usize,
     inherited_runs: usize,
     partial_color_ownership: bool,
@@ -50,7 +40,6 @@ struct KanbanTextPaintFacts {
 impl Default for KanbanTextPaintFacts {
     fn default() -> Self {
         Self {
-            labels: [0; 4],
             visible_runs: 0,
             inherited_runs: 0,
             partial_color_ownership: false,
@@ -63,14 +52,12 @@ impl Default for KanbanTextPaintFacts {
 impl KanbanTextPaintFacts {
     fn record(
         &mut self,
-        role: KanbanTextPaintRole,
         parse_valid: bool,
         visible_runs: usize,
         inherited_runs: usize,
         unverified_color_runs: usize,
         task_label_owned: bool,
     ) {
-        self.labels[role as usize] += 1;
         self.visible_runs += visible_runs;
         if !task_label_owned {
             self.inherited_runs += inherited_runs;
@@ -81,13 +68,10 @@ impl KanbanTextPaintFacts {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct KanbanTextPaintReceipt<'a> {
-    expected_fill: Option<&'a str>,
-    expected: KanbanTextPaintFacts,
+#[derive(Debug, Default)]
+pub(crate) struct KanbanTextPaintOutcome {
     emitted: KanbanTextPaintFacts,
-    css_declarations: usize,
-    valid: bool,
+    css_written: bool,
 }
 
 impl KanbanTextPaintPlan {
@@ -97,7 +81,6 @@ impl KanbanTextPaintPlan {
             evidence: FamilyThemeEvidence::default(),
             pending: Vec::new(),
             text_keys: BTreeSet::new(),
-            expected: KanbanTextPaintFacts::default(),
             terminal: OnceLock::new(),
         }
     }
@@ -138,11 +121,11 @@ impl KanbanTextPaintPlan {
         if plan.text_keys.is_empty() {
             return Ok(plan);
         }
+        let mut ownership = KanbanTextPaintFacts::default();
         for section in sections {
             let facts = &section.visible_style_facts;
             work.charge(1usize.saturating_add(facts.visible_run_count()))?;
-            plan.expected.record(
-                KanbanTextPaintRole::Section,
+            ownership.record(
                 facts.parse_valid(),
                 facts.visible_run_count(),
                 facts.inherited_color_run_count(),
@@ -152,20 +135,13 @@ impl KanbanTextPaintPlan {
         }
         for (index, item) in items.iter().enumerate() {
             let task_label_owned = tasks.owns_label_foreground(index);
-            for (role, facts) in [
-                (KanbanTextPaintRole::Title, &item.title.visible_style_facts),
-                (
-                    KanbanTextPaintRole::Ticket,
-                    &item.ticket.visible_style_facts,
-                ),
-                (
-                    KanbanTextPaintRole::Assigned,
-                    &item.assigned.visible_style_facts,
-                ),
+            for facts in [
+                &item.title.visible_style_facts,
+                &item.ticket.visible_style_facts,
+                &item.assigned.visible_style_facts,
             ] {
                 work.charge(1usize.saturating_add(facts.visible_run_count()))?;
-                plan.expected.record(
-                    role,
+                ownership.record(
                     facts.parse_valid(),
                     facts.visible_run_count(),
                     facts.inherited_color_run_count(),
@@ -192,15 +168,15 @@ impl KanbanTextPaintPlan {
                 DirectStaticSelectorDomain::Default,
             );
         }
-        // An empty visible domain has no effect or palette terminal. Defer its N/A proof
-        // to the writer instead of recording a fixed one-occurrence fallback residual.
-        if plan.expected.parse_valid && plan.expected.visible_runs == 0 {
+        // An empty visible domain has no effect or palette terminal. The writer records
+        // its N/A result after successfully emitting the document.
+        if ownership.parse_valid && ownership.visible_runs == 0 {
             return Ok(plan);
         }
         let source_owned_fill = config_owned
-            || (plan.expected.parse_valid
-                && plan.expected.unverified_color_runs == 0
-                && plan.expected.inherited_runs == 0);
+            || (ownership.parse_valid
+                && ownership.unverified_color_runs == 0
+                && ownership.inherited_runs == 0);
         let mut observations = BTreeMap::new();
         for route in theme.family_mechanism_routes() {
             let FamilyThemeMechanism::RuleFacet {
@@ -268,28 +244,20 @@ impl KanbanTextPaintPlan {
         self.fill.as_ref().map(DirectStaticPaint::css)
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<KanbanTextPaintReceipt<'_>> {
-        (!self.text_keys.is_empty()).then(|| KanbanTextPaintReceipt {
-            expected_fill: self.fill_css(),
-            expected: self.expected,
-            emitted: KanbanTextPaintFacts::default(),
-            css_declarations: 0,
-            valid: true,
-        })
+    pub(crate) fn begin_terminal_outcome(&self) -> Option<KanbanTextPaintOutcome> {
+        (!self.text_keys.is_empty()).then(KanbanTextPaintOutcome::default)
     }
 
-    pub(crate) fn record_terminal(&self, receipt: KanbanTextPaintReceipt<'_>) -> bool {
-        receipt.valid
-            && receipt.css_declarations == 3
-            && receipt.expected == receipt.emitted
-            && self.terminal.set(()).is_ok()
+    pub(crate) fn record_terminal(&self, outcome: KanbanTextPaintOutcome) {
+        let _ = self.terminal.set(outcome);
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if self.terminal.get().is_some()
-            && self.expected.parse_valid
-            && self.expected.visible_runs == 0
+        if self
+            .terminal
+            .get()
+            .is_some_and(|outcome| outcome.emitted.parse_valid && outcome.emitted.visible_runs == 0)
         {
             for key in &self.text_keys {
                 evidence.mark_not_applicable(key.clone());
@@ -300,12 +268,13 @@ impl KanbanTextPaintPlan {
             if let Some(reason) = residual {
                 evidence.mark_residual(key.clone(), *reason);
             } else {
-                if self.terminal.get().is_some()
-                    && self.expected.parse_valid
-                    && self.expected.inherited_runs > 0
-                    && !self.expected.partial_color_ownership
-                    && self.expected.unverified_color_runs == 0
-                {
+                if self.terminal.get().is_some_and(|outcome| {
+                    outcome.css_written
+                        && outcome.emitted.parse_valid
+                        && outcome.emitted.inherited_runs > 0
+                        && !outcome.emitted.partial_color_ownership
+                        && outcome.emitted.unverified_color_runs == 0
+                }) {
                     if let Some(fill) = &self.fill {
                         evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
                     }
@@ -319,17 +288,13 @@ impl KanbanTextPaintPlan {
     }
 }
 
-impl KanbanTextPaintReceipt<'_> {
-    pub(crate) fn record_css(&mut self, emitted: &str) {
-        self.valid &= self
-            .expected_fill
-            .is_none_or(|expected| expected == emitted);
-        self.css_declarations += 1;
+impl KanbanTextPaintOutcome {
+    pub(crate) fn record_css(&mut self) {
+        self.css_written = true;
     }
 
     pub(crate) fn record_label(
         &mut self,
-        role: KanbanTextPaintRole,
         parse_valid: bool,
         visible_runs: usize,
         inherited_runs: usize,
@@ -337,7 +302,6 @@ impl KanbanTextPaintReceipt<'_> {
         task_label_owned: bool,
     ) {
         self.emitted.record(
-            role,
             parse_valid,
             visible_runs,
             inherited_runs,

@@ -472,6 +472,7 @@ fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -
 
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
+    explicit_theme: bool,
     compat: std::sync::Arc<super::SequenceCompatBinding>,
     base_typography: SequenceBaseTypography,
     actor: SequenceResolvedTypography,
@@ -552,6 +553,7 @@ impl SequenceTypographyPlan {
             }
         }
         Ok(Self {
+            explicit_theme: resolved_theme.is_some(),
             compat,
             base_typography,
             actor,
@@ -561,6 +563,10 @@ impl SequenceTypographyPlan {
             terminal_foregrounds,
             terminal_foreground_provenance,
         })
+    }
+
+    pub(crate) const fn has_explicit_theme(&self) -> bool {
+        self.explicit_theme
     }
 
     pub(crate) fn compat_binding(&self) -> &super::SequenceCompatBinding {

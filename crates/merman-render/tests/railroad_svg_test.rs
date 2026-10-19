@@ -521,7 +521,6 @@ fn railroad_typed_font_stack_and_size_drive_layout_css_and_terminal_text_receipt
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -596,7 +595,6 @@ fn railroad_explicit_font_config_outranks_theme_variables_and_typed_typography()
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 2);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
     }
 }
@@ -645,7 +643,6 @@ fn railroad_font_config_precedence_is_property_local() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
     }
 }
@@ -680,7 +677,6 @@ fn railroad_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -709,7 +705,6 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -751,7 +746,6 @@ fn railroad_title_fill_reaches_rule_name_through_typed_adapter() {
         assert_eq!(evidence.applied_count(), 1, "case={case}");
         assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
     }
 }
 
@@ -804,7 +798,6 @@ fn railroad_text_fill_reaches_every_unowned_visible_text_role_through_typed_adap
         assert_eq!(evidence.applied_count(), 1, "case={case}");
         assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
         assert_eq!(
             evidence.mermaid_compatibility_residual_count(),
             0,
@@ -882,11 +875,6 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
         assert_eq!(evidence.applied_count(), 0, "case={diagram_id}");
         assert_eq!(evidence.not_applicable_count(), 1, "case={diagram_id}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={diagram_id}");
-        assert_eq!(
-            evidence.compatibility_residual_count(),
-            0,
-            "case={diagram_id}"
-        );
     }
 }
 

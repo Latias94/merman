@@ -17,6 +17,292 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 PR checkpoint](theme_pr_checkpoint_macos_2026-10-19.md) records integration with
+`origin/main` at `252752f70`, the ER prepared-geometry/consumer-style merge and fresh checks on
+product revision `08688eaf5`. Release native tests pass 8,275 cases; Clippy, private theme acceptance,
+WASM, full DOM, representative feature/dependency checks, benchmark discovery, native-memory smoke,
+Node and legal/security checks pass. Earlier incremental allocation and timing receipts retain
+their original revisions; the upstream ER cache changes measurement callback count and phase.
+The all-family convergence goal remains active while the first refactor batch enters review.
+
+The [October 19 color serialization checkpoint](theme_color_serialization_macos_2026-10-19.md)
+removes temporary numeric/hex component Strings from shared theme color formatting. All 17,091
+direct color operations, 178 public-render controls and 418 catalog cells preserve exact output
+and errors/reports/measurement traces as applicable. Stable memory rows never regress; default
+Kanban saves 36 allocations and 222 bytes per complete render, and 67 catalog cells improve across
+eight logical families. Peak and retained growth remain unchanged. Native 7,624 tests, private
+theme acceptance, Clippy, optimized full WASM, smoke and all-family DOM pass. This is allocation
+evidence, not a latency or theme-regression attribution: the serializer is unchanged since v0.9.0.
+
+The [October 19 v0.9.0 refresh](theme_v090_same_svg_refresh_macos_2026-10-19.md) retains all 19
+same-SVG E2E scenes in 76 fixed diagnostic calls. Seven rows exceed both 10% and 1 us: Class tiny,
+C4, Sankey, Zenuml, Packet, Kanban and Wardley. Packet/Kanban/Zenuml observe
++32.78%/+28.46%/+18.47%; the complete table and separate changed-output lanes remain recorded.
+These observations have no A/A calibration, formal recovery admission or theme-only attribution.
+Kanban CSS work moved from emission to preparation across releases, so its private layout gap
+cannot by itself identify added work. The shared color serializer's temporary component strings
+are the next independent allocation candidate.
+
+The [October 19 default font checkpoint](theme_default_font_fastpath_macos_2026-10-19.md) borrows
+configured font strings and skips CSS parsing only for the two exact built-in Mermaid default
+spellings; all custom and malformed values retain the parser and safety validation. All 178 public
+controls preserve SVG, reports and ordered measurement traces; 84/171 jointly stable memory rows
+reduce allocation count and bytes, with seven variable Flowchart rows remaining inconclusive. All
+418 cells across 35 logical families and 10 presets plus no-theme preserve output and metadata; 122
+reduce allocation count and bytes. Peak and retained growth are unchanged. This is allocation/work
+evidence, not a calibrated latency claim.
+
+The [October 19 family preparation checkpoint](family_theme_preparation_macos_2026-10-19.md)
+removes discarded/duplicated Class, Pie, Sankey, and no-theme Quadrant preparation. All 178
+public controls preserve exact SVG/report/measurement traces; 171 jointly stable rows have no
+memory-metric regression and seven variable Flowchart rows remain inconclusive. All 418
+family/preset/default cells preserve output and metadata; 24 reduce allocation count and bytes,
+with no peak or retained-growth regressions. Candidate 1 was rejected after ER regressed by one
+allocation. This is allocation/work evidence only; no calibrated latency claim was run.
+
+The [October 18 indexed-key checkpoint](theme_indexed_keys_macos_2026-10-18.md) removes repeated
+formatting of fixed Git, cScale, palette and default-restoration keys during non-exact theme
+materialization. All 21 non-empty, non-palette public SVG rows reduce allocations and bytes; the
+default theme saves 134 allocations/2,233 bytes and the other themes save 15–55 allocations/
+137–1,024 bytes. Empty snapshot and explicit palette controls are unchanged, and all 60 SVG/report
+artifacts compare byte-for-byte equal. Theme tests (139), public merman tests (396), Clippy,
+formatting and release build pass. This is an allocation/work reduction with no calibrated latency
+claim and no retained state.
+
+The [October 18 staged-empty checkpoint](staged_empty_lazy_macos_2026-10-18.md) caches the exact
+ordered result for empty, owner-free compatibility execution of Base, Dark, Forest and Neutral.
+It preserves generated-theme insertion order by running the existing staged executor once; the
+generated sorted snapshot is intentionally not used. Across 178 public SVG/report/measurer
+controls and the 418-cell matrix covering 35 logical families and 10 presets, output, diagnostics,
+status and admission are exact. 380 preset cells reduce 851–1,070 allocations and 56–75 KB per
+operation; 38 no-theme cells are unchanged and retained growth matches everywhere. Four fixed
+cache entries retain about 281 KB after first preparation; subsequent preparations have zero
+retained growth. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. This is an exact
+allocation/work-removal admission with no calibrated latency claim; first-request timing remains
+open. Nonempty, owner-bearing, invalid, bounded and cancellation paths retain the full executor.
+
+The [October 18 root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md) removes cloned
+root-report inventories/residuals and repeated self-coverage reconstruction, retaining canonical
+writer outcomes, frozen counts/capability union and output-mutation invalidation. All 178 public
+SVG/report/ordered-measurer controls and 152 benchmark SVG identities match. Of 173 stable memory
+inputs, 30 save 12 allocations/672 bytes and 143 stay unchanged; five variable Flowchart inputs
+remain inconclusive. All 418 catalog cells preserve SVG/reports: 380 preset cells save 12–16
+allocations/672–1,048 bytes, all 38 no-theme cells stay unchanged, 25 peak-growth values decrease
+and retained growth always matches. Native 8,254 tests, Clippy, qualification, WASM, smoke, DOM and
+format pass. Fixed adjacent E2E diagnostics range from -0.54% to +3.83%, without calibrated
+latency admission. The independent root-report candidate is complete.
+
+The [October 18 v0.9.0 refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md) measures all 19
+same-SVG E2E scenarios across 15 logical families in 76 fixed diagnostic calls. Eight rows exceed
+both 10% and 1 us: Class tiny, Pie, Sankey, Quadrant, Zenuml, Packet, Kanban and Wardley.
+Packet/Kanban/Zenuml observe +42.83%/+29.96%/+19.44%; the other rows remain in the complete table.
+The 57 changed-SVG rendering fixtures and three preprocessing-only fixtures remain separate.
+These uncalibrated release-range observations do not isolate theme costs or close the active goal.
+Next attribute actual consumers in the flagged rows, with configured duplicate CSS normalization
+kept as a separate policy/order hypothesis.
+
+The [October 18 root style checkpoint](root_style_borrow_macos_2026-10-18.md) borrows ordinary
+root styles and deferred static suffixes until actual custom-property composition needs ownership.
+All 178 SVG/report/measurer controls and 152 benchmark SVG identities match. Of 172 stable memory
+inputs, 168 reduce allocation and four remain unchanged; six variable Flowchart rows are inconclusive.
+Default Zenuml saves one allocation/20 bytes. All 418 compiled-preset/default coverage cells across
+35 logical families preserve SVG and reports: 407 save one allocation, 11 Usecase cells stay unchanged;
+all peak/retained metrics match. Partial-support statuses are preserved, not treated as Verified.
+Native 8,253 tests, Clippy, theme qualification, optimized full WASM, smoke, DOM and format pass.
+Five-family E2E diagnostics range from -1.52% to +0.81%, with no calibrated latency claim. Separate
+same-SVG v0.9.0 Zenuml context is 20.5995 → 24.0605 us (+16.80%). The subsequent
+[root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md) completes the renderer-private
+report inventory/self-coverage cleanup while preserving actual writer outcomes and public evidence.
+
+The [October 18 Engine ownership and scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md)
+removes redundant Engine clones through an internal parse-stage borrow; explicit request themes
+retain an isolated engine. This is an ownership refactor: all four memory metrics stay unchanged
+for 172 stable inputs; six variable Flowchart rows remain inconclusive. All 178 public SVG/report/
+measurer controls, 152 benchmark SVG identities, native 8,253 tests, Clippy, theme, WASM and DOM
+gates pass. Five-family E2E diagnostics range from -1.16% to +0.60%, without a calibrated speedup.
+Separate same-SVG v0.9.0 Zenuml context is 20.3045 → 23.9505 us (+17.96%). The active goal below
+covers all 35 logical families and 10 public presets, not only previously timed default requests.
+Root style composition is completed by the [root style checkpoint](root_style_borrow_macos_2026-10-18.md);
+explicit root-report rebuilding is completed by the
+[root-outcome checkpoint](root_theme_outcomes_macos_2026-10-18.md).
+
+The [October 18 root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) narrows
+post-write root state to `Option<ViewBox>`, avoiding a complete viewport-plan clone and retaining
+only geometry consumed by canvas application. Root sizing, provenance, deferred finalization,
+resource checks and cancellation remain. All 178 public SVG/report/custom-measurer pairs and 152
+benchmark SVG identities match. Of 171 stable memory inputs, 156 reduce allocation and 15 remain
+unchanged; seven variable Flowchart inputs remain memory-inconclusive. Default Zenuml saves four
+allocations/46 bytes (471 → 467); stable peak growth never increases and retained bytes match.
+Native 8,252 tests, Clippy, theme qualification, optimized full WASM, 37-diagram smoke and all-family
+DOM pass. Forty fixed adjacent diagnostic calls observe Zenuml/Packet/Timeline/State/ER public E2E
+changes of -0.94%/-0.28%/+0.29%/-0.01%/-0.82%, with no calibrated latency claim. Fresh same-SVG
+v0.9.0 Zenuml context is 20.2635 → 23.7765 us (+17.34%); error/resource contracts differ, and this
+is neither all-family evidence nor theme-only attribution. A separate consumer audit identifies
+an extra Engine clone between the public facade and Operation, on the pipeline E2E path. The
+subsequent [ownership refactor](engine_borrow_theme_scope_macos_2026-10-18.md) removes it. Root style
+composition is subsequently addressed by the [root style checkpoint](root_style_borrow_macos_2026-10-18.md);
+these ownership changes are not assigned the complete remaining release gap.
+
+The [October 18 Zenuml source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
+resolves the actual `themeVariables.zenuml` object once for both typography and source colors.
+Missing/non-object namespaces return the same defaults, replacing 36 full role-path requests with
+one namespace lookup; explicit empty strings, non-string fallback and raw activation-background
+priorities remain. The unused stored `surfaceColor` entry is removed while retaining it as a fallback input.
+All 86 public SVG/report/custom-measurer controls and 152 benchmark SVG identities match. Six
+configured inputs reduce allocation, 80 are unchanged; default allocations remain 471, and peak/
+retained bytes never increase. Native 8,252 tests, Clippy, theme qualification, optimized full WASM,
+37-diagram smoke and all-family DOM pass. Fixed adjacent diagnostics observe Zenuml preparation
+4.6143 → 3.8969 us (-15.55%) and public E2E 24.7250 → 24.1535 us (-2.31%), with Packet/Timeline
+E2E -0.38%/-0.64%. These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is
+20.155 → 24.220 us (+20.17%), without an all-family or theme-only cause. The subsequent
+[root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
+ownership. The extra intermediate facade Engine clone is subsequently removed by the
+[Engine ownership refactor](engine_borrow_theme_scope_macos_2026-10-18.md).
+Previous XML A/A remains inconclusive and is not retried.
+
+The [October 17 XML legal-whitespace checkpoint](xml_legal_whitespace_macos_2026-10-17.md)
+lets exact XML-legal TAB/LF/CR use the existing bulk classifier instead of forcing complete chunks
+through scalar state processing. Actual Zenuml CSS scalar bytes fall from 2,818 to zero; 507 paired
+byte/append/observation controls match, as do all 74 public SVG/report/allocation/measurer cases
+and 152 benchmark SVG identities. The first range-pattern implementation is rejected for
+Kanban/Timeline public E2E regressions (+10.72%/+18.95%): it lost native vectorization. The retained
+equivalent non-short-circuit predicate restores NEON on this host. Fresh adjacent diagnostics
+observe Zenuml emission/E2E -25.09%/-9.66%, with Packet/Kanban/Timeline E2E +3.29%/+0.19%/+0.99%.
+These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is 19.977 → 24.973 us
+(+25.01%), without theme-only attribution. Native, Clippy, private theme, optimized full WASM,
+37-diagram smoke and all-family DOM pass. Preparation samples put 19.66% under source-style
+construction; the subsequent [source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
+addresses that repeated path ownership. The subsequent
+[root viewport checkpoint](root_viewport_state_macos_2026-10-18.md) removes unused post-write plan
+ownership; the separate [Engine borrow](engine_borrow_theme_scope_macos_2026-10-18.md) removes its
+redundant facade clones. Previous A/A remains inconclusive and
+is not retried.
+
+The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
+
+The [October 17 Zenuml ownership checkpoint](zenuml_style_ownership_macos_2026-10-17.md) removes
+per-message font copies and moves all three single-title owners' unused predicates behind theme
+presence. All 59 public SVG/report and custom-measurer trace pairs match; 35 inputs reduce
+allocation and 24 remain unchanged, with identical peak growth and retained bytes. Default
+Zenuml saves six allocations/150 bytes; 128 ordinary messages save 256/6,400 bytes. Treemap/Venn
+save four/two allocations on their default no-theme paths. Fixed adjacent diagnostics observe
+E2E changes of +1.27%/-0.36%/-0.38% for Zenuml/Treemap/Venn, with Timeline control +0.12%;
+no confirmed latency claim. Fresh same-SVG Zenuml tag context remains +52.58%, without a theme-only
+attribution.
+A CSS Display-wrapper candidate is rejected because repeated placeholders rerun entity decoding
+and increase default/empty allocations. The subsequent [CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md)
+fixes the separate double-encoding defect with logical CSS values and one terminal XML owner; its
+changed-output resource/byte boundaries are reported separately. The previous XML A/A failure
+remains inconclusive and is not retried.
+
+The [October 17 XML chunk-classification checkpoint](xml_chunk_classification_macos_2026-10-17.md)
+reuses the existing full chunk classification to omit the ordinary-text delimiter search, without
+buffering or added state. All 77 public SVG/report inputs preserve all four allocation metrics;
+152 adjacent SVG identities match. Ten-row adjacent diagnostics observe Packet/Kanban public E2E
+changes of -2.47%/-3.52%, with Timeline +1.06%; these are not calibrated latency improvements.
+The fresh 64-invocation A/A attempt is inconclusive: Packet base's identity interval excludes zero,
+blocking both rows before A/B despite Kanban calibrating. No retries or confirmed latency claim.
+Fresh diagnostics across all 19 exact-SVG-matching v0.9.0 E2E rows leave Packet/Kanban/Timeline
+at +37.00%/+29.55%/+7.54%; Zenuml remains +54.40%, while Class medium is +1.69%. No all-family
+average, equivalent error/resource contract or theme-only cause is claimed. Changed-output rows
+remain separate. The ownership checkpoint above addresses the measured Zenuml font copies and
+single-title predicates; the subsequent CSS encoding and XML legal-whitespace checkpoints above
+address their independent encoding questions.
+Keep Packet/Kanban writer and actual preparation costs separate. Unused post-write root
+viewport-plan ownership is addressed in the [root viewport checkpoint](root_viewport_state_macos_2026-10-18.md);
+Kanban temporary label/font copies remain a separate allocation candidate.
+
+The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) supplied the
+preceding writer experiment. Inclusive Packet/Kanban emission samples placed 34.55%/52.32% beneath
+XML text writing, including sink descendants. Fixed-byte fragment probes showed sensitivity and a
+hostile-suffix counterexample to unconditional coalescing. The implemented classification reuse
+above does not add buffering; append/error boundaries rule out unconditional coalescing within
+this contract. Default per-element theme certification and complete terminal XML reinspection
+are absent. The diagnosis itself changes no production code.
+
+The [October 17 Packet/Kanban preparation checkpoint](packet_kanban_preparation_macos_2026-10-17.md)
+removes requestless Packet compatibility snapshots and configured-style declaration roundtrips,
+reuses Kanban's diagram font in CSS, and delays unused typography fallbacks. Its admission claim
+is exact public-operation allocation reduction: 77 SVG/theme-report inputs match, 69 reduce
+allocation count and bytes, eight remain unchanged, and none increase peak growth or alter retained
+bytes. Default Packet saves only one allocation and 16 bytes; Kanban saves six and 187 bytes.
+This closes the small preparation-ownership cleanup, not the remaining release-range latency gap.
+
+The [October 17 shared XML output checkpoint](shared_xml_output_macos_2026-10-17.md) removes
+duplicate plain-text cancellation observation and uses bounded bulk searching at the XML owner.
+All 67 public SVG/report/allocation controls and 152 cross-family SVG identities match. Four-pair
+diagnostics observe Timeline render/public E2E at 24.320/51.725 -> 14.560/42.943 us; Packet and
+Kanban public E2E decrease by 5.46%/8.66%, with small Class/Flowchart changes. The separate
+96-invocation A/A attempt is inconclusive: Kanban's 1.483 us absolute noise exceeds its 1 us gate,
+blocking the entire three-row confirmation set. No calibrated latency improvement is claimed.
+Native, private theme, optimized full WASM and all-family DOM checks pass. Strict verification
+exposes and fixes an orphan Railroad gate on the generic fallback helper; the subsequent 661-build
+release/transport sweep is deliberately stopped, so full strict is not certified. Separate tag
+diagnostics leave Timeline/Packet/Kanban E2E gaps of 8.58%/44.41%/38.17%. That checkpoint selected
+Packet's requestless compatibility copies/style parsing and Kanban's repeated font resolution for
+the preparation batch above. Those small reductions do not explain the full diagnostic gaps.
+Preserve CSS validation and actual measurement/budget responsibilities. Class/Flowchart remain
+separate optimization work.
+
+The [October 17 Timeline writer-outcome checkpoint](timeline_writer_outcomes_macos_2026-10-17.md)
+removes per-event SVG reverse inspection/path reconstruction and expected theme inventories.
+All 57 allocation/report inputs and 76 cross-family SVG inputs match. Medium Timeline removes
+49 allocations; 256-event classic and fully themed Redux inputs remove 5,389 and 9,531.
+All Timeline allocation/byte counts decrease, retained bytes stay identical, and no peak increases.
+Four-pair diagnostics observe render/public E2E changes of -10.14%/-6.68%, without A/A admission.
+Direct CSS streaming was rejected for worse latency and buffer-growth behavior; the final path
+retains one short-lived CSS batch. At that checkpoint, shared XML serialization was the next
+profiling priority, preserving escaping, exact byte ceilings and bounded cancellation. See that
+checkpoint for the separate v0.9.0 context: its public E2E diagnostic still observes a +31.51% gap.
+
+The [October 17 demand-driven cleanup](native_theme_demand_driven_macos_2026-10-17.md) completes the
+next theme ownership batch: Packet/Architecture/Kanban self-certification, State path lists and leaf
+typography copies, immutable default construction, shared writer observation, and ER/Mindmap
+representations. All 76 current-base SVG identities match. Five-repeat allocation probes remove
+37/43/158 allocations for Packet/Kanban/State, and 2,108 for ER at four entities with 64 attributes.
+The complete 304-invocation diagnostic observes Packet/Kanban/Timeline changes of -16.4%/-10.3%/-12.1%;
+these are two AB/BA pairs without A/A calibration, not confirmed speedups. The low-latency comparator
+now enforces its documented noise and identity-zero gates. Native, private qualification, bindings,
+real full WASM and all-family DOM checks pass. Block indexing remains deferred because its repeated
+passes have distinct actual consumers. The checkpoint retains scope, controls and rejected links.
+
+The [October 16 v0.9.0 cross-family comparison](native_v0_9_cross_family_macos_2026-10-16.md)
+covers 76 SVG inputs across 38 families: 19 identical-output diagnostic rows and 57 changed-output
+context rows. Kanban, Timeline and Packet retain substantial SVG-emission overhead after the first
+cleanup. The Kanban helper's confirmation classification does not satisfy the stricter documented
+low-latency calibration condition; the report preserves that discrepancy and the raw measurements.
+The [demand-driven rendering plan](../plans/2026-10-16-refactor-demand-driven-theme-rendering-plan.md)
+is completed by the October 17 checkpoint above, with fresh adjacent-revision verification.
+Binaryen packaging now succeeds through all five Web package builds and runtime smoke checks with its narrow pass bypass.
+
+The [October 16 macOS runtime cleanup](native_theme_runtime_cleanup_macos_2026-10-16.md)
+implements the accepted responsibility plan: ordinary generation no longer performs terminal
+XML/reference certification, retired text scans or non-requested output hashes; data interfaces
+avoid public report construction. Five matched-SVG diagnostic rows observe lower latency, including
+Class 1,098→706 µs and Journey 101→38 µs. These are two-pair AB/BA diagnostics after explicit
+resource/API migrations, without A/A calibration or a complete release-range recovery claim.
+The checkpoint records actual native, qualification, bindings and all-family DOM verification,
+plus the local Binaryen packaging failure separately from successful wasm32 execution.
+
+The [October 16 runtime responsibility cleanup plan](../plans/2026-10-16-1800-refactor-theme-runtime-responsibilities-plan.md)
+supersedes earlier instructions to preserve unconditional output observers and their retired
+experimental error/digest contracts. The current cleanup separates generation, opaque-input
+admission, native preparation and private qualification. Dated measurements below remain historical
+evidence; the linked cleanup checkpoint records the fresh integrated validation and its limits.
+
+The [October 16 macOS causal attribution](native_theme_root_cause_macos_2026-10-16.md) directly
+reproduces the theme merge on clean Mermaid-12.2-aligned commits with identical Class/Journey SVGs.
+Current-head sampling identifies mandatory standalone XML/reference validation and the separate
+whole-SVG reserved-token search as major owners; Class parsing is nearly unchanged. These are
+diagnostics, not calibrated latency admission. Preserve the failed/mismatched rows and investigate
+these output observers before another broad theme-cache change.
+
+The [October 16 runtime-responsibility analysis](../research/2026-10-16-theme-rendering-runtime-responsibilities.md)
+reopens whether ordinary generation should incur these observers at all. It proposes separating
+producer correctness, opaque-input admission, consumer preparation, and explicit identities.
+Implementation follows the linked cleanup plan; its changed runtime contracts require fresh
+integrated verification and do not by themselves establish a latency recovery.
+
 The [October 16 overlay-order correction](native_theme_overlay_order_2026-10-16.md) preserves
 actual Map insertion order for overlapping literal roots and their replay. Its sparse index
 contains both ancestor and descendant participants, K <= E; unrelated roots add no entries.
@@ -531,6 +817,33 @@ The latest full standard run measured 196.96 us versus mmdr's 71.08 us and retai
 and XYChart sources from every ratio.
 
 ## Work queue
+
+### Active: all-family theme performance convergence to v0.9.0
+
+The maintainer requested a persistent goal on 2026-10-18. Cover all 35 logical family catalog
+entries and all 10 compiled presets, including partial support and fallback; retain parser aliases
+as coverage rather than counting them as independent logical families. Use the existing 38-scene
+cross-family corpus and additional stress inputs when actual cost warrants them. A compiled theme
+is prepared outside warm-render measurements; its per-request application remains inside.
+
+For comparable public E2E operations, the near-release target is no gap exceeding both 10% and
+1 us, assessed per row rather than through an average. Decision-grade latency evidence still
+requires the existing A/A and fixed AB/BA contract; uncalibrated diagnostics cannot close the goal.
+Different SVG/capabilities remain separate lanes with source-backed reasons and alternative
+adjacent evidence. Necessary residual fixed work may remain only with an explicit consumer and
+cost justification. Do not mark missing coverage, noisy timing or unexplained residuals complete.
+
+Continue high-confidence ownership/work/allocation repairs in independent measured batches.
+Preserve theme/config fallback, source semantics, actual writer evidence, error order, budgets,
+cancellation and measurement callbacks. Engine borrowing, root style borrowing and canonical
+root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
+in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
+compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
+fresh 19-scene same-SVG diagnostic still flags eight rows; attribute actual consumers before
+selecting the next repair. Keep configured duplicate CSS normalization as a separate policy/order
+candidate. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+[scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
+[release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
 ### Active: alpha.7 default SVG regression
 

@@ -59,8 +59,6 @@ fn document(scene: &'static str, strict: bool) -> merman::RenderedDocument {
 fn assert_residual(receipt: &merman::TargetAdmissionReceipt, reason: TargetAdmissionReason) {
     assert!(!receipt.status().is_portable());
     assert!(receipt.reasons().contains(&reason), "{receipt:?}");
-    assert_ne!(receipt.target_evidence_digest(), [0; 32]);
-    assert_ne!(receipt.receipt_digest(), [0; 32]);
 }
 
 fn assert_strict_reason(error: merman::RenderError, reason: TargetAdmissionReason) {

@@ -10,8 +10,8 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+use super::outcomes::ClassSelectedPaint;
 use super::paint::ClassPaintBinding;
-use super::terminal::ExpectedPaint;
 
 /// Namespace rectangles share static paint; ordinal rules are accounted as unsupported requests.
 #[derive(Debug, Clone, Default)]
@@ -69,7 +69,7 @@ impl ClassClusterThemePlan {
             )
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
-                ExpectedPaint {
+                ClassSelectedPaint {
                     target: ThemeTarget::Cluster,
                     rule_index,
                     css: css.into_string(),
@@ -86,7 +86,7 @@ impl ClassClusterThemePlan {
             )
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
-                ExpectedPaint {
+                ClassSelectedPaint {
                     target: ThemeTarget::Cluster,
                     rule_index,
                     css: css.into_string(),

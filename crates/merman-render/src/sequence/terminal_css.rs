@@ -14,7 +14,6 @@ pub(crate) struct SequencePreparedTextCssGroup {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SequencePreparedTextCss {
-    pub(crate) baseline_fill: String,
     pub(crate) fill: String,
     pub(crate) typed_fill: bool,
     pub(crate) baseline_declaration: String,
@@ -83,7 +82,6 @@ impl SequencePreparedCss {
         } else {
             raw.font_size_css.clone()
         };
-        let baseline_fills = raw.text_surface_fills();
         let text = SequenceTextSurface::ALL.map(|surface| {
             let role = typography.role(surface.role());
             let typed_fill = role.typed_fill_for(surface).is_some();
@@ -92,7 +90,6 @@ impl SequencePreparedCss {
                 .foreground
                 .to_owned();
             SequencePreparedTextCss {
-                baseline_fill: baseline_fills[surface.index()].clone(),
                 baseline_declaration: if typed_fill {
                     String::new()
                 } else {

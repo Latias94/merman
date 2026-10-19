@@ -2,6 +2,9 @@ use serde_json::Value;
 
 pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
     r#""trebuchet ms",verdana,arial,sans-serif"#;
+const MERMAID_DEFAULT_FONT_FAMILY_CONFIG: &str = r#""trebuchet ms", verdana, arial, sans-serif"#;
+const MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG: &str =
+    r#""trebuchet ms", verdana, arial, sans-serif;"#;
 pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
@@ -191,16 +194,19 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
 }
 
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {
-    let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    let Some(font_family) = value_at(cfg, &["themeVariables", "fontFamily"])
+        .and_then(Value::as_str)
+        .or_else(|| value_at(cfg, &["fontFamily"]).and_then(Value::as_str))
+    else {
+        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+    };
     font_family_css(font_family)
 }
 
 /// Mermaid's generated :root custom property reads config.fontFamily, independently
 /// of the theme font used by diagram styles (mermaidAPI.createCssStyles).
 pub(crate) fn config_root_font_family_css(cfg: &Value) -> String {
-    let Some(font_family) = config_string(cfg, &["fontFamily"]) else {
+    let Some(font_family) = value_at(cfg, &["fontFamily"]).and_then(Value::as_str) else {
         return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
     };
     // An explicitly blank value produces no declaration in the browser CSSOM.
@@ -211,14 +217,30 @@ pub(crate) fn config_root_font_family_css(cfg: &Value) -> String {
 }
 
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
-    let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    let Some(font_family) = value_at(cfg, &["themeVariables", "fontFamily"])
+        .and_then(json_str_or_first_array_ref)
+        .or_else(|| value_at(cfg, &["fontFamily"]).and_then(json_str_or_first_array_ref))
+    else {
+        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+    };
     font_family_css(font_family)
 }
 
-fn font_family_css(font_family: String) -> String {
-    let font_family = normalize_css_font_family(font_family.as_str());
+fn json_str_or_first_array_ref(value: &Value) -> Option<&str> {
+    value
+        .as_str()
+        .or_else(|| value.as_array().and_then(|values| values.first()?.as_str()))
+}
+
+fn font_family_css(font_family: &str) -> String {
+    if matches!(
+        font_family,
+        MERMAID_DEFAULT_FONT_FAMILY_CONFIG | MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
+    ) {
+        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+    }
+
+    let font_family = normalize_css_font_family(font_family);
     if font_family.is_empty() {
         MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
     } else {
@@ -547,6 +569,42 @@ mod tests {
                 "themeVariables": {
                     "fontFamily": " ; "
                 }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn config_font_family_helpers_accept_exact_builtin_default_spellings() {
+        assert_eq!(
+            config_font_family_css(&json!({
+                "themeVariables": { "fontFamily": MERMAID_DEFAULT_FONT_FAMILY_CONFIG }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_font_family_css(&json!({
+                "fontFamily": MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "fontFamily": MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_font_family_or_first_array_css(&json!({
+                "themeVariables": {
+                    "fontFamily": [MERMAID_DEFAULT_FONT_FAMILY_CONFIG]
+                }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_font_family_css(&json!({
+                "themeVariables": { "fontFamily": "serif; color: red" }
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
         );

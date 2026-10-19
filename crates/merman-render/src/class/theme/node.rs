@@ -8,40 +8,75 @@ use crate::diagram_theme::{
 use crate::family::resolved_style_property_for_facet;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::terminal::{ClassNodeTerminalExpectation, ExpectedPaint};
+use super::outcomes::ClassSelectedPaint;
 
 #[derive(Debug, Clone, Default)]
-struct ClassNodeTerminalPaintPlan {
+pub(crate) struct ClassNodePaintBinding {
     fill_winner: Option<usize>,
     stroke_winner: Option<usize>,
     label_fill_winner: Option<usize>,
-    fill: Option<ExpectedPaint>,
-    stroke: Option<ExpectedPaint>,
-    label_fill: Option<ExpectedPaint>,
+    fill: Option<ClassSelectedPaint>,
+    stroke: Option<ClassSelectedPaint>,
+    label_fill: Option<ClassSelectedPaint>,
 }
 
-impl ClassNodeTerminalPaintPlan {
-    fn expectation(&self, id: String) -> ClassNodeTerminalExpectation {
-        ClassNodeTerminalExpectation::new(id).with_paints(
-            self.fill_winner,
-            self.stroke_winner,
-            self.label_fill_winner,
-            self.fill.clone(),
-            self.stroke.clone(),
-            self.label_fill.clone(),
+impl ClassNodePaintBinding {
+    pub(crate) fn outcomes(
+        &self,
+        fill_source_owned: bool,
+        stroke_source_owned: bool,
+        label_source_owned: bool,
+        label_applicable: bool,
+        label_verified: bool,
+    ) -> super::ClassNodePaintOutcomes {
+        super::ClassNodePaintOutcomes::new(
+            (!fill_source_owned).then_some(self.fill_winner).flatten(),
+            (!stroke_source_owned)
+                .then_some(self.stroke_winner)
+                .flatten(),
+            (!label_source_owned && label_applicable)
+                .then_some(self.label_fill_winner)
+                .flatten(),
+            self.typed_fill(fill_source_owned).is_some(),
+            self.typed_stroke(stroke_source_owned).is_some(),
+            self.typed_label_fill(label_source_owned).is_some(),
+            label_verified,
         )
+    }
+
+    pub(crate) fn typed_fill(&self, source_owned: bool) -> Option<(usize, &str)> {
+        self.typed(&self.fill, source_owned)
+    }
+    pub(crate) fn typed_stroke(&self, source_owned: bool) -> Option<(usize, &str)> {
+        self.typed(&self.stroke, source_owned)
+    }
+    pub(crate) fn typed_label_fill(&self, source_owned: bool) -> Option<(usize, &str)> {
+        self.typed(&self.label_fill, source_owned)
+    }
+    pub(crate) fn label_fill_target(&self) -> Option<ThemeTarget> {
+        self.label_fill.as_ref().map(|paint| paint.target)
+    }
+    fn typed<'a>(
+        &self,
+        paint: &'a Option<ClassSelectedPaint>,
+        source_owned: bool,
+    ) -> Option<(usize, &'a str)> {
+        paint
+            .as_ref()
+            .filter(|_| !source_owned)
+            .map(|paint| (paint.rule_index, paint.css.as_str()))
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClassNodeThemePlan {
-    static_paints: ClassNodeTerminalPaintPlan,
+    static_paints: ClassNodePaintBinding,
     mermaid_owns_fill: bool,
     mermaid_owns_stroke: bool,
     mermaid_owns_label_fill: bool,
     static_winner_rules: BTreeMap<(ThemeTarget, ResolvedStyleProperty), usize>,
     ordinal_winner_rules: BTreeSet<(ThemeTarget, usize, ResolvedStyleProperty)>,
-    ordinal_paints: Box<[ClassNodeTerminalPaintPlan]>,
+    ordinal_paints: Box<[ClassNodePaintBinding]>,
 }
 
 impl ClassNodeThemePlan {
@@ -150,15 +185,10 @@ impl ClassNodeThemePlan {
         Ok(())
     }
 
-    pub(super) fn resolve_expectations(
-        &self,
-        node_ids: impl IntoIterator<Item = String>,
-    ) -> Vec<ClassNodeTerminalExpectation> {
-        node_ids
-            .into_iter()
-            .enumerate()
-            .map(|(index, id)| self.resolve_expectation(id, index + 1))
-            .collect()
+    pub(super) fn paint(&self, ordinal: usize) -> &ClassNodePaintBinding {
+        self.ordinal_paints
+            .get(ordinal.saturating_sub(1))
+            .unwrap_or(&self.static_paints)
     }
 
     pub(super) fn route_won(
@@ -200,35 +230,37 @@ impl ClassNodeThemePlan {
         }
     }
 
-    fn resolve_expectation(&self, id: String, ordinal: usize) -> ClassNodeTerminalExpectation {
-        if let Some(paints) = self.ordinal_paints.get(ordinal.saturating_sub(1)) {
-            return paints.expectation(id);
-        }
-        self.static_paints.expectation(id)
-    }
-
     fn terminal_paints(
         &self,
         theme: &ResolvedDiagramTheme,
         node_style: &ResolvedThemeStyle,
         node_label_style: &ResolvedThemeStyle,
-    ) -> ClassNodeTerminalPaintPlan {
-        ClassNodeTerminalPaintPlan {
-            fill_winner: paint_winner_rule(
-                node_style,
-                ResolvedStyleProperty::Fill,
-                self.mermaid_owns_fill,
-            ),
-            stroke_winner: paint_winner_rule(
-                node_style,
-                ResolvedStyleProperty::Stroke,
-                self.mermaid_owns_stroke,
-            ),
-            label_fill_winner: paint_winner_rule(
-                node_label_style,
-                ResolvedStyleProperty::Fill,
-                self.mermaid_owns_label_fill,
-            ),
+    ) -> ClassNodePaintBinding {
+        ClassNodePaintBinding {
+            fill_winner: (!self.mermaid_owns_fill)
+                .then(|| {
+                    node_style
+                        .fill_resolution()
+                        .winner()
+                        .map(|origin| origin.rule_index())
+                })
+                .flatten(),
+            stroke_winner: (!self.mermaid_owns_stroke)
+                .then(|| {
+                    node_style
+                        .stroke_resolution()
+                        .winner()
+                        .map(|origin| origin.rule_index())
+                })
+                .flatten(),
+            label_fill_winner: (!self.mermaid_owns_label_fill)
+                .then(|| {
+                    node_label_style
+                        .fill_resolution()
+                        .winner()
+                        .map(|origin| origin.rule_index())
+                })
+                .flatten(),
             fill: typed_paint_expectation(
                 theme,
                 node_style,
@@ -251,28 +283,12 @@ impl ClassNodeThemePlan {
     }
 }
 
-fn paint_winner_rule(
-    style: &ResolvedThemeStyle,
-    property: ResolvedStyleProperty,
-    mermaid_owns: bool,
-) -> Option<usize> {
-    if mermaid_owns {
-        return None;
-    }
-    match property {
-        ResolvedStyleProperty::Fill => style.fill_resolution().winner(),
-        ResolvedStyleProperty::Stroke => style.stroke_resolution().winner(),
-        _ => None,
-    }
-    .map(|origin| origin.rule_index())
-}
-
 fn typed_paint_expectation(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
     property: ResolvedStyleProperty,
     mermaid_owns: bool,
-) -> Option<ExpectedPaint> {
+) -> Option<ClassSelectedPaint> {
     if mermaid_owns {
         return None;
     }
@@ -301,7 +317,7 @@ fn typed_paint_expectation(
         | Specified::Value(CanvasPaint::RadialGradient(_))
         | Specified::Value(CanvasPaint::Pattern(_)) => return None,
     };
-    Some(ExpectedPaint {
+    Some(ClassSelectedPaint {
         target: origin.target(),
         rule_index: origin.rule_index(),
         css,
@@ -350,7 +366,7 @@ mod tests {
         )
         .unwrap();
         let preparation_work = meter.used();
-        let expectations = plan.resolve_node_expectations(["Alpha".into(), "Beta".into()]);
+        let expectations = [plan.node_paint(1), plan.node_paint(2)];
         assert_eq!(meter.used(), preparation_work);
         for expectation in expectations {
             assert_eq!(expectation.typed_fill(false), Some((0, "#123456")));
@@ -396,8 +412,7 @@ mod tests {
         .expect("resolve Class ordinal node plan");
         let work_after_plan = meter.used();
 
-        let expectations =
-            plan.resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()]);
+        let expectations = [plan.node_paint(1), plan.node_paint(2)];
 
         assert_eq!(meter.used(), work_after_plan);
         assert_eq!(expectations[0].typed_fill(false), None);
@@ -431,8 +446,7 @@ mod tests {
         let config = merman_core::MermaidConfig::default();
         let plan = ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter).unwrap();
         let work_after_plan = meter.used();
-        let expectations =
-            plan.resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()]);
+        let expectations = [plan.node_paint(1), plan.node_paint(2)];
         assert_eq!(meter.used(), work_after_plan);
         assert_eq!(expectations[0].typed_label_fill(false), None);
         assert_eq!(

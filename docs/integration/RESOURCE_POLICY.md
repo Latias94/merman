@@ -74,6 +74,23 @@ Parser-only calls do not perform SVG layout. Semantic input limits still matter.
 have their own `AsciiResourcePolicy`, grid/label limits, and output contract; an SVG work ceiling
 is not an ASCII budget. See the [host examples](../../crates/merman/examples/README.md).
 
+## SVG work has separate owners
+
+| Boundary | Resource responsibility |
+| --- | --- |
+| Mermaid input and family generation | Source/model/layout budgets, bounded retained text, finite coordinates and output bytes |
+| Opaque SVG input or postprocessor output | XML/resource admission and `max_svg_elements` |
+| Native SVG conversion | Reference-expanded work, backend tree limits and image/filter/export allocation limits before backend work |
+| Browser publication | DOM admission and mount policy owned by the Web host |
+
+`max_svg_elements` is an admission/conversion budget, including conservative reference-expanded
+work. Ordinary renderer-owned parity SVG no longer incurs a final XML traversal to enforce it as
+an output element counter. `max_svg_bytes`, source/model/layout limits and cancellation still apply
+to ordinary generation. This is an intentional acceptance-envelope change; hosts relying on the
+old element-limit error must request the appropriate consumer admission or bound source work.
+Native tree hard caps do not become universal producer or browser limits. Current browser DOM
+admission is not a general bound on SVG reference expansion.
+
 ## Native font measurement budget
 
 Native-font measurement has its own per-operation provider limit, separate from

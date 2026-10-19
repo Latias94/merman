@@ -1017,6 +1017,158 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertEqual([index for _, index in calls], list(range(1, 9)))
         self.assertEqual([row["order"] for row in schedule["rows"]["flowchart_medium"]], ["AB", "BA", "AB", "BA"])
 
+    def test_low_latency_confirmation_freezes_derived_gate_before_fresh_sampling(self) -> None:
+        for aa_bias, other_bias, expected_ab_calls in (
+            (0.0, None, 1), (100.0, None, 0), (0.0, 100.0, 0),
+        ):
+            with self.subTest(aa_bias=aa_bias), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                events = []
+                reports = []
+                lane = resolve_lane_group(load_corpus(CORPUS_PATH), "end_to_end")
+                contract = {
+                    **self._contract(), "name": "flowchart_medium", "family": "flowchart",
+                    "coverage_status": "comparable", "coverage_reasons": [],
+                }
+
+                contracts = [contract]
+                if other_bias is not None:
+                    contracts.append({**contract, "name": "kanban_medium",
+                                      "base_benchmark": "end_to_end/kanban_medium",
+                                      "head_benchmark": "end_to_end/kanban_medium"})
+
+                def prepare(recipe, **_kwargs):
+                    provenance = {"git": {"dirty": False}}
+                    return compare_self.PreparedRunner(
+                        recipe=recipe, executable=root / recipe.label,
+                        executable_sha256=recipe.label, benches=set(), skipped={},
+                        provenance=provenance, env={},
+                    ), provenance, []
+
+                def aa(runner, *, pair_count, **kwargs):
+                    events.append("aa_" + runner.recipe.label)
+                    pairs = [{
+                        "a": {"normalized_ns": 40_000.0},
+                        "b": {"normalized_ns": 40_000.0 + aa_bias},
+                        "first": {"normalized_ns": 40_000.0},
+                        "second": {"normalized_ns": 40_000.0 + aa_bias},
+                    } for _ in range(pair_count)]
+                    rows = {"flowchart_medium": pairs}
+                    if other_bias is not None:
+                        rows["kanban_medium"] = [{
+                            "a": {"normalized_ns": 40_000.0},
+                            "b": {"normalized_ns": 40_000.0 + other_bias},
+                            "first": {"normalized_ns": 40_000.0},
+                            "second": {"normalized_ns": 40_000.0 + other_bias},
+                        } for _ in range(pair_count)]
+                    return {"rounds": [], "rows": rows, "errors": {}}
+
+                def ab(*, pair_count, **_kwargs):
+                    events.append("fresh_ab")
+                    report = reports[0]
+                    gate = report["method"]["materiality_contract"]
+                    self.assertEqual(gate["fixed_confirmation_pairs"], pair_count)
+                    self.assertEqual(pair_count, 8)
+                    self.assertAlmostEqual(
+                        gate["rows"]["flowchart_medium"]["thresholds"]["log_ratio"],
+                        -math.log(0.9),
+                    )
+                    pairs = [{"base": {"normalized_ns": 40_000.0},
+                              "head": {"normalized_ns": 30_000.0}}
+                             for _ in range(pair_count)]
+                    return {"rounds": [], "rows": {"flowchart_medium": pairs}, "errors": {}}
+
+                original_execute = compare_self._execute_comparison
+                def execute(args, report):
+                    reports.append(report)
+                    return original_execute(args, report)
+
+                with (
+                    mock.patch.object(compare_self, "_execute_comparison", side_effect=execute),
+                    mock.patch.object(compare_self, "_load_fixture_contracts",
+                                      return_value=(contracts, {}, (lane, lane))),
+                    mock.patch.object(compare_self, "_prepare_runner", side_effect=prepare),
+                    mock.patch.object(compare_self, "_binary_independence_error", return_value=None),
+                    mock.patch.object(compare_self, "_confirmation_harness_identity_errors", return_value=[]),
+                    mock.patch.object(compare_self, "_complete_fixture_contracts", return_value=contracts),
+                    mock.patch.object(compare_self, "_run_aa_schedule", side_effect=aa),
+                    mock.patch.object(compare_self, "_run_ab_schedule", side_effect=ab) as fresh,
+                    mock.patch.object(compare_self, "_verification_errors", return_value=[]),
+                    mock.patch.object(compare_self, "_fixture_verification_errors", return_value=[]),
+                ):
+                    result = compare_self.main([
+                        "--base-dir", str(root / "base"), "--head-dir", str(root / "head"),
+                        "--evidence-mode", "confirmation",
+                        "--low-latency-baseline-ns", "flowchart_medium=40000",
+                        "--out", str(root / "report.md"), "--json-out", str(root / "report.json"),
+                        *(["--low-latency-baseline-ns", "kanban_medium=40000"]
+                          if other_bias is not None else []),
+                    ])
+                self.assertEqual(fresh.call_count, expected_ab_calls)
+                self.assertEqual(events[:2], ["aa_base", "aa_head"])
+                self.assertEqual(result, 0 if expected_ab_calls else 3)
+                if expected_ab_calls:
+                    row = reports[0]["rows"][0]
+                    self.assertEqual(row["improvement_outcome"], "confirmed_improvement")
+                    self.assertAlmostEqual(row["thresholds"]["absolute_ns"], 4_000.0)
+                    self.assertIsNone(reports[0]["method"]["absolute_threshold_ns"])
+                    self.assertIn("## Low-latency Materiality", (root / "report.md").read_text())
+                    self.assertEqual(reports[0]["calibration"]["base"]["rows"]["flowchart_medium"]
+                                     ["bootstrap"]["confidence_family_size"], 8)
+                else:
+                    self.assertIn("contains_zero", reports[0]["rows"][0]["reason"])
+                    self.assertTrue(all(row["outcome"] == "inconclusive"
+                                        for row in reports[0]["rows"]))
+
+    def test_low_latency_rejects_invalid_registration_before_building(self) -> None:
+        cases = [
+            (["--low-latency-baseline-ns", "flowchart_medium=500000"], "below 500 us"),
+            (["--low-latency-baseline-ns", "flowchart_medium=nan"], "below 500 us"),
+            (["--low-latency-baseline-ns", "flowchart_medium=1000", "--max-pairs", "66"], "exceed 64"),
+            (["--low-latency-baseline-ns", "flowchart_medium=1000", "--absolute-threshold-us", "1"],
+             "cannot be overridden"),
+            (["--low-latency-baseline-ns", "flowchart_medium=1000", "--evidence-mode", "diagnostic"],
+             "fresh confirmation"),
+        ]
+        for flags, error in cases:
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                with mock.patch.object(compare_self, "_execute_comparison") as execute:
+                    result = compare_self.main([
+                        "--base-dir", str(root / "base"), "--head-dir", str(root / "head"),
+                        "--evidence-mode", "confirmation", "--out", str(root / "report.md"),
+                        "--json-out", str(root / "report.json"), *flags,
+                    ])
+                self.assertEqual(result, 2)
+                execute.assert_not_called()
+                report = json.loads((root / "report.json").read_text())
+                self.assertIn(error, report["contract_errors"][0]["message"])
+
+    def test_low_latency_requires_exact_row_registration_and_public_lanes(self) -> None:
+        public = resolve_lane_group(load_corpus(CORPUS_PATH), "end_to_end")
+        for registration, lanes, error in (
+            ("other=40000", (public, public), "exactly the selected rows"),
+            ("flowchart_medium=40000", (None, None), "registered public operation"),
+        ):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                contract = {**self._contract(), "name": "flowchart_medium"}
+                with (
+                    mock.patch.object(compare_self, "_load_fixture_contracts",
+                                      return_value=([contract], {}, lanes)),
+                    mock.patch.object(compare_self, "_prepare_runner") as prepare,
+                ):
+                    result = compare_self.main([
+                        "--base-dir", str(root / "base"), "--head-dir", str(root / "head"),
+                        "--evidence-mode", "confirmation",
+                        "--low-latency-baseline-ns", registration,
+                        "--out", str(root / "report.md"), "--json-out", str(root / "report.json"),
+                    ])
+                self.assertEqual(result, 2)
+                prepare.assert_not_called()
+                report = json.loads((root / "report.json").read_text())
+                self.assertIn(error, report["contract_errors"][0]["message"])
+
     def test_invalid_numeric_contract_still_writes_schema_v2_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

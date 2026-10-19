@@ -430,7 +430,6 @@ UpdateRelStyle(a, b, $textColor="#975310")
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.not_applicable_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -497,7 +496,6 @@ fn c4_text_fill_is_not_applicable_without_a_title_or_with_explicit_text_color() 
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -575,7 +573,6 @@ fn c4_boundary_only_text_keeps_stroke_and_effect_applicable() {
             assert_eq!(evidence.not_applicable_count(), 1);
             assert_eq!(evidence.applied_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -863,7 +860,6 @@ fn c4_typed_base_typography_reaches_root_css_and_title_evidence() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

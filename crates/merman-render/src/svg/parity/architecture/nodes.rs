@@ -29,10 +29,9 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) service_icon_scope_prefix: Option<IconIdScopePrefix>,
     pub(super) group_icon_scope_prefix: Option<IconIdScopePrefix>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
-    pub(super) surface_theme_receipt:
-        Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
-    pub(super) typography_theme_receipt:
-        Option<&'a mut crate::architecture::ArchitectureTypographyThemeReceipt>,
+    pub(super) surface_styles: Option<&'a mut crate::architecture::ArchitectureSurfaceRenderState>,
+    pub(super) typography_emission:
+        Option<&'a mut crate::architecture::ArchitectureTypographyEmission>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
@@ -91,8 +90,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
-    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
-    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
+    let mut surface_styles = ctx.surface_styles.take();
+    let mut typography_emission = ctx.typography_emission.take();
     let icon_registry = ctx.icon_registry;
     let work_meter = ctx.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
@@ -120,16 +119,12 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 
             let has_icon_text =
                 svc.icon.is_none() && svc.icon_text.is_some_and(|text| !text.trim().is_empty());
-            let service_title_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .service_title_style(service_index, svc.id)
-                    .map(ToOwned::to_owned)
-            });
-            let service_background_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .service_background_style(service_index, svc.id)
-                    .map(ToOwned::to_owned)
-            });
+            let service_title_style = surface_styles
+                .as_deref()
+                .and_then(|styles| styles.service_title_style(service_index));
+            let service_background_style = surface_styles
+                .as_deref()
+                .and_then(|styles| styles.service_background_style(service_index));
             let service_title_emission =
                 svc.title
                     .map(str::trim)
@@ -139,23 +134,21 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                         write_architecture_service_title(
                             out,
                             title,
+                            #[cfg(merman_internal_theme_acceptance)]
                             x,
+                            #[cfg(merman_internal_theme_acceptance)]
                             y,
                             settings.icon_size_px,
                             settings.icon_size_px * 1.5,
                             text_measurer,
                             &settings.text_style,
-                            service_title_style.as_deref(),
-                            surface_theme_receipt.is_some(),
+                            service_title_style,
+                            #[cfg(merman_internal_theme_acceptance)]
+                            surface_styles.is_some(),
                         )
                     });
             let has_title = service_title_emission.is_some();
-            if has_title && let Some(receipt) = typography_theme_receipt.as_deref_mut() {
-                receipt.record_native_svg_text_terminal(
-                    settings.font_family_css.as_str(),
-                    settings.text_style.font_size,
-                );
-            }
+            #[cfg(merman_internal_theme_acceptance)]
             let service_title_bounds = service_title_emission
                 .as_ref()
                 .and_then(|emission| emission.bounds.as_ref());
@@ -225,17 +218,13 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     );
                     out.push_str(&sanitized);
                     out.push_str("</div></div></foreignObject></g>");
-                    if has_icon_text && let Some(receipt) = typography_theme_receipt.as_deref_mut()
-                    {
-                        receipt.record_icon_text_terminal();
-                    }
                 }
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, svc.id);
                     checkpoints.checkpoint()?;
                     out.push('"');
-                    if let Some(style) = service_background_style.as_deref() {
+                    if let Some(style) = service_background_style {
                         out.push_str(r#" style=""#);
                         escape_attr_into(out, style);
                         out.push('"');
@@ -252,24 +241,25 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 
             out.push_str("</g>");
             out.checkpoint()?;
-            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
+            if (has_title || has_icon_text)
+                && let Some(emission) = typography_emission.as_deref_mut()
+            {
+                emission.record_visible_text();
+            }
+            if let Some(styles) = surface_styles.as_deref_mut() {
                 let background_emitted = svc.icon.is_none() && svc.icon_text.is_none();
-                receipt.record_checkpointed_service(
+                styles.record_checkpointed_service(
                     crate::architecture::ArchitectureServiceTerminalEmission {
                         index: service_index,
-                        id: svc.id,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        id: svc.id.into(),
                         background: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: background_emitted,
-                            style: background_emitted
-                                .then_some(service_background_style.as_deref())
-                                .flatten(),
                         },
                         title: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_title,
-                            style: has_title
-                                .then_some(service_title_style.as_deref())
-                                .flatten(),
-                            bounds: service_title_bounds,
+                            #[cfg(merman_internal_theme_acceptance)]
+                            bounds: service_title_bounds.cloned(),
                             #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: service_title_emission
                                 .as_ref()
@@ -279,7 +269,6 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                                 .as_ref()
                                 .map_or(0, |emission| emission.facts.run_count),
                         },
-                        has_icon_text,
                     },
                 );
             }
@@ -307,8 +296,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         out.push_str("</g>");
     }
     out.checkpoint()?;
-    ctx.surface_theme_receipt = surface_theme_receipt;
-    ctx.typography_theme_receipt = typography_theme_receipt;
+    ctx.surface_styles = surface_styles;
+    ctx.typography_emission = typography_emission;
     Ok(())
 }
 
@@ -316,7 +305,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     ctx: &mut ArchitectureNodeRenderContext<'a, M, O>,
     group_rects: &[GroupRect<'a>],
     group_inline_style: Option<&str>,
-    mut terminal_receipt: Option<&mut crate::architecture::ArchitectureGroupThemeReceipt>,
+    group_style_emitted: &mut bool,
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
@@ -324,8 +313,8 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
-    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
-    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
+    let mut surface_styles = ctx.surface_styles.take();
+    let mut typography_emission = ctx.typography_emission.take();
     let icon_registry = ctx.icon_registry;
     let work_meter = ctx.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
@@ -359,14 +348,11 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                 w = fmt(w.max(1.0)),
                 h = fmt(h.max(1.0))
             );
-            let emitted_inline_style = if let Some(style) = group_inline_style {
+            if let Some(style) = group_inline_style {
                 out.push_str(r#" style=""#);
                 escape_attr_into(out, style);
                 out.push('"');
-                Some(style)
-            } else {
-                None
-            };
+            }
             out.push_str("/>");
 
             out.push_str("<g>");
@@ -409,11 +395,9 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
             }
 
             let has_title = grp.title.is_some_and(|title| !title.trim().is_empty());
-            let group_title_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .group_title_style(group_index, grp.id)
-                    .map(ToOwned::to_owned)
-            });
+            let group_title_style = surface_styles
+                .as_deref()
+                .and_then(|styles| styles.group_title_style(group_index));
             let (group_title_bounds, group_writer_facts) = if let Some(title) =
                 grp.title.map(str::trim).filter(|t| !t.is_empty())
             {
@@ -449,35 +433,31 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                     x = fmt(title_x),
                     y = fmt(title_y)
                 );
-                let writer_facts = write_svg_text_lines(out, &lines, group_title_style.as_deref());
+                let writer_facts = write_svg_text_lines(out, &lines, group_title_style);
                 out.push_str("</g></g>");
-                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
-                    receipt.record_native_svg_text_terminal(
-                        settings.font_family_css.as_str(),
-                        settings.text_style.font_size,
-                    );
-                }
                 (Some(terminal_bounds), Some(writer_facts))
             } else {
                 (None, None)
             };
             #[cfg(not(merman_internal_theme_acceptance))]
-            let _ = group_writer_facts;
+            let _ = (group_writer_facts, group_title_bounds);
 
             out.push_str("</g>");
             out.checkpoint()?;
-            if let Some(receipt) = terminal_receipt.as_deref_mut() {
-                receipt.record_checkpointed_group(group_index, emitted_inline_style);
+            *group_style_emitted |= group_inline_style.is_some();
+            if has_title && let Some(emission) = typography_emission.as_deref_mut() {
+                emission.record_visible_text();
             }
-            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
-                receipt.record_checkpointed_group(
+            if let Some(styles) = surface_styles.as_deref_mut() {
+                styles.record_checkpointed_group(
                     crate::architecture::ArchitectureGroupTerminalEmission {
                         index: group_index,
-                        id: grp.id,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        id: grp.id.into(),
                         title: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_title,
-                            style: has_title.then_some(group_title_style.as_deref()).flatten(),
-                            bounds: group_title_bounds.as_ref(),
+                            #[cfg(merman_internal_theme_acceptance)]
+                            bounds: group_title_bounds,
                             #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: group_writer_facts.map(|facts| facts.fragment_digest),
                             #[cfg(merman_internal_theme_acceptance)]
@@ -491,7 +471,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
         out.push_str("</g>");
     }
     out.checkpoint()?;
-    ctx.surface_theme_receipt = surface_theme_receipt;
-    ctx.typography_theme_receipt = typography_theme_receipt;
+    ctx.surface_styles = surface_styles;
+    ctx.typography_emission = typography_emission;
     Ok(())
 }

@@ -1,5 +1,5 @@
+use crate::svg_observation::{SvgArtifactObservation, SvgElementObservation};
 use merman::DiagramFamilyId;
-use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
 
 use crate::runner::{
     C6ProofError, C6ProofResult,
@@ -16,12 +16,13 @@ const SHAPE: &[(f64, &str)] = &[
 const EDGE: &[(f64, &str)] = &[(6.0, "rgba(0, 242, 255, 0.6)")];
 const TEXT: &[(f64, &str)] = &[(5.0, "rgba(0, 242, 255, 0.5)")];
 
-pub(super) fn verify(family: DiagramFamilyId, receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
+pub(super) fn verify(
+    family: DiagramFamilyId,
+    receipt: &SvgArtifactObservation,
+) -> C6ProofResult<()> {
     c6_ensure!(
         "cyberpunk-native-text",
-        receipt.has_native_text()
-            && !receipt.has_foreign_object()
-            && !receipt.has_prepared_tokens(),
+        receipt.has_native_text() && !receipt.has_foreign_object(),
         "complete profile requires native text"
     );
     canvas(receipt)?;
@@ -34,7 +35,7 @@ pub(super) fn verify(family: DiagramFamilyId, receipt: &SvgArtifactReceipt) -> C
 }
 
 fn select<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     expected: usize,
     label: &str,
     predicate: impl Fn(&SvgElementObservation) -> bool,
@@ -115,7 +116,7 @@ fn no_inline_conflicts(
 }
 
 fn by_class<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     tag: &str,
     class: &str,
     count: usize,
@@ -125,14 +126,14 @@ fn by_class<'a>(
     })
 }
 
-fn root_id(receipt: &SvgArtifactReceipt) -> C6ProofResult<&str> {
+fn root_id(receipt: &SvgArtifactObservation) -> C6ProofResult<&str> {
     receipt
         .root_id()
         .ok_or_else(|| C6ProofError::new("cyberpunk-root", "missing root id"))
 }
 
 fn linked<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     value: Option<&str>,
     tag: &str,
 ) -> C6ProofResult<&'a SvgElementObservation> {
@@ -148,7 +149,7 @@ fn linked<'a>(
 }
 
 fn glow(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     terminal: &SvgElementObservation,
     shadows: &[(f64, &str)],
 ) -> C6ProofResult<()> {
@@ -227,7 +228,7 @@ fn filter_result(node: &SvgElementObservation) -> C6ProofResult<&str> {
         .ok_or_else(|| C6ProofError::new("cyberpunk-filter", "missing or reserved filter result"))
 }
 
-fn canvas(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
+fn canvas(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let base = select(receipt, 1, "canvas base", |node| {
         node.attribute("data-merman-theme-canvas") == Some("base")
     })?[0];
@@ -332,7 +333,7 @@ fn canvas(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
     Ok(())
 }
 
-fn flowchart(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
+fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let root = root_id(receipt)?;
     for selector in [
         format!("#{root} .label text,#{root} span"),
@@ -445,7 +446,7 @@ fn flowchart(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
     Ok(())
 }
 
-fn sequence(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
+fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let root = root_id(receipt)?;
     for (suffix, property, value) in [
         (".actor", "fill", NAVY),
@@ -617,7 +618,7 @@ fn sequence(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
     Ok(())
 }
 
-fn xychart(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
+fn xychart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let series = select(receipt, 10, "series order", |node| {
         matches!(node.tag_name(), "rect" | "path") && node.attribute("filter").is_some()
     })?;

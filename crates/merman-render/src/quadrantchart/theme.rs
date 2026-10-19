@@ -130,14 +130,12 @@ impl QuadrantChartPointThemePlan {
             Some(inherited_font_stack.font_family_css()),
         );
         let Some(theme) = theme else {
-            let points =
-                vec![QuadrantChartPointThemeExpectation::default(); point_count].into_boxed_slice();
-            let terminal_points = bind_points(model, effective_config, &css, &points);
+            let terminal_points = bind_points(model, effective_config, &css, &[]);
             return Ok(Self {
                 css,
                 common_css,
                 terminal_points,
-                points,
+                points: Vec::new().into_boxed_slice(),
                 inherited_font_stack,
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
@@ -433,7 +431,7 @@ impl QuadrantChartPointThemePlan {
     }
 
     pub(crate) fn point_count(&self) -> usize {
-        self.points.len()
+        self.terminal_points.len()
     }
 
     pub(crate) fn radius_override_px(&self, point_index: usize) -> Option<f64> {
@@ -640,19 +638,28 @@ fn bind_points(
     model
         .points
         .iter()
-        .zip(expectations)
-        .map(|(point, expectation)| {
+        .enumerate()
+        .map(|(point_index, point)| {
             let class = super::point_class_styles(model, point);
+            let expectation = expectations.get(point_index);
             QuadrantChartPointBinding {
                 radius: point
                     .styles
                     .radius
                     .map(|value| value as f64)
                     .or_else(|| class.and_then(|style| style.radius.map(|value| value as f64)))
-                    .or_else(|| expectation.radius.as_ref().map(|radius| radius.value_px))
+                    .or_else(|| {
+                        expectation.and_then(|expectation| {
+                            expectation.radius.as_ref().map(|radius| radius.value_px)
+                        })
+                    })
                     .unwrap_or(default_radius),
                 fill: super::point_source_fill(point, class)
-                    .or_else(|| expectation.fill.as_ref().map(|fill| fill.css.as_ref()))
+                    .or_else(|| {
+                        expectation.and_then(|expectation| {
+                            expectation.fill.as_ref().map(|fill| fill.css.as_ref())
+                        })
+                    })
                     .unwrap_or(&css.quadrant_point_fill)
                     .to_owned(),
                 stroke_color: point
@@ -900,6 +907,46 @@ impl QuadrantChartPointPendingEvidence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_theme_omits_point_expectations_without_dropping_terminal_points() {
+        let model: QuadrantChartRenderModel = serde_json::from_value(serde_json::json!({
+            "title": null, "accTitle": null, "accDescr": null,
+            "quadrants": {
+                "quadrant1Text": "", "quadrant2Text": "",
+                "quadrant3Text": "", "quadrant4Text": ""
+            },
+            "axes": {
+                "xAxisLeftText": "", "xAxisRightText": "",
+                "yAxisBottomText": "", "yAxisTopText": ""
+            },
+            "points": [
+                {
+                    "text": "source", "x": 0.25, "y": 0.25,
+                    "styles": { "color": "var(--source)", "radius": 5 }
+                },
+                {
+                    "text": "class", "x": 0.75, "y": 0.75,
+                    "className": "custom", "styles": {}
+                }
+            ],
+            "classes": { "custom": { "color": "#abcdef", "radius": 7 } }
+        }))
+        .unwrap();
+        let config = MermaidConfig::empty_object();
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan =
+            QuadrantChartPointThemePlan::resolve(None, &config, &model, &work_meter).unwrap();
+
+        assert!(plan.points.is_empty());
+        assert_eq!(plan.point_count(), 2);
+        assert_eq!(plan.point_binding(0).radius, 5.0);
+        assert_eq!(plan.point_binding(0).fill, "var(--source)");
+        assert_eq!(plan.point_binding(1).radius, 7.0);
+        assert_eq!(plan.point_binding(1).fill, "#abcdef");
+    }
 
     #[test]
     fn point_binding_preserves_unverified_source_and_class_priority() {

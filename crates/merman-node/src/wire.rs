@@ -336,6 +336,14 @@ struct NodeOperationRequest {
     #[serde(default, deserialize_with = "deserialize_present_string")]
     options_json: Option<String>,
     operation_control: Option<NodeOperationControlRequest>,
+    // Omission preserves the result contract used by executeOperation. String helpers request
+    // data before execution so metadata is neither projected nor serialized by the producer.
+    #[serde(default = "include_metadata_by_default")]
+    include_metadata: bool,
+}
+
+fn include_metadata_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -369,7 +377,8 @@ struct SuccessResult {
     operation_id: String,
     media_type: String,
     data: String,
-    metadata_json: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata_json: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -569,13 +578,18 @@ fn execute_wire_inner(
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
 
-    let result = engine.execute(
+    let operation_request =
         BindingOperationRequest::new(&request.operation_id, request.source.as_bytes())
             .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
             .with_options_json(request.options_json.as_deref().map_or(b"", str::as_bytes))
-            .with_control(control),
-    )?;
-    success_envelope(result)
+            .with_control(control);
+    if request.include_metadata {
+        success_envelope(engine.execute(operation_request)?)
+    } else {
+        let data = engine.execute_data(operation_request)?;
+        let operation = BindingOperationKind::from_id(&request.operation_id)?;
+        success_data_envelope(operation, data, None)
+    }
 }
 
 pub(crate) fn error_envelope(error: &BindingError) -> String {
@@ -719,14 +733,6 @@ fn success_envelope(
         ));
     }
 
-    let data = String::from_utf8(data).map_err(|error| {
-        BindingError::internal(format!(
-            "Node static-SVG candidate received non-UTF-8 output for `{operation_id}`: {error}"
-        ))
-    })?;
-    ensure_field(&data, "response data", contract.fields.data_utf8_bytes)
-        .map_err(producer_error)?;
-
     let metadata_json = String::from_utf8(metadata.into_json_bytes()).map_err(|error| {
         BindingError::internal(format!("binding metadata was not UTF-8: {error}"))
     })?;
@@ -742,6 +748,25 @@ fn success_envelope(
         contract.documents.metadata,
     )
     .map_err(producer_error)?;
+
+    success_data_envelope(operation, data, Some(metadata_json))
+}
+
+fn success_data_envelope(
+    operation: BindingOperationKind,
+    data: Vec<u8>,
+    metadata_json: Option<String>,
+) -> Result<String, BindingError> {
+    let contract = node_wire_contract();
+    let operation_id = operation.operation_id();
+    let media_type = operation.media_type();
+    let data = String::from_utf8(data).map_err(|error| {
+        BindingError::internal(format!(
+            "Node static-SVG candidate received non-UTF-8 output for `{operation_id}`: {error}"
+        ))
+    })?;
+    ensure_field(&data, "response data", contract.fields.data_utf8_bytes)
+        .map_err(producer_error)?;
 
     serialize_bounded_json(
         &SuccessEnvelope {
@@ -1569,6 +1594,53 @@ mod tests {
                     merman_bindings_core::BindingStatus::UnsupportedOperation
                 );
             }
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn data_only_wire_omits_metadata_and_preserves_result_bytes_and_errors() {
+        let engine = create_engine("").unwrap();
+        for operation in ["svg", "semantic-json"] {
+            let mut request = serde_json::json!({
+                "operation_id": operation,
+                "source": "flowchart TD\nA --> B",
+                "uri": null,
+            });
+            let full: serde_json::Value =
+                serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+            assert_eq!(full["ok"], true);
+            assert!(full["result"]["metadata_json"].is_string());
+            request["include_metadata"] = false.into();
+            let data: serde_json::Value =
+                serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+            assert_eq!(data["ok"], true);
+            assert_eq!(
+                data["result"]["operation_id"],
+                full["result"]["operation_id"]
+            );
+            assert_eq!(data["result"]["media_type"], full["result"]["media_type"]);
+            assert_eq!(data["result"]["data"], full["result"]["data"]);
+            assert!(data["result"].get("metadata_json").is_none());
+        }
+        for (operation, options) in [
+            ("unknown-operation", ""),
+            ("svg", "{"),
+            ("svg", r#"{"version":99}"#),
+        ] {
+            let mut request = serde_json::json!({
+                "operation_id": operation,
+                "source": "flowchart TD\nA --> B",
+                "uri": null,
+                "options_json": options,
+            });
+            let full: serde_json::Value =
+                serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+            assert_eq!(full["ok"], false);
+            request["include_metadata"] = false.into();
+            let data: serde_json::Value =
+                serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+            assert_eq!(data, full);
         }
     }
 

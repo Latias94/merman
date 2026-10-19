@@ -1,19 +1,18 @@
 //! Operation-owned render services and deterministic policy.
 
 use crate::diagram_theme::{
-    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy,
-    HostMeasurementFallbackPolicy, ResolvedThemeAdmission, ThemeAdmissionError,
-    ThemeAdmissionPolicy, ThemeHostAdmissionReport, ThemePortabilityRequirement,
-    ThemeRecipeFingerprint, ThemeRecipeReport, ThemeResourceLimitExceeded, ThemeResourcePolicy,
-    TrustedThemeLane, TrustedThemeLanes,
+    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy, ResolvedThemeAdmission,
+    ThemeAdmissionError, ThemeAdmissionPolicy, ThemeHostAdmissionReport,
+    ThemePortabilityRequirement, ThemeRecipeFingerprint, ThemeRecipeReport,
+    ThemeResourceLimitExceeded, ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
 };
 use crate::math::{ConfiguredMathBackend, MathRenderer};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 
 use crate::text::{
-    DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
-    TextMetrics, TextStyle, WrapMode, append_text_width_em, estimate_text_width_em,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    append_text_width_em, estimate_text_width_em,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::__private::ThemeCompatibilityRecipe;
@@ -27,8 +26,8 @@ use std::fmt;
 use std::num::NonZeroU64;
 #[cfg(test)]
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -673,6 +672,16 @@ impl TextMeasurementRecorder {
         let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
             Some(count.saturating_add(1))
         });
+    }
+
+    fn has_host_measurements(&self) -> bool {
+        TextMeasurementPhase::ALL.into_iter().any(|phase| {
+            TextMeasurementOperation::ALL.into_iter().any(|operation| {
+                self.counts[Self::slot(phase, operation, TextMeasurementRouteOutcome::Host)]
+                    .load(Ordering::Relaxed)
+                    != 0
+            })
+        })
     }
 
     fn report(&self, policy: &TextMeasurementPolicy) -> TextMeasurementReport {
@@ -1629,8 +1638,10 @@ fn default_math_backend() -> Option<ConfiguredMathBackend> {
     None
 }
 
-static EMPTY_THEME_MEASUREMENT_FALLBACKS: HostMeasurementFallbackPolicy =
-    HostMeasurementFallbackPolicy::EMPTY;
+fn default_theme_resource_ceiling() -> Arc<ThemeResourcePolicy> {
+    static CEILING: OnceLock<Arc<ThemeResourcePolicy>> = OnceLock::new();
+    Arc::clone(CEILING.get_or_init(|| Arc::new(ThemeResourcePolicy::interactive())))
+}
 
 /// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
@@ -1688,7 +1699,7 @@ impl RenderEnvironment {
             font_catalog: FontCatalog::system_fonts(),
             font_source_policy: FontSourcePolicy::default(),
             theme_admission_policy: ThemeAdmissionPolicy::default(),
-            theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
+            theme_resource_ceiling: default_theme_resource_ceiling(),
             theme_portability: ThemePortabilityRequirement::BestEffort,
         }
     }
@@ -1798,24 +1809,6 @@ impl RenderEnvironment {
 
     pub fn theme_resource_ceiling(&self) -> &ThemeResourcePolicy {
         &self.theme_resource_ceiling
-    }
-
-    /// Retains source compatibility for the retired prepared-layout fallback setting.
-    ///
-    /// System-font rendering uses `TextMeasurementPolicy`; this setting has no runtime action.
-    #[deprecated(
-        note = "prepared-layout fallback configuration is retired; use TextMeasurementPolicy"
-    )]
-    pub fn with_theme_measurement_fallbacks(self, _policy: HostMeasurementFallbackPolicy) -> Self {
-        self
-    }
-
-    /// Returns the empty prepared-layout policy used by the current system-font mode.
-    #[deprecated(
-        note = "prepared-layout fallbacks are unavailable in the current system-font mode"
-    )]
-    pub const fn theme_measurement_fallbacks(&self) -> &HostMeasurementFallbackPolicy {
-        &EMPTY_THEME_MEASUREMENT_FALLBACKS
     }
 
     pub const fn with_theme_portability_requirement(
@@ -2035,11 +2028,6 @@ impl SessionThemeResources {
         }
     }
 
-    fn measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
-        self.admission()
-            .map(ResolvedThemeAdmission::measurement_fallback_policy)
-    }
-
     fn portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
         self.admission()
             .map(ResolvedThemeAdmission::portability_requirement)
@@ -2089,10 +2077,6 @@ impl ResolvedSessionThemeResources {
 
     fn admission(&self) -> Option<&ResolvedThemeAdmission> {
         self.resources.admission()
-    }
-
-    fn measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
-        self.resources.measurement_fallback_policy()
     }
 
     fn portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
@@ -2155,6 +2139,10 @@ impl RenderSession {
 
     pub fn text_measurement_route(&self, phase: TextMeasurementPhase) -> TextMeasurementRoute {
         self.text_measurement.route(phase)
+    }
+
+    pub(crate) fn has_host_measurements(&self) -> bool {
+        self.measurement_recorder.has_host_measurements()
     }
 
     pub fn text_measurement_report(&self) -> TextMeasurementReport {
@@ -2225,10 +2213,6 @@ impl RenderSession {
 
     pub fn font_source_policy(&self) -> &FontSourcePolicy {
         self.resolved_theme_resources.font_source_policy()
-    }
-
-    pub fn theme_measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
-        self.resolved_theme_resources.measurement_fallback_policy()
     }
 
     pub fn theme_portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
@@ -2327,8 +2311,6 @@ impl RenderSession {
             portability_requirement: self.portability_requirement,
             font_catalog_fingerprint: self.font_catalog().fingerprint(),
             font_source_policy: self.font_source_policy().clone(),
-            prepared_text_layout: None,
-            text_layout_failure: None,
             trusted_theme_lanes: self.trusted_theme_lanes.clone(),
             used_trusted_theme_lanes: self.used_trusted_theme_lanes(),
         }
@@ -2351,8 +2333,6 @@ pub struct RenderSessionReport {
     portability_requirement: ThemePortabilityRequirement,
     font_catalog_fingerprint: FontCatalogFingerprint,
     font_source_policy: FontSourcePolicy,
-    prepared_text_layout: Option<PreparedTextLayoutReport>,
-    text_layout_failure: Option<TextLayoutFailure>,
     trusted_theme_lanes: TrustedThemeLanes,
     used_trusted_theme_lanes: TrustedThemeLanes,
 }
@@ -2417,14 +2397,6 @@ impl RenderSessionReport {
         self.font_catalog_fingerprint
     }
 
-    pub fn prepared_text_layout(&self) -> Option<&PreparedTextLayoutReport> {
-        self.prepared_text_layout.as_ref()
-    }
-
-    pub const fn text_layout_failure(&self) -> Option<TextLayoutFailure> {
-        self.text_layout_failure
-    }
-
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_source_policy
     }
@@ -2448,46 +2420,6 @@ impl RenderSessionReport {
     /// Returns the peak owner-accounted prepared-text bytes retained by the operation.
     pub const fn prepared_text_retained_bytes_peak(&self) -> usize {
         self.prepared_text_retained_bytes_peak
-    }
-}
-
-#[cfg(test)]
-mod theme_fallback_compatibility_tests {
-    use super::*;
-
-    #[test]
-    #[allow(deprecated)]
-    fn retired_theme_fallback_configuration_retains_no_runtime_policy() {
-        let policy = HostMeasurementFallbackPolicy::new([
-            crate::diagram_theme::HostMeasurementFallback::AcceptHostDependent,
-        ])
-        .unwrap();
-        let environment =
-            RenderEnvironment::deterministic().with_theme_measurement_fallbacks(policy);
-        assert_eq!(
-            environment.theme_measurement_fallbacks().priority().len(),
-            0
-        );
-        assert!(!format!("{environment:?}").contains("theme_measurement_fallbacks"));
-        assert!(
-            environment
-                .begin_session()
-                .unwrap()
-                .theme_measurement_fallback_policy()
-                .is_none()
-        );
-        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
-            .compile(crate::diagram_theme::DiagramThemeSpec::new())
-            .unwrap();
-        let session = environment.begin_session_with_theme(&theme).unwrap();
-        assert_eq!(
-            session
-                .theme_measurement_fallback_policy()
-                .unwrap()
-                .priority()
-                .len(),
-            0
-        );
     }
 }
 
@@ -4377,8 +4309,6 @@ mod tests {
         assert_eq!(session.resource_policy(), limits);
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
-        assert!(session.report().prepared_text_layout().is_none());
-        assert!(session.report().text_layout_failure().is_none());
         assert_eq!(session.report().operation_context().seed(), 0);
     }
 

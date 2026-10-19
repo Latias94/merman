@@ -70,7 +70,7 @@ function deferred() {
   return { promise, reject, resolve };
 }
 
-function success(svg = "<svg />") {
+function success(svg = "<svg />", includeMetadata = true) {
   return JSON.stringify({
     version: 1,
     ok: true,
@@ -78,18 +78,20 @@ function success(svg = "<svg />") {
       operation_id: "svg",
       media_type: "image/svg+xml",
       data: svg,
-      metadata_json: JSON.stringify({
-        version: 1,
-        operation_id: "svg",
-        media_type: "image/svg+xml",
-        runtime_policy: "deterministic",
-        byte_length: Buffer.byteLength(svg),
-      }),
+      ...(includeMetadata ? {
+        metadata_json: JSON.stringify({
+          version: 1,
+          operation_id: "svg",
+          media_type: "image/svg+xml",
+          runtime_policy: "deterministic",
+          byte_length: Buffer.byteLength(svg),
+        }),
+      } : {}),
     },
   });
 }
 
-function jsonSuccess(operationId, value) {
+function jsonSuccess(operationId, value, includeMetadata = true) {
   const data = JSON.stringify(value);
   return JSON.stringify({
     version: 1,
@@ -98,13 +100,15 @@ function jsonSuccess(operationId, value) {
       operation_id: operationId,
       media_type: "application/json",
       data,
-      metadata_json: JSON.stringify({
-        version: 1,
-        operation_id: operationId,
-        media_type: "application/json",
-        runtime_policy: "deterministic",
-        byte_length: Buffer.byteLength(data),
-      }),
+      ...(includeMetadata ? {
+        metadata_json: JSON.stringify({
+          version: 1,
+          operation_id: operationId,
+          media_type: "application/json",
+          runtime_policy: "deterministic",
+          byte_length: Buffer.byteLength(data),
+        }),
+      } : {}),
     },
   });
 }
@@ -582,14 +586,16 @@ function transportFactory(overrides = {}) {
   const transportCalls = [];
   const transport = {
     async execute(requestJson, signal, timeoutMs) {
-      calls.push(JSON.parse(requestJson));
+      const request = JSON.parse(requestJson);
+      calls.push(request);
       transportCalls.push({ kind: "async", signal, timeoutMs });
-      return success();
+      return success("<svg />", request.include_metadata !== false);
     },
     executeSync(requestJson, timeoutMs) {
-      calls.push(JSON.parse(requestJson));
+      const request = JSON.parse(requestJson);
+      calls.push(request);
       transportCalls.push({ kind: "sync", timeoutMs });
-      return success();
+      return success("<svg />", request.include_metadata !== false);
     },
     runtimeCatalogJson() {
       return JSON.stringify(runtimeCatalog());
@@ -632,6 +638,7 @@ test("default construction is explicit deterministic interactive policy", async 
       operation_id: "svg",
       source: "flowchart TD\nA --> B",
       uri: null,
+      include_metadata: false,
     },
   ]);
   await engine.dispose();
@@ -814,7 +821,7 @@ test("operation request fields accept exact UTF-8 ceilings and reject plus one",
       if (request.operation_id === "document-analysis-json") {
         return failure({ kind: "missing-capability", capabilityId: "analysis" });
       }
-      return success();
+      return success("<svg />", request.include_metadata !== false);
     },
   });
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
@@ -883,7 +890,7 @@ test("generic operations invoke descriptor-owned SVG planning", async () => {
   factory.transport.execute = async (requestJson) => {
     const request = JSON.parse(requestJson);
     factory.calls.push(request);
-    return jsonSuccess(request.operation_id, plan);
+    return jsonSuccess(request.operation_id, plan, request.include_metadata !== false);
   };
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
 
@@ -917,12 +924,12 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
     async execute(requestJson) {
       const request = JSON.parse(requestJson);
       factory.calls.push(request);
-      return jsonSuccess(request.operation_id, plan);
+      return jsonSuccess(request.operation_id, plan, request.include_metadata !== false);
     },
     executeSync(requestJson) {
       const request = JSON.parse(requestJson);
       factory.calls.push(request);
-      return jsonSuccess(request.operation_id, plan);
+      return jsonSuccess(request.operation_id, plan, request.include_metadata !== false);
     },
     metadataJson(id) {
       metadataCalls.push(id);
@@ -1057,6 +1064,24 @@ test("generic results preserve the candidate operation metadata JSON", async () 
     runtime_policy: "deterministic",
     byte_length: 7,
   });
+  await engine.dispose();
+});
+
+test("SVG convenience calls request data only while generic results retain metadata", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  const source = "flowchart TD\nA --> B";
+  const result = await engine.executeOperation({ operationId: "svg", source });
+
+  assert.equal(await engine.renderSvg(source), result.data);
+  assert.equal(engine.renderSvgSync(source), result.data);
+  assert.deepEqual(factory.calls.map(({ include_metadata }) => include_metadata), [
+    undefined, false, false,
+  ]);
+  assert.equal(typeof result.metadata_json, "string");
+
+  factory.transport.execute = async () => success();
+  await assert.rejects(engine.renderSvg(source), /metadata for a data-only operation/i);
   await engine.dispose();
 });
 
@@ -2088,7 +2113,7 @@ test("queue admission is bounded and dispose drains only executing work", async 
       executions += 1;
       started.resolve();
       await release.promise;
-      return success(`<svg data-execution="${executions}" />`);
+      return success(`<svg data-execution="${executions}" />`, false);
     },
     async dispose() {
       transportDisposed = true;
@@ -2143,7 +2168,7 @@ test(
           });
           return cancellationFailure();
         }
-        return success();
+        return success("<svg />", false);
       },
     });
     const engine = await createNodeEngine(

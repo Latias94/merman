@@ -749,7 +749,6 @@ fn requirement_svg_labels_measure_with_svg_mode_and_portable_typed_typography() 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn same_named_requirement_and_element_source() -> &'static str {
@@ -1264,7 +1263,6 @@ fn requirement_typed_font_stack_reaches_measurement_stylesheet_and_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1298,7 +1296,6 @@ requirementDiagram
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1352,7 +1349,6 @@ fn requirement_typed_font_size_reaches_measurement_stylesheet_and_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1409,7 +1405,6 @@ fn requirement_mixed_base_typography_settles_each_property_independently() {
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1440,7 +1435,6 @@ requirementDiagram
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1465,7 +1459,6 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = match try_render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
@@ -1976,7 +1969,6 @@ fn requirement_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
     let evidence = merman_render::__private::family_evidence(completion.report());
 
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
 }
 
@@ -1997,7 +1989,6 @@ fn requirement_ordinal_palette_is_not_applicable_when_source_fill_wins() {
     let evidence = merman_render::__private::family_evidence(completion.report());
 
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
 }
 

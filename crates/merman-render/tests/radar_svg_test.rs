@@ -320,7 +320,6 @@ fn radar_mixed_typography_is_direct_and_portable() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -342,7 +341,6 @@ fn radar_digit_leading_font_family_is_quoted_and_portable() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -745,7 +743,6 @@ fn radar_axis_static_paint_reaches_terminal_without_bridge() {
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.applied_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -793,7 +790,6 @@ fn radar_axis_stroke_priority_is_independent_of_rule_grouping() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), count - 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -820,7 +816,6 @@ fn radar_axis_unsupported_stroke_width_remains_residual_in_mixed_and_split_rules
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert!(evidence.theme_residual_count() > 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         let error = match render_radar_with_theme_requirement(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
@@ -881,7 +876,6 @@ fn radar_axis_configuration_owns_only_its_color_channel() {
         assert_eq!(evidence.applied_count(), usize::from(applied));
         assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -918,7 +912,6 @@ fn radar_static_axis_stroke_overrides_ordinal_palette_in_strict_mode() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 const RADAR_TEXT_SOURCE: &str =
@@ -973,7 +966,6 @@ fn radar_text_static_fill_reaches_labels_and_title_without_bridge() {
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -1041,7 +1033,6 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         assert_eq!(evidence.applied_count(), usize::from(applied));
         assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1059,7 +1050,6 @@ fn radar_explicit_title_fill_overrides_only_the_text_title_fallback() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1083,7 +1073,6 @@ fn radar_clear_title_fill_blocks_text_fallback_but_not_label_paint() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert!(
         render_radar_with_theme_requirement(
             RADAR_TEXT_SOURCE,
@@ -1127,7 +1116,6 @@ fn radar_text_ordinal_uses_all_visible_occurrences_and_preserves_residuals() {
             usize::from(ordinal > 5),
             "ordinal={ordinal}"
         );
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(
             render_radar_with_theme_requirement(
                 RADAR_TEXT_SOURCE,
@@ -1177,7 +1165,6 @@ fn radar_text_unsupported_sibling_is_not_certified_by_an_applied_fill() {
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.theme_residual_count(), 1);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert!(
             render_radar_with_theme_requirement(
                 RADAR_TEXT_SOURCE,
@@ -1232,5 +1219,4 @@ fn radar_non_fill_title_rule_does_not_capture_the_text_fallback() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }

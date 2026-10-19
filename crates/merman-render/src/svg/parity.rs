@@ -11,7 +11,7 @@ use crate::model::*;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -40,7 +40,7 @@ mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg(feature = "diagram-block")]
-pub(crate) use block::block_edge_path_data;
+pub(crate) use block::block_edge_is_visible;
 #[cfg(feature = "diagram-c4")]
 mod c4;
 #[cfg(feature = "diagram-class")]
@@ -412,10 +412,6 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 
     if out.is_empty() || out == "m" {
         "m-untitled".to_string()
-    } else if PreparedTextLabelId::is_svg_id_candidate(&out) {
-        // Native admission rejects this reserved text-token namespace. Keep caller-owned
-        // diagram ids outside it so ordinary labels cannot collide with reserved tokens.
-        format!("m-user-{out}")
     } else {
         out
     }
@@ -448,7 +444,6 @@ struct SvgDiagramIdSanitizationPlan<'a> {
     trimmed: &'a str,
     output_bytes: usize,
     uses_fallback: bool,
-    avoids_reserved_namespace: bool,
 }
 
 fn checkpoint_svg_diagram_id_scan(
@@ -496,7 +491,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
             trimmed,
             output_bytes: "m-untitled".len(),
             uses_fallback: true,
-            avoids_reserved_namespace: false,
         });
     }
 
@@ -512,7 +506,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
     let first = sanitize_char(first_raw);
     let mut output_bytes = 0usize;
     let mut first_output = None;
-    let mut reserved_prefix_matches = true;
     let mut previous_was_dash = false;
     let mut append = |ch: char| -> Result<()> {
         if ch == '-' && previous_was_dash {
@@ -520,12 +513,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
         }
         previous_was_dash = ch == '-';
         first_output.get_or_insert(ch);
-        if let Some(expected) = crate::text::PREPARED_TEXT_LABEL_ID_PREFIX
-            .as_bytes()
-            .get(output_bytes)
-        {
-            reserved_prefix_matches &= ch as u8 == *expected;
-        }
         output_bytes = output_bytes.checked_add(1).ok_or_else(|| {
             Error::from(session.work_meter().terminate_svg_byte_count_overflow(
                 crate::resources::ResourceLimitPhase::SvgOutput,
@@ -552,25 +539,14 @@ fn plan_svg_diagram_id_sanitization<'a>(
         output_bytes -= 1;
     }
     let uses_fallback = output_bytes == 0 || (output_bytes == 1 && first_output == Some('m'));
-    let avoids_reserved_namespace = !uses_fallback
-        && reserved_prefix_matches
-        && output_bytes >= crate::text::PREPARED_TEXT_LABEL_ID_PREFIX.len();
     if uses_fallback {
         output_bytes = "m-untitled".len();
-    } else if avoids_reserved_namespace {
-        output_bytes = output_bytes.checked_add("m-user-".len()).ok_or_else(|| {
-            Error::from(session.work_meter().terminate_svg_byte_count_overflow(
-                crate::resources::ResourceLimitPhase::SvgOutput,
-                OperationPhase::Emit,
-            ))
-        })?;
     }
     session.checkpoint(OperationPhase::Emit)?;
     Ok(SvgDiagramIdSanitizationPlan {
         trimmed,
         output_bytes,
         uses_fallback,
-        avoids_reserved_namespace,
     })
 }
 
@@ -600,9 +576,6 @@ fn materialize_svg_diagram_id(
         return Ok(output);
     }
 
-    if plan.avoids_reserved_namespace {
-        output.push_str("m-user-");
-    }
     let sanitize_char = |ch: char| {
         if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             ch
@@ -911,11 +884,44 @@ pub(crate) struct RootThemeAppliedSvg {
     svg: String,
     root_theme: crate::diagram_theme::RootThemeReport,
     preserves_typed_theme_evidence: bool,
+    family_theme_evidence: Option<crate::family::FamilyThemeEvidence>,
+    #[cfg(feature = "diagram-packet")]
+    packet_theme_outcome: Option<crate::packet::PacketThemeOutcome>,
+    #[cfg(all(
+        merman_internal_theme_acceptance,
+        feature = "diagram-architecture",
+        feature = "layout-cytoscape"
+    ))]
+    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
 impl RootThemeAppliedSvg {
     pub(crate) fn as_str(&self) -> &str {
         &self.svg
+    }
+
+    pub(crate) fn take_family_theme_evidence(
+        &mut self,
+    ) -> Option<crate::family::FamilyThemeEvidence> {
+        self.family_theme_evidence.take()
+    }
+
+    #[cfg(feature = "diagram-packet")]
+    pub(crate) fn take_packet_theme_outcome(
+        &mut self,
+    ) -> Option<crate::packet::PacketThemeOutcome> {
+        self.packet_theme_outcome.take()
+    }
+
+    #[cfg(all(
+        merman_internal_theme_acceptance,
+        feature = "diagram-architecture",
+        feature = "layout-cytoscape"
+    ))]
+    pub(crate) fn take_architecture_text_receipt(
+        &mut self,
+    ) -> Option<crate::__private::ArchitectureTextReceipt> {
+        self.architecture_text_receipt.take()
     }
 
     pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
@@ -1087,10 +1093,6 @@ impl<'a> SvgExecution<'a> {
         self.family.session().effective_theme_resource_policy()
     }
 
-    pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
-        self.family.session().resource_policy()
-    }
-
     /// Replays a terminal observed while an SVG ID was being projected.
     ///
     /// Family emitters call this at bounded loop boundaries so an early SVG-byte rejection or
@@ -1134,8 +1136,18 @@ pub(crate) fn render_builtin_family_artifact(
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<RootThemeAppliedSvg> {
     let execution = SvgExecution::new(options, debug, family_execution)?;
-    let rooted_svg =
-        render_builtin_family_artifact_raw(family, metadata, &execution, edge_paint_geometry);
+    let mut family_theme_evidence = None;
+    #[cfg(feature = "diagram-packet")]
+    let mut packet_theme_outcome = None;
+    let rooted_svg = render_builtin_family_artifact_raw(
+        family,
+        metadata,
+        &execution,
+        edge_paint_geometry,
+        &mut family_theme_evidence,
+        #[cfg(feature = "diagram-packet")]
+        &mut packet_theme_outcome,
+    );
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let (rooted_svg, root_theme) =
@@ -1155,6 +1167,15 @@ pub(crate) fn render_builtin_family_artifact(
         svg,
         root_theme,
         preserves_typed_theme_evidence: !theme_css_applied,
+        family_theme_evidence,
+        #[cfg(feature = "diagram-packet")]
+        packet_theme_outcome,
+        #[cfg(all(
+            merman_internal_theme_acceptance,
+            feature = "diagram-architecture",
+            feature = "layout-cytoscape"
+        ))]
+        architecture_text_receipt: None,
     })
 }
 
@@ -1178,7 +1199,7 @@ pub(crate) fn render_architecture_family_artifact(
         &execution,
     );
     execution.finish_diagram_id_projection()?;
-    let rooted_svg = rooted_svg?;
+    let (rooted_svg, outcome) = rooted_svg?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
@@ -1193,6 +1214,15 @@ pub(crate) fn render_architecture_family_artifact(
         svg,
         root_theme,
         preserves_typed_theme_evidence: !theme_css_applied,
+        family_theme_evidence: Some(outcome.evidence),
+        #[cfg(feature = "diagram-packet")]
+        packet_theme_outcome: None,
+        #[cfg(all(
+            merman_internal_theme_acceptance,
+            feature = "diagram-architecture",
+            feature = "layout-cytoscape"
+        ))]
+        architecture_text_receipt: outcome.text_receipt,
     })
 }
 
@@ -1205,6 +1235,10 @@ fn render_builtin_family_artifact_raw(
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
+    family_theme_evidence: &mut Option<crate::family::FamilyThemeEvidence>,
+    #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
+        crate::packet::PacketThemeOutcome,
+    >,
 ) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
@@ -1228,6 +1262,10 @@ fn render_builtin_family_artifact_raw(
                 artifact.group_theme(),
                 options,
             )
+            .map(|(svg, outcome)| {
+                *family_theme_evidence = Some(outcome.evidence);
+                svg
+            })
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(artifact) => flowchart::render_flowchart_svg_artifact(
@@ -1349,14 +1387,18 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config_value,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Packet(artifact) => {
+            let (svg, outcome) = packet::render_packet_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.typography_theme(),
+                effective_config_value,
+                title,
+                options,
+            )?;
+            *packet_theme_outcome = outcome;
+            Ok(svg)
+        }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),
@@ -1738,7 +1780,7 @@ mod diagram_id_projection_tests {
     }
 
     #[test]
-    fn reserved_diagram_id_prefix_is_included_in_controlled_byte_preflight() {
+    fn normalized_diagram_id_is_included_in_controlled_byte_preflight() {
         use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let request = SvgRenderOptions {
             diagram_id: Some("merman-prepared-state-17".into()),

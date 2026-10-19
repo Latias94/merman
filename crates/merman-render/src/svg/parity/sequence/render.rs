@@ -234,7 +234,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         layout,
         model,
         diagram_id,
-        options.resource_policy(),
         actor_theme.stroke_width.map(f64::from).unwrap_or(0.0) / 2.0,
         &[
             box_paint_bounds.as_ref(),
@@ -310,25 +309,22 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
 
     out.push_str("<style>");
-    let css_emission = write_sequence_css(
+    write_sequence_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         prepared.css(),
     )?;
-    sequence_number_receipt.record_stylesheet_emission(
-        css_emission.sequence_number_fill(),
-        css_emission.typed_sequence_number_fill(),
-    );
+    let css = prepared.css();
+    sequence_number_receipt.record_stylesheet_emission(css.typed_number_fill);
     for surface in crate::sequence::SequenceTextSurface::ALL {
-        let (final_fill, typed_fill) = css_emission.text_surface_fill(surface);
-        typography_receipt.record_stylesheet_emission(surface, final_fill, typed_fill);
+        let text = &css.text[surface.index()];
+        typography_receipt.record_stylesheet_emission(
+            surface,
+            &text.fill,
+            text.typed_fill.then_some(text.fill.as_str()),
+        );
     }
-    keyword_receipt.record_stylesheet_emission(
-        css_emission.keyword_fill(),
-        css_emission.typed_keyword_fill(),
-        css_emission.keyword_stroke(),
-        css_emission.typed_keyword_stroke(),
-    );
+    keyword_receipt.record_stylesheet_emission(css.typed_keyword_fill, css.typed_keyword_stroke);
     out.push_str("</style><g/>");
     out.checkpoint()?;
     prepared.theme_evidence().record_lifeline_emission(
@@ -403,12 +399,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
 
     if frame_theme.typed_stroke.is_some() {
-        frame_receipt.record_stylesheet_emission(
-            "",
-            None,
-            css_emission.frame_stroke(),
-            frame_theme.typed_stroke.as_deref(),
-        );
+        frame_receipt.record_stylesheet_emission(false, true);
     }
     let frame_paint = super::control_paint::SequenceControlPaint::new(
         &frame_receipt,
@@ -532,7 +523,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         &message_ctx,
         &mut message_receipt,
         &mut sequence_number_receipt,
-        Some(css_emission.sequence_number_fill()),
     )?;
     prepared.theme_evidence().record_message_emission(
         crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
@@ -545,7 +535,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     );
     prepared.theme_evidence().record_sequence_number_emission(
         crate::sequence::SequenceNumberLabelThemeEmission::from_terminal_writer(
-            sequence_number_theme.typed_fill(),
             sequence_number_fill_overridden,
             sequence_number_receipt,
         ),
@@ -593,13 +582,15 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             text = escape_xml_display(title.text())
         );
         out.checkpoint()?;
+        if !title.text().trim().is_empty() {
+            typography_receipt.record_inherited_text();
+        }
     }
 
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
     let root_document = if defer_paint_bounds {
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
-            .with_resource_policy(options.resource_policy())
             .finish_document(
                 &mut out,
                 root_document,
@@ -640,9 +631,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared.theme_evidence().record_control_emission(
         crate::diagram_theme::ThemeTarget::LoopLabelBackground,
         crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
-            keyword_theme.typed_fill.as_deref(),
             keyword_fill_overridden,
-            keyword_theme.typed_stroke.as_deref(),
             keyword_stroke_overridden,
             keyword_receipt,
         ),
@@ -650,19 +639,12 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared.theme_evidence().record_control_emission(
         crate::diagram_theme::ThemeTarget::Loop,
         crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
-            None,
             false,
-            frame_theme.typed_stroke.as_deref(),
             keyword_stroke_overridden,
             frame_receipt,
         ),
     );
     let svg = out.finish()?;
-    typography_receipt.record_terminal_svg(
-        &svg,
-        diagram_id.semantic_str(),
-        options.work_meter(),
-    )?;
     prepared
         .theme_evidence()
         .record_typography_emission(typography_receipt);

@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
 
@@ -7,16 +6,16 @@ use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeT
 use crate::family::FamilyThemeEvidence;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-mod receipt;
+mod styles;
 
-pub(crate) use receipt::{
+pub(crate) use styles::{
     ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
     ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission,
     ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
-    ArchitectureServiceTerminalEmission, ArchitectureSurfaceThemeReceipt,
+    ArchitectureServiceTerminalEmission, ArchitectureSurfaceRenderState,
     ArchitectureTextTerminalEmission,
 };
-use receipt::{
+use styles::{
     ArchitectureSurfaceOwnership, is_architecture_terminal_surface_target, mechanism_target,
 };
 
@@ -33,7 +32,6 @@ pub(super) struct ArchitectureSurfaceThemePlan {
     service_stroke_source_owned: bool,
     text_fill_source_owned: bool,
     arrow_fill_source_owned: bool,
-    terminal_receipt: OnceLock<ArchitectureSurfaceThemeReceipt>,
 }
 
 impl ArchitectureSurfaceThemePlan {
@@ -44,7 +42,6 @@ impl ArchitectureSurfaceThemePlan {
             service_stroke_source_owned: false,
             text_fill_source_owned: false,
             arrow_fill_source_owned: false,
-            terminal_receipt: OnceLock::new(),
         }
     }
 
@@ -75,17 +72,16 @@ impl ArchitectureSurfaceThemePlan {
                 TEXT_COLOR_PATH,
             ),
             arrow_fill_source_owned: mermaid_owns_arrow_fill(effective_config),
-            terminal_receipt: OnceLock::new(),
         }
     }
 
-    pub(super) fn begin_terminal_receipt<'a>(
+    pub(super) fn prepare_styles(
         &self,
-        services: impl IntoIterator<Item = ArchitectureServiceTerminal<'a>>,
-        groups: impl IntoIterator<Item = ArchitectureGroupTerminal<'a>>,
-        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal<'a>>,
+        services: impl IntoIterator<Item = ArchitectureServiceTerminal>,
+        groups: impl IntoIterator<Item = ArchitectureGroupTerminal>,
+        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<Option<ArchitectureSurfaceThemeReceipt>, OperationWorkError> {
+    ) -> Result<Option<ArchitectureSurfaceRenderState>, OperationWorkError> {
         let Some(theme) = self.theme.as_ref() else {
             return Ok(None);
         };
@@ -95,7 +91,7 @@ impl ArchitectureSurfaceThemePlan {
             return Ok(None);
         }
 
-        ArchitectureSurfaceThemeReceipt::build(
+        ArchitectureSurfaceRenderState::build(
             theme,
             ArchitectureSurfaceOwnership {
                 service_stroke: self.service_stroke_source_owned,
@@ -110,25 +106,17 @@ impl ArchitectureSurfaceThemePlan {
         .map(Some)
     }
 
-    pub(super) fn record_terminal(&self, receipt: ArchitectureSurfaceThemeReceipt) -> bool {
-        receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(super) fn finish_evidence(
+        &self,
+        evidence: &mut FamilyThemeEvidence,
+        emission: Option<&ArchitectureSurfaceRenderState>,
+    ) {
         for key in &self.title_keys {
             evidence.mark_not_applicable(key.clone());
         }
-        let Some(receipt) = self.terminal_receipt.get() else {
-            return;
-        };
-        receipt.apply_to_evidence(evidence);
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn architecture_text_receipt(
-        &self,
-    ) -> Option<crate::__private::ArchitectureTextReceipt> {
-        self.terminal_receipt.get()?.architecture_text_receipt()
+        if let Some(emission) = emission {
+            emission.apply_to_evidence(evidence);
+        }
     }
 }
 

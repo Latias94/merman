@@ -317,13 +317,9 @@ mod tests {
         }));
         let typography = super::super::ClassTextThemePlan::resolve(None, &source);
         let config = ClassRenderConfig::resolve(&source, &typography);
-        assert_ne!(
-            typography.layout_font_family_css(),
-            typography.stylesheet_font_family_css()
-        );
         assert_eq!(
             config.text_style().font_family.as_deref(),
-            Some(typography.layout_font_family_css())
+            Some("Root Sans,monospace")
         );
         assert!(std::ptr::eq(
             config.text_style(),
@@ -369,10 +365,6 @@ mod tests {
         let typography = super::super::ClassTextThemePlan::resolve(Some(&theme), &source);
         let config = ClassRenderConfig::resolve(&source, &typography);
         assert!(typography.typed_font_size_active());
-        assert_eq!(
-            typography.layout_font_family_css(),
-            typography.stylesheet_font_family_css()
-        );
         assert_eq!(
             config.text_style().font_family.as_deref(),
             Some("monospace")
@@ -556,11 +548,6 @@ mod tests {
         assert!(!config.render_diagram_html_labels());
         assert!(!config.render_edge_html_labels());
         assert_eq!(config.render_font_size(), 24.0);
-        let typography = crate::class::theme::ClassTextThemePlan::resolve(
-            None,
-            &merman_core::MermaidConfig::from_value(cfg.clone()),
-        );
-        assert_eq!(typography.font_size_css(), "24px");
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.render_class_padding(), 12.0);
         assert_eq!(config.render_viewport_padding(), 20.0);

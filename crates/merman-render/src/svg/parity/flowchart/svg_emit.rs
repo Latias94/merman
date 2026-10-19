@@ -382,8 +382,7 @@ pub(super) fn render_flowchart_svg_model(
     };
 
     let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, prepared_nodes.schedule())?;
-    text_surface_paint
-        .begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
+    text_surface_paint.begin_terminal_emission(ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
     let theme_resource_policy = options.theme_resource_policy();
     let node_effects =

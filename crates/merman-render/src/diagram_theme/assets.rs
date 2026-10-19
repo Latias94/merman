@@ -2,12 +2,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
-
 use super::admission::{FontEmbeddingRequirement, FontSource, ThemeAdmissionError};
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
-
-const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -54,16 +50,6 @@ impl FontStyle {
             Self::Oblique => "oblique",
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum FontEmbeddingPermissions {
-    Installable,
-    Editable,
-    PreviewAndPrint,
-    Restricted,
-    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -211,155 +197,6 @@ impl fmt::Debug for FontCatalogFingerprint {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FontAssetFingerprint([u8; 32]);
-
-impl FontAssetFingerprint {
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    pub fn to_hex(self) -> String {
-        hex_bytes(&self.0)
-    }
-}
-
-impl fmt::Debug for FontAssetFingerprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("FontAssetFingerprint")
-            .field(&self.to_hex())
-            .finish()
-    }
-}
-
-/// Compatibility projection for an embedded asset produced by earlier catalog implementations.
-///
-/// The current compiler admits system fonts only and never constructs this result type.
-#[derive(Clone)]
-pub struct FontAsset {
-    id: String,
-    input_container: FontContainer,
-    canonical_container: FontContainer,
-    canonical_bytes: Arc<[u8]>,
-    fingerprint: FontAssetFingerprint,
-}
-
-impl FontAsset {
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub const fn input_container(&self) -> FontContainer {
-        self.input_container
-    }
-
-    pub const fn canonical_container(&self) -> FontContainer {
-        self.canonical_container
-    }
-
-    pub fn canonical_bytes(&self) -> &[u8] {
-        &self.canonical_bytes
-    }
-
-    /// Returns shared immutable canonical bytes without copying the retained asset.
-    pub fn canonical_data(&self) -> Arc<[u8]> {
-        Arc::clone(&self.canonical_bytes)
-    }
-
-    pub const fn fingerprint(&self) -> FontAssetFingerprint {
-        self.fingerprint
-    }
-}
-
-impl fmt::Debug for FontAsset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FontAsset")
-            .field("id", &self.id)
-            .field("input_container", &self.input_container)
-            .field("canonical_container", &self.canonical_container)
-            .field("canonical_bytes", &self.canonical_bytes.len())
-            .field("fingerprint", &self.fingerprint)
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FontFaceMetadata {
-    asset_id: String,
-    face_index: u32,
-    family_name: String,
-    postscript_name: Option<String>,
-    style: FontStyle,
-    weight: u16,
-    width: u16,
-    permissions: FontEmbeddingPermissions,
-    subsetting_allowed: bool,
-    outline_embedding_allowed: bool,
-    table_count: usize,
-}
-
-impl FontFaceMetadata {
-    pub fn asset_id(&self) -> &str {
-        &self.asset_id
-    }
-
-    pub const fn face_index(&self) -> u32 {
-        self.face_index
-    }
-
-    pub fn family_name(&self) -> &str {
-        &self.family_name
-    }
-
-    pub fn postscript_name(&self) -> Option<&str> {
-        self.postscript_name.as_deref()
-    }
-
-    pub const fn style(&self) -> FontStyle {
-        self.style
-    }
-
-    pub const fn weight(&self) -> u16 {
-        self.weight
-    }
-
-    pub const fn width(&self) -> u16 {
-        self.width
-    }
-
-    pub const fn permissions(&self) -> FontEmbeddingPermissions {
-        self.permissions
-    }
-
-    pub const fn subsetting_allowed(&self) -> bool {
-        self.subsetting_allowed
-    }
-
-    pub const fn outline_embedding_allowed(&self) -> bool {
-        self.outline_embedding_allowed
-    }
-
-    pub const fn table_count(&self) -> usize {
-        self.table_count
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FontFamilyAlias {
-    alias: String,
-    target: String,
-}
-
-impl FontFamilyAlias {
-    pub fn alias(&self) -> &str {
-        &self.alias
-    }
-
-    pub fn target(&self) -> &str {
-        &self.target
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct FontCatalog(FontCatalogFingerprint);
 
@@ -369,38 +206,17 @@ impl FontCatalog {
     /// This does not enumerate or freeze fonts installed on the host. Its fingerprint identifies
     /// the system-font catalog mode, not the host's installed font set or output portability.
     pub fn system_fonts() -> Self {
-        let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, FONT_CATALOG_FINGERPRINT_DOMAIN);
-        // Preserve the established canonical identity of the asset-free system-font mode.
-        update_len_prefixed(&mut hasher, b"default-parity");
-        Self(FontCatalogFingerprint(hasher.finalize().into()))
-    }
-
-    /// Compatibility projection. System-font catalogs retain no embedded asset results.
-    pub fn assets(&self) -> &[FontAsset] {
-        &[]
-    }
-
-    /// Compatibility projection. System-font catalogs retain no prepared font-face metadata.
-    pub fn faces(&self) -> &[FontFaceMetadata] {
-        &[]
-    }
-
-    /// Compatibility projection. System-font catalogs retain no embedded family aliases.
-    pub fn aliases(&self) -> &[FontFamilyAlias] {
-        &[]
-    }
-
-    pub fn generic_family(&self, _family: GenericFontFamily) -> Option<&str> {
-        None
+        // SHA-256 of the established length-prefixed catalog domain and "default-parity".
+        // This identifies one fixed mode, so constructing it does not require hashing.
+        Self(FontCatalogFingerprint([
+            0xc6, 0xaa, 0x7a, 0xf7, 0x33, 0x22, 0xaa, 0xc3, 0x5c, 0xe4, 0x54, 0x83, 0x69, 0x14,
+            0x08, 0x48, 0xc9, 0xa4, 0xd0, 0x93, 0x70, 0x0a, 0xbc, 0xcb, 0x06, 0x3e, 0xa4, 0x7a,
+            0x17, 0x97, 0xd0, 0xaa,
+        ]))
     }
 
     pub fn available_sources(&self) -> impl ExactSizeIterator<Item = FontSource> + '_ {
         std::iter::once(FontSource::System)
-    }
-
-    pub fn embedding_requirement(&self) -> FontEmbeddingRequirement {
-        FontEmbeddingRequirement::NoEmbedding
     }
 
     pub fn fingerprint(&self) -> FontCatalogFingerprint {
@@ -460,11 +276,6 @@ pub(super) fn detect_font_container(bytes: &[u8]) -> Option<FontContainer> {
     }
 }
 
-fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
-    hasher.update((bytes.len() as u64).to_be_bytes());
-    hasher.update(bytes);
-}
-
 fn hex_bytes(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(bytes.len() * 2);
@@ -475,17 +286,7 @@ fn hex_bytes(bytes: &[u8]) -> String {
     output
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FontAssetIdError {
-    Empty,
-    TooLong,
-    InvalidCharacter,
-}
-
-/// Font input failures and compatibility variants from the retired embedded-font compiler.
-///
-/// Current custom-byte compilation performs input, source and resource admission, then returns
-/// `EmbeddedFontsUnavailable`; parser and embedding variants remain for Rust API compatibility.
+/// Font input admission failures. Embedded theme font compilation is unavailable.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum FontCatalogError {
@@ -499,62 +300,10 @@ pub enum FontCatalogError {
     EmptyCatalog,
     #[error("font catalog with custom bytes must declare the embedded source")]
     EmbeddedSourceRequired,
-    #[error("font asset {index} has an invalid id: {reason:?}")]
-    InvalidAssetId {
-        index: usize,
-        reason: FontAssetIdError,
-    },
     #[error("font asset id `{id}` is duplicated")]
     DuplicateAssetId { id: String },
     #[error("font asset {asset_index} uses an unsupported container")]
     UnsupportedFontContainer { asset_index: usize },
-    #[error("font asset {asset_index} is not a valid WOFF2 file")]
-    MalformedWoff2 { asset_index: usize },
-    #[error(
-        "font asset {asset_index} WOFF2 header declares {declared} SFNT bytes but decoder produced {actual}"
-    )]
-    Woff2SizeMismatch {
-        asset_index: usize,
-        declared: usize,
-        actual: usize,
-    },
-    #[error("font asset {asset_index} did not produce a valid canonical SFNT")]
-    MalformedSfnt { asset_index: usize },
-    #[error("font asset `{asset_id}` is not a valid font collection")]
-    MalformedCollection { asset_id: String },
-    #[error("font face `{asset_id}` index {face_index} is malformed")]
-    MalformedFace { asset_id: String, face_index: u32 },
-    #[error("font face `{asset_id}` index {face_index} has no Unicode family name")]
-    MissingFamilyName { asset_id: String, face_index: u32 },
-    #[error("font face `{asset_id}` index {face_index} has an invalid family name")]
-    InvalidFamilyName { asset_id: String, face_index: u32 },
-    #[error("font face `{asset_id}` index {face_index} has an invalid PostScript name")]
-    InvalidPostscriptName { asset_id: String, face_index: u32 },
-    #[error(
-        "font face `{asset_id}` index {face_index} denies {requirement:?} embedding ({permissions:?})"
-    )]
-    EmbeddingDenied {
-        asset_id: String,
-        face_index: u32,
-        requirement: FontEmbeddingRequirement,
-        permissions: FontEmbeddingPermissions,
-    },
-    #[error("font faces contain case-insensitive family-name collisions")]
-    FamilyNameCollision,
-    #[error("font alias {index} is invalid")]
-    InvalidAlias { index: usize },
-    #[error("font alias target {index} is invalid")]
-    InvalidAliasTarget { index: usize },
-    #[error("font alias `{alias}` collides with another family or alias")]
-    AliasCollision { alias: String },
-    #[error("font alias {index} targets an unknown catalog family")]
-    UnknownAliasTarget { index: usize },
-    #[error("generic font family `{family:?}` is assigned more than once")]
-    DuplicateGenericFamily { family: GenericFontFamily },
-    #[error("generic font family `{family:?}` has an invalid target")]
-    InvalidGenericTarget { family: GenericFontFamily },
-    #[error("generic font family `{family:?}` targets an unknown catalog family")]
-    UnknownGenericTarget { family: GenericFontFamily },
     #[error("font catalog byte accounting overflowed")]
     CatalogByteCountOverflow,
     #[error("font catalog item accounting overflowed")]
@@ -648,16 +397,6 @@ mod tests {
     fn system_font_catalog_retains_no_custom_bytes() {
         let catalog = FontCatalog::system_fonts();
 
-        assert!(catalog.assets().is_empty());
-        assert!(catalog.faces().is_empty());
-        assert!(catalog.aliases().is_empty());
-        for generic in GenericFontFamily::ALL {
-            assert_eq!(catalog.generic_family(*generic), None);
-        }
-        assert_eq!(
-            catalog.embedding_requirement(),
-            FontEmbeddingRequirement::NoEmbedding
-        );
         assert_eq!(
             catalog.fingerprint().to_hex(),
             "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa"

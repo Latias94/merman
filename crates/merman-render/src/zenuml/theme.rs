@@ -14,7 +14,7 @@ use crate::family::{
 use crate::resources::OperationWorkMeter;
 
 /// Prepared source compatibility values shared by ZenUML measurement and paint.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ZenumlSourceStyle {
     pub(crate) typography: super::ZenumlTypography,
     colors: std::collections::BTreeMap<&'static str, String>,
@@ -22,14 +22,22 @@ pub(crate) struct ZenumlSourceStyle {
 
 impl ZenumlSourceStyle {
     pub(crate) fn new(config: &serde_json::Value) -> Self {
-        let configured =
-            |key| crate::config::config_string(config, &["themeVariables", "zenuml", key]);
+        let Some(config) = crate::config::value_at(config, &["themeVariables", "zenuml"])
+            .and_then(serde_json::Value::as_object)
+        else {
+            return Self::default();
+        };
+        let configured = |key: &str| {
+            config
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        };
         let colors = [
             "backgroundColor",
             "borderColor",
             "textColor",
             "lineColor",
-            "surfaceColor",
             "actorBackgroundColor",
             "actorBorderColor",
             "actorTextColor",
@@ -68,7 +76,7 @@ impl ZenumlSourceStyle {
         })
         .collect();
         Self {
-            typography: super::ZenumlTypography::new(config),
+            typography: super::ZenumlTypography::from_config(config),
             colors,
         }
     }
@@ -98,64 +106,65 @@ impl ZenumlTitleThemePlan {
         work_meter: &OperationWorkMeter,
         source_style: ZenumlSourceStyle,
     ) -> crate::Result<Self> {
+        let Some(theme) = theme else {
+            return Ok(Self {
+                fill: SingleTitleFillPlan::default(),
+                source_style,
+            });
+        };
         let title_present = resolve_zenuml_title(model, diagram_title).is_some();
         let non_title_text_present = has_visible_non_title_text(layout);
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        if let Some(theme) = theme {
-            for route in theme.family_mechanism_routes().iter().copied() {
-                match route.mechanism() {
-                    FamilyThemeMechanism::BaseTypography(_) => {
-                        let key = theme.family_mechanism_key(route);
-                        if !title_present && !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(
-                                key,
-                                FamilyThemeResidualReason::UnsupportedTypography,
-                            );
-                        }
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        for route in theme.family_mechanism_routes().iter().copied() {
+            match route.mechanism() {
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    let key = theme.family_mechanism_key(route);
+                    if !title_present && !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                     }
-                    FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Text,
-                        facet,
-                        ..
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(key, unsupported_residual_for_facet(facet));
-                        }
-                    }
-                    FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Text,
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(
-                                key,
-                                FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                            );
-                        }
-                    }
-                    FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Text,
-                        ..
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence
-                                .mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                        }
-                    }
-                    FamilyThemeMechanism::RuleFacet { .. }
-                    | FamilyThemeMechanism::OrdinalPalette { .. }
-                    | FamilyThemeMechanism::EffectBinding { .. } => {}
                 }
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Text,
+                    facet,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(key, unsupported_residual_for_facet(facet));
+                    }
+                }
+                FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Text,
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(
+                            key,
+                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                        );
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Text,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                    }
+                }
+                FamilyThemeMechanism::RuleFacet { .. }
+                | FamilyThemeMechanism::OrdinalPalette { .. }
+                | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
         let fill = SingleTitleFillPlan::resolve(theme, title_present, false, evidence, work_meter)?;
@@ -345,6 +354,77 @@ mod tests {
         assert_eq!(unrelated.configured_color("actorTextColor"), None);
         assert_eq!(unrelated.configured_color("actorBackgroundColor"), None);
         assert_eq!(unrelated.configured_color("actorBorderColor"), None);
+
+        for (muted, activation, expected) in [
+            (serde_json::json!(""), serde_json::Value::Null, ""),
+            (serde_json::json!(false), serde_json::Value::Null, "#abcdef"),
+            (
+                serde_json::json!("#123456"),
+                serde_json::json!("#654321"),
+                "#654321",
+            ),
+        ] {
+            let source = super::ZenumlSourceStyle::new(&serde_json::json!({
+                "themeVariables": {"zenuml": {
+                    "surfaceColor": "#abcdef", "mutedSurfaceColor": muted,
+                    "activationBackgroundColor": activation,
+                    "actorBackgroundColor": "", "noteBackgroundColor": 7
+                }}
+            }));
+            assert_eq!(
+                source.configured_color("activationBackgroundColor"),
+                Some(expected)
+            );
+            assert_eq!(source.configured_color("actorBackgroundColor"), Some(""));
+            assert_eq!(
+                source.configured_color("noteBackgroundColor"),
+                Some("#abcdef")
+            );
+        }
+    }
+
+    #[test]
+    fn source_style_defaults_without_a_zenuml_object_and_keeps_namespace_isolation() {
+        for namespace in [
+            serde_json::Value::Null,
+            serde_json::json!(false),
+            serde_json::json!(7),
+            serde_json::json!("Inter"),
+            serde_json::json!([{"fontFamily": "Inter", "textColor": "red"}]),
+            serde_json::json!({}),
+        ] {
+            let source = super::ZenumlSourceStyle::new(&serde_json::json!({
+                "fontFamily": "Root Font", "fontSize": 40,
+                "themeVariables": {
+                    "fontFamily": "Global Font", "fontSize": 32,
+                    "textColor": "red", "surfaceColor": "blue", "zenuml": namespace
+                }
+            }));
+            assert_eq!(source.typography.css_family(), "Helvetica,Verdana,serif");
+            assert_eq!(source.typography.message_style().font_size, 16.0);
+            assert_eq!(source.configured_color("actorTextColor"), None);
+            assert_eq!(source.configured_color("actorBackgroundColor"), None);
+        }
+    }
+
+    #[test]
+    fn source_typography_keeps_authored_empty_family_and_existing_size_parsing() {
+        for (family, size, expected_family, expected_size) in [
+            (
+                serde_json::json!("Inter, sans-serif"),
+                serde_json::json!("24px"),
+                Some("Inter, sans-serif"),
+                21.0,
+            ),
+            (serde_json::json!(""), serde_json::json!(16), Some(""), 14.0),
+            (serde_json::json!([]), serde_json::json!("0px"), None, 16.0),
+        ] {
+            let source = super::ZenumlSourceStyle::new(&serde_json::json!({
+                "themeVariables": {"zenuml": {"fontFamily": family, "fontSize": size}}
+            }));
+            assert_eq!(source.typography.font_family.as_deref(), expected_family);
+            assert_eq!(source.typography.message_style().font_size, expected_size);
+        }
     }
 
     #[test]

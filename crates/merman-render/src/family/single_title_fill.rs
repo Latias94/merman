@@ -25,15 +25,12 @@ pub(crate) struct SingleTitleFillPlan {
 
 impl SingleTitleFillPlan {
     pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
+        theme: &ResolvedDiagramTheme,
         title_present: bool,
         config_owns_fill: bool,
         mut evidence: FamilyThemeEvidence,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let Some(theme) = theme else {
-            return Ok(Self::default());
-        };
         let title_count = usize::from(title_present);
         let style = title_present.then(|| {
             theme.style_with_work_meter(

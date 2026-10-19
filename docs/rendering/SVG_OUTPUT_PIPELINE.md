@@ -14,6 +14,29 @@ surface for upstream Mermaid fixtures. Consumers that need renderer compatibilit
 a pipeline explicitly. Mermaid-parity SVG may contain `<foreignObject>` HTML labels; that is
 expected and should not be treated as the export-safe surface.
 
+## Generation and consumer admission
+
+Ordinary renderer-owned parity SVG is serialized by its writers and is not reparsed as an unknown
+document solely to complete the operation. Writers escape XML and enforce finite values; source,
+layout, output-byte and cooperative cancellation budgets remain attached to the work they bound.
+Theme compilation and application do not require a generic output observer or artifact hashes.
+
+Public string inputs and output from opaque `SvgPostprocessor` callbacks are separate admission
+boundaries. Explicit readable/native conversion performs the parsing its consumer actually needs.
+`RequirePortable` evaluates the bytes selected by the caller without silently selecting another
+pipeline. Native export checks reference expansion and target allocations before its backend runs.
+Browser publication retains the Web package's DOM admission and mount checks.
+
+`max_svg_elements` bounds admitted XML cardinality and reference-expanded work at SVG input,
+postprocessing and native-conversion boundaries. It is not an emitted-element counter on ordinary
+renderer-owned parity output, nor a browser-wide expansion guarantee. Backend tree hard caps remain
+native-consumer constraints. This changes the old default SVG acceptance envelope deliberately.
+
+Experimental runtime resource/document/artifact/target-evidence/target-receipt digest getters and
+acceptance sidecars have been removed. Immutable owned artifacts bind bytes to their target outcome;
+qualification hashes its actual output in the private runner. The old reserved prepared-text marker
+protocol is retired throughout producer and consumer paths. Its former prefix conveys no authority.
+
 ## Artifact Evidence Lanes
 
 Output contracts and evidence contracts are related but not interchangeable:
@@ -45,8 +68,9 @@ Typical choices:
   target-owned admission receipts without re-entering parsing, layout, or SVG finalization. Their
   `prepare_*_export` counterparts expose the frozen export plan before encoding for schedulers and
   batch admission.
-  Document completion is target-neutral: inspect `standalone_svg_admission()` before publishing
-  its SVG bytes, while each native projection enforces its own admission independently.
+  Document completion is target-neutral: `standalone_svg_admission()` computes the SVG target
+  outcome on demand, while each native projection enforces its own admission independently.
+  Native projection does not prebuild an unused standalone-SVG target report.
 - Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
   metadata. The selected built-in preset always runs after these passes.
 

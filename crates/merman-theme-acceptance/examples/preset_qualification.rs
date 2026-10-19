@@ -43,16 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "admission": target.status().id(),
                 "reasons": target.reasons().iter().map(|reason| reason.id()).collect::<Vec<_>>(),
                 "font_source": target.font_source().id(),
-                "resource_fingerprint": hex(target.resource_fingerprint().as_bytes()),
-                "font_catalog_fingerprint": hex(target.font_catalog_fingerprint().as_bytes()),
-                "document_digest": hex(&target.document_digest()),
-                "artifact_digest": hex(&target.artifact_digest()),
-                "target_evidence_digest": hex(&target.target_evidence_digest()),
-                "target_receipt_digest": hex(&target.receipt_digest()),
+                "artifact_digest": hex(observation.artifact_digest()),
                 "residuals": {
                     "theme": observation.theme_residual_count(),
                     "source": observation.source_residual_count(),
-                    "bridge": observation.bridge_residual_count(),
                     "mermaid": observation.mermaid_residual_count(),
                 },
             })
@@ -63,13 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "profile": receipt.profile_id(),
             "qualification_schema_revision": receipt.schema_revision(),
             "recipe_fingerprint": hex(report.recipe_fingerprint().as_bytes()),
-            "resource_fingerprint": hex(report.resource_fingerprint()),
+            "font_catalog_fingerprint": hex(report.font_catalog_fingerprint()),
             "cells": cells,
         }));
     }
     println!(
         "{}",
         serde_json::to_string(&json!({
+            "schema_version": 2,
             "catalog": catalog,
             "presets": presets,
             "render_config": preset_qualification_config().as_value(),

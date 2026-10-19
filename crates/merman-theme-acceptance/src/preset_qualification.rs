@@ -26,7 +26,7 @@ mod sequence_proof;
 #[path = "support/preset_cyberpunk_proof.rs"]
 mod cyberpunk_proof;
 
-const QUALIFICATION_SCHEMA_REVISION: u32 = 1;
+const QUALIFICATION_SCHEMA_REVISION: u32 = 2;
 const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v1";
 const CYBERPUNK_HOST_PROFILE: &str = "native-cyberpunk-full-scenes-system-fonts-v1";
 
@@ -137,10 +137,10 @@ const CYBERPUNK_SPECS: [PresetQualificationSpec; 3] = [
 pub struct PresetAdmissionObservation {
     spec: PresetQualificationSpec,
     source_digest: [u8; 32],
+    artifact_digest: [u8; 32],
     receipt: TargetAdmissionReceipt,
     theme_residual_count: usize,
     source_residual_count: usize,
-    bridge_residual_count: usize,
     mermaid_residual_count: usize,
 }
 
@@ -151,6 +151,11 @@ impl PresetAdmissionObservation {
 
     pub const fn source_digest(&self) -> &[u8; 32] {
         &self.source_digest
+    }
+
+    /// SHA-256 of the actual immutable artifact bytes observed by this runner.
+    pub const fn artifact_digest(&self) -> &[u8; 32] {
+        &self.artifact_digest
     }
 
     pub const fn artifact_kind(&self) -> RenderArtifactKind {
@@ -178,10 +183,6 @@ impl PresetAdmissionObservation {
         self.source_residual_count
     }
 
-    pub const fn bridge_residual_count(&self) -> usize {
-        self.bridge_residual_count
-    }
-
     pub const fn mermaid_residual_count(&self) -> usize {
         self.mermaid_residual_count
     }
@@ -194,7 +195,7 @@ impl PresetAdmissionObservation {
 pub struct PresetAdmissionReport {
     preset: ThemePreset,
     recipe_fingerprint: ThemeRecipeFingerprint,
-    resource_fingerprint: [u8; 32],
+    font_catalog_fingerprint: [u8; 32],
     observations: Vec<PresetAdmissionObservation>,
 }
 
@@ -207,8 +208,8 @@ impl PresetAdmissionReport {
         self.recipe_fingerprint
     }
 
-    pub const fn resource_fingerprint(&self) -> &[u8; 32] {
-        &self.resource_fingerprint
+    pub const fn font_catalog_fingerprint(&self) -> &[u8; 32] {
+        &self.font_catalog_fingerprint
     }
 
     pub fn observations(&self) -> &[PresetAdmissionObservation] {
@@ -219,8 +220,8 @@ impl PresetAdmissionReport {
 /// Execution-local qualification of the preset's declared SVG/PNG host-dependent profile.
 ///
 /// Only the production runner can construct this receipt. It is not serializable and grants no
-/// portable, all-family, stable-catalog, or C6a claim. Target receipts retain exact artifact,
-/// document, resource, font-source and admission evidence from this execution.
+/// portable, all-family, stable-catalog, or C6a claim. The runner hashes actual source and artifact bytes;
+/// target outcomes retain only artifact kind, font source and admission reasons.
 ///
 /// ```compile_fail
 /// use merman_theme_acceptance::PresetQualificationReceipt;
@@ -306,7 +307,7 @@ impl PresetQualificationReceipt {
                 .is_ok_and(|theme| {
                     theme.recipe_fingerprint() == self.report.recipe_fingerprint
                         && theme.report().font_catalog_fingerprint().as_bytes()
-                            == &self.report.resource_fingerprint
+                            == &self.report.font_catalog_fingerprint
                 })
     }
 }
@@ -384,7 +385,7 @@ fn execute_preset(
     let mut report = PresetAdmissionReport {
         preset,
         recipe_fingerprint: theme.recipe_fingerprint(),
-        resource_fingerprint: *theme.report().font_catalog_fingerprint().as_bytes(),
+        font_catalog_fingerprint: *theme.report().font_catalog_fingerprint().as_bytes(),
         observations: Vec::with_capacity(specs.len() * 2),
     };
     let renderer =
@@ -403,9 +404,7 @@ fn execute_preset(
                 "missing document".to_owned(),
             ));
         };
-        if document.evidence().family_id() != spec.family
-            || document.evidence().theme_recipe_fingerprint() != Some(report.recipe_fingerprint)
-        {
+        if document.evidence().family_id() != spec.family {
             return Err(failure(
                 spec.source_id,
                 "identity",
@@ -419,17 +418,6 @@ fn execute_preset(
             )
             .map_err(|error| failure(spec.source_id, "png", error.to_string()))?;
         let svg_receipt = document.standalone_svg_admission();
-        if svg_receipt.font_catalog_fingerprint().as_bytes() != &report.resource_fingerprint
-            || png.admission().document_digest() != svg_receipt.document_digest()
-            || png.admission().resource_fingerprint() != svg_receipt.resource_fingerprint()
-            || png.admission().font_catalog_fingerprint() != svg_receipt.font_catalog_fingerprint()
-        {
-            return Err(failure(
-                spec.source_id,
-                "identity",
-                "native projection mismatch".to_owned(),
-            ));
-        }
         let evidence = merman::__theme_acceptance::theme_acceptance_evidence(document.evidence());
         if qualify {
             let verification = if preset == ThemePreset::Cyberpunk {
@@ -448,7 +436,6 @@ fn execute_preset(
                 || !evidence.root().is_satisfied()
                 || evidence.family().residual_count() != 0
                 || evidence.source_residual_count() != 0
-                || evidence.compatibility_residual_count() != 0
                 || evidence.mermaid_compatibility_residual_count() != 0
             {
                 return Err(failure(
@@ -462,25 +449,25 @@ fn execute_preset(
             (
                 RenderArtifactKind::Svg,
                 document.svg().as_bytes(),
-                svg_receipt,
+                &svg_receipt,
             ),
             (RenderArtifactKind::Png, png.bytes(), png.admission()),
         ] {
             let digest: [u8; 32] = Sha256::digest(bytes).into();
-            if receipt.artifact_kind() != kind || digest != receipt.artifact_digest() {
+            if receipt.artifact_kind() != kind {
                 return Err(failure(
                     spec.source_id,
                     "identity",
-                    "artifact digest mismatch".to_owned(),
+                    "artifact target kind mismatch".to_owned(),
                 ));
             }
             report.observations.push(PresetAdmissionObservation {
                 spec,
                 source_digest: Sha256::digest(spec.source.as_bytes()).into(),
+                artifact_digest: digest,
                 receipt: receipt.clone(),
                 theme_residual_count: evidence.family().residual_count(),
                 source_residual_count: evidence.source_residual_count(),
-                bridge_residual_count: evidence.compatibility_residual_count(),
                 mermaid_residual_count: evidence.mermaid_compatibility_residual_count(),
             });
         }
@@ -503,7 +490,7 @@ mod tests {
         assert!(!stale.is_current());
         assert!(stale.catalog_entry().is_err());
         let mut stale = original.clone();
-        stale.report.resource_fingerprint[0] ^= 1;
+        stale.report.font_catalog_fingerprint[0] ^= 1;
         assert!(!stale.is_current());
         assert!(stale.catalog_entry().is_err());
         for revision in [0, QUALIFICATION_SCHEMA_REVISION + 1] {

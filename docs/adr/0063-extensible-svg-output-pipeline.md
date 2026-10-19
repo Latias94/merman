@@ -38,9 +38,16 @@ The intended shape is:
 - A public `SvgPostprocessor` trait lets host applications append product-specific draft passes.
 - Custom passes execute in insertion order before the selected preset. `ResvgSafe` is a terminal
   finalizer: it performs structured CSS cleanup, removes active SVG content, parses the completed
-  XML, and validates the residual resvg contract after every custom transformation.
+  XML, and validates the residual resvg contract after the configured custom transformations.
 - Low-level raster APIs accept only the sealed `ResvgCompatibleSvg` artifact. It cannot be forged
   from a string outside the rendering crate.
+
+The October 2026 responsibility cleanup keeps ordinary renderer-owned parity output on its
+producer path. Writers own XML correctness and output budgets; theme application does not add a
+second full-document interpretation or hash chain. Opaque SVG strings and custom postprocessor
+results retain their input admission, while explicit consumer conversion owns its required XML,
+reference and native-backend checks. Production artifacts carry no qualification observation
+sidecars. The private acceptance runner observes and hashes its actual bytes.
 
 The first public postprocessor API should be string-oriented:
 

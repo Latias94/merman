@@ -77,6 +77,20 @@ package. One configuration switch cannot truthfully describe all three.
    - CSP, iframe isolation, opener behavior, gesture arbitration, and navigation enablement remain
      host responsibilities because only the browser host can enforce them.
 
+## October 2026 runtime responsibility clarification
+
+Theme compilation validates the recipe and application resolves actual style winners. Neither
+operation requires treating renderer-generated SVG as an unknown input again. Ordinary generation
+keeps producer escaping, source/layout/byte budgets and cooperative cancellation; opaque input and
+custom output retain their own admission. Native conversion keeps pre-backend reference expansion,
+image/filter allocation and backend tree checks. Immutable ownership replaces same-origin receipt
+hash comparisons.
+
+`max_svg_elements` applies to admitted/postprocessed/native-converted SVG and can count expanded
+work. It is not a universal emitted-element count on plain generated SVG. Browser DOM admission
+continues to enforce its existing source/root/host capabilities; it does not claim a general
+reference-expansion budget. Removing a core producer traversal does not create such a browser claim.
+
 ## Consequences
 
 - Kanban ticket links and other sanitized Mermaid navigation remain usable without admitting

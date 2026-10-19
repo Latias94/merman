@@ -1,6 +1,5 @@
-use crate::resources::RenderResourcePolicy;
 #[cfg(test)]
-use crate::resources::ResourceLimitId;
+use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use crate::{Error, Result};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesDecl, BytesRef, BytesStart, Event};
@@ -142,19 +141,7 @@ pub(crate) struct SvgStructureMetrics {
     pub(crate) max_tree_depth: usize,
 }
 
-/// Complete XML and reference facts for one immutable SVG generation.
-pub(crate) struct ValidatedSvgXmlFacts {
-    raw_structure: SvgStructureMetrics,
-    references: SvgReferenceFacts,
-}
-
-impl ValidatedSvgXmlFacts {
-    pub(crate) fn structure(&self) -> SvgStructureMetrics {
-        self.raw_structure
-    }
-}
-
-/// Proves the terminal contract shared by every public SVG output profile.
+/// Validates XML at operations that explicitly consume an opaque SVG document.
 #[cfg(test)]
 fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
     let mut checkpoint = || Ok(());
@@ -177,7 +164,6 @@ pub(crate) fn validate_well_formed_svg_with_execution(
     )
 }
 
-#[cfg(test)]
 #[cfg(test)]
 pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
@@ -662,24 +648,32 @@ fn validate_resvg_compatible_svg_inner(
                 .check_svg_structure(elements, tree_depth)
                 .map_err(Into::into)
         },
+        &mut |value| {
+            limits
+                .check_svg_backend_coordinate_magnitude(value)
+                .map_err(Into::into)
+        },
     )
-}
-
-pub(crate) fn validate_resvg_compatible_svg_with_checkpoint(
-    svg: &str,
-    limits: RenderResourcePolicy,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-) -> Result<TerminalSvgValidation> {
-    let raw_structure =
-        validate_well_formed_svg_with_controls(svg, checkpoint, &mut |elements, _| {
-            limits.check_svg_element_count(elements).map_err(Into::into)
-        })?;
-    validate_resvg_compatible_svg_after_xml(svg, raw_structure, limits, checkpoint)
 }
 
 pub(crate) fn validate_resvg_compatible_svg_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
+) -> Result<TerminalSvgValidation> {
+    validate_resvg_svg_for_consumer(svg, execution, true)
+}
+
+pub(super) fn observe_resvg_compatibility_with_execution(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<TerminalSvgValidation> {
+    validate_resvg_svg_for_consumer(svg, execution, false)
+}
+
+fn validate_resvg_svg_for_consumer(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+    native_required: bool,
 ) -> Result<TerminalSvgValidation> {
     #[cfg(test)]
     TERMINAL_VALIDATION_WORK.with(|counter| {
@@ -690,8 +684,17 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
         }));
     });
     let mut checkpoint = || execution.checkpoint();
-    let mut check_structure =
-        |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth);
+    let mut check_structure = |elements, tree_depth| {
+        if native_required {
+            execution.preflight_svg_structure(elements, tree_depth)
+        } else {
+            execution.preflight_svg_element_count(elements)?;
+            execution
+                .resource_policy()
+                .check_svg_structure(elements, tree_depth)
+                .map_err(Into::into)
+        }
+    };
     let raw_structure =
         validate_well_formed_svg_with_controls(svg, &mut checkpoint, &mut check_structure)?;
     validate_resvg_compatible_svg_after_xml_with_structure(
@@ -699,28 +702,22 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
         raw_structure,
         &mut checkpoint,
         &mut check_structure,
-    )
-}
-
-pub(super) fn validate_resvg_compatible_svg_after_xml(
-    svg: &str,
-    raw_structure: SvgStructureMetrics,
-    limits: RenderResourcePolicy,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-) -> Result<TerminalSvgValidation> {
-    validate_resvg_compatible_svg_after_xml_with_structure(
-        svg,
-        raw_structure,
-        checkpoint,
-        &mut |elements, tree_depth| {
-            limits
-                .check_svg_structure(elements, tree_depth)
-                .map_err(Into::into)
+        &mut |value| {
+            execution
+                .resource_policy()
+                .check_svg_backend_coordinate_magnitude(value)
+                .map_err(|error| {
+                    if native_required {
+                        execution.terminate_resource_error(error)
+                    } else {
+                        error.into()
+                    }
+                })
         },
     )
 }
 
-/// Checks explicit SVG resource budgets without certifying a native output contract.
+/// Checks the explicit budgets of an opaque SVG without granting native compatibility.
 pub(super) fn check_svg_resource_budget_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
@@ -728,44 +725,7 @@ pub(super) fn check_svg_resource_budget_with_execution(
     check_svg_resource_budget_with_controls(
         svg,
         &mut || execution.checkpoint(),
-        &mut |elements, _tree_depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        },
-    )
-}
-
-pub(crate) fn validate_svg_xml_facts_with_execution(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<ValidatedSvgXmlFacts> {
-    validate_svg_xml_facts_with_controls(
-        svg,
-        &mut || execution.checkpoint(),
-        &mut |elements, _tree_depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        },
-    )
-}
-
-pub(super) fn check_svg_resource_budget_from_xml_facts_with_execution(
-    facts: ValidatedSvgXmlFacts,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
-    check_svg_resource_budget_from_xml_facts_with_controls(
-        facts,
-        &mut || execution.checkpoint(),
-        &mut |elements, _tree_depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        },
+        &mut |elements, _| execution.preflight_svg_element_count(elements),
     )
 }
 
@@ -774,50 +734,27 @@ fn check_svg_resource_budget_with_controls(
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
-    let facts = validate_svg_xml_facts_with_controls(svg, checkpoint, check_structure)?;
-    check_svg_resource_budget_from_xml_facts_with_controls(facts, checkpoint, check_structure)
-}
-
-fn validate_svg_xml_facts_with_controls(
-    svg: &str,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-) -> Result<ValidatedSvgXmlFacts> {
-    let mut facts = SvgReferenceFacts::default();
-    let mut reference_stack = Vec::new();
+    let mut references = SvgReferenceFacts::default();
+    let mut stack = Vec::new();
     let raw_structure = visit_well_formed_svg_with_controls::<true>(
         svg,
         checkpoint,
         check_structure,
         &mut |element, depth| {
-            // Append validated facts only after this element passes its raw structure budget.
-            // Defer expansion planning until the complete document has passed XML validation.
-            reference_stack.truncate(depth);
-            let index = facts.append(reference_stack.last().copied(), element);
-            reference_stack.push(index);
+            stack.truncate(depth);
+            let index = references.append(stack.last().copied(), element);
+            stack.push(index);
             Ok(())
         },
     )?;
-    Ok(ValidatedSvgXmlFacts {
-        raw_structure,
-        references: facts,
-    })
-}
-
-fn check_svg_resource_budget_from_xml_facts_with_controls(
-    facts: ValidatedSvgXmlFacts,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-) -> Result<()> {
     let summary = match analyze_svg_reference_facts_with_checkpoints::<false, _>(
-        facts.references,
-        facts.raw_structure,
+        references,
+        raw_structure,
         checkpoint,
     ) {
-        Ok(plan) => plan,
-        // XML and raw element budgets have already been checked. A cycle prevents a complete
-        // expansion plan, including for mixed cyclic/acyclic graphs, but does not make ordinary
-        // host SVG invalid. This path returns no compatibility or expansion certificate.
+        Ok(summary) => summary,
+        // Cyclic references do not prevent ordinary browser SVG publication. Native admission
+        // separately requires a complete expansion plan before backend work.
         Err(ReferencePlanningError::Invalid(_)) => return checkpoint(),
         Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
     };
@@ -831,6 +768,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     raw_structure: SvgStructureMetrics,
     mut checkpoint: &mut dyn FnMut() -> Result<()>,
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
+    check_coordinate: &mut dyn FnMut(f64) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
     #[cfg(test)]
     TERMINAL_VALIDATION_WORK.with(|counter| {
@@ -871,6 +809,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     is_root,
                     &mut resource_closure,
                     checkpoint,
+                    check_coordinate,
                 )?;
                 text_content
                     .observe_start(&element, reader.resolver())
@@ -903,6 +842,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     is_root,
                     &mut resource_closure,
                     checkpoint,
+                    check_coordinate,
                 )?;
                 let empty_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
@@ -1252,6 +1192,7 @@ fn validate_element_after_xml(
     is_root: bool,
     resource_closure: &mut SvgResourceClosureBuilder,
     mut checkpoint: &mut dyn FnMut() -> Result<()>,
+    check_coordinate: &mut dyn FnMut(f64) -> Result<()>,
 ) -> Result<ValidatedElement> {
     let (namespace, local_name) = resolver.resolve_element(element.name());
     let is_svg_element = is_svg_element_namespace(&namespace);
@@ -1325,6 +1266,16 @@ fn validate_element_after_xml(
             return Err(validation_error(format!(
                 "attribute {qualified_name:?} on <{element_name}> violates the resvg-safe contract"
             )));
+        }
+        if is_svg_element {
+            check_native_coordinate_attribute(
+                element_name,
+                semantic_name,
+                &value,
+                is_root,
+                &mut checkpoint,
+                check_coordinate,
+            )?;
         }
         if is_root && semantic_name == "width" && !root_width_seen {
             root_width_seen = true;
@@ -1589,6 +1540,94 @@ fn observe_terminal_resource_url(resources: &mut SvgResourceClosureBuilder, valu
     {
         resources.observe_inline_data_resource();
     }
+}
+
+/// Backend coordinate limits belong to native consumption, rather than ordinary SVG output.
+/// Inspect the concrete root and canvas values while their attributes are already being read.
+fn check_native_coordinate_attribute(
+    element_name: &str,
+    name: &str,
+    value: &str,
+    is_root: bool,
+    checkpoint: &mut dyn FnMut() -> Result<()>,
+    check_coordinate: &mut dyn FnMut(f64) -> Result<()>,
+) -> Result<()> {
+    if is_root
+        && name == "viewBox"
+        && let Ok(view_box) = value.parse::<svgtypes::ViewBox>()
+    {
+        for value in [
+            view_box.x,
+            view_box.y,
+            view_box.w,
+            view_box.h,
+            view_box.x + view_box.w,
+            view_box.y + view_box.h,
+        ] {
+            checkpoint()?;
+            check_coordinate(value)?;
+        }
+    }
+    let gradient_coordinate = match element_name {
+        "linearGradient" => matches!(name, "x1" | "y1" | "x2" | "y2"),
+        "radialGradient" => matches!(name, "cx" | "cy" | "r" | "fx" | "fy" | "fr"),
+        _ => false,
+    };
+    if (is_root && matches!(name, "width" | "height")) || gradient_coordinate {
+        // Relative lengths are resolved by the backend. Root and canvas producers emit
+        // concrete SVG coordinates here; percentages must not be treated as pixel counts.
+        if let Ok(length) = value.parse::<Length>()
+            && matches!(
+                length.unit,
+                svgtypes::LengthUnit::None | svgtypes::LengthUnit::Px
+            )
+        {
+            check_coordinate(length.number)?;
+        }
+    }
+    if matches!(name, "transform" | "gradientTransform" | "patternTransform") {
+        for transform in svgtypes::TransformListParser::from(value) {
+            checkpoint()?;
+            let translation = match transform {
+                Ok(svgtypes::TransformListToken::Translate { tx, ty }) => Some((tx, ty)),
+                Ok(svgtypes::TransformListToken::Matrix { e, f, .. }) => Some((e, f)),
+                _ => None,
+            };
+            if let Some((x, y)) = translation {
+                check_coordinate(x)?;
+                check_coordinate(y)?;
+            }
+        }
+    }
+    if is_root && name == "style" {
+        let mut declarations = cssparser::Parser::new(value);
+        while !declarations.is_exhausted() {
+            checkpoint()?;
+            let result: std::result::Result<(), cssparser::ParseError<Error>> = declarations
+                .parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
+                    let property = declaration.expect_ident_cloned()?;
+                    if !property.eq_ignore_ascii_case("max-width") {
+                        return Ok(());
+                    }
+                    declaration.expect_colon()?;
+                    let start = declaration.position();
+                    let _ = declaration.next()?;
+                    let literal = declaration.slice_from(start);
+                    if let Some(value) = crate::mermaid_style::parse_svg_number_or_px(literal) {
+                        check_coordinate(value).map_err(cssparser::ParseError::custom)?;
+                    }
+                    Ok(())
+                });
+            if let Err(cssparser::ParseError {
+                kind: cssparser::ParseErrorKind::Custom(error),
+                ..
+            }) = result
+            {
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_positive_root_dimension(name: &str, value: &str) -> Result<()> {
@@ -3401,6 +3440,74 @@ mod tests {
     }
 
     #[test]
+    fn native_coordinate_limits_cover_root_and_canvas_values_without_limiting_raw_svg() {
+        let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE;
+        let beyond = maximum + 1;
+        for svg in [
+            format!(r#"<svg viewBox="{beyond} 0 1 1"/>"#),
+            format!(r#"<svg viewBox="0 -{beyond} 1 1"/>"#),
+            format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#),
+            format!(r#"<svg viewBox="{maximum} 0 1 1"/>"#),
+            format!(r#"<svg viewBox="0 {maximum} 1 1"/>"#),
+            format!(r#"<svg width="{beyond}px"/>"#),
+            format!(r#"<svg height="{beyond}"/>"#),
+            format!(r#"<svg style="fill:red; max-width: {beyond}px;"/>"#),
+            format!(r#"<svg><linearGradient gradientUnits="userSpaceOnUse" x2="{beyond}"/></svg>"#),
+            format!(
+                r#"<svg><radialGradient gradientUnits="userSpaceOnUse" cx="{beyond}px"/></svg>"#
+            ),
+            format!(r#"<svg><radialGradient gradientUnits="userSpaceOnUse" r="{beyond}"/></svg>"#),
+            format!(
+                r#"<svg><g data-merman-theme-canvas-layer="0" transform="translate({beyond} 0)"><rect/></g></svg>"#
+            ),
+            format!(r#"<svg><pattern patternTransform="translate(0 -{beyond})"/></svg>"#),
+        ] {
+            check_budget(&svg, usize::MAX).expect("raw SVG budgets have no native coordinate cap");
+            let Error::ResourceLimitExceeded(error) = validate(&svg).unwrap_err() else {
+                panic!("expected native coordinate limit: {svg}");
+            };
+            assert_eq!(
+                error.limit,
+                crate::resources::SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID
+            );
+            assert_eq!(
+                error.phase,
+                crate::resources::ResourceLimitPhase::SvgPostprocess
+            );
+            assert_eq!(error.max, maximum);
+            assert_eq!(error.actual, beyond);
+        }
+        validate(&format!(
+            r#"<svg xmlns:i="urn:ignored" i:width="{beyond}" width="100%" height="10em" style="max-width:{maximum}px" viewBox="0 0 {maximum} {maximum}"><linearGradient x2="100%"/></svg>"#,
+        ))
+        .expect("the native cap is inclusive and relative lengths are not pixel magnitudes");
+    }
+
+    #[test]
+    fn native_coordinate_limit_errors_remain_sticky_in_execution() {
+        let beyond = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE + 1;
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let error = validate_resvg_compatible_svg_with_execution(
+            &format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#),
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        let terminal = control
+            .terminal_checkpoint_at(merman_core::OperationPhase::Export)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
+
+    #[test]
     fn rejects_malformed_approved_data_image_payloads() {
         for value in [
             "data:image/png;base64,AA*A",
@@ -3568,145 +3675,6 @@ mod tests {
                     "{svg:?}, limit {limit}"
                 );
                 assert_eq!(old_observations, new_observations, "{svg:?}, limit {limit}");
-
-                let mut retained_observations = Vec::new();
-                let mut retained_check = |n, depth| {
-                    retained_observations.push((n, depth));
-                    policy.check_svg_element_count(n).map_err(Into::into)
-                };
-                let retained =
-                    validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut retained_check)
-                        .and_then(|facts| {
-                            check_svg_resource_budget_from_xml_facts_with_controls(
-                                facts,
-                                &mut || Ok(()),
-                                &mut retained_check,
-                            )
-                        });
-                assert_eq!(
-                    format!("{old:?}"),
-                    format!("{retained:?}"),
-                    "retained facts: {svg:?}, limit {limit}"
-                );
-                assert_eq!(
-                    old_observations, retained_observations,
-                    "retained facts: {svg:?}, limit {limit}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn compact_facts_preserve_legacy_occurrences_cycles_and_summaries() {
-        let mut fixtures = ordinary_budget_fixtures();
-        fixtures.extend([
-            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g s:id="parsed" id="raw"><rect/></g><g s:id="a&amp;b" id="a&#38;b"><path/></g><g id="raw"/></defs><use href="#raw"/><use href="#a&amp;b"/><filter><feImage href="#parsed"/></filter></svg>"##.to_owned(),
-            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="same"/><marker id="same"><path/></marker><unknown s:id="same"/><mask><use href="#same"/></mask></defs><path d="M0 0L1 1L2 2" marker-start="url(#same)" marker-mid="url(#same)" marker-end="url(#same)"/><filter><feImage href="#same"/></filter><use href="#missing"/></svg>"##.to_owned(),
-        ]);
-        let planning_error = |error| match error {
-            ReferencePlanningError::Invalid(message) => message,
-            ReferencePlanningError::Checkpoint(error) => match error {},
-        };
-        for svg in fixtures {
-            let Ok(facts) =
-                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
-            else {
-                // Malformed XML and budget error precedence are covered by the full old/new
-                // public budget comparison. A reference plan exists only for valid XML.
-                continue;
-            };
-            let nodes = legacy_reference_nodes(&svg, &mut || Ok(())).unwrap();
-            let expected = plan_svg_reference_expansion_with_checkpoints(&nodes, &mut || {
-                Ok::<(), std::convert::Infallible>(())
-            })
-            .map_err(planning_error);
-            let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
-                facts.references,
-                facts.raw_structure,
-                &mut || Ok::<(), std::convert::Infallible>(()),
-            )
-            .map(SvgReferenceAnalysis::into_detailed_plan)
-            .map_err(planning_error);
-            assert_eq!(actual, expected, "detailed: {svg}");
-
-            let facts =
-                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
-                    .unwrap();
-            let actual = analyze_svg_reference_facts_with_checkpoints::<false, _>(
-                facts.references,
-                facts.raw_structure,
-                &mut || Ok::<(), std::convert::Infallible>(()),
-            )
-            .map(|analysis| analysis.structure)
-            .map_err(planning_error);
-            let expected = expected.map(|plan| SvgStructureMetrics {
-                elements: plan.expanded_elements(),
-                max_tree_depth: plan.max_tree_depth(),
-            });
-            assert_eq!(actual, expected, "summary: {svg}");
-        }
-    }
-
-    #[test]
-    fn reference_free_facts_retain_only_parent_slots_and_sparse_single_owner_ids() {
-        const GROUPS: usize = 512;
-        let mut svg = String::from("<svg>");
-        for index in 0..GROUPS {
-            svg.push_str(&format!(r#"<g id="group-{index}"><rect/></g>"#));
-        }
-        svg.push_str("</svg>");
-        let facts =
-            validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(())).unwrap();
-        assert_eq!(facts.references.parents.len(), 1 + 2 * GROUPS);
-        assert_eq!(facts.references.identities.len(), GROUPS);
-        assert_eq!(facts.references.references.capacity(), 0);
-        assert_eq!(facts.references.effects.capacity(), 0);
-        for identity in &facts.references.identities {
-            assert!(matches!(identity.ids.raw, RawElementId::Parsed));
-            assert!(std::ptr::eq(
-                identity.ids.raw_value().unwrap(),
-                identity.ids.parsed.as_deref().unwrap(),
-            ));
-        }
-        let (result, work) = measure_reference_analysis_work(|| {
-            analyze_svg_reference_facts_with_checkpoints::<false, _>(
-                facts.references,
-                facts.raw_structure,
-                &mut || Ok::<(), std::convert::Infallible>(()),
-            )
-        });
-        assert!(result.is_ok());
-        assert_eq!(work, ReferenceAnalysisWork::default());
-    }
-
-    #[test]
-    fn compact_graph_writes_each_tree_edge_once_and_matches_legacy_adjacency() {
-        for svg in ordinary_budget_fixtures() {
-            let Ok(facts) =
-                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
-            else {
-                continue;
-            };
-            let expected = build_svg_reference_dependencies(
-                &legacy_reference_nodes(&svg, &mut || Ok(())).unwrap(),
-            );
-            let elements = facts.raw_structure.elements;
-            let (graph, work) = measure_reference_analysis_work(|| {
-                build_reference_fact_dependencies(facts.references, &mut || {
-                    Ok::<(), std::convert::Infallible>(())
-                })
-            });
-            let (graph, _) = graph.unwrap();
-            assert_eq!(work.tree_edges, elements - 1, "{svg}");
-            assert_eq!(graph.real_nodes, expected.real_nodes, "{svg}");
-            assert_eq!(graph.ranges.len(), expected.dependencies.len(), "{svg}");
-            assert_eq!(
-                graph.edges.len(),
-                expected.dependencies.iter().map(Vec::len).sum::<usize>(),
-                "{svg}"
-            );
-            for (index, edges) in expected.dependencies.iter().enumerate() {
-                assert_eq!(graph.dependencies(index), edges, "{svg}, node {index}");
             }
         }
     }
@@ -3750,26 +3718,6 @@ mod tests {
     }
 
     #[test]
-    fn normalized_id_sharing_preserves_first_parsed_alias_and_raw_id_selection() {
-        let svg = r#"<svg xmlns:s="http://www.w3.org/2000/svg"><g s:id="parsed" id="raw"/><g s:id="a&amp;b" id="a&#38;b"/><g id="first" s:id="ignored"/><g s:id="alias-only"/></svg>"#;
-        let facts =
-            validate_svg_xml_facts_with_controls(svg, &mut || Ok(()), &mut |_, _| Ok(())).unwrap();
-        let identities = &facts.references.identities;
-        assert_eq!(identities.len(), 4);
-        assert_eq!(identities[0].ids.parsed.as_deref(), Some("parsed"));
-        assert_eq!(identities[0].ids.raw_value(), Some("raw"));
-        assert!(matches!(identities[0].ids.raw, RawElementId::Other(_)));
-        assert_eq!(identities[1].ids.parsed.as_deref(), Some("a&b"));
-        assert_eq!(identities[1].ids.raw_value(), Some("a&b"));
-        assert!(matches!(identities[1].ids.raw, RawElementId::Parsed));
-        assert_eq!(identities[2].ids.parsed.as_deref(), Some("first"));
-        assert_eq!(identities[2].ids.raw_value(), Some("first"));
-        assert!(matches!(identities[2].ids.raw, RawElementId::Parsed));
-        assert_eq!(identities[3].ids.parsed.as_deref(), Some("alias-only"));
-        assert_eq!(identities[3].ids.raw_value(), None);
-    }
-
-    #[test]
     fn ordinary_reference_summary_does_not_materialize_discarded_occurrences() {
         let svg = branching_use_svg(8);
         let mut summary = None;
@@ -3809,8 +3757,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_xml_facts_defer_expansion_and_preserve_sticky_termination() {
-        let svg = branching_use_svg(8);
+    fn raw_svg_budget_preserves_sticky_expansion_limit_errors() {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxSvgElements, 100)
             .unwrap();
@@ -3819,24 +3766,10 @@ mod tests {
             .with_resource_policy(policy)
             .begin_session_with_control(control.clone())
             .unwrap();
-        let (facts, xml_work) = measure_xml_validation_work(|| {
-            validate_svg_xml_facts_with_execution(&svg, SvgPostprocessExecution::new(&session))
-        });
-        let facts = facts.expect("final pipeline XML checks only the raw element budget");
-        assert_eq!(xml_work.calls, 1);
-        assert_eq!(xml_work.svg_bytes, svg.len());
-        assert!(
-            control
-                .terminal_checkpoint_at(merman_core::OperationPhase::Postprocess)
-                .is_ok()
+        let result = check_svg_resource_budget_with_execution(
+            &branching_use_svg(8),
+            SvgPostprocessExecution::new(&session),
         );
-        let (result, xml_work) = measure_xml_validation_work(|| {
-            check_svg_resource_budget_from_xml_facts_with_execution(
-                facts,
-                SvgPostprocessExecution::new(&session),
-            )
-        });
-        assert_eq!(xml_work, XmlValidationWork::default());
         assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
         let terminal = control
             .terminal_checkpoint_at(merman_core::OperationPhase::Export)
@@ -3849,25 +3782,20 @@ mod tests {
     }
 
     #[test]
-    fn retained_xml_facts_observe_cancellation_before_terminal_planning() {
+    fn raw_svg_budget_observes_cancellation_before_xml_work() {
         let control = merman_core::OperationControl::new();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_control(control.clone())
             .unwrap();
-        let facts = validate_svg_xml_facts_with_execution(
-            &branching_use_svg(8),
-            SvgPostprocessExecution::new(&session),
-        )
-        .unwrap();
         control.cancel();
-        let (result, xml_work) = measure_xml_validation_work(|| {
-            check_svg_resource_budget_from_xml_facts_with_execution(
-                facts,
+        let (result, work) = measure_reference_analysis_work(|| {
+            check_svg_resource_budget_with_execution(
+                &branching_use_svg(8),
                 SvgPostprocessExecution::new(&session),
             )
         });
-        assert_eq!(xml_work, XmlValidationWork::default());
         assert!(matches!(result, Err(Error::Cancelled(_))));
+        assert_eq!(work, ReferenceAnalysisWork::default());
     }
 
     #[test]

@@ -9,8 +9,8 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+use super::outcomes::ClassSelectedPaint;
 use super::paint::ClassPaintBinding;
-use super::terminal::ExpectedPaint;
 
 /// Class's historical Title channel belongs to visible namespace labels.
 /// Generic Text participates in author order and retains its own evidence key.
@@ -61,7 +61,7 @@ impl ClassNamespaceTitleThemePlan {
             )
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
-                ExpectedPaint {
+                ClassSelectedPaint {
                     target: style
                         .fill_resolution()
                         .winner()

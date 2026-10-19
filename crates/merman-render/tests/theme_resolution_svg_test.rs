@@ -442,6 +442,8 @@ fn source_and_host_fonts_are_xml_encoded_once_at_the_stylesheet_boundary() {
         ("flowchart", "flowchart LR\nA[Alpha] --> B[Beta]\n"),
         ("ishikawa", "ishikawa-beta\n  Effect\n  Cause\n    Detail\n"),
         ("treeview", "treeView-beta\n  \"Root\"\n    \"Child\"\n"),
+        #[cfg(feature = "diagram-timeline")]
+        ("timeline", "timeline\n  2024 : Alpha\n"),
     ] {
         for font in ["A&B", "A<B", "A&amp;B", "Quoted \"Font\"\\Name", "字體 Ω"] {
             let mut expected = String::new();

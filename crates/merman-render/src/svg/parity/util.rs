@@ -361,17 +361,29 @@ fn xml_raw_text_is_plain_ascii(text: &str) -> bool {
         })
 }
 
-fn xml_text_replacement(ch: char) -> Option<&'static str> {
+fn xml_text_replacement(
+    ch: char,
+    trailing_brackets: &mut u8,
+    escape_greater_than: bool,
+) -> Option<&'static str> {
     if !crate::xml::is_xml_1_0_char(ch) {
+        // Removing a scalar preserves the bracket run in the text that will actually be emitted.
         return Some("");
     }
-    match ch {
+    let replacement = match ch {
         '&' => Some("&amp;"),
         '<' => Some("&lt;"),
         '"' => Some("&quot;"),
         '\'' => Some("&#39;"),
+        '>' if escape_greater_than || *trailing_brackets == 2 => Some("&gt;"),
         _ => None,
-    }
+    };
+    *trailing_brackets = if ch == ']' {
+        (*trailing_brackets + 1).min(2)
+    } else {
+        0
+    };
+    replacement
 }
 
 fn xml_attr_replacement(ch: char) -> Option<&'static str> {
@@ -426,12 +438,9 @@ fn escape_xml_raw_into_mode(out: &mut impl SvgOutput, text: &str, escape_greater
     }
 
     let mut start = 0usize;
+    let mut trailing_brackets = 0;
     for (i, ch) in text.char_indices() {
-        let replacement = if ch == '>' && (escape_greater_than || text[..i].ends_with("]]")) {
-            Some("&gt;")
-        } else {
-            xml_text_replacement(ch)
-        };
+        let replacement = xml_text_replacement(ch, &mut trailing_brackets, escape_greater_than);
         let Some(replacement) = replacement else {
             continue;
         };
@@ -457,12 +466,9 @@ pub(super) fn escaped_xml_len(text: &str) -> usize {
 
     let decoded = decode_mermaid_entities_for_render_text(text);
     let text = decoded.as_ref();
-    text.char_indices().fold(0usize, |len, (index, ch)| {
-        let replacement = if ch == '>' && text[..index].ends_with("]]") {
-            Some("&gt;")
-        } else {
-            xml_text_replacement(ch)
-        };
+    let mut trailing_brackets = 0;
+    text.chars().fold(0usize, |len, ch| {
+        let replacement = xml_text_replacement(ch, &mut trailing_brackets, false);
         len.saturating_add(replacement.map_or(ch.len_utf8(), str::len))
     })
 }
@@ -478,12 +484,9 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
         let decoded = decode_mermaid_entities_for_render_text(self.0);
         let text = decoded.as_ref();
         let mut start = 0usize;
+        let mut trailing_brackets = 0;
         for (i, ch) in text.char_indices() {
-            let replacement = if ch == '>' && text[..i].ends_with("]]") {
-                Some("&gt;")
-            } else {
-                xml_text_replacement(ch)
-            };
+            let replacement = xml_text_replacement(ch, &mut trailing_brackets, false);
             let Some(replacement) = replacement else {
                 continue;
             };
@@ -666,6 +669,45 @@ mod tests {
         let document =
             crate::xml_dom::Document::parse(&xml).expect("escaped XML text must remain parseable");
         assert_eq!(document.root_element().text(), Some("A]]>B]]>C"));
+    }
+
+    #[test]
+    fn xml_text_escape_tracks_retained_brackets_when_forbidden_scalars_are_removed() {
+        for (source, expected) in [
+            ("]]\u{1f}>", "]]&gt;"),
+            ("]\0]\u{ffff}>", "]]&gt;"),
+            ("]]\u{fffe}\0\u{1f}>", "]]&gt;"),
+            ("]]\0字>", "]]字>"),
+            ("字😀]]\u{fffe}>\0 Ω >", "字😀]]&gt; Ω >"),
+        ] {
+            assert_eq!(escape_xml(source), expected);
+            assert_eq!(escape_xml_display(source).to_string(), expected);
+            assert_eq!(escaped_xml_len(source), expected.len());
+
+            let mut raw = String::new();
+            escape_xml_raw_into(&mut raw, source);
+            assert_eq!(raw, expected);
+
+            let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    crate::resources::ResourceLimitId::MaxSvgBytes,
+                    expected.len(),
+                )
+                .unwrap();
+            let meter = crate::resources::OperationWorkMeter::new(policy);
+            let mut bounded = crate::svg::parity::output::BoundedSvgOutput::new(&meter);
+            escape_xml_into(&mut bounded, source);
+            assert_eq!(bounded.finish().unwrap(), expected);
+
+            let xml = format!("<text>{expected}</text>");
+            crate::xml_dom::Document::parse(&xml).expect("the producer must emit valid XML");
+        }
+
+        let source = "Ω]]\u{1f}#gt;β >";
+        let expected = "Ω]]&gt;β >";
+        assert_eq!(escape_xml(source), expected);
+        assert_eq!(escape_xml_display(source).to_string(), expected);
+        assert_eq!(escaped_xml_len(source), expected.len());
     }
 
     #[test]

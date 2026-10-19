@@ -14,6 +14,7 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 mod base;
 
@@ -25,6 +26,41 @@ pub(super) enum StagedProgram {
     Dark,
     Forest,
     Neutral,
+}
+
+impl StagedProgram {
+    pub(super) fn resolved_without_overrides(
+        self,
+    ) -> Result<&'static Map<String, Value>, ThemeResolutionError> {
+        use super::{MermaidThemeId, ThemeProgram};
+
+        static BASE: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
+        static DARK: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
+        static FOREST: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
+        static NEUTRAL: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> =
+            OnceLock::new();
+
+        let (resolved, theme) = match self {
+            Self::Base => (&BASE, MermaidThemeId::Base),
+            Self::Dark => (&DARK, MermaidThemeId::Dark),
+            Self::Forest => (&FOREST, MermaidThemeId::Forest),
+            Self::Neutral => (&NEUTRAL, MermaidThemeId::Neutral),
+        };
+        resolved
+            .get_or_init(|| {
+                // The generated snapshot sorts object keys. Execute once to preserve the
+                // insertion order observed by config consumers, including nested objects.
+                Resolution::execute_impl(
+                    self,
+                    ThemeProgram::resolve(theme).prepared_constructor(),
+                    &Map::new(),
+                    None,
+                )
+                .map(|resolution| resolution.variables)
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
 }
 
 /// The interpreter always executes the same assignments. Authority is an optional, separate
@@ -2366,6 +2402,159 @@ mod tests {
             (StagedProgram::Forest, MermaidThemeId::Forest),
             (StagedProgram::Neutral, MermaidThemeId::Neutral),
         ]
+    }
+
+    #[test]
+    fn prepared_empty_results_preserve_executor_order_and_are_isolated_from_materialization() {
+        use super::super::ThemeProgram;
+
+        for (program, theme) in staged_programs() {
+            let expected = Resolution::execute_impl(
+                program,
+                ThemeProgram::resolve(theme).prepared_constructor(),
+                &Map::new(),
+                None,
+            )
+            .unwrap();
+            let prepared = program.resolved_without_overrides().unwrap();
+            let expected_bytes = serde_json::to_vec(&expected.variables).unwrap();
+            assert_eq!(
+                serde_json::to_vec(prepared).unwrap(),
+                expected_bytes,
+                "{theme}: serialization includes nested object key order"
+            );
+
+            let mut materialized = prepared.clone();
+            materialized
+                .get_mut("radar")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("axisColor".to_string(), json!("#123456"));
+            materialized.insert("hostOnly".to_string(), json!(true));
+            let reused = program.resolved_without_overrides().unwrap();
+            assert!(std::ptr::eq(prepared, reused));
+            assert_eq!(serde_json::to_vec(reused).unwrap(), expected_bytes);
+        }
+    }
+
+    #[test]
+    fn empty_staged_materialization_preserves_config_bytes_and_compatibility() {
+        use super::super::{ThemeProgram, apply_theme_defaults};
+        use crate::config::ThemeParseBinding;
+
+        for (program, theme) in staged_programs() {
+            let theme_program = ThemeProgram::resolve(theme);
+            let mut inputs = Vec::new();
+            inputs.push(MermaidConfig::from_value(json!({"theme": theme.as_str()})));
+            for raw in [
+                json!({}),
+                json!({"nodeBkg": null}),
+                Value::Null,
+                json!(false),
+            ] {
+                inputs.push(MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(), "themeVariables": raw,
+                })));
+            }
+            let binding = ThemeParseBinding::try_new(
+                [0x79; 32],
+                MermaidConfig::from_value(json!({"theme": theme.as_str()})),
+            )
+            .unwrap();
+            inputs.push(MermaidConfig::from_theme_parse_binding(binding));
+            let binding = ThemeParseBinding::try_new(
+                [0x7a; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(), "themeVariables": {"nodeBkg": "#123456"},
+                })),
+            )
+            .unwrap();
+            let mut normalized_owner = MermaidConfig::from_theme_parse_binding(binding);
+            normalized_owner
+                .set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+            assert!(normalized_owner.has_theme_variable_calculation_owners());
+            inputs.push(normalized_owner);
+            let mut explicit_owner = MermaidConfig::from_value(json!({"theme": theme.as_str()}));
+            explicit_owner.set_value_explicit("themeVariables", json!({}));
+            assert!(explicit_owner.has_theme_variable_calculation_owners());
+            inputs.push(explicit_owner);
+
+            for mut actual in inputs {
+                let mut expected = actual.clone();
+                let explicit =
+                    theme_program.normalize_overrides(super::super::theme_variables_map(&expected));
+                assert!(explicit.is_empty());
+                let resolution = Resolution::execute_with_owners(
+                    program,
+                    theme_program.prepared_constructor(),
+                    &explicit,
+                    &expected,
+                )
+                .unwrap();
+                expected.retain_normalized_theme_compatibility_variables(&explicit);
+                resolution.materialize_into(&mut expected);
+
+                apply_theme_defaults(&mut actual).unwrap();
+                assert_eq!(
+                    serde_json::to_vec(actual.as_value()).unwrap(),
+                    serde_json::to_vec(expected.as_value()).unwrap(),
+                    "{theme}"
+                );
+                actual.freeze_theme_compatibility();
+                expected.freeze_theme_compatibility();
+                assert_eq!(
+                    actual.mermaid_compatibility_fields(),
+                    expected.mermaid_compatibility_fields(),
+                    "{theme}"
+                );
+                assert_eq!(
+                    actual.explicit_config_owns_path("themeVariables"),
+                    expected.explicit_config_owns_path("themeVariables"),
+                    "{theme}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn custom_detector_observes_staged_executor_key_order() {
+        use super::super::{MermaidThemeId, ThemeProgram};
+
+        fn detector(_text: &str, config: &mut MermaidConfig) -> bool {
+            let theme = MermaidThemeId::parse(config.get_str("theme").unwrap()).unwrap();
+            let theme_program = ThemeProgram::resolve(theme);
+            let expected = Resolution::execute_impl(
+                theme_program.staged_program().unwrap(),
+                theme_program.prepared_constructor(),
+                &Map::new(),
+                None,
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_vec(&config.as_value()["themeVariables"]).unwrap(),
+                serde_json::to_vec(&expected.variables).unwrap(),
+                "{theme}: a detector can observe recursive insertion order"
+            );
+            true
+        }
+
+        for (program, theme) in staged_programs() {
+            let mut engine =
+                crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(),
+                })));
+            *engine.registry_mut() = crate::DetectorRegistry::new();
+            engine.registry_mut().add_fn("flowchart-v2", detector);
+            let metadata = engine.parse_metadata_sync("staged-order-probe").unwrap();
+            assert_eq!(metadata.diagram_type, "flowchart-v2");
+            assert_eq!(
+                serde_json::to_vec(&metadata.effective_config.as_value()["themeVariables"])
+                    .unwrap(),
+                serde_json::to_vec(program.resolved_without_overrides().unwrap()).unwrap(),
+                "{theme}: metadata retains the observed order"
+            );
+        }
     }
 
     #[test]

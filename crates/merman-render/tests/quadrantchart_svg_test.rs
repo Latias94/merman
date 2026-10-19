@@ -425,7 +425,6 @@ fn quadrantchart_font_size_is_unsupported_without_recreating_legacy_projection()
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = render_quadrantchart_with_theme_requirement_and_engine(
         source,
@@ -474,7 +473,6 @@ fn quadrantchart_mixed_font_stack_and_size_keeps_the_typed_stack_property_local(
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1031,7 +1029,6 @@ fn quadrantchart_text_fill_reaches_all_legacy_text_consumers() {
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }
@@ -1331,7 +1328,6 @@ fn quadrantchart_title_scalar_fill_is_verified_without_a_bridge() {
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }
@@ -1379,7 +1375,6 @@ fn quadrantchart_title_fill_preserves_source_ownership_absence_and_author_order(
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1543,7 +1538,6 @@ fn quadrantchart_axis_scalar_facets_are_verified_together_without_a_bridge() {
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.applied_count(), 1);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
                 assert_eq!(evidence.theme_residual_count(), 0);
             }
         }
@@ -1586,7 +1580,6 @@ fn quadrantchart_axis_rule_grouping_and_unsupported_winners_keep_residuals() {
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.theme_residual_count(), 1);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
     for rule in [
         ThemeRule::new(ThemeTarget::Axis, fill.clone()).with_ordinal(OrdinalSelector::Exact(7)),

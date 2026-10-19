@@ -36,7 +36,6 @@ pub(crate) fn render_railroad_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::RAILROAD, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
-    surface_receipt.record_root_svg_open(out.as_str());
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -60,7 +59,6 @@ pub(crate) fn render_railroad_diagram_svg_model(
         &mut super::output::XmlTextOutput::new(&mut out),
         style,
         diagram_id.semantic_str(),
-        &mut surface_receipt,
         &mut || {
             options
                 .work_meter()
@@ -248,12 +246,10 @@ fn write_railroad_css(
     out: &mut impl SvgOutput,
     style: &crate::railroad::RailroadStyle,
     diagram_id: &str,
-    surface_receipt: &mut crate::railroad::RailroadSurfaceReceipt,
     checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<()> {
     let diagram_id_css = crate::svg::escape_css_identifier(diagram_id);
     let font_size_css = fmt_string(style.font_size);
-    let stylesheet_start = out.len();
 
     let _ = write!(
         out,
@@ -361,18 +357,7 @@ fn write_railroad_css(
     out.push_str(" .railroad-group{}");
     out.checkpoint()?;
 
-    let stylesheet_end = out.len();
-    let Some(stylesheet) = out.as_str().get(stylesheet_start..stylesheet_end) else {
-        return Err(crate::Error::InvalidModel {
-            message: "Railroad typography CSS boundaries were invalid".to_string(),
-        });
-    };
-    surface_receipt.record_typography_stylesheet(
-        stylesheet,
-        &style.font_family,
-        &font_size_css,
-        checkpoint,
-    )
+    checkpoint()
 }
 
 #[cfg(test)]
@@ -382,41 +367,23 @@ mod tests {
     #[test]
     fn root_font_rule_matches_mermaid_namespacing() {
         let style = crate::railroad::railroad_style(&serde_json::json!({}));
-        let mut surface_receipt = crate::railroad::RailroadSurfaceReceipt::default();
-        surface_receipt.record_root_svg_open(concat!(
-            r#"<svg id="railroad.fixture" xmlns="http://www.w3.org/2000/svg" "#,
-            r#"class="railroad-diagram">"#,
-        ));
         let mut css = String::new();
-        write_railroad_css(
-            &mut css,
-            &style,
-            "railroad.fixture",
-            &mut surface_receipt,
-            &mut || Ok(()),
-        )
-        .expect("write Railroad CSS");
+        write_railroad_css(&mut css, &style, "railroad.fixture", &mut || Ok(()))
+            .expect("write Railroad CSS");
 
         assert!(css.starts_with("#railroad\\.fixture.railroad-diagram{"));
         assert!(!css.starts_with("#railroad\\.fixture .railroad-diagram{"));
-        assert!(surface_receipt.typography_stylesheet_verified());
     }
 
     #[test]
     fn railroad_writer_preserves_literal_font_entities_through_xml_text_output() {
         let mut style = crate::railroad::railroad_style(&serde_json::json!({}));
         style.font_family = "\"A&amp;B\", monospace".to_owned();
-        let mut surface_receipt = crate::railroad::RailroadSurfaceReceipt::default();
-        surface_receipt.record_root_svg_open(concat!(
-            r#"<svg id="rr" xmlns="http://www.w3.org/2000/svg" "#,
-            r#"class="railroad-diagram">"#,
-        ));
         let mut serialized = String::from("<style>");
         write_railroad_css(
             &mut super::super::output::XmlTextOutput::new(&mut serialized),
             &style,
             "rr",
-            &mut surface_receipt,
             &mut || Ok(()),
         )
         .expect("write XML-encoded Railroad CSS");
@@ -431,6 +398,5 @@ mod tests {
             6
         );
         assert_eq!(serialized.matches("A&amp;amp;B").count(), 6);
-        assert!(surface_receipt.typography_stylesheet_verified());
     }
 }

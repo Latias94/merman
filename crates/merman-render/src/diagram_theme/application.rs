@@ -9,14 +9,6 @@ use super::{
     CanvasSpec, DiagramTheme, DiagramThemeSpec, Specified, ThemeTarget, ThemeTypographyProperty,
 };
 
-/// Evaluation state for mechanisms that apply outside a selected diagram family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub(crate) enum RootThemeEvaluation {
-    NotApplicable,
-    Evaluated,
-}
-
 /// Recipe-local identity of one applicable root mechanism.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -104,94 +96,22 @@ impl RootThemeResidualReason {
     }
 }
 
-impl std::fmt::Display for RootThemeResidualReason {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Immutable evidence for one unapplied root-level theme mechanism.
+/// Requested and emitted capabilities for one root mechanism.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RootThemeResidual {
-    key: RootThemeMechanismKey,
-    capabilities: BTreeSet<ThemeCapability>,
-    reason: RootThemeResidualReason,
-}
-
-impl RootThemeResidual {
-    pub const fn key(&self) -> &RootThemeMechanismKey {
-        &self.key
-    }
-
-    pub const fn reason(&self) -> RootThemeResidualReason {
-        self.reason
-    }
-}
-
-impl std::fmt::Display for RootThemeResidual {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{} requires ", self.key)?;
-        for (index, capability) in self.capabilities.iter().enumerate() {
-            if index != 0 {
-                formatter.write_str(", ")?;
-            }
-            write!(formatter, "{capability}")?;
-        }
-        write!(formatter, " ({})", self.reason)
-    }
-}
-
-/// Capability-level evidence for one root mechanism.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RootThemeMechanismEvidence {
+struct RootThemeMechanismOutcome {
     key: RootThemeMechanismKey,
     required_capabilities: BTreeSet<ThemeCapability>,
     applied_capabilities: BTreeSet<ThemeCapability>,
-    residual_capabilities: BTreeSet<ThemeCapability>,
-    residual_reason: Option<RootThemeResidualReason>,
 }
 
-impl RootThemeMechanismEvidence {
-    pub const fn key(&self) -> &RootThemeMechanismKey {
-        &self.key
-    }
-
-    #[cfg(test)]
-    pub fn required_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.required_capabilities.iter().copied()
-    }
-
-    #[cfg(test)]
-    pub fn residual_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.residual_capabilities.iter().copied()
-    }
-
-    fn coverage_complete(&self) -> bool {
-        self.has_residual() == self.residual_reason.is_some()
-            && self
-                .applied_capabilities
-                .is_disjoint(&self.residual_capabilities)
-            && self
-                .applied_capabilities
-                .union(&self.residual_capabilities)
-                .eq(&self.required_capabilities)
-    }
-
-    fn has_residual(&self) -> bool {
-        !self.residual_capabilities.is_empty()
-    }
-}
-
-/// Frozen root-level theme evidence. Positive verification requires explicit per-mechanism
-/// coverage; an empty residual list alone can never manufacture success.
+/// Frozen root outcomes recorded by the SVG writer, with terminal counts and capability union.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RootThemeReport {
-    evaluation: RootThemeEvaluation,
-    mechanisms: Vec<RootThemeMechanismEvidence>,
-    required_mechanisms: Vec<RootThemeMechanismKey>,
-    applied_mechanisms: Vec<RootThemeMechanismKey>,
+    mechanisms: Vec<RootThemeMechanismOutcome>,
+    applied_count: usize,
+    residual_count: usize,
     applied_capabilities: BTreeSet<ThemeCapability>,
-    residuals: Vec<RootThemeResidual>,
+    output_mutated: bool,
 }
 
 /// Recipe-local root work retained until the operation-owned SVG root has completed assembly.
@@ -253,7 +173,7 @@ impl RootThemePlan {
                 .requirements
                 .iter()
                 .cloned()
-                .map(RootThemeRequirement::into_unadapted_evidence)
+                .map(RootThemeRequirement::into_unapplied_outcome)
                 .collect(),
         }
     }
@@ -262,7 +182,7 @@ impl RootThemePlan {
 /// Mutable, operation-local evidence builder owned by the actual SVG root consumer.
 #[derive(Debug)]
 pub(crate) struct RootThemeApplication {
-    mechanisms: Vec<RootThemeMechanismEvidence>,
+    mechanisms: Vec<RootThemeMechanismOutcome>,
 }
 
 impl RootThemeApplication {
@@ -279,7 +199,7 @@ impl RootThemeApplication {
         let Some(mechanism) = self
             .mechanisms
             .iter_mut()
-            .find(|mechanism| mechanism.key() == key)
+            .find(|mechanism| &mechanism.key == key)
         else {
             return false;
         };
@@ -289,130 +209,73 @@ impl RootThemeApplication {
             return false;
         }
         mechanism.applied_capabilities = applied;
-        mechanism.residual_capabilities = mechanism
-            .required_capabilities
-            .difference(&mechanism.applied_capabilities)
-            .copied()
-            .collect();
-        mechanism.residual_reason = (!mechanism.residual_capabilities.is_empty())
-            .then_some(RootThemeResidualReason::NoConsumer);
         true
     }
 
     pub(crate) fn finish(self) -> RootThemeReport {
-        if self.mechanisms.is_empty() {
-            RootThemeReport::not_applicable()
-        } else {
-            RootThemeReport::freeze(RootThemeEvaluation::Evaluated, self.mechanisms)
+        let mut applied_count = 0;
+        let mut applied_capabilities = BTreeSet::new();
+        for mechanism in &self.mechanisms {
+            if mechanism.applied_capabilities == mechanism.required_capabilities {
+                applied_count += 1;
+            }
+            applied_capabilities.extend(mechanism.applied_capabilities.iter().copied());
+        }
+        RootThemeReport {
+            residual_count: self.mechanisms.len() - applied_count,
+            mechanisms: self.mechanisms,
+            applied_count,
+            applied_capabilities,
+            output_mutated: false,
         }
     }
 }
 
 impl RootThemeReport {
-    fn not_applicable() -> Self {
-        Self::freeze(RootThemeEvaluation::NotApplicable, Vec::new())
+    pub const fn required_count(&self) -> usize {
+        self.mechanisms.len()
     }
 
-    fn freeze(
-        evaluation: RootThemeEvaluation,
-        mechanisms: Vec<RootThemeMechanismEvidence>,
-    ) -> Self {
-        let required_mechanisms = mechanisms
-            .iter()
-            .map(|mechanism| mechanism.key.clone())
-            .collect();
-        let applied_mechanisms = mechanisms
-            .iter()
-            .filter(|mechanism| {
-                !mechanism.has_residual()
-                    && mechanism.applied_capabilities == mechanism.required_capabilities
-            })
-            .map(|mechanism| mechanism.key.clone())
-            .collect();
-        let applied_capabilities = mechanisms
-            .iter()
-            .flat_map(|mechanism| mechanism.applied_capabilities.iter().copied())
-            .collect();
-        let residuals = mechanisms
-            .iter()
-            .filter_map(|mechanism| {
-                let reason = mechanism.residual_reason?;
-                (!mechanism.residual_capabilities.is_empty()).then(|| RootThemeResidual {
-                    key: mechanism.key.clone(),
-                    capabilities: mechanism.residual_capabilities.clone(),
-                    reason,
-                })
-            })
-            .collect();
-        Self {
-            evaluation,
-            mechanisms,
-            required_mechanisms,
-            applied_mechanisms,
-            applied_capabilities,
-            residuals,
-        }
+    pub const fn applied_count(&self) -> usize {
+        self.applied_count
     }
 
-    #[cfg(test)]
-    pub const fn evaluation(&self) -> RootThemeEvaluation {
-        self.evaluation
+    pub const fn residual_count(&self) -> usize {
+        self.residual_count
     }
 
-    pub fn required_mechanisms(&self) -> &[RootThemeMechanismKey] {
-        &self.required_mechanisms
-    }
-
-    #[cfg(test)]
-    pub fn mechanisms(&self) -> &[RootThemeMechanismEvidence] {
-        &self.mechanisms
-    }
-
-    pub fn applied_mechanisms(&self) -> &[RootThemeMechanismKey] {
-        &self.applied_mechanisms
+    pub const fn output_mutated(&self) -> bool {
+        self.output_mutated
     }
 
     pub fn applied_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
         self.applied_capabilities.iter().copied()
     }
 
-    pub fn residuals(&self) -> &[RootThemeResidual] {
-        &self.residuals
-    }
-
-    pub fn coverage_complete(&self) -> bool {
-        let required = self.required_mechanisms.iter().collect::<BTreeSet<_>>();
-        let evidence_keys = self
-            .mechanisms
+    pub fn residuals(
+        &self,
+    ) -> impl Iterator<Item = (&RootThemeMechanismKey, RootThemeResidualReason)> + '_ {
+        let reason = if self.output_mutated {
+            RootThemeResidualReason::OutputMutation
+        } else {
+            RootThemeResidualReason::NoConsumer
+        };
+        self.mechanisms
             .iter()
-            .map(RootThemeMechanismEvidence::key)
-            .collect::<BTreeSet<_>>();
-        required.len() == self.required_mechanisms.len()
-            && evidence_keys.len() == self.mechanisms.len()
-            && evidence_keys == required
-            && self
-                .mechanisms
-                .iter()
-                .all(RootThemeMechanismEvidence::coverage_complete)
+            .filter(|mechanism| {
+                self.output_mutated
+                    || mechanism.applied_capabilities != mechanism.required_capabilities
+            })
+            .map(move |mechanism| (&mechanism.key, reason))
     }
 
-    pub fn verification(&self) -> RootThemeVerification {
-        match self.evaluation {
-            RootThemeEvaluation::NotApplicable => RootThemeVerification::NotApplicable,
-            RootThemeEvaluation::Evaluated => {
-                let coverage_complete = self.coverage_complete();
-                if !coverage_complete {
-                    RootThemeVerification::Incomplete
-                } else if self.mechanisms.iter().all(|mechanism| {
-                    !mechanism.has_residual()
-                        && mechanism.applied_capabilities == mechanism.required_capabilities
-                }) && self.residuals.is_empty()
-                {
-                    RootThemeVerification::Verified
-                } else {
-                    RootThemeVerification::Unverified
-                }
-            }
+    pub const fn verification(&self) -> RootThemeVerification {
+        if self.mechanisms.is_empty() {
+            RootThemeVerification::NotApplicable
+        } else if self.residual_count == 0 {
+            RootThemeVerification::Verified
+        } else {
+            RootThemeVerification::Unverified
         }
     }
 
@@ -421,22 +284,18 @@ impl RootThemeReport {
     /// The transformation may have changed a typed canvas/effect node without exposing a
     /// machine-checkable proof of preservation. Keeping the original `Verified` state would make
     /// downstream document admission claim more than the final SVG proves.
-    pub(crate) fn invalidate_for_output_mutation(self) -> Self {
-        if self.evaluation == RootThemeEvaluation::NotApplicable {
+    pub(crate) fn invalidate_for_output_mutation(mut self) -> Self {
+        if self.mechanisms.is_empty() {
             return self;
         }
-        let mechanisms = self
-            .mechanisms
-            .into_iter()
-            .map(|mut mechanism| {
-                mechanism.applied_capabilities.clear();
-                mechanism.residual_capabilities = mechanism.required_capabilities.clone();
-                mechanism.residual_reason = (!mechanism.residual_capabilities.is_empty())
-                    .then_some(RootThemeResidualReason::OutputMutation);
-                mechanism
-            })
-            .collect();
-        Self::freeze(RootThemeEvaluation::Evaluated, mechanisms)
+        for mechanism in &mut self.mechanisms {
+            mechanism.applied_capabilities.clear();
+        }
+        self.applied_count = 0;
+        self.residual_count = self.mechanisms.len();
+        self.applied_capabilities.clear();
+        self.output_mutated = true;
+        self
     }
 }
 
@@ -480,13 +339,11 @@ impl RootThemeRequirement {
         self.capabilities.iter().copied()
     }
 
-    fn into_unadapted_evidence(self) -> RootThemeMechanismEvidence {
-        RootThemeMechanismEvidence {
+    fn into_unapplied_outcome(self) -> RootThemeMechanismOutcome {
+        RootThemeMechanismOutcome {
             key: self.key,
-            required_capabilities: self.capabilities.clone(),
+            required_capabilities: self.capabilities,
             applied_capabilities: BTreeSet::new(),
-            residual_capabilities: self.capabilities,
-            residual_reason: Some(RootThemeResidualReason::NoConsumer),
         }
     }
 }
@@ -585,20 +442,8 @@ pub(crate) fn root_theme_requirements(spec: &DiagramThemeSpec) -> Vec<RootThemeR
 mod tests {
     use super::*;
 
-    fn evidence(
-        key: RootThemeMechanismKey,
-        required: &[ThemeCapability],
-        applied: &[ThemeCapability],
-        residual: &[ThemeCapability],
-        residual_reason: Option<RootThemeResidualReason>,
-    ) -> RootThemeMechanismEvidence {
-        RootThemeMechanismEvidence {
-            key,
-            required_capabilities: required.iter().copied().collect(),
-            applied_capabilities: applied.iter().copied().collect(),
-            residual_capabilities: residual.iter().copied().collect(),
-            residual_reason,
-        }
+    fn solid_layer() -> super::super::CanvasLayer {
+        super::super::CanvasLayer::new(super::super::CanvasPaint::solid("#123456").unwrap())
     }
 
     #[test]
@@ -630,79 +475,127 @@ mod tests {
     }
 
     #[test]
-    fn root_verification_state_matrix_is_fail_closed() {
-        let capability = ThemeCapability::SolidPaint;
-        let applied = evidence(
-            RootThemeMechanismKey::CanvasBase,
-            &[capability],
-            &[capability],
-            &[],
-            None,
-        );
-        let residual = evidence(
-            RootThemeMechanismKey::CanvasBase,
-            &[capability],
-            &[],
-            &[capability],
-            Some(RootThemeResidualReason::NoConsumer),
-        );
-        let incomplete = evidence(
-            RootThemeMechanismKey::CanvasBase,
-            &[capability],
-            &[],
-            &[],
-            None,
-        );
+    fn root_application_rejects_unknown_keys_and_capabilities_without_losing_partial_emission() {
+        let canvas = CanvasSpec::default().with_layer(solid_layer()).unwrap();
+        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let mut application = plan.begin_svg_application();
+        assert!(!application.mark_applied(
+            &RootThemeMechanismKey::CanvasBase,
+            [ThemeCapability::SolidPaint],
+        ));
+        let key = RootThemeMechanismKey::CanvasLayer { index: 0 };
+        assert!(application.mark_applied(&key, [ThemeCapability::SolidPaint]));
+        assert!(!application.mark_applied(
+            &key,
+            [ThemeCapability::SolidPaint, ThemeCapability::SvgFilter],
+        ));
+        let report = application.finish();
 
+        assert_eq!(report.verification(), RootThemeVerification::Unverified);
+        assert_eq!(report.required_count(), 1);
+        assert_eq!(report.applied_count(), 0);
+        assert_eq!(report.residual_count(), 1);
         assert_eq!(
-            RootThemeReport::freeze(RootThemeEvaluation::NotApplicable, Vec::new()).verification(),
-            RootThemeVerification::NotApplicable
+            report.applied_capabilities().collect::<Vec<_>>(),
+            [ThemeCapability::SolidPaint]
         );
         assert_eq!(
-            RootThemeReport::freeze(RootThemeEvaluation::Evaluated, vec![applied.clone()])
-                .verification(),
-            RootThemeVerification::Verified
+            report.residuals().collect::<Vec<_>>(),
+            [(&key, RootThemeResidualReason::NoConsumer)]
         );
-        assert_eq!(
-            RootThemeReport::freeze(RootThemeEvaluation::Evaluated, vec![residual]).verification(),
-            RootThemeVerification::Unverified
-        );
-        assert_eq!(
-            RootThemeReport::freeze(RootThemeEvaluation::Evaluated, vec![incomplete])
-                .verification(),
-            RootThemeVerification::Incomplete
-        );
-        assert_eq!(
-            RootThemeReport::freeze(
-                RootThemeEvaluation::Evaluated,
-                vec![applied.clone(), applied],
-            )
-            .verification(),
-            RootThemeVerification::Incomplete
-        );
+        assert!(!report.output_mutated());
     }
 
     #[test]
-    fn root_evidence_requires_a_reason_exactly_when_capabilities_are_residual() {
-        let capability = ThemeCapability::SolidPaint;
-        let missing_reason = evidence(
+    fn repeated_root_marks_replace_previous_emission() {
+        let canvas = CanvasSpec::default().with_layer(solid_layer()).unwrap();
+        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let key = RootThemeMechanismKey::CanvasLayer { index: 0 };
+        let full = [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint];
+        for applied in [Vec::new(), vec![ThemeCapability::SolidPaint], full.to_vec()] {
+            let mut application = plan.begin_svg_application();
+            assert!(application.mark_applied(&key, full));
+            assert!(application.mark_applied(&key, applied.iter().copied()));
+            let report = application.finish();
+            let complete = applied.len() == full.len();
+
+            assert_eq!(report.required_count(), 1);
+            assert_eq!(report.applied_count(), usize::from(complete));
+            assert_eq!(report.residual_count(), usize::from(!complete));
+            assert_eq!(
+                report.applied_capabilities().collect::<BTreeSet<_>>(),
+                applied.into_iter().collect()
+            );
+            assert_eq!(
+                report.verification(),
+                if complete {
+                    RootThemeVerification::Verified
+                } else {
+                    RootThemeVerification::Unverified
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn output_mutation_invalidates_every_root_mechanism_in_recipe_order() {
+        let canvas = CanvasSpec::solid("#654321")
+            .unwrap()
+            .with_layer(solid_layer())
+            .unwrap()
+            .with_layer(solid_layer())
+            .unwrap();
+        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let mut application = plan.begin_svg_application();
+        assert!(application.mark_applied(
+            &RootThemeMechanismKey::CanvasBase,
+            [ThemeCapability::SolidPaint],
+        ));
+        assert!(application.mark_applied(
+            &RootThemeMechanismKey::CanvasLayer { index: 0 },
+            [ThemeCapability::SolidPaint],
+        ));
+        let report = application.finish();
+        assert_eq!(report.applied_count(), 1);
+        assert_eq!(report.residual_count(), 2);
+        let keys = [
             RootThemeMechanismKey::CanvasBase,
-            &[capability],
-            &[],
-            &[capability],
-            None,
-        );
-        let spurious_reason = evidence(
-            RootThemeMechanismKey::CanvasBase,
-            &[capability],
-            &[capability],
-            &[],
-            Some(RootThemeResidualReason::NoConsumer),
+            RootThemeMechanismKey::CanvasLayer { index: 0 },
+            RootThemeMechanismKey::CanvasLayer { index: 1 },
+        ];
+        assert_eq!(
+            report.residuals().map(|(key, _)| key).collect::<Vec<_>>(),
+            [&keys[1], &keys[2]]
         );
 
-        for mechanism in [missing_reason, spurious_reason] {
-            let report = RootThemeReport::freeze(RootThemeEvaluation::Evaluated, vec![mechanism]);
-            assert_eq!(report.verification(), RootThemeVerification::Incomplete);
-        }
+        let invalidated = report.invalidate_for_output_mutation();
+        assert_eq!(
+            invalidated.verification(),
+            RootThemeVerification::Unverified
+        );
+        assert_eq!(invalidated.required_count(), 3);
+        assert_eq!(invalidated.applied_count(), 0);
+        assert_eq!(invalidated.residual_count(), 3);
+        assert!(invalidated.applied_capabilities().next().is_none());
+        assert!(invalidated.output_mutated());
+        assert_eq!(
+            invalidated.residuals().collect::<Vec<_>>(),
+            keys.iter()
+                .map(|key| (key, RootThemeResidualReason::OutputMutation))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            invalidated.clone().invalidate_for_output_mutation(),
+            invalidated
+        );
+
+        let empty = RootThemePlan::default().begin_svg_application().finish();
+        assert_eq!(empty.verification(), RootThemeVerification::NotApplicable);
+        assert_eq!(empty.required_count(), 0);
+        assert_eq!(empty.applied_count(), 0);
+        assert_eq!(empty.residual_count(), 0);
+        assert!(empty.residuals().next().is_none());
+        assert!(!empty.output_mutated());
+        assert_eq!(empty.clone().invalidate_for_output_mutation(), empty);
     }
 }

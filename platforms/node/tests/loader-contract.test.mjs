@@ -508,13 +508,16 @@ test("candidate wrappers dispose owned engines once and fail closed afterward", 
       });
 
     const signal = new AbortController().signal;
-    assert.equal(await transport.execute("request", signal, 25), "request");
+    const dataRequest = JSON.stringify({
+      operation_id: "svg", source: "flowchart TD\nA", include_metadata: false,
+    });
+    assert.equal(await transport.execute(dataRequest, signal, 25), dataRequest);
     assert.deepEqual(
       executeArgs,
-      transportKind === "napi" ? ["request", signal, 25] : ["request", 25],
+      transportKind === "napi" ? [dataRequest, signal, 25] : [dataRequest, 25],
     );
-    assert.equal(transport.executeSync("sync-request", 12), "sync-request");
-    assert.deepEqual(executeSyncArgs, ["sync-request", 12]);
+    assert.equal(transport.executeSync(dataRequest, 12), dataRequest);
+    assert.deepEqual(executeSyncArgs, [dataRequest, 12]);
     await transport.dispose();
     await transport.dispose();
     assert.equal(disposeCalls, 1);

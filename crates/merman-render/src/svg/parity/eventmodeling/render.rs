@@ -23,7 +23,6 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = text_theme.css_binding();
-    let mut text_theme_receipt = text_theme.begin_terminal_receipt();
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
@@ -58,7 +57,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     out.checkpoint()?;
 
     out.push_str("<style>");
-    text_theme_receipt.write_stylesheet(
+    text_theme.write_stylesheet(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
     );
@@ -76,9 +75,9 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
             escape_attr_display(&theme.swimlane_background_fill),
             escape_attr_display(&theme.swimlane_background_stroke),
         );
-        text_theme_receipt.write_swimlane_text_start(
+        let _ = write!(
             &mut out,
-            &swimlane.label,
+            r#"<text font-weight="bold" x="{}" y="{}">"#,
             fmt(swimlane.x + 30.0),
             fmt(swimlane.y + 30.0),
         );
@@ -103,7 +102,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
             fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0)),
         );
-        text_theme_receipt.write_box_text_start(&mut out, &box_layout.text);
+        out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#);
         out.checkpoint()?;
         push_box_html_label(&mut out, &box_layout.text)?;
         out.push_str("</span></div></foreignObject></g>");
@@ -132,11 +131,6 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if !text_theme.record_terminal(text_theme_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Event Modeling text theme receipt did not match the terminal SVG".to_string(),
-        });
-    }
     Ok(rooted_svg)
 }
 

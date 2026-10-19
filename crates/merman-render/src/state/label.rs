@@ -19,6 +19,20 @@ fn state_label_xhtml(text: &str) -> String {
     mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
 }
 
+/// Inspect adopted author HTML only when it exists. Plain and generated Markdown styling
+/// continues to use the prepared writer decisions without a completed-SVG observation.
+pub(crate) fn state_label_source_style_facts(
+    text: &str,
+) -> Option<crate::text::VisibleTextStyleFacts> {
+    let decoded = decode_mermaid_entities_for_render_text(text);
+    if !decoded.contains('<') {
+        return None;
+    }
+    Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
+        &state_label_xhtml(text),
+    ))
+}
+
 fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?;
     if inner.contains('<') || inner.contains('>') {

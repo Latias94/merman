@@ -59,14 +59,13 @@ mod css_binding;
 mod text_paint;
 mod theme;
 
-pub(crate) use text_paint::{KanbanTextPaintPlan, KanbanTextPaintReceipt, KanbanTextPaintRole};
+pub(crate) use text_paint::{KanbanTextPaintOutcome, KanbanTextPaintPlan};
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) use css_binding::KanbanCssBinding;
 pub(crate) use theme::{
-    KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme,
-    KanbanTaskThemeReceipt, KanbanTypographyFacts, KanbanTypographyPlan,
-    KanbanTypographyTerminalFacts,
+    KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme, KanbanTaskThemeOutcome,
+    KanbanTypographyPlan, KanbanTypographyTerminalFacts,
 };
 
 #[derive(Debug)]
@@ -74,7 +73,6 @@ pub(crate) struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,
     sections: Vec<KanbanPreparedMarkdownLabel>,
     items: Vec<KanbanPreparedItem>,
-    typography_layout: KanbanTypographyLayoutReceipt,
     task_theme: KanbanTaskTheme,
     text_paint: KanbanTextPaintPlan,
     css: KanbanCssBinding,
@@ -109,56 +107,6 @@ impl KanbanPreparedArtifact {
 
     pub(crate) const fn text_paint(&self) -> &KanbanTextPaintPlan {
         &self.text_paint
-    }
-
-    pub(crate) const fn typography_layout(&self) -> &KanbanTypographyLayoutReceipt {
-        &self.typography_layout
-    }
-}
-
-/// Production-owned fact that the resolved typography was used by every Kanban label preparation.
-///
-/// This is intentionally a compact seam receipt rather than a second geometry interpreter. The
-/// layout and SVG writer consume the same prepared label geometry; evidence only checks that the
-/// preparation used the resolved family and size for the expected terminal groups.
-#[derive(Debug, Clone)]
-pub(crate) struct KanbanTypographyLayoutReceipt {
-    font_family_css: Box<str>,
-    font_size_px: f64,
-    section_label_count: usize,
-    item_title_count: usize,
-    item_detail_count: usize,
-}
-
-impl KanbanTypographyLayoutReceipt {
-    pub(crate) fn new(
-        font_family_css: &str,
-        font_size_px: f64,
-        section_label_count: usize,
-        item_title_count: usize,
-        item_detail_count: usize,
-    ) -> Self {
-        Self {
-            font_family_css: font_family_css.into(),
-            font_size_px,
-            section_label_count,
-            item_title_count,
-            item_detail_count,
-        }
-    }
-
-    pub(crate) fn font_family_css(&self) -> &str {
-        &self.font_family_css
-    }
-
-    pub(crate) const fn font_size_px(&self) -> f64 {
-        self.font_size_px
-    }
-
-    pub(crate) const fn terminal_count(&self) -> usize {
-        self.section_label_count
-            .saturating_add(self.item_title_count)
-            .saturating_add(self.item_detail_count)
     }
 }
 
@@ -504,46 +452,17 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 capture_style_facts,
             );
             if theme.is_some() {
-                let visible_labels = [
-                    prepared_title
-                        .visible_style_facts
-                        .has_visible_runs()
-                        .then_some(KanbanTaskLabelRole::Title),
-                    prepared_ticket
-                        .visible_style_facts
-                        .has_visible_runs()
-                        .then_some(KanbanTaskLabelRole::Ticket),
-                    prepared_assigned
-                        .visible_style_facts
-                        .has_visible_runs()
-                        .then_some(KanbanTaskLabelRole::Assigned),
-                ]
-                .into_iter()
-                .flatten();
-                let inheriting_labels = [
-                    (prepared_title.visible_style_facts.parse_valid()
-                        && prepared_title
-                            .visible_style_facts
-                            .inherited_color_run_count()
-                            > 0)
-                    .then_some(KanbanTaskLabelRole::Title),
-                    (prepared_ticket
-                        .visible_style_facts
-                        .inherited_color_run_count()
-                        > 0)
-                    .then_some(KanbanTaskLabelRole::Ticket),
-                    (prepared_assigned
-                        .visible_style_facts
-                        .inherited_color_run_count()
-                        > 0)
-                    .then_some(KanbanTaskLabelRole::Assigned),
-                ]
-                .into_iter()
-                .flatten();
-                task_occurrences.push(
-                    KanbanTaskOccurrence::new(node.id.clone(), visible_labels)
-                        .with_inheriting_labels(inheriting_labels),
-                );
+                let label_facts = [
+                    &prepared_title.visible_style_facts,
+                    &prepared_ticket.visible_style_facts,
+                    &prepared_assigned.visible_style_facts,
+                ];
+                task_occurrences.push(KanbanTaskOccurrence::new(
+                    label_facts.iter().any(|facts| facts.has_visible_runs()),
+                    label_facts
+                        .iter()
+                        .any(|facts| facts.parse_valid() && facts.inherited_color_run_count() > 0),
+                ));
             }
             prepared_task_labels.push((prepared_title, prepared_ticket, prepared_assigned));
         }
@@ -720,13 +639,6 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         sections,
         items,
     };
-    let typography_layout = KanbanTypographyLayoutReceipt::new(
-        legend_style.font_family.as_deref().unwrap_or_default(),
-        legend_style.font_size,
-        prepared_sections.len(),
-        prepared_items.len(),
-        prepared_items.len().saturating_mul(2),
-    );
     let text_paint = KanbanTextPaintPlan::resolve(
         theme,
         effective_config,
@@ -752,7 +664,6 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         layout,
         sections: prepared_sections,
         items: prepared_items,
-        typography_layout,
         task_theme,
         text_paint,
         css,
@@ -821,25 +732,12 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
             ),
         })
         .collect();
-    let typography_layout = KanbanTypographyLayoutReceipt::new(
-        settings
-            .text_style
-            .font_family
-            .as_deref()
-            .unwrap_or_default(),
-        settings.text_style.font_size,
-        sections.len(),
-        items.len(),
-        items.len().saturating_mul(2),
-    );
-
     let task_theme = KanbanTaskTheme::baseline(layout.items.len(), typography);
     let css = KanbanCssBinding::resolve(effective_config.as_value(), &task_theme, None)?;
     Ok(KanbanPreparedArtifact {
         layout: layout.clone(),
         sections,
         items,
-        typography_layout,
         task_theme,
         text_paint: KanbanTextPaintPlan::baseline(),
         css,
@@ -984,10 +882,10 @@ mod tests {
                 .is_none()
         );
         assert_eq!(
-            prepared.typography_layout().font_family_css(),
+            prepared.task_theme().font_family_css(),
             "Configured,monospace"
         );
-        assert_eq!(prepared.typography_layout().font_size_px(), 22.0);
+        assert_eq!(prepared.task_theme().typography_font_size_px(), 22.0);
         assert!(
             prepared
                 .task_theme()
