@@ -148,7 +148,7 @@ function renderingState() {
 
 test("preset and custom recipe setters replace one another atomically", () => {
   useAppStore.getState().setThemePresetId("brutalist");
-  const recipe = '{"schema_version":1,"kind":"definition","definition":{}}';
+  const recipe = '{"schema_version":1,"kind":"design","design":{}}';
   const notifications: Array<[string | null, string | null]> = [];
   const unsubscribe = useAppStore.subscribe((state) => {
     notifications.push([state.themePresetId, state.themeRecipeJson]);
@@ -184,7 +184,7 @@ test("applying and selecting a custom workspace retains its recipe", () => {
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), snapshot);
 });
 
-const validRecipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#abcdef"}}}';
+const validRecipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#abcdef"}}}}';
 
 function beginValidThemeDraft() {
   useAppStore.getState().cancelThemeEdit();

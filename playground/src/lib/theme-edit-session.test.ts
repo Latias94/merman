@@ -17,7 +17,7 @@ import {
   themeValidationToken,
 } from "./theme-edit-session.ts";
 
-const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"text":"#123456"}}}';
+const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"text":{"type":"color","value":"#123456"}}}}';
 
 test("opening an applied preset or None keeps its candidate and stays clean", () => {
   for (const candidate of [{ kind: "none" } as const, { kind: "preset", presetId: "cyberpunk" } as const]) {

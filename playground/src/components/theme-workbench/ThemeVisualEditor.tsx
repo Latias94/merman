@@ -10,8 +10,6 @@ import {
   getThemeStyleEntries,
   removeThemeCanvasBackground,
   restoreThemeCanvas,
-  setDefinitionToken,
-  setDefinitionTypography,
   setCompleteTypography,
   setThemeCanvasBase,
   setThemeRuleFacet,
@@ -24,9 +22,8 @@ import type { MermanDomainFacade } from "@/src/runtime/merman-core";
 import { NumberField, ListField } from "./ThemeEditorFields";
 import { PaintField } from "./ThemePaintEditor";
 import { ThemeCanvasLayers } from "./ThemeCanvasLayers";
-import { projectError } from "@/src/runtime/error-projection";
+import { ThemeDesignEditor } from "./ThemeDesignEditor";
 
-const TOKEN_NAMES = ["surface", "surface_alt", "surface_muted", "text", "border", "line", "accent"] as const;
 const FALLBACK_RULE_TARGETS = [
   "node", "node-label", "edge", "edge-label", "cluster", "cluster-label",
   "actor", "actor-label", "message", "message-label", "note", "note-label", "chart-series",
@@ -61,37 +58,12 @@ export function ThemeVisualEditor({
 }) {
   const { t } = useTranslation();
 
+  if (document.kind === "design") return <ThemeDesignEditor document={document} disabled={disabled} facade={facade} catalog={catalog} familyId={familyId} onChange={onChange} />;
+
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-5 disabled:opacity-60">
       <p className="text-xs leading-relaxed text-muted-foreground">{t("themeWorkbench.visualHint", { defaultValue: "Edits preserve other fields. Advanced paints, resources, effects and typography remain available in JSON." })}</p>
-      <ThemeCanvasEditor document={document} facade={facade} onChange={onChange} />
-      {document.kind === "definition" && (
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold">{t("themeWorkbench.tokens", { defaultValue: "Color tokens" })}</h3>
-          {TOKEN_NAMES.map((token) => (
-            <PaintField
-              key={token}
-              label={t(`themeWorkbench.token.${token}`, { defaultValue: token.replaceAll("_", " ") })}
-              value={document.definition.tokens[token]}
-              allowAdvanced={false}
-              onChange={(value) => onChange(setDefinitionToken(document, token, typeof value === "string" ? value : undefined))}
-            />
-          ))}
-          <ListField
-            label={t("themeWorkbench.series", { defaultValue: "Series colors, one per line" })}
-            value={document.definition.tokens.series}
-            onChange={(value) => onChange(setDefinitionToken(document, "series", value))}
-          />
-          <h3 className="pt-1 text-xs font-semibold">{t("themeWorkbench.typography", { defaultValue: "Typography" })}</h3>
-          <ListField
-            label={t("themeWorkbench.fontStack", { defaultValue: "Font stack, one family per line" })}
-            value={document.definition.tokens.typography?.font_stack}
-            onChange={(value) => onChange(setDefinitionTypography(document, "font_stack", value))}
-          />
-          <NumberField label={t("themeWorkbench.fontSize", { defaultValue: "Font size (px)" })} value={document.definition.tokens.typography?.font_size_px} min={1} onChange={(value) => onChange(setDefinitionTypography(document, "font_size_px", value ?? undefined))} />
-          <NumberField label={t("themeWorkbench.fontWeight", { defaultValue: "Font weight" })} value={document.definition.tokens.typography?.font_weight} min={1} max={1000} onChange={(value) => onChange(setDefinitionTypography(document, "font_weight", value ?? undefined))} />
-        </section>
-      )}
+      <ThemeCanvasEditor document={document} onChange={onChange} />
       {document.kind === "complete_spec" && (
         <section className="space-y-3">
           <h3 className="text-xs font-semibold">{t("themeWorkbench.typography", { defaultValue: "Typography" })}</h3>
@@ -111,38 +83,25 @@ export function ThemeVisualEditor({
 }
 
 function canvasIdentity(document: ThemeRecipeV1): string {
-  return JSON.stringify(document.kind === "definition" ? document.definition.tokens.canvas ?? null : document.complete_spec.canvas ?? null);
+  return JSON.stringify(document.kind === "design" ? document.design.canvas ?? null : document.complete_spec.canvas ?? null);
 }
 
-function ThemeCanvasEditor({ document, facade, onChange }: {
+function ThemeCanvasEditor({ document, onChange }: {
   document: ThemeRecipeV1;
-  facade: MermanDomainFacade | null;
   onChange(document: ThemeRecipeV1): void;
 }) {
   const { t } = useTranslation();
   const [removed, setRemoved] = useState<{ before: ThemeRecipeV1; after: string } | null>(null);
-  const [conversionError, setConversionError] = useState<string | null>(null);
-  const base = document.kind === "definition" ? document.definition.tokens.canvas : document.complete_spec.canvas?.base;
+  const base = document.kind === "complete_spec" ? document.complete_spec.canvas?.base : undefined;
   const layers = document.kind === "complete_spec" ? document.complete_spec.canvas?.layers ?? [] : [];
-  const defaultBase = useMemo(() => {
-    if (document.kind !== "definition" || base !== undefined) return undefined;
-    try {
-      return facade?.materializeTheme(document.definition).spec.canvas?.base;
-    } catch {
-      return undefined;
-    }
-  }, [document, base, facade]);
-  const defaultColor = typeof defaultBase === "string" ? defaultBase : defaultBase?.kind === "solid" ? defaultBase.color : undefined;
-  const defaultLabel = document.kind === "definition" && defaultColor
-    ? t("themeWorkbench.canvasDefaultColor", { color: defaultColor })
-    : t("themeWorkbench.canvasDefault");
+  const defaultLabel = t("themeWorkbench.canvasDefault");
   const canUndo = removed !== null && removed.after === canvasIdentity(document);
 
   return (
     <section className="space-y-3 rounded-md border p-3" aria-label={t("themeWorkbench.canvas")}>
       <h3 className="text-xs font-semibold">{t("themeWorkbench.canvas")}</h3>
       <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.canvasExportHint")}</p>
-      <PaintField label={t("themeWorkbench.canvasBase")} value={base} allowAdvanced={document.kind === "complete_spec"} omitLabel={defaultLabel} onChange={(value) => {
+      <PaintField label={t("themeWorkbench.canvasBase")} value={base} omitLabel={defaultLabel} onChange={(value) => {
         setRemoved(null);
         onChange(setThemeCanvasBase(document, value ?? undefined));
       }} />
@@ -150,16 +109,7 @@ function ThemeCanvasEditor({ document, facade, onChange }: {
         <p>{t("themeWorkbench.canvasLayers", { count: layers.length })}</p>
         <p>{t("themeWorkbench.canvasLayersHint")}</p>
       </div>
-      {document.kind === "complete_spec" ? <ThemeCanvasLayers document={document} onChange={onChange} /> : <div className="space-y-2 border-t pt-3">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.advancedStylingHint")}</p>
-        <Button type="button" variant="outline" size="sm" disabled={!facade} onClick={() => {
-          try {
-            if (!facade) return;
-            onChange({ schema_version: 1, kind: "complete_spec", complete_spec: facade.materializeTheme(document.definition).spec });
-          } catch (cause) { setConversionError(projectError(cause).summary); }
-        }}>{t("themeWorkbench.enableAdvancedStyling")}</Button>
-        {conversionError && <p role="alert" className="text-xs text-destructive">{conversionError}</p>}
-      </div>}
+      {document.kind === "complete_spec" && <ThemeCanvasLayers document={document} onChange={onChange} />}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" disabled={canUndo} onClick={() => {
           const next = removeThemeCanvasBackground(document);

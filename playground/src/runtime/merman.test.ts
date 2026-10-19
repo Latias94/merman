@@ -140,7 +140,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
   for (const mode of ["browser", "headless"] as const) {
     await context.test(`${mode} publishes exactly one result call`, () => {
       calls.length = 0;
-      const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"red","accent":"blue"}}}';
+      const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"red"},"accent":{"type":"color","value":"blue"}}}}';
       const input = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
         textMeasurementMode: mode,
         themeRecipeJson: recipe,
@@ -211,7 +211,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
 });
 
 test("custom recipe reaches the Rust transport intact and changes render identity", () => {
-  const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#123456","accent":"#abcdef"}}}';
+  const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#123456"},"accent":{"type":"color","value":"#abcdef"}}}}';
   const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
     themeRecipeJson: recipe,
   });
@@ -230,7 +230,7 @@ test("invalid recipe and mixed selections are configuration errors", () => {
   for (const options of [
     { themeRecipeJson: "null" },
     { themeRecipeJson: "{}" },
-    { themeRecipeJson: '{"schema_version":1,"kind":"definition"},"site_config":{}' },
+    { themeRecipeJson: '{"schema_version":1,"kind":"design"},"site_config":{}' },
     { themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}', themePresetId: "brutalist" },
   ]) {
     const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", options);

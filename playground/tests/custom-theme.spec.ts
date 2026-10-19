@@ -12,11 +12,11 @@ import {
 
 const recipe = {
   schema_version: 1,
-  kind: "definition",
-  definition: {
-    authoring_schema_version: 1,
-    expansion_version: 1,
-    tokens: { canvas: "#fef3c7", text: "#172554", accent: "#dc2626" },
+  kind: "design",
+  design: {
+    tokens: { text: { type: "color", label: "Text", value: "#172554" }, accent: { type: "color", label: "Accent", value: "#dc2626" } },
+    canvas: { base: "#fef3c7" },
+    styles: { "node-label": { fill: { kind: "solid", color: { ref: "text" } } } },
   },
 } satisfies ThemeRecipeV1;
 
@@ -155,7 +155,7 @@ test("invalid JSON keeps the last valid preview while current source edits survi
     '{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000"},"canvas":{"base":"#0000ff"}}}',
     JSON.stringify({ ...recipe, schema_version: 99 }),
     JSON.stringify({ ...recipe, unknown: true }),
-    JSON.stringify(recipe).replace('"#dc2626"', '"#dc2626","accent":"#000000"'),
+    JSON.stringify(recipe).replace('"value":"#dc2626"', '"value":"#dc2626","value":"#000000"'),
   ]) {
     await replaceRecipe(page, workbench, draft);
     await expect(workbench.getByRole("alert")).toBeVisible();
@@ -180,15 +180,16 @@ test("Visual edits and JSON share one draft and applying does not depend on a va
   await newRecipe(page, workbench);
   await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
-  const target = workbench.getByLabel("Semantic target", { exact: true });
+  const target = workbench.getByLabel("Semantic object", { exact: true });
   await expect(target.locator("option[value='actor']")).toHaveCount(1);
   await expect(target.locator("option[value='cluster']")).toHaveCount(1);
+  await workbench.locator('[data-theme-resource="text"] > summary').click();
   const text = workbench.getByRole("textbox", { name: /^text$/i });
   await text.fill("#224466");
   await text.press("Enter");
   const edited = await copyRecipe(page, workbench);
-  expect(edited.kind).toBe("definition");
-  if (edited.kind === "definition") expect(edited.definition.tokens.text).toBe("#224466");
+  expect(edited.kind).toBe("design");
+  if (edited.kind === "design") expect(edited.design.tokens?.text.value).toBe("#224466");
   await replaceEditorSource(page, "flowchart LR\nA -->");
   await expect(page.locator('[data-merman-render-error="true"]')).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
@@ -206,6 +207,7 @@ test("theme history spans Visual, invalid JSON and Apply without undoing source 
   const workbench = await editor(page);
   await newRecipe(page, workbench);
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.locator('[data-theme-resource="text"] > summary').click();
   const text = workbench.getByRole("textbox", { name: /^text$/i });
   await text.fill("#224466");
   await text.press("Enter");
@@ -232,20 +234,16 @@ test("theme history spans Visual, invalid JSON and Apply without undoing source 
   await expect.poll(() => svg(page)).toContain("#224466");
 });
 
-test("gradients and ordered background layers survive conversion, history and JSON exchange", async ({ page }) => {
+test("complete gradients and ordered background layers preserve history and JSON exchange", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await start(page);
   const workbench = await editor(page);
-  await newRecipe(page, workbench);
+  const complete = { schema_version: 1, kind: "complete_spec", complete_spec: { canvas: { base: "#fef3c7" }, styles: [{ kind: "rule", target: "node", style: { fill: "#ffffff" } }] } } satisfies ThemeRecipeV1;
+  await newRecipe(page, workbench, JSON.stringify(complete));
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
-  await workbench.getByRole("button", { name: "Enable gradients and layers", exact: true }).click();
   const expanded = await copyRecipe(page, workbench);
   expect(expanded.kind).toBe("complete_spec");
   if (expanded.kind !== "complete_spec") return;
-  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
-  expect(await copyRecipe(page, workbench)).toEqual(recipe);
-  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
-  expect(await copyRecipe(page, workbench)).toEqual(expanded);
 
   const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
   await base.getByLabel("Canvas base: value mode", { exact: true }).selectOption("linear-gradient");
@@ -345,37 +343,26 @@ test("grid layers render on narrow screens, sliders undo as one action and impor
   errors.assertNone();
 });
 
-test("customizing Cyberpunk preserves its complete canvas, effects, assets and ordered family rules", async ({ page }) => {
+test("creating from Cyberpunk edits shared colors without losing gradient, effect or family bindings", async ({ page }) => {
   await start(page, "cyberpunk");
   const workbench = await editor(page);
-  await workbench.getByRole("button", { name: "Customize", exact: true }).click();
+  await workbench.getByRole("button", { name: "Create from Cyberpunk", exact: true }).click();
   const exported = await copyRecipe(page, workbench);
-  expect(exported.kind).toBe("complete_spec");
-  if (exported.kind !== "complete_spec") return;
-  expect(exported.complete_spec.canvas?.layers?.length).toBeGreaterThan(0);
-  expect(exported.complete_spec.effects?.length).toBeGreaterThan(0);
-  expect(exported.complete_spec.styles?.some((entry) => entry.kind === "rule" && entry.family === "sequence")).toBe(true);
+  expect(exported.kind).toBe("design");
+  if (exported.kind !== "design") throw new Error("Expected an editable design.");
+  expect(exported.design.canvas?.layers?.length).toBeGreaterThan(0);
+  expect(Object.values(exported.design.tokens ?? {}).some((token) => token.type === "effect")).toBe(true);
+  expect(exported.design.rules?.some((entry) => entry.family === "sequence")).toBe(true);
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
-  const base = workbench.getByRole("textbox", { name: "Canvas base", exact: true });
-  await base.fill("#fef3c7");
-  await base.press("Enter");
-  await workbench.getByText("Append an override", { exact: true }).click();
-  await workbench.getByLabel("Family scope", { exact: true }).selectOption("family:class");
-  await workbench.getByLabel("Semantic target", { exact: true }).selectOption("node");
-  await workbench.getByRole("button", { name: "Append rule", exact: true }).click();
-  await workbench.getByLabel("Border / line paint: value mode", { exact: true }).selectOption("color");
-  const border = workbench.getByRole("textbox", { name: "Border / line paint", exact: true });
-  await border.fill("#ff00ff");
-  await border.press("Enter");
+  const cyan = workbench.locator('[data-theme-resource="neon-cyan"]');
+  await cyan.locator(":scope > summary").click();
+  await cyan.locator('input[type="color"]').fill("#37b24d");
   const edited = await copyRecipe(page, workbench);
   expect(edited).toEqual({
     ...exported,
-    complete_spec: {
-      ...exported.complete_spec,
-      canvas: { ...exported.complete_spec.canvas, base: "#fef3c7" },
-      styles: [...exported.complete_spec.styles ?? [], {
-        kind: "rule", family: "class", target: "node", style: { stroke: { paint: "#ff00ff" } },
-      }],
+    design: {
+      ...exported.design,
+      tokens: { ...exported.design.tokens, "neon-cyan": { ...exported.design.tokens!["neon-cyan"], value: "#37b24d" } },
     },
   });
   const downloadPromise = page.waitForEvent("download");
@@ -387,12 +374,17 @@ test("customizing Cyberpunk preserves its complete canvas, effects, assets and o
   });
   expect(await copyRecipe(page, workbench)).toEqual(edited);
   await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
-  await expect.poll(() => svg(page)).toContain("#fef3c7");
+  await expect.poll(() => svg(page)).toContain("#37b24d");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy SVG", exact: true }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain("<svg");
-  expect(copied).toContain("#fef3c7");
+  expect(copied).toContain("#37b24d");
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  const reopened = await editor(page);
+  await reopened.getByRole("tab", { name: "Presets", exact: true }).click();
+  await reopened.getByRole("button", { name: "Create from Cyberpunk", exact: true }).click();
+  expect(await copyRecipe(page, reopened)).toEqual(exported);
 });
 
 test("canvas transparency keeps layers, removal clears them, and restoration preserves other edits", async ({ page }) => {
@@ -401,22 +393,24 @@ test("canvas transparency keeps layers, removal clears them, and restoration pre
   const workbench = await editor(page);
   await workbench.getByRole("button", { name: "Customize", exact: true }).click();
   const original = await copyRecipe(page, workbench);
-  expect(original.kind).toBe("complete_spec");
-  if (original.kind !== "complete_spec") return;
-  await workbench.getByLabel("Canvas base: value mode", { exact: true }).selectOption("transparent");
+  expect(original.kind).toBe("design");
+  if (original.kind !== "design") throw new Error("Expected a design.");
+  const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
+  await base.getByLabel("Canvas base: Value source", { exact: true }).selectOption("local");
+  await base.getByLabel("Paint type", { exact: true }).selectOption("transparent");
   const transparent = await copyRecipe(page, workbench);
-  expect(transparent.kind).toBe("complete_spec");
-  if (transparent.kind !== "complete_spec") return;
-  expect(transparent.complete_spec.canvas).toEqual({ ...original.complete_spec.canvas, base: "transparent" });
+  expect(transparent.kind).toBe("design");
+  if (transparent.kind !== "design") throw new Error("Expected a design.");
+  expect(transparent.design.canvas).toEqual({ ...original.design.canvas, base: "transparent" });
   await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBeGreaterThan(0);
   await workbench.getByRole("button", { name: "Remove canvas background", exact: true }).click();
   const removed = await copyRecipe(page, workbench);
-  expect(removed.kind).toBe("complete_spec");
-  if (removed.kind !== "complete_spec") return;
-  expect(removed.complete_spec.canvas?.base).toBe("transparent");
-  expect(removed.complete_spec.canvas?.layers).toBeUndefined();
-  expect(removed.complete_spec.styles).toEqual(original.complete_spec.styles);
-  expect(removed.complete_spec.effects).toEqual(original.complete_spec.effects);
+  expect(removed.kind).toBe("design");
+  if (removed.kind !== "design") throw new Error("Expected a design.");
+  expect(removed.design.canvas?.base).toBe("transparent");
+  expect(removed.design.canvas?.layers).toBeUndefined();
+  expect(removed.design.styles).toEqual(original.design.styles);
+  expect(removed.design.tokens).toEqual(original.design.tokens);
   await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBe(0);
   await workbench.getByRole("button", { name: "Restore canvas background", exact: true }).click();
   expect(await copyRecipe(page, workbench)).toEqual(transparent);
@@ -427,21 +421,80 @@ test("canvas transparency keeps layers, removal clears them, and restoration pre
   errors.assertNone();
 });
 
-test("definition canvas defaults come from Rust and transparent background survives JSON exchange", async ({ page }) => {
+test("design canvas omission and transparent background survive JSON exchange", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await start(page);
   const workbench = await editor(page);
-  await newRecipe(page, workbench, JSON.stringify({ ...recipe, definition: { ...recipe.definition, tokens: { text: "#172554" } } }));
+  const omitted = { ...recipe, design: { ...recipe.design, canvas: {} } };
+  await newRecipe(page, workbench, JSON.stringify(omitted));
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
-  const baseMode = workbench.getByLabel("Canvas base: value mode", { exact: true });
-  await expect(baseMode.locator("option:checked")).toContainText("#ffffff");
-  await baseMode.selectOption("transparent");
+  const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
+  const baseMode = base.getByLabel("Canvas base: Value source", { exact: true });
+  await expect(baseMode).toHaveValue("omit");
+  await baseMode.selectOption("local");
+  await base.getByLabel("Paint type", { exact: true }).selectOption("transparent");
   const edited = await copyRecipe(page, workbench);
-  expect(edited.kind).toBe("definition");
-  if (edited.kind === "definition") expect(edited.definition.tokens.canvas).toBe("transparent");
+  expect(edited.kind).toBe("design");
+  if (edited.kind === "design") expect(edited.design.canvas?.base).toBe("transparent");
   await baseMode.selectOption("omit");
-  expect(await copyRecipe(page, workbench)).toEqual({ ...recipe, definition: { ...recipe.definition, tokens: { text: "#172554" } } });
-  await expect(baseMode.locator("option:checked")).toContainText("#ffffff");
+  expect(await copyRecipe(page, workbench)).toEqual(omitted);
+  await expect(baseMode).toHaveValue("omit");
+  errors.assertNone();
+});
+
+test("custom named settings and independent hard shadows use the same designer and survive local copies", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  await replaceEditorSource(page, '---\nconfig:\n  flowchart:\n    look: classic\n---\nflowchart LR\nA[Start] --> B[Done]');
+  const workbench = await editor(page);
+  const source = { ...recipe, design: { ...recipe.design, styles: { node: { fill: "#ffffff" } } } } satisfies ThemeRecipeV1;
+  await newRecipe(page, workbench, JSON.stringify(source));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByText("Add a shared value", { exact: true }).click();
+  await workbench.getByRole("textbox", { name: "Setting name", exact: true }).fill("My paper shadow");
+  await workbench.getByLabel("Setting type", { exact: true }).selectOption("effect");
+  await workbench.getByRole("button", { name: "Create setting", exact: true }).click();
+  const resource = workbench.locator('[data-theme-resource="custom-1"]');
+  await resource.locator(":scope > summary").click();
+  await expect(resource.getByLabel("Shadow composition", { exact: true })).toHaveValue("independent");
+  const shadow = resource.locator("[data-theme-shadow-editor]").first();
+  await shadow.getByRole("spinbutton", { name: "Horizontal offset", exact: true }).fill("8");
+  await shadow.getByRole("spinbutton", { name: "Horizontal offset", exact: true }).press("Enter");
+  await shadow.getByRole("spinbutton", { name: "Vertical offset", exact: true }).fill("6");
+  await shadow.getByRole("spinbutton", { name: "Vertical offset", exact: true }).press("Enter");
+  await expect(shadow.getByRole("spinbutton", { name: "Shadow softness (px)", exact: true })).toHaveValue("0");
+  await resource.getByRole("button", { name: "Add shadow", exact: true }).click();
+  await workbench.getByLabel("Semantic object", { exact: true }).selectOption("node");
+  const style = workbench.locator('[data-design-value="/styles/node/fill"]').locator("..");
+  await style.getByLabel("Add a property…", { exact: true }).selectOption("effect");
+  const effect = workbench.locator('[data-design-value="/styles/node/effect"]');
+  await effect.getByLabel("Shadow / effect: Value source", { exact: true }).selectOption("ref:custom-1");
+  const linked = await copyRecipe(page, workbench);
+  if (linked.kind !== "design") throw new Error("Expected a design.");
+  expect(linked.design.styles?.node.effect).toEqual({ ref: "custom-1" });
+  expect(linked.design.tokens?.["custom-1"].value).toMatchObject({ kind: "shadow-stack", composition: "independent", shadows: [{ offset_x: 8, offset_y: 6, std_deviation: 0 }, { std_deviation: 0 }] });
+  await expect.poll(() => svg(page)).toContain('in="SourceAlpha"');
+  await effect.getByRole("button", { name: "Use a local copy", exact: true }).click();
+  const detached = await copyRecipe(page, workbench);
+  if (detached.kind !== "design") throw new Error("Expected a design.");
+  expect(detached.design.styles?.node.effect).toEqual(linked.design.tokens?.["custom-1"].value);
+  expect(detached.design.tokens).toEqual(linked.design.tokens);
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(linked);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await workbench.locator('input[type="file"]').setInputFiles({ name: "my-theme.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(linked)) });
+  expect(await copyRecipe(page, workbench)).toEqual(linked);
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const importedResource = workbench.locator('[data-theme-resource="custom-1"]');
+  await importedResource.locator(":scope > summary").click();
+  await importedResource.getByText("Name, group and description", { exact: true }).click();
+  await importedResource.getByRole("textbox", { name: "Reference ID", exact: true }).fill("paper-shadow");
+  await importedResource.getByRole("textbox", { name: "Reference ID", exact: true }).press("Enter");
+  const renamed = await copyRecipe(page, workbench);
+  if (renamed.kind !== "design") throw new Error("Expected a design.");
+  expect(renamed.design.tokens?.["custom-1"]).toBeUndefined();
+  expect(renamed.design.styles?.node.effect).toEqual({ ref: "paper-shadow" });
+  expect(renamed.design.tokens?.["paper-shadow"]).toEqual(linked.design.tokens?.["custom-1"]);
   errors.assertNone();
 });
 
@@ -563,7 +616,7 @@ test("late file reads cannot overwrite an edit or a reopened workbench", async (
   const delayedFile = { name: "delayed.json", mimeType: "application/json", buffer: Buffer.from("{}") };
   await workbench.locator('input[type="file"]').setInputFiles(delayedFile);
   await expect(workbench.locator("[data-theme-draft-status]")).toContainText("Reading theme…");
-  const changed = { ...recipe, definition: { ...recipe.definition, tokens: { ...recipe.definition.tokens, canvas: "#ddffdd" } } };
+  const changed = { ...recipe, design: { ...recipe.design, canvas: { base: "#ddffdd" } } };
   await replaceRecipe(page, workbench, JSON.stringify(changed));
   await page.evaluate(() => window.dispatchEvent(new Event("release-theme-import")));
   expect(await copyRecipe(page, workbench)).toEqual(changed);
@@ -602,4 +655,30 @@ test("Chinese workbench keeps preview, JSON and theme actions reachable on a nar
   await page.screenshot({ path: test.info().outputPath("custom-theme-mobile-zh.png") });
   await workbench.getByRole("button", { name: "取消", exact: true }).click();
   await expect(workbench).toBeHidden();
+});
+
+test("visual gradient bounds and invalid color edits remain recoverable", async ({ page }) => {
+  await start(page);
+  const workbench = await editor(page);
+  const document = { schema_version: 1, kind: "design", design: { canvas: { base: {
+    kind: "linear-gradient", angle_degrees: 0,
+    stops: [{ offset: 0, color: "#ffffff" }, { offset: 0.5, color: "#888888" }, { offset: 1, color: "#000000" }],
+  } } } };
+  await newRecipe(page, workbench, JSON.stringify(document));
+  await expect(workbench.getByRole("button", { name: "Copy JSON", exact: true })).toBeEnabled();
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const offset = workbench.locator('[data-design-value="/canvas/base/stops/0/offset"]').getByRole("spinbutton");
+  await expect(offset).toHaveAttribute("max", "0.5");
+  await offset.fill("0.75");
+  await offset.press("Tab");
+  expect(await copyRecipe(page, workbench)).toEqual(document);
+  const color = workbench.locator('[data-design-value="/canvas/base/stops/0/color"]').getByRole("textbox", { name: "Color 1", exact: true });
+  await color.fill("not-a-color");
+  await color.press("Tab");
+  await expect(workbench.getByRole("button", { name: "Copy JSON", exact: true })).toBeDisabled();
+  await expect(color).toBeVisible();
+  await color.fill("#123456");
+  await color.press("Tab");
+  await expect(workbench.getByRole("button", { name: "Copy JSON", exact: true })).toBeEnabled();
+  await expect.poll(() => svg(page)).toContain("#123456");
 });

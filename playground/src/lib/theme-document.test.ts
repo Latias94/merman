@@ -6,8 +6,11 @@ import {
   appendThemeRule,
   removeThemeCanvasBackground,
   restoreThemeCanvas,
-  setDefinitionToken,
-  setDefinitionTypography,
+  setThemeDesignPath,
+  copyThemeReferenceValue,
+  themeTokenDomain,
+  themeDesignPointer,
+  themeTokenFitsDomain,
   setCompleteTypography,
   setThemeCanvasBase,
   setThemeCanvasLayers,
@@ -20,8 +23,8 @@ import {
 
 test("validates original bytes before decoding duplicate fields or unknown versions", () => {
   for (const raw of [
-    '{"schema_version":1,"schema_version":2,"kind":"definition","definition":{}}',
-    '{"schema_version":99,"kind":"definition","definition":{}}',
+    '{"schema_version":1,"schema_version":2,"kind":"design","design":{}}',
+    '{"schema_version":99,"kind":"design","design":{}}',
   ]) {
     const observed: string[] = [];
     assert.throws(() => validateThemeDocument(raw, (input) => {
@@ -94,15 +97,14 @@ test("rule order controls preserve non-rule entries and allow deletion", () => {
 
 test("editing one rule selector field preserves the other selector fields", () => {
   const recipe: ThemeRecipeV1 = {
-    schema_version: 1, kind: "definition", definition: {
-      authoring_schema_version: 1, expansion_version: 1,
-      tokens: {}, styles: [{ kind: "rule", family: "sequence", variant: "actor", target: "node", style: {} }],
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      styles: [{ kind: "rule", family: "sequence", variant: "actor", target: "node", style: {} }],
     },
   };
   const changed = setThemeRuleSelector(recipe, 0, { target: "edge" });
-  assert.equal(changed.kind, "definition");
-  if (changed.kind !== "definition") return;
-  assert.deepEqual(changed.definition.styles?.[0], { kind: "rule", family: "sequence", variant: "actor", target: "edge", style: {} });
+  assert.equal(changed.kind, "complete_spec");
+  if (changed.kind !== "complete_spec") return;
+  assert.deepEqual(changed.complete_spec.styles?.[0], { kind: "rule", family: "sequence", variant: "actor", target: "edge", style: {} });
 });
 
 test("facet omission, Clear, transparent and zero remain distinct", () => {
@@ -131,24 +133,22 @@ test("facet omission, Clear, transparent and zero remain distinct", () => {
   assert.match(JSON.stringify(setThemeCanvasBase(original, "transparent")), /"base":"transparent"/);
 });
 
-test("definition token and typography edits preserve unrelated tokens and styles", () => {
+test("design shared value edits preserve explicit bindings and unrelated styles", () => {
   const original: ThemeRecipeV1 = {
-    schema_version: 1, kind: "definition", definition: {
-      authoring_schema_version: 1, expansion_version: 1,
-      tokens: { text: "#111111", series: ["#222222"], typography: { font_stack: ["Arial"], font_weight: 500 } },
-      styles: [{ kind: "rule", target: "node", style: { radius: 0 } }],
+    schema_version: 1, kind: "design", design: {
+      tokens: { text: { type: "color", label: "Text", value: "#111111" }, font: { type: "text-style", value: { font_stack: ["Arial"], font_weight: 500 } } },
+      styles: { "node-label": { fill: { kind: "solid", color: { ref: "text" } } } },
+      typography: { default: { ref: "font" } },
     },
   };
-  const edited = setDefinitionTypography(setDefinitionToken(original, "text", "#333333"), "font_size_px", 18);
+  const edited = setThemeDesignPath(setThemeDesignPath(original.design, ["tokens", "text", "value"], "#333333"), ["tokens", "font", "value", "font_size_px"], 18);
   assert.deepEqual(edited, {
-    ...original, definition: {
-      ...original.definition,
-      tokens: { ...original.definition.tokens, text: "#333333", typography: { font_stack: ["Arial"], font_weight: 500, font_size_px: 18 } },
-    },
+    ...original.design,
+    tokens: { ...original.design.tokens, text: { type: "color", label: "Text", value: "#333333" }, font: { type: "text-style", value: { font_stack: ["Arial"], font_weight: 500, font_size_px: 18 } } },
   });
-  const omitted = setDefinitionToken(edited, "series", undefined);
-  assert.equal(omitted.kind, "definition");
-  if (omitted.kind === "definition") assert.equal("series" in omitted.definition.tokens, false);
+  assert.equal(original.design.tokens?.text.value, "#111111");
+  assert.throws(() => setThemeDesignPath(edited, ["typography", "default", "font_size_px"], 20), /local copy/);
+  assert.deepEqual(setThemeDesignPath(edited, ["canvas", "layers"], [] ).canvas?.layers, []);
 });
 
 test("complete typography edits preserve family typography and styles", () => {
@@ -188,19 +188,45 @@ test("removing a layered canvas and restoring it keeps intervening style edits",
   assert.equal(original.complete_spec.canvas?.base, "#123456");
 });
 
-test("definition default, transparent and restored canvas remain distinct", () => {
+test("design omitted, transparent and restored canvas remain distinct", () => {
   const original: ThemeRecipeV1 = {
-    schema_version: 1, kind: "definition", definition: {
-      authoring_schema_version: 1, expansion_version: 1, tokens: { text: "#123456" },
-    },
+    schema_version: 1, kind: "design", design: { tokens: { text: { type: "color", value: "#123456" } } },
   };
   const removed = removeThemeCanvasBackground(original);
-  assert.equal(removed.kind, "definition");
-  if (removed.kind !== "definition") return;
-  assert.equal(removed.definition.tokens.canvas, "transparent");
-  assert.deepEqual(setThemeCanvasBase(removed, undefined), original);
+  assert.equal(removed.kind, "design");
+  if (removed.kind !== "design") return;
+  assert.equal(removed.design.canvas?.base, "transparent");
+  const omitted = setThemeCanvasBase(removed, undefined);
+  assert.equal(omitted.kind === "design" && omitted.design.canvas?.base, undefined);
   assert.deepEqual(restoreThemeCanvas(removed, original), original);
-  assert.throws(() => setThemeCanvasBase(original, { kind: "solid", color: "#123456" }), /require a color/);
+  assert.equal(setThemeCanvasBase(original, { kind: "solid", color: "#123456" }).kind, "design");
+});
+
+test("local resource copies follow exact aliases and retain nested bindings", () => {
+  const design = { tokens: {
+    "brand.color": { type: "color", value: "#123456" },
+    alias: { type: "color", value: { ref: "brand.color" } },
+    paint: { type: "paint", value: { kind: "solid", color: { ref: "alias" } } },
+  } } as const;
+  assert.equal(copyThemeReferenceValue(design, "alias"), "#123456");
+  assert.deepEqual(copyThemeReferenceValue(design, "paint"), { kind: "solid", color: { ref: "alias" } });
+  assert.throws(() => copyThemeReferenceValue(design, "brand"), /Unknown theme value/);
+  assert.throws(() => copyThemeReferenceValue({ tokens: { a: { type: "color", value: { ref: "b" } }, b: { type: "color", value: { ref: "a" } } } }, "a"), /Circular/);
+  assert.equal(themeDesignPointer(["tokens", "a/b~c", "value"]), "/tokens/a~1b~0c/value");
+  assert.equal(themeTokenFitsDomain(design, "alias", "color"), true);
+  assert.equal(themeTokenFitsDomain(design, "paint", "color"), false);
+  const lengths = { tokens: { ratio: { type: "length", value: { percent: 50 } }, pixels: { type: "length", value: 10 } } } as const;
+  assert.equal(themeTokenFitsDomain(lengths, "ratio", "length", { value_type: "length", units: ["px"] }), false);
+  assert.equal(themeTokenFitsDomain(lengths, "pixels", "length", { value_type: "length", min: 0, max: 8 }), false);
+});
+
+test("shared controls intersect Rust consumer limits instead of inventing a global domain", () => {
+  const domain = themeTokenDomain("weight", "number", [
+    { token: "weight", path: "/styles/node/opacity", domain: { value_type: "number", min: 0, max: 1, units: ["px", "percent"] } },
+    { token: "weight", path: "/rules/0/style/opacity", domain: { value_type: "number", min: 0.2, max: 0.8, units: ["px"] } },
+    { token: "other", path: "/styles/edge/opacity", domain: { value_type: "number", min: 100 } },
+  ]);
+  assert.deepEqual(domain, { value_type: "number", min: 0.2, max: 0.8, units: ["px"], choices: undefined });
 });
 
 test("canvas layer editing preserves base, bleed, resources, effects and scoped styles", () => {
@@ -219,4 +245,25 @@ test("canvas layer editing preserves base, bleed, resources, effects and scoped 
   assert.equal(removed.kind, "complete_spec");
   if (removed.kind === "complete_spec") assert.deepEqual(removed.complete_spec.canvas, { base: "#123456", bleed: 12 });
   assert.equal(original.complete_spec.canvas?.layers?.[0].paint, "#abcdef");
+});
+
+test("renaming shared IDs rewrites explicit aliases and consumers atomically", async () => {
+  const { renameThemeToken } = await import("./theme-document.ts");
+  const design = { tokens: { ink: { type: "color" as const, value: "red" }, alias: { type: "color" as const, value: { ref: "ink" } } }, styles: { node: { fill: { kind: "solid" as const, color: { ref: "ink" } } } } };
+  const changed = renameThemeToken(design, "ink", "brand");
+  assert.equal(Object.hasOwn(changed.tokens!, "ink"), false);
+  assert.deepEqual(changed.tokens!.alias.value, { ref: "brand" });
+  assert.equal(JSON.stringify(changed).includes('"ref":"ink"'), false);
+  assert.equal(JSON.stringify(design).includes('"ref":"ink"'), true);
+  assert.throws(() => renameThemeToken(design, "ink", "alias"));
+  assert.throws(() => renameThemeToken(design, "ink", "x".repeat(129)));
+});
+
+test("open theme IDs remain own properties without mutating object prototypes", async () => {
+  const { setThemeDesignPath, renameThemeToken } = await import("./theme-document.ts");
+  const next = setThemeDesignPath({}, ["tokens", "__proto__"], { type: "color", value: "red" });
+  assert.equal(Object.hasOwn(next.tokens!, "__proto__"), true);
+  const renamed = renameThemeToken(next, "__proto__", "constructor");
+  assert.equal(Object.hasOwn(renamed.tokens!, "constructor"), true);
+  assert.equal(Object.hasOwn(Object.prototype, "type"), false);
 });

@@ -131,7 +131,7 @@ test("export rejects a publication whose theme alone differs from the applied se
   const publicationId = publication.snapshot.publicationId;
   for (const theme of [
     { themePresetId: "cyberpunk", themeRecipeJson: null },
-    { themePresetId: null, themeRecipeJson: '{"schema_version":1,"kind":"definition"}' },
+    { themePresetId: null, themeRecipeJson: '{"schema_version":1,"kind":"design"}' },
   ]) {
     const calls: string[] = [];
     const dependencies = {

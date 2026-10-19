@@ -10,7 +10,7 @@ import { newThemePaint, PaintField } from "./ThemePaintEditor";
 
 const SELECT_CLASS = "h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-function stripeLayer(angle_degrees: number): ThemeCanvasLayer {
+export function stripeLayer(angle_degrees: number): ThemeCanvasLayer {
   return { paint: {
     kind: "linear-gradient", angle_degrees,
     stops: [

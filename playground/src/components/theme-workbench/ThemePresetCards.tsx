@@ -5,6 +5,7 @@ import type { ThemePresetCatalogEntry } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import { themeFamilyTreatment } from "@/src/lib/theme-design";
 import type { ThemeCandidate } from "@/src/lib/theme-edit-session";
+import { Button } from "@/components/ui/button";
 
 const PRESET_SWATCHES: Readonly<Record<string, readonly string[]>> = {
   "editor-light": ["#ffffff", "#f0f4f8", "#24292e", "#0969da"],
@@ -24,11 +25,13 @@ export function ThemePresetCards({
   candidate,
   familyId,
   onSelect,
+  onCreate,
 }: {
   presets: readonly ThemePresetCatalogEntry[];
   candidate: ThemeCandidate;
   familyId?: string;
   onSelect(candidate: Exclude<ThemeCandidate, { kind: "custom" }>): void;
+  onCreate?(presetId: string): void;
 }) {
   const { t } = useTranslation();
   const cardClass = "relative flex min-w-0 flex-col gap-2 rounded-lg border p-3 text-left text-xs outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
@@ -54,8 +57,8 @@ export function ThemePresetCards({
           : ["#fafafa", "#e4e4e7", "#27272a", "#71717a"]);
 
         return (
+          <div key={preset.id} className="flex min-w-0 flex-col gap-1.5">
           <button
-            key={preset.id}
             type="button"
             aria-pressed={selected}
             disabled={!preset.available}
@@ -73,6 +76,8 @@ export function ThemePresetCards({
             {!preset.available && <span className="text-[11px] text-destructive">{t("themeWorkbench.unavailable", { defaultValue: "Unavailable in this runtime" })}</span>}
             {selected && <Check className="absolute right-2 top-2 size-3.5 text-primary" aria-hidden="true" />}
           </button>
+          {onCreate && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 whitespace-normal text-xs" disabled={!preset.available} aria-label={t("themeDesigner.createFromNamed", { name: preset.display_name })} onClick={() => onCreate(preset.id)}>{t("themeDesigner.createFrom")}</Button>}
+          </div>
         );
       })}
       <p className="col-span-2 text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.swatchHint", { defaultValue: "Illustrative swatches. Design scope does not certify output support or portability." })}</p>
