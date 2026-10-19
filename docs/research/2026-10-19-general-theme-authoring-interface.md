@@ -118,7 +118,7 @@ resolution is not a new per-node or per-export operation.
 
 ## Document model
 
-Use a new version of the exchange envelope with two explicit kinds:
+Use the existing unreleased version-1 exchange envelope with two explicit kinds:
 
 - **Design:** self-contained reusable values, references, semantic defaults, scoped rules, canvas,
   effects, compatibility settings, assets, and requirements. This is the normal authoring format.
