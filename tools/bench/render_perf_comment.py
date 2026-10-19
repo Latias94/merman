@@ -433,6 +433,68 @@ def _v2_report_contract_errors(
         row_outcomes.append(str(row_outcome))
 
     evidence_mode = method.get("evidence_mode")
+    if method.get("confirmation_protocol") not in (None, "generic_v2", "joint_non_regression_v1"):
+        errors.append("unsupported confirmation protocol")
+    if method.get("confirmation_protocol") == "joint_non_regression_v1":
+        if any(row.get("improvement_outcome") is not None
+               for row in raw_rows if isinstance(row, dict)):
+            errors.append("joint non-regression protocol does not assess improvement")
+        if any(owner.get(key) is not None for owner in (summary, report)
+               for key in ("candidate_decision", "candidate_outcome", "admission_outcome", "admission")):
+            errors.append("joint non-regression protocol cannot declare candidate admission")
+        if any(row.get("outcome") != "contract_failure"
+               for row in raw_rows if isinstance(row, dict)):
+            decision = _mapping(method.get("decision_error_contract"))
+            alpha = decision.get("family_wise_error_rate")
+            tail = decision.get("component_tail_error_rate")
+            family = decision.get("family_size")
+            if (decision.get("protocol") != "joint_non_regression_v1"
+                    or family != 2 * len(raw_rows)
+                    or not _is_finite_number(alpha) or alpha != 0.05
+                    or not _is_finite_number(tail)
+                    or not math.isclose(tail, alpha / (2 * len(raw_rows)))):
+                errors.append("joint protocol decision error contract is missing or inconsistent")
+            joint = _mapping(method.get("joint_non_regression_contract"))
+            plan = _mapping(joint.get("calibration_plan"))
+            if not plan.get("path") or not isinstance(plan.get("sha256"), str) or len(plan["sha256"]) != 64:
+                errors.append("joint protocol frozen calibration plan identity is missing")
+            policies = _mapping(joint.get("rows"))
+            for row in raw_rows:
+                if not isinstance(row, dict) or row.get("outcome") == "contract_failure":
+                    continue
+                name = row.get("fixture") or str(row.get("benchmark", "")).partition("/")[2]
+                policy = _mapping(policies.get(name))
+                metrics = _mapping(policy.get("metrics"))
+                selected = policy.get("selected_metric")
+                if any(not isinstance(_mapping(metrics.get(metric)).get("qualified"), bool)
+                       for metric in ("log_ratio", "absolute_ns")):
+                    errors.append(f"joint protocol metric qualification is missing for {name}")
+                for metric in ("log_ratio", "absolute_ns"):
+                    required = _mapping(metrics.get(metric)).get("required_pairs")
+                    if not isinstance(required, int) or isinstance(required, bool) or required < 8 or required % 2:
+                        errors.append(f"joint protocol required pair count is invalid for {name}:{metric}")
+                if row.get("outcome") == "confirmed_non_regression" and (
+                        selected not in ("log_ratio", "absolute_ns")
+                        or _mapping(metrics.get(selected)).get("qualified") is not True):
+                    errors.append(f"joint protocol qualified certificate is missing for {name}")
+                if row.get("outcome") == "confirmed_regression" and any(
+                        _mapping(metrics.get(metric)).get("qualified") is not True
+                        for metric in ("log_ratio", "absolute_ns")):
+                    errors.append(f"joint protocol regression requires both qualified metrics for {name}")
+                if row.get("outcome") in ("confirmed_non_regression", "confirmed_regression"):
+                    fixed = joint.get("fixed_confirmation_pairs")
+                    actual = row.get("pair_count")
+                    if (not isinstance(fixed, int) or isinstance(fixed, bool) or fixed < 8
+                            or fixed % 2 or not isinstance(actual, int) or isinstance(actual, bool)
+                            or actual != fixed):
+                        errors.append(f"joint protocol fixed schedule is incomplete for {name}")
+                    required_metrics = ("log_ratio", "absolute_ns")
+                    if row.get("outcome") == "confirmed_non_regression":
+                        required_metrics = (selected,) if selected in required_metrics else ()
+                    if isinstance(fixed, int) and any(
+                            isinstance(_mapping(metrics.get(metric)).get("required_pairs"), int)
+                            and fixed < metrics[metric]["required_pairs"] for metric in required_metrics):
+                        errors.append(f"joint protocol certificate pair requirement is unmet for {name}")
     discovery_only = method.get("discovery_only", False)
     if evidence_mode not in {"diagnostic", "confirmation"}:
         errors.append("method.evidence_mode must be diagnostic or confirmation")
@@ -540,6 +602,8 @@ def _render_v2_comment(
     relative_threshold = method.get("relative_threshold_percent")
     absolute_threshold = method.get("absolute_threshold_ns")
     confidence_contract = _mapping(method.get("confidence_contract"))
+    joint_protocol = method.get("confirmation_protocol") == "joint_non_regression_v1"
+    decision_error = _mapping(method.get("decision_error_contract"))
     confidence = _confidence_label(
         confidence_contract.get("component_confidence_level")
         or method.get("confidence_level")
@@ -569,13 +633,26 @@ def _render_v2_comment(
             f"- Balanced pairs: `{pair_count}` measured / `{required_pairs}` required",
             f"- Decision thresholds: relative `{fmt_percent(relative_threshold)}`, "
             f"absolute `{fmt_time(absolute_threshold)}`",
+        ]
+    )
+    if joint_protocol:
+        lines.extend([
+            "- Confirmation protocol: `joint_non_regression_v1`",
+            f"- Decision family error budget: `{_confidence_label(decision_error.get('family_wise_error_rate'))}`, "
+            f"family `{_markdown_cell(decision_error.get('family_size') or 'unknown')}`, "
+            f"per-tail budget `{_confidence_label(decision_error.get('component_tail_error_rate'))}`",
+            "- Coverage: conditional on the frozen A/A plan and valid paired-bootstrap bounds; "
+            "this does not claim simultaneous coverage of all displayed interval endpoints.",
+            "", "Candidate admission and improvement: `not assessed by this protocol`.", "",
+        ])
+    else:
+        lines.extend([
             f"- Simultaneous confidence: `{_confidence_label(confidence_contract.get('simultaneous_confidence_level'))}` "
             f"via `{_markdown_cell(confidence_contract.get('multiplicity_adjustment') or 'unknown')}`, "
             f"family `{_markdown_cell(confidence_contract.get('family_size') or 'unknown')}` at component "
             f"`{_confidence_label(confidence_contract.get('component_confidence_level'))}`",
-        ]
-    )
-    lines.extend(["", _v2_decision_text(outcome, _candidate_decision(report, summary)), ""])
+            "", _v2_decision_text(outcome, _candidate_decision(report, summary)), "",
+        ])
 
     shown_rows, total_rows = _v2_rows(report)
     if shown_rows:
@@ -607,6 +684,25 @@ def _render_v2_comment(
             )
     else:
         lines.append("No comparable benchmark rows were reported; see the artifact for coverage details.")
+
+    if joint_protocol and shown_rows:
+        policies = _mapping(_mapping(method.get("joint_non_regression_contract")).get("rows"))
+        lines.extend([
+            "", "| fixture | preselected certificate | relative qualified / pairs | absolute qualified / pairs |",
+            "|---|---|---|---|",
+        ])
+        for row in shown_rows:
+            name = row.get("fixture") or str(row.get("benchmark", "")).partition("/")[2]
+            policy = _mapping(policies.get(name))
+            metrics = _mapping(policy.get("metrics"))
+            relative = _mapping(metrics.get("log_ratio"))
+            absolute = _mapping(metrics.get("absolute_ns"))
+            lines.append(
+                f"| `{_markdown_cell(name)}` | `{_markdown_cell(policy.get('selected_metric') or 'unavailable')}` | "
+                f"`{relative.get('qualified', False)}` / `{relative.get('required_pairs', '-')}` | "
+                f"`{absolute.get('qualified', False)}` / `{absolute.get('required_pairs', '-')}` |"
+            )
+        lines.append("Unqualified metrics are descriptive; only the frozen certificate can prove non-regression.")
 
     lines.extend(
         [

@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The opt-in [joint release confirmation protocol](BENCHMARKING.md#statistics-and-decisions)
+now implements the independently reviewed, preregistered `joint_non_regression_v1` method.
+Both runners complete eight fresh A/A pairs; one qualified metric is selected before A/B, and
+the entire same-SVG public cohort must complete its fixed balanced schedule. An exclusive
+pre-A/B calibration plan records the full scope and identities. The protocol fixes 95% confidence
+and the 10%/1000 ns budget, reports conditional decision error rather than simultaneous coverage
+of all interval endpoints, and never assesses improvement or candidate admission. All 149
+performance contracts, 16 baseline-manifest tests, 51 native-memory contracts and 29 driver
+contracts pass; independent source and report reviews find no remaining blocker. No new timing
+or historical reclassification is part of this tooling change. Next preregister fresh v0.9.0
+calibration and confirmation over all 19 same-SVG rows, retaining the other 57 changed-output
+rows and all typed catalog controls as separate evidence.
+
 The comparison helper now implements the documented joint complement: either qualified regression
 upper bound below its threshold proves non-regression, with the mirrored rule for non-improvement.
 Positive regression/improvement still needs both strict bounds. Synthetic contracts reproduce
