@@ -24,6 +24,11 @@ canvas-layer composition, gradient-backed grid/stripe templates, and explicit de
 conversion. Imported pattern paints are preserved with an inline SVG writer limitation. The remaining journey,
 workspace redesign, effects, and reusable-role features describe future work.
 
+The subsequent authoring-interface investigation is recorded in
+[General theme authoring interface](2026-10-19-general-theme-authoring-interface.md). It proposes
+retained typed references and common editing for theme-specific values before further UI expansion.
+That proposal revisits the compact facade restrictions; it does not change the accepted contract yet.
+
 ## Immediate repairs
 
 - Replace the fixed desktop `lg:w-96` sidebar with the existing resizable panel primitive. Support
