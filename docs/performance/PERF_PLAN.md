@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 calibrated release observation](theme_v090_confirmation_macos_2026-10-19.md)
+confirms remaining default public E2E gaps against v0.9.0: Packet +27.33%/+2.196 us and Kanban
++26.15%/+11.712 us. Each stable row has 32 fresh AB/BA pairs after eight A/A pairs per runner;
+both exceed the joint 10% and 1 us goal. C4's historical absolute calibration fails and requires
+44 pairs above the registered cap of 32, so it remains inconclusive with no A/B ratio. All three
+inputs and SVG identities match, and there are no evidence-contract failures. Other same-SVG and
+changed-output rows remain in scope. Allocation cleanup has not yet established release convergence.
+
 The [October 19 C4 color checkpoint](c4_consumer_colors_macos_2026-10-19.md) removes color preparation
 for unused element types while retaining all stylesheet fonts and per-type reuse. All 206 public
 controls preserve exact SVG/reports/ordered measurement traces; 200 jointly stable rows never
