@@ -38,6 +38,16 @@ fragment classification, scanned-work accounting and the active-state/error conv
 Samples are not call counts or a causal estimate of their contribution to the release gap. The
 process footprint includes Criterion batching and is not production RSS evidence.
 
+A separate follow-up profiles the complete public `end_to_end` loop with the same four frozen
+runner/fixture combinations and twelve-second/six-second recipe. Unlike the render group's
+`iter_batched` setup, this loop includes request construction, parsing, preparation, completion
+and result destruction. Analysis selects `Routine::profile` subtrees. Both fixtures retain their
+exact SVG pre/postflight identities. Current whole-operation samples also reach XML serialization,
+bounded writes and active-state error checks; parse/preparation and measurement-report owners
+remain visible. This corroborates the next experiment's reachability but does not assign the E2E
+gap to those functions or to theme preparation. Raw evidence is under
+`target/bench/experiments/packet-kanban-e2e-profile-20261019/`.
+
 A proposed replacement of exact reservation with geometric growth is closed without code:
 `BoundedSvgOutput` already uses bounded doubling and explicit byte credit. That design existed in
 its original implementation; later admission amortization retained it. `try_reserve_exact` executes
