@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ThemeRecipeV1 } from "@mermanjs/web";
+import { SUPPORTED_THEMES } from "@mermanjs/web";
 
 import { encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
@@ -69,6 +70,64 @@ async function nodeFills(page: Page): Promise<(string | null)[]> {
       return shape ? getComputedStyle(shape).fill : null;
     }),
   );
+}
+
+for (const theme of SUPPORTED_THEMES) {
+  test(`Compare native Mermaid theme: ${theme}`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    await page.addInitScript(() => {
+      if (window === window.top) localStorage.setItem("merman-language", "en");
+    });
+    await page.goto(`./${encodeShareHash({
+      ...DEFAULT_WORKSPACE_SNAPSHOT,
+      code: "flowchart LR\nA[Native theme] --> B[Same colors]",
+      diagramTheme: theme,
+      diagramFont: "arial",
+      mermaidConfig: JSON.stringify({ layout: "dagre", htmlLabels: false }),
+    })}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: "Compare", exact: true }).click();
+    const panes = page.locator("[data-merman-compare-engine]");
+    await expect(panes).toHaveCount(2);
+    for (const pane of await panes.all()) {
+      await expect(pane).toHaveAttribute("data-merman-artifact-state", "ready");
+    }
+    const paints = await page.locator(".preview-container > div").evaluateAll((hosts) =>
+      hosts.map((host) => {
+        const shape = host.shadowRoot?.querySelector("g.node rect");
+        const edge = host.shadowRoot?.querySelector("path.flowchart-link");
+        function paint(element: Element, property: "fill" | "stroke") {
+          const value = getComputedStyle(element)[property];
+          if (!value.startsWith("url(")) return value;
+          const resourceId = value.match(/#([^"')]+)/)?.[1];
+          const gradient = resourceId ? host.shadowRoot?.querySelector("#" + CSS.escape(resourceId)) : null;
+          if (!(gradient instanceof SVGLinearGradientElement)) throw new Error("Missing native theme gradient");
+          return {
+            kind: gradient.localName,
+            units: gradient.gradientUnits.baseVal,
+            start: [gradient.x1.baseVal.valueAsString, gradient.y1.baseVal.valueAsString],
+            end: [gradient.x2.baseVal.valueAsString, gradient.y2.baseVal.valueAsString],
+            transform: gradient.getAttribute("gradientTransform"),
+            spread: gradient.spreadMethod.baseVal,
+            stops: Array.from(gradient.querySelectorAll("stop"), (stop) => ({
+              offset: stop.offset.baseVal,
+              color: getComputedStyle(stop).stopColor,
+              opacity: getComputedStyle(stop).stopOpacity,
+            })),
+          };
+        }
+        return shape && edge ? {
+          fill: paint(shape, "fill"),
+          border: paint(shape, "stroke"),
+          line: paint(edge, "stroke"),
+        } : null;
+      }),
+    );
+    expect(paints[0], theme).not.toBeNull();
+    expect(paints[0], theme).toEqual(paints[1]);
+    await page.getByRole("button", { name: "Theme", exact: true }).click();
+    await expect(page.getByLabel("Mermaid theme", { exact: true })).toHaveValue(theme);
+    errors.assertNone();
+  });
 }
 
 test("Compare backing stays shared and preserves authored white canvas and exported SVG bytes", async ({ page }) => {

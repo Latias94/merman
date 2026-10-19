@@ -4,6 +4,8 @@ import type { ThemeRecipeV1 } from "@mermanjs/web";
 
 import {
   appendThemeRule,
+  removeThemeCanvasBackground,
+  restoreThemeCanvas,
   setDefinitionToken,
   setDefinitionTypography,
   setThemeCanvasBase,
@@ -108,4 +110,40 @@ test("definition token and typography edits preserve unrelated tokens and styles
   const omitted = setDefinitionToken(edited, "series", undefined);
   assert.equal(omitted.kind, "definition");
   if (omitted.kind === "definition") assert.equal("series" in omitted.definition.tokens, false);
+});
+
+test("removing a layered canvas and restoring it keeps intervening style edits", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      canvas: { base: "#123456", layers: [{ paint: "#789abc", opacity: 0.3 }], bleed: 8 },
+      styles: [{ kind: "rule", target: "node", style: { fill: "#abcdef" } }],
+      mermaid: { theme: "dark" },
+    },
+  };
+  const removed = removeThemeCanvasBackground(original);
+  assert.deepEqual(removed, {
+    ...original, complete_spec: { ...original.complete_spec, canvas: { base: "transparent", bleed: 8 } },
+  });
+  const edited = setThemeRuleFacet(removed, 0, "fill", "#fedcba");
+  const restored = restoreThemeCanvas(edited, original);
+  assert.equal(restored.kind, "complete_spec");
+  if (restored.kind !== "complete_spec" || edited.kind !== "complete_spec") return;
+  assert.deepEqual(restored.complete_spec.canvas, original.complete_spec.canvas);
+  assert.deepEqual(restored.complete_spec.styles, edited.complete_spec.styles);
+  assert.equal(original.complete_spec.canvas?.base, "#123456");
+});
+
+test("definition default, transparent and restored canvas remain distinct", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "definition", definition: {
+      authoring_schema_version: 1, expansion_version: 1, tokens: { text: "#123456" },
+    },
+  };
+  const removed = removeThemeCanvasBackground(original);
+  assert.equal(removed.kind, "definition");
+  if (removed.kind !== "definition") return;
+  assert.equal(removed.definition.tokens.canvas, "transparent");
+  assert.deepEqual(setThemeCanvasBase(removed, undefined), original);
+  assert.deepEqual(restoreThemeCanvas(removed, original), original);
+  assert.throws(() => setThemeCanvasBase(original, { kind: "solid", color: "#123456" }), /require a color/);
 });

@@ -70,6 +70,7 @@ export interface MermanDomainFacade {
   readonly packageVersion: string;
   exportThemePreset: typeof import("@mermanjs/web").exportThemePreset;
   describeThemeSupport: typeof import("@mermanjs/web").describeThemeSupport;
+  materializeTheme: typeof import("@mermanjs/web").materializeTheme;
   validateThemeRecipe(recipeJson: string): string;
   runtimeCatalog(): RuntimeCatalog;
   themeCatalog(): ThemeCatalog;

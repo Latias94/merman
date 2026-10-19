@@ -401,6 +401,7 @@ export function Preview({ active = true, className }: PreviewProps) {
               onPressedChange={setShowSvgBounds}
             />
             <select className="h-7 max-w-28 rounded border bg-background px-1 text-xs" aria-label={t("themeWorkbench.previewBacking")}
+              title={t("themeWorkbench.previewBackingHint")}
               value={previewBacking} onChange={(event) => setPreviewBacking(event.target.value as PreviewBacking)}>
               {(["automatic", "light", "dark", "transparency"] as const).map((backing) => <option key={backing} value={backing}>{t(`themeWorkbench.backing.${backing}`)}</option>)}
             </select>

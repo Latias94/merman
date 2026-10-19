@@ -216,6 +216,56 @@ test("customizing Cyberpunk preserves its complete canvas, effects, assets and o
   expect(copied).toContain("#fef3c7");
 });
 
+test("canvas transparency keeps layers, removal clears them, and restoration preserves other edits", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page, "cyberpunk");
+  const workbench = await editor(page);
+  await workbench.getByRole("button", { name: "Customize", exact: true }).click();
+  const original = await copyRecipe(page, workbench);
+  expect(original.kind).toBe("complete_spec");
+  if (original.kind !== "complete_spec") return;
+  await workbench.getByLabel("Canvas base: value mode", { exact: true }).selectOption("transparent");
+  const transparent = await copyRecipe(page, workbench);
+  expect(transparent.kind).toBe("complete_spec");
+  if (transparent.kind !== "complete_spec") return;
+  expect(transparent.complete_spec.canvas).toEqual({ ...original.complete_spec.canvas, base: "transparent" });
+  await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBeGreaterThan(0);
+  await workbench.getByRole("button", { name: "Remove canvas background", exact: true }).click();
+  const removed = await copyRecipe(page, workbench);
+  expect(removed.kind).toBe("complete_spec");
+  if (removed.kind !== "complete_spec") return;
+  expect(removed.complete_spec.canvas?.base).toBe("transparent");
+  expect(removed.complete_spec.canvas?.layers).toBeUndefined();
+  expect(removed.complete_spec.styles).toEqual(original.complete_spec.styles);
+  expect(removed.complete_spec.effects).toEqual(original.complete_spec.effects);
+  await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBe(0);
+  await workbench.getByRole("button", { name: "Restore canvas background", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(transparent);
+  await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBeGreaterThan(0);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(workbench).toBeHidden();
+  errors.assertNone();
+});
+
+test("definition canvas defaults come from Rust and transparent background survives JSON exchange", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench, JSON.stringify({ ...recipe, definition: { ...recipe.definition, tokens: { text: "#172554" } } }));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const baseMode = workbench.getByLabel("Canvas base: value mode", { exact: true });
+  await expect(baseMode.locator("option:checked")).toContainText("#ffffff");
+  await baseMode.selectOption("transparent");
+  const edited = await copyRecipe(page, workbench);
+  expect(edited.kind).toBe("definition");
+  if (edited.kind === "definition") expect(edited.definition.tokens.canvas).toBe("transparent");
+  await baseMode.selectOption("omit");
+  expect(await copyRecipe(page, workbench)).toEqual({ ...recipe, definition: { ...recipe.definition, tokens: { text: "#172554" } } });
+  await expect(baseMode.locator("option:checked")).toContainText("#ffffff");
+  errors.assertNone();
+});
+
 test("theme outcome describes the displayed SVG without certifying capability discovery", async ({ page }) => {
   await start(page);
   await replaceEditorSource(page, "classDiagram\nclass 用户");

@@ -23,7 +23,11 @@ a background-only compiled rule does not infer or recolor labels on another surf
 ## Edit and share in the Playground
 
 Open **Theme** to keep the theme workbench beside the diagram. On narrow screens, the workbench
-reserves space for a compact diagram preview. Use **Presets** to browse the loaded runtime's
+reserves space for a compact diagram preview. **Presets** starts with the **Mermaid theme**
+selection shared by both engines, followed by **Merman styling**, which affects Merman only.
+The pinned Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`,
+`neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. This is separate from
+Merman's visual presets. Use **Presets** to browse the loaded runtime's
 catalog, select a preset, and choose **Customize** to create an independent `complete_spec`
 recipe. This snapshot retains its canvas layers, effects, typography, assets, and family rules;
 later catalog changes do not alter it. The card swatches illustrate a preset and are not rendered
@@ -50,8 +54,10 @@ draft asks whether to keep editing or discard it. Drafts are session-local; down
 keep it across reloads.
 
 A Merman visual preset and a custom recipe are mutually exclusive applied selections. Choosing
-**None** removes Merman recipe styling after Apply. The separate **Mermaid compatibility theme**
-and Mermaid configuration still apply to both engines. Authored Mermaid settings and source
+**None** removes Merman recipe styling after Apply; it does not remove the Mermaid theme or
+guarantee a transparent diagram. Changing **Mermaid theme** immediately updates the shared
+workspace setting; Cancel only discards the Merman draft. Mermaid configuration still applies
+to both engines. Authored Mermaid settings and source
 styles can take precedence; the workbench does not infer a winning source location for every field.
 
 **Download JSON** and **Copy JSON** validate the current recipe without applying it or requiring
@@ -78,7 +84,17 @@ quality or compatibility with every diagram family and export target.
 
 ### Preview backing and Compare
 
-**Preview backing** offers **Automatic**, **Light**, **Dark**, and **Transparency** in Visual and
+**Visual → Canvas background** edits paint that belongs to the theme and exported image.
+The base paint supports a default value, explicit transparency, or a custom color. A definition's
+omitted canvas token uses its Rust materialization default, shown next to the default selection;
+omission does not imply transparency. For a complete recipe, omission preserves the diagram's
+base behavior. A transparent base retains decorative layers such as grids and gradients.
+**Remove canvas background** sets an explicitly transparent base and removes all canvas layers,
+while retaining bleed, rules, effects, typography, and assets. **Restore canvas background**
+undoes that canvas change without reverting other recipe edits. Diagram-owned background shapes
+can still be visible; canvas editing does not delete diagram content.
+
+**Preview backing** offers **Automatic**, **Light**, **Dark**, and **Transparency grid** in Visual and
 Compare. Both Compare panes use the same backing. This is a display preference: it does not change
 theme JSON, trigger another render, or add paint to image exports. Authored SVG root backgrounds
 and theme canvas layers remain visible, including explicit white or transparent paint. Automatic

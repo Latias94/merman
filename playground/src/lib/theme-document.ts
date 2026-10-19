@@ -61,14 +61,38 @@ export function setThemeCanvasBase(
   recipe: ThemeRecipeV1,
   value: ThemePaint | undefined,
 ): ThemeRecipeV1 {
+  if (recipe.kind === "definition") {
+    if (value !== undefined && typeof value !== "string") throw new Error("Definition canvas tokens require a color.");
+    return setDefinitionToken(recipe, "canvas", value);
+  }
   const edited = structuredClone(recipe);
-  if (edited.kind !== "complete_spec") throw new Error("This recipe has no complete canvas.");
   const canvas = edited.complete_spec.canvas;
   if (value === undefined) {
     if (canvas) delete canvas.base;
   } else {
     edited.complete_spec.canvas = { ...canvas, base: structuredClone(value) };
   }
+  return edited;
+}
+
+export function removeThemeCanvasBackground(recipe: ThemeRecipeV1): ThemeRecipeV1 {
+  const edited = setThemeCanvasBase(recipe, "transparent");
+  if (edited.kind === "complete_spec" && edited.complete_spec.canvas) {
+    delete edited.complete_spec.canvas.layers;
+  }
+  return edited;
+}
+
+export function restoreThemeCanvas(recipe: ThemeRecipeV1, previous: ThemeRecipeV1): ThemeRecipeV1 {
+  if (recipe.kind === "definition" && previous.kind === "definition") {
+    return setDefinitionToken(recipe, "canvas", previous.definition.tokens.canvas);
+  }
+  if (recipe.kind !== "complete_spec" || previous.kind !== "complete_spec") {
+    throw new Error("Canvas restoration requires the same recipe kind.");
+  }
+  const edited = structuredClone(recipe);
+  if (previous.complete_spec.canvas === undefined) delete edited.complete_spec.canvas;
+  else edited.complete_spec.canvas = structuredClone(previous.complete_spec.canvas);
   return edited;
 }
 

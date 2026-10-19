@@ -11,6 +11,7 @@ import {
   layoutJson,
   layoutJsonWithTextMeasurer,
   loadMermanWasmModule,
+  materializeTheme,
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
@@ -74,6 +75,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     themeCatalog,
     exportThemePreset,
     describeThemeSupport,
+    materializeTheme,
     validateThemeRecipe(recipeJson) {
       svgPlanJson("flowchart LR\nA --> B", themeRecipeOptionsJson(
         { version: BINDING_OPTIONS_SCHEMA_VERSION }, recipeJson,

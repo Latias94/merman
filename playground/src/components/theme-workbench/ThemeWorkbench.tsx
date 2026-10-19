@@ -260,18 +260,19 @@ export function ThemeWorkbench({ className, onClose }: {
           <TabsTrigger value="json">JSON</TabsTrigger>
         </TabsList></div>
         <TabsContent value="presets" className="min-h-0 overflow-y-auto overscroll-contain p-3">
-          <ThemePresetCards presets={catalog?.presets ?? []} candidate={session.candidate} familyId={familyId} onSelect={selectCandidate} />
-          {session.candidate.kind === "preset" && !selectedPreset && <p role="status" className="mt-3 break-words text-xs text-muted-foreground">{t("themeWorkbench.unavailable", { defaultValue: "Unavailable in this runtime" })}. {t("themeWorkbench.unknownPreset", { defaultValue: "Selected preset {{id}} is unavailable in this catalog. Its selection is preserved.", id: session.candidate.presetId })}</p>}
-          {selectedPreset && !selectedPreset.available && <p role="status" className="mt-3 break-words text-xs text-destructive">{t("themeWorkbench.unavailable", { defaultValue: "Unavailable in this runtime" })}{selectedPreset.availability_reason_ids.length ? `: ${selectedPreset.availability_reason_ids.join(", ")}` : ""}</p>}
-          {selectedPreset && <p data-theme-design-scope className="mt-3 text-xs text-muted-foreground">{t("themeWorkbench.currentDesign", { defaultValue: "Current family: {{family}} · {{treatment}}", family: familyId ?? "unknown", treatment: t(`themeDesign.${selectedTreatment}`, { defaultValue: selectedTreatment === "dedicated" ? "Dedicated family design" : selectedTreatment === "base_only" ? "Base styling only" : "Design unreviewed" }) })}</p>}
-          <div className="mt-4 space-y-2 border-t pt-3">
-            <label htmlFor={`${headingId}-mermaid-theme`} className="block text-xs font-medium">{t("themeWorkbench.mermaidTheme", { defaultValue: "Mermaid compatibility theme" })}</label>
+          <section className="mb-4 space-y-2 rounded-md border p-3">
+            <label htmlFor={`${headingId}-mermaid-theme`} className="block text-xs font-semibold">{t("themeWorkbench.mermaidTheme")}</label>
             <select id={`${headingId}-mermaid-theme`} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={diagramTheme} onChange={(event) => useAppStore.getState().setDiagramTheme(event.target.value as MermaidThemeSelection)}>
               <option value="auto">{t("themes.auto", { defaultValue: "Automatic" })}</option>
               {mermaidThemes.map((theme) => <option key={theme} value={theme}>{t(`themes.${theme}`, { defaultValue: theme })}</option>)}
             </select>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.compatibilityHint", { defaultValue: "This workspace setting affects both engines. Merman recipes and source styles can override parts of it." })}</p>
-          </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.compatibilityHint")}</p>
+          </section>
+          <h3 className="mb-2 text-xs font-semibold">{t("themeWorkbench.mermanStyling")}</h3>
+          <ThemePresetCards presets={catalog?.presets ?? []} candidate={session.candidate} familyId={familyId} onSelect={selectCandidate} />
+          {session.candidate.kind === "preset" && !selectedPreset && <p role="status" className="mt-3 break-words text-xs text-muted-foreground">{t("themeWorkbench.unavailable", { defaultValue: "Unavailable in this runtime" })}. {t("themeWorkbench.unknownPreset", { defaultValue: "Selected preset {{id}} is unavailable in this catalog. Its selection is preserved.", id: session.candidate.presetId })}</p>}
+          {selectedPreset && !selectedPreset.available && <p role="status" className="mt-3 break-words text-xs text-destructive">{t("themeWorkbench.unavailable", { defaultValue: "Unavailable in this runtime" })}{selectedPreset.availability_reason_ids.length ? `: ${selectedPreset.availability_reason_ids.join(", ")}` : ""}</p>}
+          {selectedPreset && <p data-theme-design-scope className="mt-3 text-xs text-muted-foreground">{t("themeWorkbench.currentDesign", { defaultValue: "Current family: {{family}} · {{treatment}}", family: familyId ?? "unknown", treatment: t(`themeDesign.${selectedTreatment}`, { defaultValue: selectedTreatment === "dedicated" ? "Dedicated family design" : selectedTreatment === "base_only" ? "Base styling only" : "Design unreviewed" }) })}</p>}
         </TabsContent>
         <TabsContent value="visual" className="min-h-0 overflow-y-auto overscroll-contain p-3">
           {session.document ? <ThemeVisualEditor key={`${session.id}:${session.document.kind}`} document={session.document} disabled={!valid || !facade} facade={facade} catalog={catalog} familyId={familyId} onChange={(document) => replaceRaw(JSON.stringify(document, null, 2), "visual")} /> : <div className="space-y-3 py-2 text-xs text-muted-foreground">
