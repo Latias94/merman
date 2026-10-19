@@ -12,7 +12,7 @@ The standard CLI release is defined by the `cli-release` entry in
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
-The `0.9.0` source candidate uses the same capabilities for its default feature list,
+The `0.9.1` release and current source use the same capabilities for their default feature list,
 including `layout-elk`; both standard binaries therefore include the EPL-2.0 ELK closure and
 its notice/source obligations. The published `0.8.0-alpha.7` default and archives include
 the Rustdoc authoring command. Custom source builds can omit ELK or Rustdoc by disabling defaults
