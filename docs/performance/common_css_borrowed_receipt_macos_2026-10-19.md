@@ -52,7 +52,8 @@ never changes. The 140 variable rows remain inconclusive without retry. Relative
 comparison, `flowchart_direction_conflict` becomes jointly stable; no variable name is added.
 
 The catalog covers 38 scenes across 35 logical families, ten presets and no theme: 418 cells.
-Every warmup/sample, SVG/report, configuration, diagnostic, theme-status and family identity agrees.
+Warmup result metadata, all five saved sample SVG/report identities, configuration,
+diagnostics, theme status and family identity agree.
 All memory rows are stable. Each of the 44 cells in the four affected families saves three
 allocations: 117 bytes for no theme and 129 for each typed preset. All other 374 cells are unchanged.
 Peak growth falls by 117 bytes for the four default cells and by 129 bytes for XY's ten typed cells;

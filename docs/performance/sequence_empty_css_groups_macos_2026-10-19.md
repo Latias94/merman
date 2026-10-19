@@ -51,9 +51,10 @@ configuration/fallback controls and 0/1/16/64-message cases. Peak and retained g
 The 141 variable rows retain the preceding experiment's exact names: 134 State and seven Flowchart
 controls. All 26 inherited public errors match exactly.
 
-The catalog covers 38 scenes, 35 logical families and ten presets plus no theme: 418 cells. All
-warmups, five samples, SVG/report identities, configuration, diagnostics, theme status and family
-identity match. All memory rows are stable. Only Sequence's no-theme cell improves, by ten
+The catalog covers 38 scenes, 35 logical families and ten presets plus no theme: 418 cells.
+Warmup result metadata, all five saved sample SVG/report identities, configuration,
+diagnostics, theme status and family identity match.
+All memory rows are stable. Only Sequence's no-theme cell improves, by ten
 allocations and 788 bytes; the other 417 cells, including all ten typed Sequence presets, are
 unchanged. Expanded typed recipes already have nonempty declarations. Catalog and site-control
 byte totals differ because their request and retained-result recipes differ; comparisons stay

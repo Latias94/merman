@@ -64,8 +64,10 @@ only the baseline has `family-flowchart_backedges_subgraphs`. Compared with the 
 this experiment has no additions and loses direction-conflict, long-edge-label and TreeView-02
 rows, which are stable on both sides here. No input, observation or row is filtered or resampled.
 
-All 418 catalog cells are stable and retain exact warmup/sample SVG/report and configuration,
-diagnostics, theme status and family metadata. All eleven XY cells save one allocation and
+All 418 catalog cells are stable and retain exact warmup result metadata and all five saved
+sample SVG/report identities, together with configuration, diagnostics, theme status and
+family metadata.
+All eleven XY cells save one allocation and
 40 bytes each, across no theme and all ten presets; 407 cells retain all four metrics. Only the
 no-theme XY cell lowers peak by 40 bytes; all other peaks and all retained growth stay unchanged.
 The catalog continues to cover 35 logical families and 38 fixture aliases.

@@ -85,8 +85,10 @@ the candidate has 141; only `treeview-fixture-02` differs between them. Relative
 experiment, the union adds that TreeView row and `family-flowchart_direction_conflict`, while
 `family-flowchart_backedges_subgraphs` becomes stable. No timing or memory row is dropped.
 
-All 418 catalog cells are stable and preserve exact warmup/sample SVG, report, configuration,
-diagnostics, theme status and family identity. The eleven Quadrant cells improve by twelve
+All 418 catalog cells are stable and preserve exact warmup result metadata and all five saved
+sample SVG/report identities, together with configuration, diagnostics, theme status and
+family identity.
+The eleven Quadrant cells improve by twelve
 allocations each: no theme saves 384 bytes, presets save 345–375 bytes. Peak growth never rises
 and retained growth is unchanged; the other 407 cells retain all four memory metrics. The catalog
 continues to cover 35 logical families and 38 aliases across ten presets plus no theme. Its

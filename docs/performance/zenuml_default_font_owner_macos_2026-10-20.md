@@ -67,8 +67,10 @@ alone do not establish that a custom font is selected: some older configuration-
 paths not consumed by ZenUML's font namespace. Only actual configuration binding, final CSS and
 matching measurements establish the branch. The unchanged baseline and raw outputs are retained.
 
-All 418 catalog cells are stable and preserve exact warmup/sample SVG/report and configuration,
-diagnostics, theme status and family metadata. Eleven ZenUML cells save one allocation and
+All 418 catalog cells are stable and preserve exact warmup result metadata and all five saved
+sample SVG/report identities, together with configuration, diagnostics, theme status and
+family metadata.
+Eleven ZenUML cells save one allocation and
 23 bytes each, across no theme and ten presets; 407 other cells retain all four metrics. Peak
 and retained growth are unchanged throughout. The catalog still covers 35 logical families and
 38 fixture aliases. These catalog presets do not project a new font into ZenUML's source namespace.

@@ -37,8 +37,9 @@ unchanged; none increase any memory metric. Nonempty facts save four allocations
 empty-color controls save one. Bytes saved range from 28 to 81, with no peak increase and unchanged
 retained growth. The preceding 142 variable rows remain inconclusive without retry or name changes.
 
-All 418 catalog cells retain warmup/sample SVG/report, configuration, diagnostics, theme status
-and family identity. All memory rows are stable. Eleven Treemap cells each save four allocations:
+All 418 catalog cells retain warmup result metadata and all five saved sample SVG/report
+identities, together with configuration, diagnostics, theme status and family identity.
+All memory rows are stable. Eleven Treemap cells each save four allocations:
 51 bytes for no theme, and 61–91 bytes for typed presets. The other 407 cells are unchanged.
 Only the no-theme cell lowers peak growth, by 51 bytes; retained growth is unchanged everywhere.
 Catalog and site-control totals stay within their own request/result recipes.

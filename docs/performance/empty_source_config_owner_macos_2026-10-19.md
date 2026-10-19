@@ -62,8 +62,9 @@ with nonempty authored source overrides retain their original path and account f
 rows. The 141 variable rows remain inconclusive without retry; the prior variable list only loses
 `family-flowchart_direction_conflict`, which is now stable on both sides.
 
-All 418 catalog cells retain exact warmup/sample output, SVG/report, configuration, diagnostics,
-theme status and family identity. All memory rows are stable and all save four allocations and
+All 418 catalog cells retain exact warmup result metadata and all five saved sample SVG/report
+identities, together with configuration, diagnostics, theme status and family identity.
+All memory rows are stable and all save four allocations and
 240 bytes. Sixty-six lower peak growth by 168 bytes and 352 retain it; retained growth is unchanged
 everywhere. These cells cover 35 logical families, ten presets and no theme. Catalog and control
 totals stay within their original request/result recipes.

@@ -61,8 +61,10 @@ retained growth is unchanged. The 140 variable controls remain inconclusive with
 Both sides have the same variable list; the only change from the preceding 141-row list is that
 `treeview-fixture-02` is stable on both sides in this experiment.
 
-All 418 theme-catalog cells are stable and retain exact warmup/sample SVG, report, configuration,
-diagnostics, theme status and family identity. Twenty-two cells improve: eleven Info and eleven
+All 418 theme-catalog cells are stable and retain exact warmup result metadata and all five
+saved sample SVG/report identities, together with configuration, diagnostics, theme status and
+family identity.
+Twenty-two cells improve: eleven Info and eleven
 Error, covering no theme and all ten presets. The two no-theme cells save three allocations and
 165 bytes each and reduce peak by 165 bytes; twenty preset cells save three allocations and
 177 bytes each, with peak unchanged. The other 396 cells retain all four metrics. Retained growth

@@ -64,8 +64,9 @@ The 142 variable rows remain inconclusive without retry: the preceding 140 plus
 `family-flowchart_direction_conflict` and `treeview-fixture-02`. Their raw samples remain available,
 and their medians are not admitted as improvements or regressions. Output contracts still agree.
 
-All 418 catalog cells retain warmup/sample output, SVG/report, configuration, diagnostics, theme
-status and family identity. All memory rows are stable. Eleven Sequence cells improve: no theme
+All 418 catalog cells retain warmup result metadata and all five saved sample SVG/report
+identities, together with configuration, diagnostics, theme status and family identity.
+All memory rows are stable. Eleven Sequence cells improve: no theme
 saves sixteen allocations and 550 bytes; each typed preset saves twenty-one allocations and
 542–614 bytes. The other 407 cells are unchanged. Only the no-theme cell reduces peak growth,
 by 538 bytes; retained growth is unchanged everywhere. Catalog and site-control totals differ

@@ -76,8 +76,10 @@ and `treeview-fixture-02`. Relative to the preceding experiment's joint variable
 adds the backedges row and loses `family-flowchart_direction_conflict` and
 `family-flowchart_long_edge_labels`. No observation is filtered or resampled.
 
-All 418 catalog cells are stable and retain exact warmup/sample SVG/report, configuration,
-diagnostics, theme status and family identity. The 209 improvements are 19 affected families
+All 418 catalog cells are stable and retain exact warmup result metadata and all five saved
+sample SVG/report identities, together with configuration, diagnostics, theme status and
+family identity.
+The 209 improvements are 19 affected families
 times eleven theme selections; 209 other cells retain all four metrics. GitGraph's eleven cells
 save two allocations and 78–86 bytes each; the other 198 save one and 37–43 bytes. Peak growth is
 nonincreasing and retained growth unchanged. The catalog still covers 35 logical families and

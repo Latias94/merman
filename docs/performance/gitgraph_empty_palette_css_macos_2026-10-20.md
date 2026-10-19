@@ -59,8 +59,10 @@ retry. Each side has 141 variable rows; only the baseline has
 `family-flowchart_direction_conflict`. The union adds `treeview-fixture-02` to the preceding
 experiment's list and removes none. No observation is filtered or resampled.
 
-All 418 catalog cells are stable and retain exact warmup/sample SVG/report and configuration,
-diagnostics, theme status and family metadata. Only GitGraph's no-theme cell improves; 417 cells
+All 418 catalog cells are stable and retain exact warmup result metadata and all five saved
+sample SVG/report identities, together with configuration, diagnostics, theme status and
+family metadata.
+Only GitGraph's no-theme cell improves; 417 cells
 retain all four metrics. The ten active GitGraph preset cells retain their original palette path
 and all metrics. The catalog still covers 35 logical families and 38 fixture aliases across ten
 presets plus no theme. This small default-path result does not establish a general elapsed-time

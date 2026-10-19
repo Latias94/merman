@@ -58,8 +58,9 @@ controls. `flowchart_backedges_subgraphs` is newly variable on the candidate sid
 are retained without retry. All 26 inherited errors match exactly.
 
 The 38-scene catalog covers 35 logical families and ten presets plus no theme, for 418 cells.
-All warmups/samples, SVG/report bytes, configuration, diagnostics, theme satisfaction and family
-identity match. Every memory row is stable. Eleven Sequence cells save 13–14 allocations and
+Warmup result metadata and all five saved sample SVG/report byte identities match, as do
+configuration, diagnostics, theme satisfaction and family identity.
+Every memory row is stable. Eleven Sequence cells save 13–14 allocations and
 497–571 bytes; the other 407 cells are unchanged. Peak growth never increases, and retained
 growth is unchanged everywhere. Catalog and site-control totals differ because their request
 and retained-result recipes differ; they are compared only within their own lanes.
