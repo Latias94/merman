@@ -440,6 +440,7 @@ fn decode_effects(
             wire::ThemeEffectEntryWireV1::Graph {
                 id,
                 color_space,
+                composition,
                 primitives,
             } => {
                 let primitives = primitives
@@ -456,8 +457,21 @@ fn decode_effects(
                         .into());
                     }
                 };
-                decoded = decoded
-                    .with_graph(EffectGraph::new(id, primitives)?.with_color_space(color_space))?;
+                let composition = match composition.as_deref() {
+                    None | Some("cascade") => super::EffectComposition::Cascade,
+                    Some("independent") => super::EffectComposition::Independent,
+                    Some(_) => {
+                        return Err(ThemeCompileValidationError::InvalidValue {
+                            field: "effects.graph.composition",
+                        }
+                        .into());
+                    }
+                };
+                decoded = decoded.with_graph(
+                    EffectGraph::new(id, primitives)?
+                        .with_color_space(color_space)
+                        .with_composition(composition)?,
+                )?;
             }
             wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
                 decoded = decoded.with_binding(EffectBinding::new(

@@ -43,12 +43,13 @@ func verifyThemeAuthoringGoldens(client: Merman) throws {
         }
         for name in ["light", "dark"] {
             let actual = try executeJSON(
-                "materialize-theme-json", String(decoding: read("\(name).definition.json"), as: UTF8.self)
+                "materialize-theme-json", String(decoding: read("\(name).design.json"), as: UTF8.self)
             )
             let expected: [String: Any] = [
                 "schema_version": 1, "authoring_schema_version": 1,
                 "expansion_version": 1, "spec_schema_version": 1,
                 "spec": try json(read("\(name).spec.canonical.json")),
+                "references": try json(read("\(name).references.json")),
             ]
             try requireEqual(actual, expected, "\(consumer)/\(name)")
         }

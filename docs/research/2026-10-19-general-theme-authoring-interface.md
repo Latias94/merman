@@ -1,7 +1,7 @@
 ---
 title: General theme authoring interface
 date: 2026-10-19
-status: proposed
+status: implemented
 ---
 
 # General theme authoring interface
@@ -18,10 +18,12 @@ can declare an extra shadow, grid, gradient, font, or numeric setting using the 
 types as another theme. The editor does not branch on preset IDs. New drawing operations still
 need an intentional renderer implementation; an arbitrary setting name cannot create one.
 
-This is a design proposal, not a shipped contract or an accepted replacement ADR. The maintainer
-has authorized reconsidering serialization and breaking unreleased interfaces. Compatibility
-scaffolding is not a prerequisite. Exact public names below are illustrative; the semantics are
-the proposed decisions to validate before implementation.
+This design is implemented under [ADR 0095](../adr/0095-general-theme-authoring-and-retained-bindings.md)
+within the unreleased version-1 contract. The maintainer authorized breaking unreleased
+interfaces; no version-2 recipe or permanent compact-definition interpreter is retained.
+The contract crate and [theme guide](../rendering/custom-diagram-themes.md) document exact public names.
+See the [implementation verification](2026-10-19-general-theme-authoring-verification.md) for
+executed checks and their limits.
 
 ## Why the current facade is insufficient
 
@@ -136,7 +138,7 @@ illustrative document only changes node fill:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "kind": "design",
   "design": { "styles": { "node": { "fill": "#f0f4f8" } } }
 }
@@ -271,7 +273,7 @@ It is not currently accepted JSON and omits optional typography, palettes, and a
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "kind": "design",
   "design": {
     "tokens": {
@@ -434,11 +436,7 @@ The second risk is presenting serializable fields as rendered features. Shadow s
 composition, patterns, and family/look support require concrete execution work or honest feedback.
 The new convenience API must not inherit an overclaim from an older wire type.
 
-Before the contract is accepted, settle exact type names/units, the primitive domain for compatibility
-variable references, ordinal-palette placement, and the smallest useful inspection projection.
-Decide whether spread is excluded from the first new contract or implemented fully; do not leave
-an apparently functional numeric control backed by no renderer. Independent shadows are part of
-this proposal's acceptance rather than a frontend-only approximation.
-
-No production code or serialization behavior is changed by this document. The current implementation
-remains authoritative until a successor decision and implementation replace it.
+The implementation uses typed local references and consumer-domain inspection. Compatibility
+variables remain literal inputs. Ordinal palettes follow ordered rules in materialization.
+Spread, inset, and backdrop blur are excluded from the shadow-stack convenience interface;
+independent shadows have SVG and native export implementations.

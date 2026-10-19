@@ -41,15 +41,12 @@ impl DiagramThemeCompiler {
         self.resources.check_theme_encoded_bytes(actual)
     }
 
-    /// Checks raw authoring JSON before a host normalizes or allocates its typed payload.
-    ///
-    /// This enforces the same structural and version admission as `compile_theme_definition_json`.
-    /// It does not replace materialization or semantic compilation.
-    pub fn check_definition_json_input(
+    /// Checks bounded editable-design JSON before a host normalizes its object graph.
+    pub fn check_design_json_input(
         &self,
         bytes: &[u8],
     ) -> Result<(), merman_theme_contract::ThemeMaterializationErrorV1> {
-        super::definition_admission::check_definition_json_input(&self.resources, bytes)
+        super::design_materializer::check_design_json_input(&self.resources, bytes)
     }
 
     pub fn compile(
@@ -138,7 +135,7 @@ impl DiagramThemeCompiler {
         self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::CompleteSpec)
     }
 
-    // Definitions and presets admit their authored or composed wire before using this path.
+    // Designs and presets admit their authored or composed wire before using this path.
     pub(super) fn compile_spec_wire_with_sources(
         &self,
         spec: super::DiagramThemeSpecWireV1,
@@ -151,7 +148,7 @@ impl DiagramThemeCompiler {
     pub fn compile_preset(
         &self,
         preset: super::ThemePreset,
-    ) -> Result<super::DiagramTheme, super::ThemeDefinitionCompileError> {
+    ) -> Result<super::DiagramTheme, super::ThemeDesignCompileError> {
         let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
         Ok(self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::None)?)
     }
@@ -159,7 +156,7 @@ impl DiagramThemeCompiler {
     pub(super) fn validate_preset(
         &self,
         preset: super::ThemePreset,
-    ) -> Result<(), super::ThemeDefinitionCompileError> {
+    ) -> Result<(), super::ThemeDesignCompileError> {
         let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
         self.validate_preset_spec_wire(spec)?;
         Ok(())
@@ -183,10 +180,13 @@ impl DiagramThemeCompiler {
     pub fn compile_recipe(
         &self,
         recipe: merman_theme_contract::ThemeRecipeV1,
-    ) -> Result<super::DiagramTheme, super::ThemeDefinitionCompileError> {
+    ) -> Result<super::DiagramTheme, super::ThemeDesignCompileError> {
         match recipe {
-            merman_theme_contract::ThemeRecipeV1::Definition { definition } => {
-                super::definition_admission::compile_theme_definition(self, &definition)
+            merman_theme_contract::ThemeRecipeV1::Design { design } => {
+                let spec =
+                    super::materialize_theme_design_with_resource_policy(&design, &self.resources)?;
+                let sources = super::source::ThemeWireSources::for_design(&design);
+                Ok(self.compile_spec_wire_with_sources(spec, sources)?)
             }
             merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } => {
                 Ok(self.compile_spec_wire(complete_spec)?)
@@ -203,10 +203,12 @@ impl DiagramThemeCompiler {
         merman_theme_contract::ThemeRecipeV1,
         merman_theme_contract::ThemeMaterializationErrorV1,
     > {
-        let complete_spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
-        self.validate_preset_spec_wire(complete_spec.clone())
+        let design = super::presets::build_design(preset);
+        let complete_spec =
+            super::materialize_theme_design_with_resource_policy(&design, &self.resources)?;
+        self.validate_preset_spec_wire(complete_spec)
             .map_err(preset_export_error)?;
-        Ok(merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec })
+        Ok(merman_theme_contract::ThemeRecipeV1::Design { design })
     }
 }
 
@@ -290,15 +292,19 @@ mod tests {
         ThemeTarget,
     };
 
+    fn complete_spec_fixture() -> merman_theme_contract::DiagramThemeSpecWireV1 {
+        let merman_theme_contract::ThemeRecipeV1::Design { design } = DiagramThemeCompiler::new()
+            .export_preset(super::super::ThemePreset::Cyberpunk)
+            .unwrap()
+        else {
+            panic!("presets export editable designs");
+        };
+        super::super::materialize_theme_design(&design).unwrap()
+    }
+
     #[test]
     fn complete_spec_wire_enforces_encoded_payload_byte_boundary() {
-        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } =
-            DiagramThemeCompiler::new()
-                .export_preset(super::super::ThemePreset::Cyberpunk)
-                .unwrap()
-        else {
-            unreachable!()
-        };
+        let complete_spec = complete_spec_fixture();
         let size = serde_json::to_vec(&complete_spec).unwrap().len();
         for limit in [size - 1, size] {
             let compiler = DiagramThemeCompiler::new().with_resource_policy(
@@ -325,9 +331,9 @@ mod tests {
 
     #[test]
     fn complete_spec_recipe_enforces_payload_budget_without_transport_envelope() {
-        let recipe = DiagramThemeCompiler::new()
-            .export_preset(super::super::ThemePreset::Cyberpunk)
-            .unwrap();
+        let recipe = merman_theme_contract::ThemeRecipeV1::CompleteSpec {
+            complete_spec: complete_spec_fixture(),
+        };
         let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = &recipe else {
             unreachable!()
         };
@@ -343,7 +349,7 @@ mod tests {
             if limit == size {
                 result.expect("typed recipe admission counts the payload, not its envelope");
             } else {
-                let super::super::ThemeDefinitionCompileError::Compilation(
+                let super::super::ThemeDesignCompileError::Compilation(
                     ThemeCompileError::ResourceLimit(error),
                 ) = result.expect_err("saved complete recipes must obey encoded-byte admission")
                 else {
@@ -357,21 +363,50 @@ mod tests {
     }
 
     #[test]
-    fn definition_recipe_admits_authored_bytes_before_internal_expansion() {
-        let definition = merman_theme_contract::ThemeDefinitionV1::new(
-            merman_theme_contract::ThemeTokensV1::default(),
+    fn design_recipe_bounds_authored_input_and_materialized_output() {
+        let design: merman_theme_contract::ThemeDesignV1 = serde_json::from_value(serde_json::json!({
+            "tokens": {"paint.shared": {"type":"paint","value":{
+                "kind":"linear-gradient","angle_degrees":45,
+                "stops":[{"offset":0,"color":"#123456"},{"offset":0.5,"color":"#abcdef"},{"offset":1,"color":"#ffffff"}]
+            }}},
+            "styles": {
+                "node":{"fill":{"ref":"paint.shared"}},
+                "cluster":{"fill":{"ref":"paint.shared"}},
+                "actor":{"fill":{"ref":"paint.shared"}}
+            }
+        })).unwrap();
+        let authored_bytes = serde_json::to_vec(&design).unwrap().len();
+        let materialized = super::super::materialize_theme_design(&design).unwrap();
+        let materialized_bytes = serde_json::to_vec(&materialized).unwrap().len();
+        assert!(
+            materialized_bytes > authored_bytes,
+            "shared values expand into concrete consumers"
         );
-        let size = serde_json::to_vec(&definition).unwrap().len();
-        let expanded = super::super::materialize_theme(&definition).unwrap();
-        assert!(serde_json::to_vec(&expanded.into_spec()).unwrap().len() > size);
-        let compiler = DiagramThemeCompiler::new().with_resource_policy(
-            ThemeResourcePolicy::interactive()
-                .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size)
-                .unwrap(),
-        );
-        compiler
-            .compile_recipe(merman_theme_contract::ThemeRecipeV1::Definition { definition })
-            .expect("internally expanded fields must not be charged as authored input bytes");
+        for limit in [authored_bytes - 1, authored_bytes, materialized_bytes] {
+            let compiler = DiagramThemeCompiler::new().with_resource_policy(
+                ThemeResourcePolicy::interactive()
+                    .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, limit)
+                    .unwrap(),
+            );
+            let result = compiler.compile_recipe(merman_theme_contract::ThemeRecipeV1::Design {
+                design: design.clone(),
+            });
+            if limit == materialized_bytes {
+                result.expect("both payloads fit the caller-owned budget");
+            } else {
+                let super::super::ThemeDesignCompileError::Materialization(error) =
+                    result.unwrap_err()
+                else {
+                    panic!("admission must precede compiler allocation");
+                };
+                assert_eq!(
+                    error.diagnostic().limit_id(),
+                    Some("max_theme_encoded_bytes")
+                );
+                assert_eq!(error.diagnostic().actual(), Some((limit + 1) as u64));
+                assert_eq!(error.diagnostic().max(), Some(limit as u64));
+            }
+        }
     }
 
     #[test]
@@ -400,90 +435,75 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_sources_preserve_definition_tokens_and_authored_palette_override() {
-        let definition = serde_json::from_value(serde_json::json!({
-            "authoring_schema_version": 1, "expansion_version": 1,
-            "tokens": {"text": "green", "series": ["orange"]},
-            "styles": [
-                {"kind": "ordinal-palette", "target": "node", "colors": ["red"]},
-                {"kind": "rule", "target": "node", "style": {"radius": 4}}
-            ]
+    fn diagnostic_sources_follow_design_defaults_scoped_rules_and_palettes() {
+        let design = serde_json::from_value(serde_json::json!({
+            "tokens": {
+                "paint.ink":{"type":"paint","value":"green"},
+                "palette.series":{"type":"palette","value":["orange"]}
+            },
+            "styles": {"text":{"fill":{"ref":"paint.ink"}},"node":{"radius":4}},
+            "rules": [{"target":"node","family":"flowchart","style":{"radius":8}}],
+            "palettes": {"node":{"ref":"palette.series"},"pie-slice":["red"]},
+            "canvas":{"base":{"ref":"paint.ink"}}
         }))
         .unwrap();
         let compiler = DiagramThemeCompiler::new();
-        let theme = super::super::compile_theme_definition(&compiler, &definition).unwrap();
+        let spec = super::super::materialize_theme_design(&design).unwrap();
+        let theme = compiler
+            .compile_recipe(merman_theme_contract::ThemeRecipeV1::Design { design })
+            .unwrap();
         let sources = theme.source_map();
-        assert_eq!(sources.document().unwrap().id(), "definition");
-        assert_eq!(sources.rule(0).unwrap().paths, ["/tokens/text"]);
-        assert!(sources.rule(0).unwrap().generated);
-        assert!(sources.rule(2).unwrap().paths.is_empty());
-        assert!(sources.rule(2).unwrap().generated);
-        let authored_rule = theme.spec().styles().rules().len() - 1;
-        assert_eq!(sources.rule(authored_rule).unwrap().paths, ["/styles/1"]);
-        assert!(!sources.rule(authored_rule).unwrap().generated);
+        assert_eq!(sources.document().unwrap().id(), "design");
+        assert_eq!(sources.rule(0).unwrap().paths, ["/styles/node"]);
+        assert_eq!(sources.rule(1).unwrap().paths, ["/styles/text"]);
+        assert_eq!(sources.rule(2).unwrap().paths, ["/rules/0/style"]);
         assert_eq!(
             sources.palette(ThemeTarget::Node).unwrap().paths,
-            ["/styles/0"]
+            ["/palettes/node"]
         );
-        assert!(!sources.palette(ThemeTarget::Node).unwrap().generated);
         assert_eq!(
             sources.palette(ThemeTarget::PieSlice).unwrap().paths,
-            ["/tokens/series"]
+            ["/palettes/pie-slice"]
         );
-        assert!(sources.palette(ThemeTarget::PieSlice).unwrap().generated);
-
-        let materialized = super::super::materialize_theme(&definition).unwrap();
-        let imported = compiler
-            .compile_spec_wire(materialized.into_spec())
-            .unwrap();
+        assert_eq!(sources.canvas_base().unwrap().paths, ["/canvas/base"]);
+        assert!(!sources.rule(0).unwrap().generated);
+        assert!(!sources.palette(ThemeTarget::Node).unwrap().generated);
+        assert!(!sources.canvas_base().unwrap().generated);
+        let imported = compiler.compile_spec_wire(spec).unwrap();
         assert_eq!(theme.recipe_fingerprint(), imported.recipe_fingerprint());
+        assert_eq!(imported.source_map().rule(2).unwrap().paths, ["/styles/2"]);
         assert_eq!(
-            imported.source_map().rule(authored_rule).unwrap().paths,
-            [format!("/styles/{authored_rule}")]
+            imported
+                .source_map()
+                .palette(ThemeTarget::Node)
+                .unwrap()
+                .paths,
+            ["/styles/3"]
         );
     }
 
     #[test]
-    fn diagnostic_sources_distinguish_generated_defaults_from_explicit_tokens() {
+    fn empty_design_does_not_generate_legacy_defaults_or_token_locations() {
         let compiler = DiagramThemeCompiler::new();
-        let default_definition =
-            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
-        let default =
-            super::super::compile_theme_definition_json(&compiler, default_definition).unwrap();
-        let source = default.source_map().palette(ThemeTarget::Node).unwrap();
-        assert!(source.generated);
-        assert!(source.paths.is_empty());
-        assert!(default.source_map().canvas_base().unwrap().paths.is_empty());
-        assert!(default.source_map().canvas_base().unwrap().generated);
-
-        let explicit = super::super::compile_theme_definition_json(&compiler,
-            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"line":"red","canvas":"blue"}}"#
-        ).unwrap();
-        let marker_index = explicit
-            .spec()
-            .styles()
-            .rules()
-            .iter()
-            .position(|rule| rule.target() == ThemeTarget::TransitionMarker)
+        let empty = compiler
+            .compile_recipe(merman_theme_contract::ThemeRecipeV1::Design {
+                design: merman_theme_contract::ThemeDesignV1::default(),
+            })
             .unwrap();
-        assert_eq!(
-            explicit.source_map().rule(marker_index).unwrap().paths,
-            ["/tokens/line"]
-        );
-        assert_eq!(
-            explicit.source_map().canvas_base().unwrap().paths,
-            ["/tokens/canvas"]
-        );
-        let imported = compiler
+        assert_eq!(empty.source_map().document().unwrap().id(), "design");
+        assert!(empty.source_map().rule(0).is_none());
+        assert!(empty.source_map().palette(ThemeTarget::Node).is_none());
+        assert!(empty.source_map().canvas_base().is_none());
+        let direct = compiler
             .compile_spec_wire(
-                serde_json::from_value(serde_json::json!({"canvas": {"base": "blue"}})).unwrap(),
+                serde_json::from_value(serde_json::json!({"canvas":{"base":"blue"}})).unwrap(),
             )
             .unwrap();
         assert_eq!(
-            imported.source_map().canvas_base().unwrap().paths,
+            direct.source_map().canvas_base().unwrap().paths,
             ["/canvas/base"]
         );
-        assert!(!imported.source_map().canvas_base().unwrap().generated);
+        assert!(!direct.source_map().canvas_base().unwrap().generated);
     }
 
     #[test]
@@ -504,11 +524,8 @@ mod tests {
                     .unwrap(),
             )
             .unwrap();
-        assert_eq!(
-            imported.source_map().document().unwrap().id(),
-            "complete_spec"
-        );
-        assert_eq!(imported.source_map().rule(0).unwrap().paths, ["/styles/0"]);
+        assert_eq!(imported.source_map().document().unwrap().id(), "design");
+        assert!(imported.source_map().rule(0).unwrap().paths[0].starts_with("/styles/"));
         assert_eq!(preset.recipe_fingerprint(), imported.recipe_fingerprint());
     }
 

@@ -1,12 +1,10 @@
-use merman_theme_contract::{
-    DiagramThemeSpecWireV1, ThemeDefinitionV1, ThemeRecipeV1, ThemeTokensV1,
-};
+use merman_theme_contract::{DiagramThemeSpecWireV1, ThemeDesignV1, ThemeRecipeV1};
 
 #[test]
 fn theme_recipe_variants_round_trip_with_closed_tags() {
     let cases = [
-        ThemeRecipeV1::Definition {
-            definition: ThemeDefinitionV1::new(ThemeTokensV1::default()),
+        ThemeRecipeV1::Design {
+            design: ThemeDesignV1::default(),
         },
         ThemeRecipeV1::CompleteSpec {
             complete_spec: DiagramThemeSpecWireV1::default(),
@@ -25,20 +23,20 @@ fn theme_recipe_variants_round_trip_with_closed_tags() {
 
 #[test]
 fn theme_recipe_rejects_unknown_missing_duplicate_and_untagged_shapes() {
-    let definition = serde_json::to_value(ThemeDefinitionV1::new(ThemeTokensV1::default()))
-        .expect("definition must serialize");
+    let design = serde_json::to_value(ThemeDesignV1::default()).expect("design must serialize");
     let complete_spec =
         serde_json::to_value(DiagramThemeSpecWireV1::default()).expect("spec must serialize");
     let invalid = [
-        serde_json::json!({ "schema_version": 1, "kind": "future", "definition": definition.clone() }),
-        serde_json::json!({ "schema_version": 1, "kind": "definition" }),
+        serde_json::json!({ "schema_version": 1, "kind": "future", "design": design.clone() }),
+        serde_json::json!({ "schema_version": 1, "kind": "design" }),
         serde_json::json!({
             "schema_version": 1,
-            "kind": "definition",
-            "definition": definition.clone(),
+            "kind": "design",
+            "design": design.clone(),
             "complete_spec": complete_spec.clone(),
         }),
-        serde_json::json!({ "schema_version": 1, "definition": definition }),
+        serde_json::json!({ "schema_version": 1, "design": design }),
+        serde_json::json!({ "schema_version": 1, "kind": "definition", "definition": {} }),
         serde_json::json!({ "schema_version": 1, "kind": "complete-spec", "complete_spec": complete_spec }),
     ];
 
@@ -48,15 +46,22 @@ fn theme_recipe_rejects_unknown_missing_duplicate_and_untagged_shapes() {
             "invalid preset export shape must fail closed"
         );
     }
+    for duplicate in [
+        r#"{"schema_version":1,"kind":"design","kind":"design","design":{}}"#,
+        r#"{"schema_version":1,"kind":"design","design":{},"design":{}}"#,
+    ] {
+        assert!(serde_json::from_str::<ThemeRecipeV1>(duplicate).is_err());
+    }
 }
 
 #[test]
 fn recipe_envelope_requires_the_supported_schema_version() {
-    for kind in ["definition", "complete_spec"] {
+    for kind in ["design", "complete_spec"] {
         let mut valid = serde_json::json!({ "kind": kind, "schema_version": 1 });
         valid[kind] = match kind {
-            "definition" => serde_json::to_value(ThemeDefinitionV1::new(ThemeTokensV1::default()))
-                .expect("definition must serialize"),
+            "design" => {
+                serde_json::to_value(ThemeDesignV1::default()).expect("design must serialize")
+            }
             _ => serde_json::to_value(DiagramThemeSpecWireV1::default())
                 .expect("spec must serialize"),
         };
@@ -115,36 +120,42 @@ fn recipe_preserves_structured_canvas_and_ordered_effects() {
 }
 
 #[test]
-fn recipe_rejects_duplicate_versions_and_invalid_inner_definition_versions() {
+fn recipe_rejects_duplicate_versions_and_replaced_inner_version_fields() {
     let duplicate =
         r#"{"schema_version":1,"schema_version":1,"kind":"complete_spec","complete_spec":{}}"#;
     assert!(serde_json::from_str::<ThemeRecipeV1>(duplicate).is_err());
-    let invalid_definition = serde_json::json!({
+    let invalid_design = serde_json::json!({
         "schema_version": 1,
-        "kind": "definition",
-        "definition": { "authoring_schema_version": 2, "expansion_version": 1, "tokens": {} }
+        "kind": "design",
+        "design": { "authoring_schema_version": 1, "expansion_version": 1, "tokens": {} }
     });
-    let error = serde_json::from_value::<ThemeRecipeV1>(invalid_definition)
+    let error = serde_json::from_value::<ThemeRecipeV1>(invalid_design)
         .unwrap_err()
         .to_string();
     assert!(
-        error.contains("authoring version tuple"),
-        "inner definition version must remain validated: {error}"
+        error.contains("authoring_schema_version"),
+        "the design must reject replaced compact-facade fields: {error}"
     );
 }
 
 #[test]
 fn recipe_rejects_future_versions_with_future_payload_fields() {
-    let version_first =
-        r#"{"schema_version":2,"kind":"complete_spec","complete_spec":{"future":true}}"#;
-    let error = serde_json::from_str::<ThemeRecipeV1>(version_first)
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.contains("schema_version"),
-        "leading unsupported version must be diagnosed: {error}"
-    );
-    let payload_first =
-        r#"{"complete_spec":{"future":true},"schema_version":2,"kind":"complete_spec"}"#;
-    assert!(serde_json::from_str::<ThemeRecipeV1>(payload_first).is_err());
+    for version_first in [
+        r#"{"schema_version":2,"kind":"complete_spec","complete_spec":{"future":true}}"#,
+        r#"{"schema_version":2,"kind":"design","design":{"future":true}}"#,
+    ] {
+        let error = serde_json::from_str::<ThemeRecipeV1>(version_first)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("schema_version"),
+            "leading unsupported version must be diagnosed: {error}"
+        );
+    }
+    for payload_first in [
+        r#"{"complete_spec":{"future":true},"schema_version":2,"kind":"complete_spec"}"#,
+        r#"{"design":{"future":true},"schema_version":2,"kind":"design"}"#,
+    ] {
+        assert!(serde_json::from_str::<ThemeRecipeV1>(payload_first).is_err());
+    }
 }

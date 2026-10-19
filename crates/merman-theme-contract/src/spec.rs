@@ -329,6 +329,14 @@ pub enum ThemeEffectEntryWireV1 {
             skip_serializing_if = "Option::is_none"
         )]
         color_space: Option<String>,
+        /// Shadow composition: `cascade` (default) or `independent`.
+        /// Independent graphs contain only source-graphic drop shadows with zero spread.
+        #[serde(
+            default,
+            deserialize_with = "deserialize_optional_non_null",
+            skip_serializing_if = "Option::is_none"
+        )]
+        composition: Option<String>,
         /// Ordered effect primitives.
         primitives: Vec<ThemeEffectPrimitiveWireV1>,
     },

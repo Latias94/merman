@@ -160,7 +160,7 @@ brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -278,7 +278,7 @@ brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s w -l width -d 'Available container width for size-sensitive layouts' -r

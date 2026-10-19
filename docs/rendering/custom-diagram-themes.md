@@ -9,7 +9,8 @@ assume an initialized SVG-capable runtime.
 
 Mermaid compatibility configuration remains a separate input from compiled style rules.
 Explicit family values can be supplied through `site_config`, source frontmatter/directives,
-or the recipe's `spec.mermaid` compatibility fields. They retain their source precedence.
+or the recipe's `design.mermaid` or `complete_spec.mermaid` compatibility fields. They retain
+their source precedence.
 C4 element, boundary and relationship colors, `themeVariables.zenuml` colors and typography,
 Wardley anchor/annotation colors, Gantt axis color, and Mindmap label backgrounds use their
 family owners. Measurement and SVG paint consume the same prepared font values.
@@ -30,20 +31,23 @@ selection shared by both engines, followed by **Merman styling**, which affects 
 The pinned Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`,
 `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. This is separate from
 Merman's visual presets. Use **Presets** to browse the loaded runtime's
-catalog, select a preset, and choose **Customize** to create an independent `complete_spec`
-recipe. This snapshot retains its canvas layers, effects, typography, assets, and family rules;
-later catalog changes do not alter it. The card swatches illustrate a preset and are not rendered
-previews of the current diagram.
+catalog and choose **Create from** on a preset card to copy an independent `design` recipe.
+The copy retains its canvas layers, effects, typography, assets, family rules, and shared-value
+bindings. Later catalog changes do not alter it. Card swatches illustrate a preset and are not
+rendered previews of the current diagram.
 
-Choose **New recipe** for a small `definition` theme, or **Import JSON** for an existing standalone
-recipe. **Visual** and **JSON** edit the same versioned document. Visual controls expose definition
-color/series/typography tokens, complete-spec typography and canvas base, and scoped rule
-selectors/facets for selected semantic targets. Existing rules can be retargeted, reordered, or
-removed while ordinal palette entries are retained. Choose family scopes and variants from
-the loaded runtime's lists; existing unfamiliar values remain visible. Other edits preserve unrelated
-fields and authored order. Paint controls support solid/transparent paint and linear/radial gradients.
-Gradient controls retain all authored color stops and repetition settings until you change them.
-Use JSON for effects, resources, and other advanced values.
+Choose **New recipe** for a small `design` theme, or **Import JSON** for an existing standalone
+recipe. **Visual** and **JSON** edit the same version-1 document. Start with **Shared settings**
+to change linked colors, sizes, fonts, paints, or effects together. **Add a shared value** creates
+an ordinary typed setting, with an optional label, group, and description. Renaming its reference
+ID updates the document's references atomically. Use **Object styles** for semantic defaults and
+**Scoped rules** for family and variant overrides. A property's **Value source** selects a local
+value or a compatible shared setting; **Use a local copy** detaches that consumer.
+
+Visual controls include gradient stops, independent/cascade shadow stacks, typography, canvas
+layers, grids, stripes, and existing rule selectors. Edits preserve unrelated fields and authored
+order. Complete-spec imports retain their concrete editor, without inferred shared bindings.
+Advanced effect graphs, assets, requirements, and compatibility fields remain available in JSON.
 **Inspect** shows the exact displayed
 execution evidence beside catalog design scope and qualification metadata; those fields explain
 the runtime and do not gate authoring. **Omit**, **Clear**, and **Transparent** have different
@@ -52,7 +56,8 @@ meanings, as explained under [Customize an existing preset](#customize-an-existi
 Recipe edits are validated by the existing Rust theme compiler. A valid draft updates the preview
 without changing the applied workspace theme. Invalid JSON or theme values stay editable; the
 preview continues using the last valid theme with the current diagram source, configuration, and
-font. Visual controls wait until the current JSON is valid. A diagram parse/render error remains
+font. Form-authored invalid values keep their controls available for correction; arbitrary invalid
+JSON must be repaired in the JSON editor. A diagram parse/render error remains
 visible and does not prevent a valid recipe from being imported, saved, or applied.
 
 **Validate and apply** commits the selected theme and keeps the workbench open. Further edits
@@ -102,19 +107,17 @@ quality or compatibility with every diagram family and export target.
 ### Preview backing and Compare
 
 **Visual → Canvas background** edits paint that belongs to the theme and exported image.
-The base paint supports a default value, explicit transparency, or a custom color. A definition's
-omitted canvas token uses its Rust materialization default, shown next to the default selection;
-omission does not imply transparency. For a complete recipe, omission preserves the diagram's
-base behavior. A transparent base retains decorative layers such as grids and gradients.
+The base paint supports omission, explicit transparency, a color, or a gradient. A design can also
+bind it to a shared paint. Omission preserves the diagram's base behavior; it does not imply
+transparency. A transparent base retains decorative layers such as grids and gradients.
 **Remove canvas background** sets an explicitly transparent base and removes all canvas layers,
 while retaining bleed, rules, effects, typography, and assets. **Restore canvas background**
 undoes that canvas change without reverting other recipe edits. Diagram-owned background shapes
 can still be visible; canvas editing does not delete diagram content.
 
-A `definition` stores simple color tokens. Choose **Enable gradients and layers** to expand it
-through the Rust materializer into an independent `complete_spec`, preserving its appearance and
-scoped rules. This enables advanced canvas paint and layers; Undo restores the original token
-document. The conversion does not infer editable tokens from a complete preset.
+A `design` supports gradients, layers, and shared bindings directly. No conversion is required
+to add them. A complete-spec import preserves its concrete values without inferring authoring
+relationships from equal colors.
 
 **Background layers** lists the authored paint order: later layers appear above earlier ones.
 Add a color or gradient layer, then select a layer to edit its paint, opacity, blend mode,
@@ -239,16 +242,18 @@ a Sequence Lifeline rule can apply its blue stroke while retaining an unsupporte
 ```
 
 `source_paths` are JSON Pointers relative to the named recipe payload, not to the outer options
-object. They refer to the original mixed `styles` array even when authoring expansion inserts
-additional rules. A `definition` diagnostic can instead identify explicitly authored token paths.
+object. A complete-spec location refers to its original mixed `styles` array. A `design`
+location identifies `/styles/{target}`, `/rules/{index}/style`, `/palettes/{target}`, or
+`/canvas/base`, rather than the materializer's expanded array position.
 Generated defaults have `generated: true` without an invented input location. Built-in preset
 selection and direct Rust typed specifications have no original JSON document; exporting and
-reimporting a preset gives locations in that new `complete_spec` document.
+reimporting a preset gives locations in that new `design` document.
 
 A rule-level diagnostic does not mean every property failed. Its reason identifies a category;
 `property` is present only when the report knows a particular property, such as base typography.
-Some locations remain broad: top-level effect bindings point to `/effects`, and expanded
-Definition typography currently has no precise token location. Output mutation and incomplete
+Some locations remain broad: complete-spec top-level effect bindings point to `/effects`, and
+execution diagnostics do not trace a consumer back through every shared token. Materialization
+errors separately identify invalid values and references at their authoring paths. Output mutation and incomplete
 verification may be reported without a source path. Fully overridden rules should not be reported
 as unapplied requests.
 
@@ -291,91 +296,103 @@ complete reference appearance.
 
 ## Start with a small theme
 
-For a palette and ordinary scoped rules, author a `definition` recipe. Keep the versions and
-payload together so the same document can be rendered, saved, or passed to CLI `--theme-file`:
+A `design` recipe supports direct values and optional typed shared values. Keep the version and
+payload together so the same file can be rendered, saved, or passed to CLI `--theme-file`:
 
 ```ts
 import { renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
 
 const recipe: ThemeRecipeV1 = {
   schema_version: 1,
-  kind: "definition",
-  definition: {
-    authoring_schema_version: 1,
-    expansion_version: 1,
+  kind: "design",
+  design: {
     tokens: {
-      canvas: "#142535",
-      surface: "#22354d",
-      text: "#f8fafc",
-      border: "#fb7185",
-      line: "#94a3b8",
-      series: ["#38bdf8", "#fb7185", "#a3e635"],
+      brand: { type: "color", value: "#fb7185", label: "Brand", group: "Colors" },
     },
-    styles: [
-      { kind: "rule", family: "class", target: "node", style: { fill: "#263e55" } },
-    ],
+    styles: {
+      node: { stroke: { paint: { kind: "solid", color: { ref: "brand" } } } },
+      "node-label": { fill: "#f8fafc" },
+    },
+    canvas: { base: "#142535" },
+    rules: [{ family: "class", target: "node", style: { fill: "#263e55" } }],
   },
 };
 const svg = renderSvg("classDiagram\nclass Account", { theme: recipe });
 ```
 
-Token expansion defines a shared base; it does not guarantee every target in every family consumes
-each property. Effects, layered backgrounds, and asset-bearing recipes use `complete_spec`.
-Both representations compile through the same theme engine.
+There is no compulsory palette vocabulary. Name values according to your design, provide a type,
+and bind only the properties that should share them. A direct value remains independently editable.
+References are exact local IDs, do not interpolate strings, and cannot cross declared value types.
+The Rust materializer validates missing references, cycles, units, and consumer domains.
 
 ## Customize an existing preset
 
-Call `exportThemePreset(id)` and inspect `kind`. A complete recipe retains canvas layers, effects,
-assets, typography, and scoped rules. Modify a copy and preserve fields unrelated to the change.
-Do not reconstruct a complex recipe using only its palette.
-
-The executable [Web example](../../platforms/web/examples/custom-theme.mjs) changes the canvas base,
-Node border paint, and Class Node fill in a complete recipe. Its operations are equivalent to:
+Built-in presets export editable `design` documents with their bindings intact. Copy one and change
+its shared values; the gradient stops, shadows, and styles explicitly bound to those values follow.
+No color-equality search or preset-specific recoloring code is needed.
 
 ```ts
 import { exportThemePreset, renderSvg } from "@mermanjs/web";
 
 const recipe = structuredClone(exportThemePreset("cyberpunk"));
-if (recipe.kind !== "complete_spec") throw new Error("Expected a complete recipe");
-const spec = recipe.complete_spec;
-spec.canvas = { ...spec.canvas, base: "#142535" };
-spec.styles ??= [];
-spec.styles.push(
-  { kind: "rule", target: "node", style: { stroke: { paint: "#fb7185" } } },
-  { kind: "rule", family: "class", target: "node", style: { fill: "#22354d" } },
-);
-const svg = renderSvg("classDiagram\nclass Account", { theme: recipe });
+if (recipe.kind !== "design") throw new Error("Expected an editable design");
+recipe.design.tokens!["neon-cyan"]!.value = "#22d3ee";
+const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", { theme: recipe });
 const saved = JSON.stringify(recipe);
 ```
 
-For matching rules on the same target/facet, later entries override earlier entries. A family filter
-restricts where a rule matches; it is not CSS specificity. Properties omitted from the patch retain
-existing ownership. Separate semantic targets, such as Node and NodeLabel, need their own rules;
-a generic Text rule is not a universal replacement for every specialized label. Diagram-owned
-styles retain their defined priority over theme defaults.
+Token labels, descriptions, and groups organize editor controls without changing render identity.
+To customize one consumer independently, replace its reference with a local copy of the authored
+value. Keep nested references that should still follow other shared values. Imported `complete_spec`
+files remain editable with precise concrete controls; lost authoring bindings are not inferred.
 
-For patchable style fields, omitted means no override, `null` means Clear, and `"transparent"`
-means explicitly transparent paint. Clear restores the family's base behavior; it does not mean
-transparent or "remove this last rule and reveal the previous theme rule." Canvas `base` is a paint,
-not a patch field: use `"transparent"`, not `null`, for a transparent canvas.
+`styles` establishes defaults in deterministic target order, followed by `rules` in authored order
+and then `palettes`. Later matching rules override earlier values on the same target and facet.
+A family filter limits matching; it does not add CSS specificity. Separate semantic targets such
+as Node and NodeLabel require their own styles. Diagram-owned styles retain their defined priority.
 
-Check the operation's theme execution metadata as well as its SVG. For example, Class Node fill
-Clear currently restores the base paint but retains an `unsupported-paint` diagnostic and rejected
-target admission. Explicit color and transparent fill do not remove the ordinary SVG target's
-Unverified status. A visible color change alone does not establish export qualification.
+Omitted patch fields leave ownership unchanged, `null` means Clear, and `"transparent"` explicitly
+requests transparent paint. Clear restores family base behavior, rather than exposing a previous
+matching rule. Canvas base is a paint rather than a patch field: use `"transparent"`, not `null`.
+An omitted canvas leaves background ownership with the ordinary renderer behavior.
 
-This example changes explicit roles. It is **not** a global brand-color parameter. Cyberpunk
-contains independent node, actor, edge, marker, and data-series roles. Replacing every
-identical color string can damage those distinctions. A generated recipe is an editable snapshot,
-not a reversible record of the preset's color roles.
-For repeatable edits, keep a small creation function that exports a preset, applies your explicit
-changes, and saves the result. Keep its parameters and library version with the creation code.
-Re-running that function creates a new snapshot; it cannot automatically preserve manual edits
-made only to an earlier JSON file.
+## Add shadows and layered backgrounds
 
-Convenient semantic parameters for complete complex presets are not yet public. They must first
-be validated against actual canvas, effects and family consumers. There is no global recoloring
-API, symbolic token sidecar, or automatic reconstruction of creation parameters from imported JSON.
+An effect value can expose an ordinary `shadow-stack`, whose dimensions use pixel lengths and
+whose colors and opacity can be shared or local. `std_deviation` is the Gaussian standard deviation;
+spread and inset shadows are not part of this stack.
+
+```json
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "raised": {
+        "type": "effect",
+        "label": "Raised surface",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "shadows": [
+            { "offset_x": 5, "offset_y": 5, "std_deviation": 0, "color": "#111827" }
+          ]
+        }
+      }
+    },
+    "styles": { "node": { "fill": "#ffffff", "effect": { "ref": "raised" } } }
+  }
+}
+```
+
+`independent` shadows each use the original shape, then merge below it in authored order.
+`cascade` applies each shadow to the preceding result. Advanced effect graphs retain the concrete
+primitive interface. Canvas paints support solid colors, gradients and patterns, with optional
+ordered layers, opacity, offsets and blend modes. These values use the same generic binding controls.
+
+Saving a theme does not establish family or export support. Query support for the requested family,
+output and mechanism, and inspect execution metadata on the actual render. Keep asset licensing
+and host-font requirements with shared documents.
 
 ## Style XY Chart series
 

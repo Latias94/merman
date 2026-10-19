@@ -1094,7 +1094,7 @@ fn validate_theme_authoring_vectors(
         (
             "light",
             include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.definition.json"
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.design.json"
             ),
             include_str!(
                 "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.spec.canonical.json"
@@ -1103,7 +1103,7 @@ fn validate_theme_authoring_vectors(
         (
             "dark",
             include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.definition.json"
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.design.json"
             ),
             include_str!(
                 "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.spec.canonical.json"

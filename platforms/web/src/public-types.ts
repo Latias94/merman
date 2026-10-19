@@ -104,7 +104,7 @@ export interface ThemePresetCatalogEntry {
   qualified_cells: ThemePresetQualifiedCell[];
   license_expression: string;
   required_attribution: string | null;
-  export_kind: "definition" | "complete_spec";
+  export_kind: "design" | "complete_spec";
 }
 
 /** Missing families and unknown treatments are unreviewed; preserve unknown IDs. */
@@ -234,36 +234,168 @@ export interface SvgOptions {
 
 /** A named preset, direct specification, or shareable recipe. Select exactly one form. */
 export type DiagramThemeSelection =
-  | ({ kind?: never; schema_version?: never; definition?: never; complete_spec?: never } & (
+  | ({ kind?: never; schema_version?: never; design?: never; complete_spec?: never } & (
       | { preset: string; spec?: never }
       | { preset?: never; spec: DiagramThemeSpec }
     ))
   | ThemeRecipeV1;
 
-export interface ThemeDefinitionV1 {
-  authoring_schema_version: 1;
-  expansion_version: 1;
-  tokens: ThemeTokensV1;
-  styles?: ThemeStyleEntry[];
+/** A literal or an exact document-local token reference; dots have no traversal meaning. */
+export type ThemeValueV1<T> = T | ThemeReferenceV1;
+export interface ThemeReferenceV1 {
+  ref: string;
 }
 
-export interface ThemeTokensV1 {
-  canvas?: string;
-  surface?: string;
-  surface_alt?: string;
-  surface_muted?: string;
-  text?: string;
-  border?: string;
-  line?: string;
-  accent?: string;
-  series?: string[];
-  typography?: ThemeAuthoringTypographyV1;
+/** An editable design. Only clearable style fields accept explicit null. */
+export interface ThemeDesignV1 {
+  tokens?: Record<string, ThemeDesignTokenV1>;
+  styles?: Record<string, ThemeDesignStyleV1>;
+  rules?: ThemeDesignRuleV1[];
+  palettes?: Record<string, ThemeValueV1<ThemeValueV1<string>[]>>;
+  canvas?: ThemeDesignCanvasV1;
+  typography?: ThemeDesignTypographyV1;
+  mermaid?: MermaidThemeCompatibility;
+  assets?: ThemeAssetsSpec;
+  requirements?: ThemeRequirementsSpec;
 }
 
-export interface ThemeAuthoringTypographyV1 {
-  font_stack?: string[];
-  font_size_px?: number;
-  font_weight?: number;
+export type ThemeDesignTokenV1 = {
+  label?: string;
+  description?: string;
+  group?: string;
+} & (
+  | { type: "color"; value: ThemeValueV1<string> }
+  | { type: "number"; value: ThemeValueV1<number> }
+  | { type: "string"; value: ThemeValueV1<string> }
+  | { type: "length"; value: ThemeValueV1<ThemeLength> }
+  | { type: "insets"; value: ThemeValueV1<ThemeInsets> }
+  | { type: "line-height"; value: ThemeValueV1<ThemeLineHeight> }
+  | { type: "font-stack"; value: ThemeValueV1<string[]> }
+  | { type: "palette"; value: ThemeValueV1<ThemeValueV1<string>[]> }
+  | { type: "paint"; value: ThemeValueV1<ThemeDesignPaintV1> }
+  | { type: "stroke"; value: ThemeValueV1<ThemeDesignStrokeV1> }
+  | { type: "text-style"; value: ThemeValueV1<ThemeDesignTextStyleV1> }
+  | { type: "effect"; value: ThemeValueV1<ThemeDesignEffectV1> }
+);
+
+export interface ThemeDesignRuleV1 {
+  target: string;
+  family?: string;
+  variant?: string;
+  ordinal?: ThemeRuleEntry["ordinal"];
+  style: ThemeDesignStyleV1;
+}
+
+export interface ThemeDesignStyleV1 {
+  fill?: ThemePatch<ThemeValueV1<ThemeDesignPaintV1>>;
+  opacity?: ThemePatch<ThemeValueV1<number>>;
+  fill_opacity?: ThemePatch<ThemeValueV1<number>>;
+  stroke?: ThemeValueV1<ThemeDesignStrokeV1>;
+  radius?: ThemePatch<ThemeValueV1<ThemeLength>>;
+  padding?: ThemePatch<ThemeValueV1<ThemeInsets>>;
+  typography?: ThemeValueV1<ThemeDesignTextStyleV1>;
+  effect?: ThemePatch<ThemeValueV1<ThemeDesignEffectV1>>;
+}
+
+export interface ThemeDesignStrokeV1 {
+  paint?: ThemePatch<ThemeValueV1<ThemeDesignPaintV1>>;
+  width?: ThemePatch<ThemeValueV1<ThemeLength>>;
+  dasharray?: ThemePatch<ThemeValueV1<number>[]>;
+  linecap?: ThemePatch<ThemeValueV1<"butt" | "round" | "square">>;
+  linejoin?: ThemePatch<ThemeValueV1<"miter" | "round" | "bevel">>;
+  opacity?: ThemePatch<ThemeValueV1<number>>;
+}
+
+export interface ThemeDesignTextStyleV1 {
+  font_stack?: ThemePatch<ThemeValueV1<string[]>>;
+  font_size_px?: ThemePatch<ThemeValueV1<ThemeLength>>;
+  font_weight?: ThemePatch<ThemeValueV1<number>>;
+  font_style?: ThemePatch<ThemeValueV1<"normal" | "italic" | "oblique">>;
+  line_height?: ThemePatch<ThemeValueV1<ThemeLineHeight>>;
+  letter_spacing_px?: ThemePatch<ThemeValueV1<ThemeLength>>;
+  word_spacing_px?: ThemePatch<ThemeValueV1<ThemeLength>>;
+  transform?: ThemePatch<ThemeValueV1<"none" | "uppercase" | "lowercase" | "capitalize">>;
+  decoration?: ThemePatch<ThemeValueV1<"none" | "underline" | "overline" | "line-through">>;
+  text_align?: ThemePatch<ThemeValueV1<"start" | "center" | "end">>;
+  white_space?: ThemePatch<ThemeValueV1<"normal" | "pre" | "no-wrap" | "pre-wrap" | "pre-line">>;
+  wrap?: ThemePatch<ThemeValueV1<"normal" | "break-word" | "anywhere">>;
+}
+
+export interface ThemeDesignTypographyV1 {
+  default?: ThemeValueV1<ThemeDesignTextStyleV1>;
+  families?: Record<string, ThemeValueV1<ThemeDesignTextStyleV1>>;
+}
+
+export type ThemeDesignPaintV1 =
+  | string
+  | { kind: "transparent" }
+  | { kind: "solid"; color: ThemeValueV1<string> }
+  | {
+      kind: "linear-gradient";
+      angle_degrees: ThemeValueV1<number>;
+      stops: ThemeDesignGradientStopV1[];
+      repetition?: ThemeLinearGradientRepetition;
+    }
+  | {
+      kind: "radial-gradient";
+      center_x: ThemeValueV1<ThemeLength>;
+      center_y: ThemeValueV1<ThemeLength>;
+      radius: ThemeValueV1<ThemeLength>;
+      stops: ThemeDesignGradientStopV1[];
+      repetition?: ThemeRadialGradientRepetition;
+    }
+  | {
+      /** Acceptance preserves the request; it does not establish pattern renderer support. */
+      kind: "pattern";
+      pattern: "dots" | "grid" | "stripes";
+      cell_width: ThemeValueV1<ThemeLength>;
+      cell_height: ThemeValueV1<ThemeLength>;
+      foreground: ThemeValueV1<string>;
+      background?: ThemeValueV1<string>;
+      angle_degrees?: ThemeValueV1<number>;
+    };
+
+export interface ThemeDesignGradientStopV1 {
+  offset: ThemeValueV1<number>;
+  color: ThemeValueV1<string>;
+  opacity?: ThemeValueV1<number>;
+}
+
+export interface ThemeDesignCanvasV1 {
+  base?: ThemeValueV1<ThemeDesignPaintV1>;
+  layers?: ThemeDesignCanvasLayerV1[];
+  bleed?: ThemeValueV1<ThemeInsets>;
+}
+
+export interface ThemeDesignCanvasLayerV1 {
+  paint: ThemeValueV1<ThemeDesignPaintV1>;
+  opacity?: ThemeValueV1<number>;
+  blend_mode?: ThemeCanvasLayer["blend_mode"];
+  offset_x?: ThemeValueV1<ThemeLength>;
+  offset_y?: ThemeValueV1<ThemeLength>;
+}
+
+export type ThemeShadowCompositionV1 = "independent" | "cascade";
+export type ThemeDesignEffectV1 =
+  | {
+      kind: "shadow-stack";
+      composition: ThemeShadowCompositionV1;
+      color_space?: "linear-rgb" | "srgb";
+      shadows: ThemeDesignShadowV1[];
+    }
+  | {
+      kind: "graph";
+      color_space?: "linear-rgb" | "srgb";
+      primitives: ThemeEffectPrimitive[];
+    };
+
+export interface ThemeDesignShadowV1 {
+  offset_x: ThemeValueV1<ThemeLength>;
+  offset_y: ThemeValueV1<ThemeLength>;
+  /** Gaussian standard deviation in pixels; zero produces a hard shadow. */
+  std_deviation: ThemeValueV1<ThemeLength>;
+  color: ThemeValueV1<string>;
+  opacity?: ThemeValueV1<number>;
 }
 
 export interface MaterializedThemeWireV1 {
@@ -272,6 +404,27 @@ export interface MaterializedThemeWireV1 {
   expansion_version: 1;
   spec_schema_version: 1;
   spec: DiagramThemeSpec;
+  /** Declared authoring references and consumer constraints; this is not a winning-rule trace. */
+  references?: ThemeDesignReferenceUse[];
+}
+
+export interface ThemeDesignValueDomain {
+  value_type: ThemeDesignTokenV1["type"];
+  choices?: string[];
+  units?: string[];
+  min?: number;
+  max?: number;
+}
+
+export interface ThemeDesignReferenceUse {
+  token: string;
+  /** JSON Pointer to the authored consumer. */
+  path: string;
+  domain: ThemeDesignValueDomain;
+}
+
+export interface ThemeDesignInspection {
+  references: ThemeDesignReferenceUse[];
 }
 
 export type ThemeSupportOutputId =
@@ -339,8 +492,8 @@ export type ThemeRecipeV1 = {
   preset?: never;
   spec?: never;
 } & (
-  | { kind: "definition"; definition: ThemeDefinitionV1; complete_spec?: never }
-  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec; definition?: never }
+  | { kind: "design"; design: ThemeDesignV1; complete_spec?: never }
+  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec; design?: never }
 );
 
 export interface DiagramThemeSpec {
@@ -500,6 +653,8 @@ export interface ThemeEffectGraph {
   id: string;
   /** Color interpolation for all primitives; defaults to linear-rgb when omitted. */
   color_space?: "linear-rgb" | "srgb";
+  /** Independent composition accepts only drop-shadow primitives reading source-graphic. */
+  composition?: ThemeShadowCompositionV1;
   primitives: ThemeEffectPrimitive[];
 }
 
@@ -1068,7 +1223,7 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
  * An actual render explanation with open identifiers, not a portability certificate.
  * Rule diagnostics may describe partially applied rules; only `property`, when present, names
  * a specific property. Source paths are RFC 6901 pointers relative to the named recipe payload
- * (`definition` or `complete_spec`). Generated defaults and Rust input may have no source paths.
+ * (`design` or `complete_spec`). Generated defaults and Rust input may have no source paths.
  */
 export interface ThemeDiagnostic {
   code: string;
@@ -1506,7 +1661,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   runtimeCatalog: () => RuntimeCatalog;
   themeCatalog: () => ThemeCatalog;
   materializeTheme: (
-    definitionJson: string,
+    designJson: string,
     optionsJson?: string | null
   ) => MaterializedThemeWireV1;
   describeThemeSupport: (

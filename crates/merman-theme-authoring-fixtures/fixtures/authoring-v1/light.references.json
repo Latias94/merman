@@ -1,0 +1,16 @@
+[
+  {
+    "token": "surface",
+    "path": "/rules/5/style/fill/color",
+    "domain": {
+      "value_type": "color"
+    }
+  },
+  {
+    "token": "surface",
+    "path": "/rules/8/style/fill/color",
+    "domain": {
+      "value_type": "color"
+    }
+  }
+]

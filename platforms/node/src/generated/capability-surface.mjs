@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:b718d584ab67b3ef3927b035443db095db6ec6108afcc13ca481e08061d73188";
 
 export const NODE_BINDING_OPERATIONS = [
   {
@@ -71,7 +71,7 @@ export const NODE_BINDING_OPERATIONS = [
     "id": "materialize-theme-json",
     "maturity": "alpha",
     "compiled_prerequisites": [],
-    "input_kind": "theme-definition-json"
+    "input_kind": "theme-design-json"
   },
   {
     "id": "pdf",

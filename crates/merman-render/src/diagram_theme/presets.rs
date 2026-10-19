@@ -2,13 +2,12 @@ use merman_theme_contract::{
     ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
 };
 
-use super::{
-    DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDefinitionCompileError,
-};
+use super::{DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDesignCompileError};
 
 mod brutalist;
 mod catalog;
 mod cyberpunk;
+mod design;
 mod spotless;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -268,21 +267,22 @@ impl From<&ThemePresetQualifiedCell> for ThemePresetQualifiedCellV1 {
     }
 }
 
-fn theme_preset_unavailability_reason(error: &ThemeDefinitionCompileError) -> &'static str {
+fn theme_preset_unavailability_reason(error: &ThemeDesignCompileError) -> &'static str {
     match error {
-        ThemeDefinitionCompileError::Materialization(error)
+        ThemeDesignCompileError::Materialization(error)
             if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded" =>
         {
             "theme-preset.resource-policy-rejected"
         }
-        ThemeDefinitionCompileError::Compilation(ThemeCompileError::ResourceLimit(_))
-        | ThemeDefinitionCompileError::Compilation(ThemeCompileError::FontCatalog(
+        ThemeDesignCompileError::Compilation(ThemeCompileError::ResourceLimit(_))
+        | ThemeDesignCompileError::Compilation(ThemeCompileError::FontCatalog(
             FontCatalogError::ResourceLimit(_),
         )) => "theme-preset.resource-policy-rejected",
         _ => "theme-preset.recipe-unavailable",
     }
 }
 
+pub(super) use catalog::build_design;
 pub(crate) use catalog::materialize_spec_wire;
 
 #[cfg(test)]
@@ -536,7 +536,7 @@ mod tests {
             assert_eq!(entry.recipe_revision(), 1);
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
-            assert_eq!(descriptor.export_kind(), "complete_spec");
+            assert_eq!(descriptor.export_kind(), "design");
             assert_eq!(
                 entry
                     .qualification_invalidation()
@@ -712,29 +712,143 @@ mod tests {
     }
 
     #[test]
-    fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
+    fn all_ten_catalog_recipes_round_trip_as_editable_designs() {
         for descriptor in theme_preset_descriptors() {
             let compiler = DiagramThemeCompiler::new();
-            let merman_theme_contract::ThemeRecipeV1::CompleteSpec {
-                complete_spec: original,
-            } = compiler
+            let recipe = compiler
                 .export_preset(descriptor.preset())
-                .expect("catalog preset must export")
-            else {
-                panic!("current catalog presets must export complete specs")
+                .expect("catalog preset exports");
+            let merman_theme_contract::ThemeRecipeV1::Design { design } = &recipe else {
+                panic!("presets must retain explicit authored bindings")
             };
-            let encoded = serde_json::to_vec(&original).expect("complete spec must serialize");
-            let decoded: merman_theme_contract::DiagramThemeSpecWireV1 =
-                serde_json::from_slice(&encoded).expect("complete spec must deserialize");
-            let round_tripped = DiagramThemeCompiler::new()
-                .compile_spec_wire(decoded)
-                .expect("round-tripped catalog recipe must compile");
-
+            assert!(!design.tokens.is_empty());
+            assert!(
+                !crate::diagram_theme::inspect_theme_design(design)
+                    .unwrap()
+                    .references
+                    .is_empty()
+            );
+            let encoded = serde_json::to_vec(&recipe).expect("design serializes");
+            let decoded = serde_json::from_slice(&encoded).expect("design deserializes");
+            let round_tripped = compiler
+                .compile_recipe(decoded)
+                .expect("imported design compiles");
             assert_eq!(
-                round_tripped.recipe_fingerprint().to_hex(),
-                catalog::entry_for_preset(descriptor.preset()).recipe_fingerprint()
+                round_tripped.recipe_fingerprint(),
+                compiler
+                    .compile_preset(descriptor.preset())
+                    .unwrap()
+                    .recipe_fingerprint()
             );
         }
+    }
+
+    #[test]
+    fn preset_shared_color_edit_and_local_detachment_survive_exchange() {
+        use merman_theme_contract::*;
+
+        let compiler = DiagramThemeCompiler::new();
+        let ThemeRecipeV1::Design { mut design } =
+            compiler.export_preset(ThemePreset::Cyberpunk).unwrap()
+        else {
+            panic!("editable preset design")
+        };
+        design.tokens.get_mut("neon-cyan").unwrap().value =
+            ThemeDesignTokenValueV1::Color(ThemeValueV1::Literal("#123456".to_owned()));
+        // Detach exactly the explicit Flowchart edge override, retaining every other binding.
+        let edge = design
+            .rules
+            .iter_mut()
+            .rev()
+            .find(|rule| rule.family.as_deref() == Some("flowchart") && rule.target == "edge")
+            .unwrap();
+        let Some(ThemeValueV1::Literal(stroke)) = edge.style.stroke.as_mut() else {
+            panic!("authored stroke")
+        };
+        stroke.paint = SpecifiedWireV1::Value(ThemeValueV1::Literal(ThemeDesignPaintV1::Color(
+            "#fedcba".to_owned(),
+        )));
+        let recipe = ThemeRecipeV1::Design { design };
+        let encoded = serde_json::to_vec(&recipe).unwrap();
+        let imported = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        let flowchart = imported.resolve(DiagramFamilyId::FLOWCHART);
+        assert_eq!(
+            resolved_solid_stroke(&flowchart, ThemeTarget::Node),
+            "#123456"
+        );
+        assert_eq!(
+            resolved_solid_stroke(&flowchart, ThemeTarget::Edge),
+            "#fedcba"
+        );
+        let sequence = imported.resolve(DiagramFamilyId::SEQUENCE);
+        assert_eq!(
+            resolved_solid_stroke(&sequence, ThemeTarget::Actor),
+            "#123456"
+        );
+        assert_eq!(
+            resolved_solid_fill(&sequence, ThemeTarget::ActorLabel),
+            "#123456"
+        );
+
+        let spec = catalog::materialize_spec_wire(
+            ThemePreset::Cyberpunk,
+            &ThemeResourcePolicy::interactive(),
+        )
+        .unwrap();
+        let ThemeRecipeV1::Design { design } = recipe else {
+            unreachable!()
+        };
+        let changed = crate::diagram_theme::materialize_theme_design(&design).unwrap();
+        assert_ne!(
+            spec.canvas, changed.canvas,
+            "gradient stops share the declared neon role"
+        );
+        assert_ne!(
+            spec.effects, changed.effects,
+            "glows share the declared neon role"
+        );
+    }
+
+    #[test]
+    fn preset_shadow_values_remain_editable_without_leaking_into_labels() {
+        use merman_theme_contract::*;
+
+        let compiler = DiagramThemeCompiler::new();
+        let ThemeRecipeV1::Design { mut design } =
+            compiler.export_preset(ThemePreset::Brutalist).unwrap()
+        else {
+            panic!("editable preset design")
+        };
+        design.tokens.get_mut("shadow-offset").unwrap().value = ThemeDesignTokenValueV1::Length(
+            ThemeValueV1::Literal(ThemeLengthWireV1::PxValue(11.0)),
+        );
+        let encoded = serde_json::to_vec(&ThemeRecipeV1::Design { design }).unwrap();
+        let theme = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
+        let node = flowchart.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        let effect_id = node.effect_resolution().value().expect("body shadow");
+        let graph = theme
+            .spec()
+            .effects()
+            .graphs()
+            .iter()
+            .find(|graph| graph.id() == effect_id)
+            .unwrap();
+        assert!(matches!(
+            graph.primitives(),
+            [crate::diagram_theme::EffectPrimitive::DropShadow {
+                offset_x: 11.0,
+                offset_y: 11.0,
+                blur_radius: 0.0,
+                ..
+            }]
+        ));
+        let label = flowchart.style(ThemeTarget::NodeLabel, ThemeVariant::Default, None);
+        assert!(label.effect_resolution().value().is_none());
     }
 
     #[test]
@@ -752,7 +866,7 @@ mod tests {
             .expect_err("preset compilation must not bypass definition admission");
         assert!(matches!(
             compile_error,
-            crate::diagram_theme::ThemeDefinitionCompileError::Materialization(ref error)
+            crate::diagram_theme::ThemeDesignCompileError::Materialization(ref error)
                 if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded"
                     && error.diagnostic().limit_id() == Some("max_theme_encoded_bytes")
         ));
@@ -773,14 +887,15 @@ mod tests {
     #[test]
     fn cyberpunk_complete_recipe_retains_canvas_and_scoped_ordered_glow() {
         use merman_theme_contract::{
-            SpecifiedWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1, ThemeRecipeV1,
-            ThemeRuleSetWireV1,
+            SpecifiedWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1, ThemeRuleSetWireV1,
         };
         let compiler = DiagramThemeCompiler::new();
         let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
-        let ThemeRecipeV1::CompleteSpec { complete_spec } = &recipe else {
-            unreachable!()
-        };
+        let complete_spec = catalog::materialize_spec_wire(
+            ThemePreset::Cyberpunk,
+            &ThemeResourcePolicy::interactive(),
+        )
+        .unwrap();
         assert_eq!(
             complete_spec
                 .canvas
@@ -825,11 +940,36 @@ mod tests {
             .effects
             .as_ref()
             .expect("public recipe owns the glow");
-        let ThemeEffectEntryWireV1::Graph { id, primitives, color_space } = effects.iter()
-            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == "cyberpunk-shape-glow"))
+        let effect_for_target = |target: &str| {
+            complete_spec
+                .styles
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find_map(|entry| match entry {
+                    ThemeRuleSetWireV1::Rule {
+                        family,
+                        target: role,
+                        style,
+                        ..
+                    } if family.as_deref() == Some("flowchart") && role == target => {
+                        if let SpecifiedWireV1::Value(id) = &style.effect {
+                            Some(id.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .expect("effect binding on target")
+        };
+        let shape_id = effect_for_target("node");
+        let expected_edge_id = effect_for_target("edge");
+        let ThemeEffectEntryWireV1::Graph { id, primitives, color_space, .. } = effects.iter()
+            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == &shape_id))
             .expect("shape glow graph") else { unreachable!() };
-        let ThemeEffectEntryWireV1::Graph { id: edge_id, primitives: edge_primitives, color_space: edge_color_space } = effects.iter()
-            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == "cyberpunk-edge-glow"))
+        let ThemeEffectEntryWireV1::Graph { id: edge_id, primitives: edge_primitives, color_space: edge_color_space, .. } = effects.iter()
+            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == &expected_edge_id))
             .expect("edge glow graph") else { unreachable!() };
         let [
             ThemeEffectPrimitiveWireV1::DropShadow {
@@ -873,7 +1013,10 @@ mod tests {
             (*offset_x, *offset_y, *blur_radius, *spread),
             (0.0, 0.0, 6.0, 0.0)
         );
-        assert_eq!(color, "rgba(0, 242, 255, 0.6)");
+        assert_eq!(
+            ThemeColorValue::parse(color).unwrap(),
+            ThemeColorValue::parse("rgba(0, 242, 255, 0.6)").unwrap()
+        );
         let scoped_targets: Vec<_> = complete_spec
             .styles
             .as_ref()
@@ -983,11 +1126,12 @@ mod tests {
             ThemeStylePatchWireV1,
         };
         let compiler = DiagramThemeCompiler::new();
-        let ThemeRecipeV1::CompleteSpec { mut complete_spec } =
-            compiler.export_preset(ThemePreset::Cyberpunk).unwrap()
-        else {
-            unreachable!()
-        };
+        let original = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+        let mut complete_spec = catalog::materialize_spec_wire(
+            ThemePreset::Cyberpunk,
+            &ThemeResourcePolicy::interactive(),
+        )
+        .unwrap();
         complete_spec
             .styles
             .as_mut()
@@ -1020,18 +1164,33 @@ mod tests {
         let actor = sequence.style(ThemeTarget::Actor, ThemeVariant::Default, None);
         assert_eq!(
             actor.effect_resolution().value().map(String::as_str),
-            Some("cyberpunk-shape-glow")
+            original
+                .resolve(DiagramFamilyId::SEQUENCE)
+                .style(ThemeTarget::Actor, ThemeVariant::Default, None)
+                .effect_resolution()
+                .value()
+                .map(String::as_str)
         );
         assert_eq!(theme.spec().canvas().layers().len(), 3);
         let note_label = sequence.style(ThemeTarget::NoteLabel, ThemeVariant::Default, None);
         assert_eq!(
             note_label.effect_resolution().value().map(String::as_str),
-            Some("cyberpunk-note-text-glow")
+            original
+                .resolve(DiagramFamilyId::SEQUENCE)
+                .style(ThemeTarget::NoteLabel, ThemeVariant::Default, None)
+                .effect_resolution()
+                .value()
+                .map(String::as_str)
         );
         let loop_label = sequence.style(ThemeTarget::LoopLabel, ThemeVariant::Default, None);
         assert_eq!(
             loop_label.effect_resolution().value().map(String::as_str),
-            Some("cyberpunk-loop-text-glow")
+            original
+                .resolve(DiagramFamilyId::SEQUENCE)
+                .style(ThemeTarget::LoopLabel, ThemeVariant::Default, None)
+                .effect_resolution()
+                .value()
+                .map(String::as_str)
         );
         assert_eq!(theme.spec().effects().graphs().len(), 16);
     }
@@ -1040,12 +1199,19 @@ mod tests {
     fn preset_final_composition_obeys_encoded_byte_budget() {
         let compiler = DiagramThemeCompiler::new();
         let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
-        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = recipe else {
+        let merman_theme_contract::ThemeRecipeV1::Design { design } = recipe else {
             unreachable!()
         };
-        // Preset construction admits the complete-spec payload. Importing a saved recipe
-        // separately admits the raw input including its ThemeRecipeV1 envelope.
-        let size = serde_json::to_vec(&complete_spec).unwrap().len();
+        let complete_spec = catalog::materialize_spec_wire(
+            ThemePreset::Cyberpunk,
+            &ThemeResourcePolicy::interactive(),
+        )
+        .unwrap();
+        // Both authored input and concrete expansion count toward the host's encoded-byte limit.
+        let size = serde_json::to_vec(&complete_spec)
+            .unwrap()
+            .len()
+            .max(serde_json::to_vec(&design).unwrap().len());
         let limited = compiler.with_resource_policy(
             ThemeResourcePolicy::interactive()
                 .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size - 1)
@@ -1103,14 +1269,16 @@ mod tests {
     }
 
     #[test]
-    fn preset_complete_spec_exports_preserve_each_recipe_profile() {
+    fn preset_design_exports_preserve_each_recipe_profile() {
         let compiler = DiagramThemeCompiler::new();
         for descriptor in theme_preset_descriptors() {
-            let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = compiler
+            let merman_theme_contract::ThemeRecipeV1::Design {
+                design: complete_spec,
+            } = compiler
                 .export_preset(descriptor.preset())
                 .expect("preset export must materialize")
             else {
-                panic!("current preset recipes require the complete_spec export variant")
+                panic!("preset recipes must retain authoring bindings")
             };
             assert!(
                 complete_spec.assets.is_none(),

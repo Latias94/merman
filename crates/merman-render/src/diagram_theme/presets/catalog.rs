@@ -1,18 +1,13 @@
-use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, SpecifiedWireV1,
-    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializationErrorV1,
-    ThemeOrdinalCycleWireV1, ThemeOrdinalSelectorWireV1, ThemeRuleSetWireV1,
-    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
-};
+use merman_theme_contract::*;
 
 #[cfg(test)]
 use super::ThemePresetQualificationInvalidation;
+use super::design::*;
 use super::{ThemePreset, ThemePresetDescriptor, ThemePresetQualifiedCell};
 use crate::DiagramFamilyId;
-use crate::diagram_theme::definition_admission::{
-    check_complete_spec_encoded_bytes, materialize_theme_with_resource_policy,
+use crate::diagram_theme::{
+    ThemeResourcePolicy, ThemeTarget, ThemeVariant, materialize_theme_design_with_resource_policy,
 };
-use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
 
 #[cfg(test)]
 const CATALOG_SCHEMA_VERSION: u32 = 1;
@@ -44,36 +39,32 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "2465acc576dd1f8f7e67c9fc1c0f90eb912b95b3d5cd66a6e56719ee912a64ec";
+    "64857e0bc9e0261ec77c43f27f87ff8476525edd4e098bd45a18934eeb554194";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "59248821736574ffe32a27126c3850dec5c0f8f3bb1cbc00ab69b4cbc221feaf";
+    "50dfa8f0f8591d7c10262fd7e9b910cb6bf4de7f2718d35ca9e983b9a2c8e46b";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "418c9e92199fda85a598ab7a4ef094578f896fa8bafc003413f231cf97af3345";
+    "0cc8079ac6ecc52d42e068ccd8975a88cc6bd53fd57ba7f293ab415868a11893";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "dad751c81601ebb36b29a77cee28e9cbb1d810b215d1a3ba103ae831e45ce710";
+    "3d9f5b7beeb08cfedb09ed4da2403cf2c8d8e567efd15d39a8449c353887eda5";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "8e1a0bfbc323356693315fd2a16211d20496071aedcc744fbdea7bb74437e5b7";
+    "8692870ebe2064dbe5962cb39d739745867f5b1bbcbae6ff6a2fa0bb6180af28";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "3c90d4b8be9fc1bf18db04e649b2394862b6e65a319779d58f4290357629c572";
+    "8d2ecf76de5637a8af8aba90664f2c46eda2746424a9e9e418652845b5abcad0";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "4104892549840b7648816e27ea0effdf4cfffdbaaaf774fb8fa38d53144de4d4";
+    "1656f86620cfa3b45effdfeaa01a987f7fd866b0bf2f5cc447b1eccb12f14fb8";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "2fe24c68b5e6a208e8f4a031a9e91f5d31617fc4cfaaef4dd50942d566d5f32c";
+    "efef84f97d685e700291dac98f4672ccf70cd03ac8601ffd5c338ec8744e7dd8";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "34a1906751cc8142e70d9e8f19019c78eb213d91d0212cfe929b624a8a70b1d7";
+    "e83365e3b165b4640d6311ab8389cf6b813e02d0335ab5a7aee89ccff5670396";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "e1fb0df7864e83a73eeac50da40559d3768807f31cace4ce86529fd136abb1c2";
-type PresetRecipeBuilder = fn(
-    PresetPalette,
-    &ThemeResourcePolicy,
-) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1>;
+    "4482d7e323c6f0b2b1faa7f6fb2ded404052b593e4a51e6a9d5ea8e411b3df56";
+type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
 pub(super) struct PresetPalette {
     pub(super) canvas: &'static str,
     pub(super) surface: &'static str,
     pub(super) surface_alt: &'static str,
-    pub(super) surface_muted: &'static str,
     pub(super) text: &'static str,
     pub(super) subtle_text: &'static str,
     pub(super) border: &'static str,
@@ -244,11 +235,8 @@ impl PresetCatalogEntry {
         self.retained
     }
 
-    fn recipe(
-        &self,
-        resources: &ThemeResourcePolicy,
-    ) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
-        (self.recipe_builder)(self.palette, resources)
+    fn recipe(&self) -> ThemeDesignV1 {
+        (self.recipe_builder)(self.palette)
     }
 }
 
@@ -295,7 +283,7 @@ const fn entry(
             _ => SHARED_PALETTE_DESIGNS,
         },
         qualified_cells: NO_QUALIFIED_CELLS,
-        export_kind: "complete_spec",
+        export_kind: "design",
         #[cfg(test)]
         qualification_invalidation: ThemePresetQualificationInvalidation::current(),
         required_feature_ids: NO_IDS,
@@ -319,7 +307,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#ffffff",
             surface: "#f8fafc",
             surface_alt: "#e2e8f0",
-            surface_muted: "#f1f5f9",
             text: "#0f172a",
             subtle_text: "#475569",
             border: "#94a3b8",
@@ -356,7 +343,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#0f172a",
             surface: "#111827",
             surface_alt: "#1f2937",
-            surface_muted: "#334155",
             text: "#e5e7eb",
             subtle_text: "#cbd5e1",
             border: "#475569",
@@ -393,7 +379,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#282c34",
             surface: "#21252b",
             surface_alt: "#2c313a",
-            surface_muted: "#3e4451",
             text: "#abb2bf",
             subtle_text: "#abb2bf",
             border: "#3e4451",
@@ -433,7 +418,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
             surface_alt: "#ebdbb2",
-            surface_muted: "#d5c4a1",
             text: "#3c3836",
             subtle_text: "#665c54",
             border: "#d5c4a1",
@@ -470,7 +454,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#282828",
             surface: "#3c3836",
             surface_alt: "#504945",
-            surface_muted: "#665c54",
             text: "#ebdbb2",
             subtle_text: "#d5c4a1",
             border: "#665c54",
@@ -510,7 +493,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
             surface_alt: "#e6e8eb",
-            surface_muted: "#d9d7ce",
             text: "#5c6166",
             subtle_text: "#5c6166",
             border: "#8a9199",
@@ -547,7 +529,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#0b0e14",
             surface: "#11151c",
             surface_alt: "#1f2430",
-            surface_muted: "#343b48",
             text: "#bfbdb6",
             subtle_text: "#8a9199",
             border: "#343b48",
@@ -584,7 +565,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#f6f3e9",
             surface: "#ffffff",
             surface_alt: "#FFE66D",
-            surface_muted: "#d9d2c3",
             text: "#000000",
             subtle_text: "#3d3d3d",
             border: "#000000",
@@ -624,7 +604,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#EDE8DC",
             surface: "#F5F1E8",
             surface_alt: "#eeeae0",
-            surface_muted: "#e2ded2",
             text: "#1a1a1a",
             subtle_text: "#57534e",
             border: "#2C2416",
@@ -661,7 +640,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             canvas: "#051423",
             surface: "#051423",
             surface_alt: "#051423",
-            surface_muted: "#051423",
             text: "#00f2ff",
             subtle_text: "#00f2ff",
             border: "#00f2ff",
@@ -727,64 +705,233 @@ pub(crate) fn materialize_spec_wire(
     preset: ThemePreset,
     resources: &ThemeResourcePolicy,
 ) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
+    materialize_theme_design_with_resource_policy(&build_design(preset), resources)
+}
+
+/// Builds the editable source; its caller admits the design before export or compilation.
+pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
     let entry = entry_for_preset(preset);
     debug_assert!(
         entry.allowed_residual_ids.is_empty(),
         "unqualified alpha presets must not inherit qualification residual allowances"
     );
-    let mut spec = entry.recipe(resources)?;
+    let mut design = entry.recipe();
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
-        // Choose a fallback theme without claiming derived color variables. An authored
-        // darkMode value owns its dependent paints and would shadow this recipe's typed rules.
-        spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
+        // Choose a fallback without claiming derived variables that would shadow typed paint.
+        design.mermaid = Some(MermaidThemeCompatibilityWireV1 {
             theme: Some(if entry.dark_mode { "dark" } else { "base" }.to_owned()),
             dark_mode: None,
             variables: None,
         });
     }
-    check_complete_spec_encoded_bytes(resources, &spec)?;
-    Ok(spec)
+    design
 }
 
 fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
     entry.retained && entry.required_feature_ids.is_empty() && entry.bundled_resource_ids.is_empty()
 }
 
-pub(super) fn build_cross_family_recipe(
-    palette: PresetPalette,
-    resources: &ThemeResourcePolicy,
-) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
-    materialize_theme_with_resource_policy(&build_cross_family_definition(palette), resources)
-        .map(|materialized| materialized.into_spec())
-}
-
-fn build_cross_family_definition(palette: PresetPalette) -> ThemeDefinitionV1 {
-    let tokens = ThemeTokensV1::default()
-        .with_color(ThemeColorTokenV1::Canvas, palette.canvas)
-        .with_color(ThemeColorTokenV1::Surface, palette.surface)
-        .with_color(ThemeColorTokenV1::SurfaceAlt, palette.surface_alt)
-        .with_color(ThemeColorTokenV1::SurfaceMuted, palette.surface_muted)
-        .with_color(ThemeColorTokenV1::Text, palette.text)
-        .with_color(ThemeColorTokenV1::Border, palette.border)
-        .with_color(ThemeColorTokenV1::Line, palette.line)
-        .with_color(ThemeColorTokenV1::Accent, palette.accent)
-        .with_series(
-            palette
-                .series
-                .iter()
-                .map(|color| (*color).to_owned())
-                .collect(),
+pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1 {
+    let mut design = ThemeDesignV1::default();
+    // These are distinct authored roles even when a preset gives them equal initial colors.
+    for (id, label, value) in [
+        ("canvas", "Canvas", palette.canvas),
+        ("surface", "Surface", palette.surface),
+        ("surface-alt", "Alternate surface", palette.surface_alt),
+        ("text", "Text", palette.text),
+        ("subtle-text", "Subtle text", palette.subtle_text),
+        ("border", "Border", palette.border),
+        ("line", "Line", palette.line),
+        ("accent", "Accent", palette.accent),
+        (
+            "edge-label-background",
+            "Edge label background",
+            palette.edge_label_background,
+        ),
+        (
+            "cluster-background",
+            "Group background",
+            palette.cluster_background,
+        ),
+        ("cluster-border", "Group border", palette.cluster_border),
+        (
+            "note-background",
+            "Note background",
+            palette.note_background,
+        ),
+        ("note-border", "Note border", palette.note_border),
+        ("note-text", "Note text", palette.note_text),
+        (
+            "actor-background",
+            "Actor background",
+            palette.actor_background,
+        ),
+        ("actor-border", "Actor border", palette.actor_border),
+        ("actor-text", "Actor text", palette.actor_text),
+        (
+            "activation-background",
+            "Activation background",
+            palette.activation_background,
+        ),
+        (
+            "activation-border",
+            "Activation border",
+            palette.activation_border,
+        ),
+        (
+            "sequence-number-text",
+            "Sequence number",
+            palette.sequence_number_text,
+        ),
+        (
+            "packet-field-label-text",
+            "Packet field label",
+            palette.packet_field_label_text,
+        ),
+    ] {
+        color_token(&mut design, id, label, value);
+    }
+    for (index, color) in palette.series.iter().enumerate() {
+        color_token(
+            &mut design,
+            &format!("series.{index}"),
+            &format!("Series {}", index + 1),
+            color,
         );
-    let first_series = palette
-        .series
-        .first()
-        .copied()
-        .expect("preset palettes must contain at least one series color");
-    let mut styles = Vec::new();
+    }
+    token(
+        &mut design,
+        "series",
+        "Series palette",
+        "Colors",
+        ThemeDesignTokenValueV1::Palette(literal(
+            (0..palette.series.len())
+                .map(|index| reference(&format!("series.{index}")))
+                .collect(),
+        )),
+    );
+    token(
+        &mut design,
+        "body-font",
+        "Font family",
+        "Typography",
+        ThemeDesignTokenValueV1::FontStack(literal(
+            ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
+                .map(str::to_owned)
+                .to_vec(),
+        )),
+    );
+    design.typography = Some(ThemeDesignTypographyV1 {
+        default: Some(literal(ThemeDesignTextStyleV1 {
+            font_stack: SpecifiedWireV1::Value(reference("body-font")),
+            ..Default::default()
+        })),
+        ..Default::default()
+    });
+    design.canvas = Some(ThemeDesignCanvasV1 {
+        base: Some(paint("canvas")),
+        ..Default::default()
+    });
 
-    // Mindmap's direct palette needs the absence of a static fill winner. Keep the shared surface
-    // recipe on the other Node families instead of installing one cross-family rule that silently
-    // suppresses the Mindmap ordinal colors.
+    // Author the effective defaults directly. Superseded expansion rules and their unused
+    // tokens are deliberately absent: every displayed reusable value must have an actual use.
+    for (target, fill, stroke) in [
+        (ThemeTarget::Text, Some("text"), None),
+        (ThemeTarget::Title, Some("text"), None),
+        (ThemeTarget::Node, None, Some("border")),
+        (ThemeTarget::Edge, None, Some("line")),
+        (
+            ThemeTarget::Cluster,
+            Some("cluster-background"),
+            Some("cluster-border"),
+        ),
+        (
+            ThemeTarget::Actor,
+            Some("actor-background"),
+            Some("actor-border"),
+        ),
+        (ThemeTarget::ActorLabel, Some("actor-text"), None),
+        (
+            ThemeTarget::Lifeline,
+            Some("actor-border"),
+            Some("actor-border"),
+        ),
+        (ThemeTarget::Message, None, Some("line")),
+        (ThemeTarget::State, Some("surface"), Some("border")),
+        (ThemeTarget::StateLabel, Some("text"), None),
+        (ThemeTarget::Transition, None, Some("line")),
+        (ThemeTarget::TransitionMarker, Some("line"), Some("line")),
+        (ThemeTarget::TransitionLabel, Some("text"), None),
+        (
+            ThemeTarget::TransitionLabelBackground,
+            Some("edge-label-background"),
+            None,
+        ),
+        (ThemeTarget::Composite, Some("canvas"), Some("border")),
+        (
+            ThemeTarget::CompositeHeader,
+            Some("surface-alt"),
+            Some("border"),
+        ),
+        (ThemeTarget::CompositeLabel, Some("text"), None),
+        (
+            ThemeTarget::Note,
+            Some("note-background"),
+            Some("note-border"),
+        ),
+        (ThemeTarget::NoteLabel, Some("note-text"), None),
+        (
+            ThemeTarget::Activation,
+            Some("activation-background"),
+            Some("activation-border"),
+        ),
+        (ThemeTarget::Entity, Some("surface"), Some("border")),
+        (
+            ThemeTarget::EdgeLabelBackground,
+            Some("edge-label-background"),
+            None,
+        ),
+        (
+            ThemeTarget::SequenceNumberLabel,
+            Some("sequence-number-text"),
+            None,
+        ),
+        (ThemeTarget::MessageLabel, Some("text"), None),
+        (
+            ThemeTarget::LoopLabelBackground,
+            Some("surface-alt"),
+            Some("border"),
+        ),
+        (ThemeTarget::LoopLabel, Some("text"), None),
+        (ThemeTarget::PacketByteLabel, Some("text"), None),
+        (
+            ThemeTarget::PacketFieldLabel,
+            Some("packet-field-label-text"),
+            None,
+        ),
+        (ThemeTarget::Axis, Some("text"), Some("line")),
+        (ThemeTarget::Legend, Some("subtle-text"), None),
+    ] {
+        design
+            .styles
+            .insert(target.id().to_owned(), style(fill, stroke));
+    }
+    design.rules.extend([
+        rule(
+            None,
+            ThemeTarget::SpecialState,
+            Some(ThemeVariant::Special),
+            style(Some("accent"), Some("accent")),
+        ),
+        rule(
+            None,
+            ThemeTarget::SpecialStateInner,
+            Some(ThemeVariant::End),
+            style(Some("canvas"), Some("canvas")),
+        ),
+    ]);
+
+    // Mindmap consumes the ordinal palette; a cross-family Node fill would suppress it.
     for family in [
         DiagramFamilyId::FLOWCHART,
         DiagramFamilyId::SWIMLANE,
@@ -792,193 +939,94 @@ fn build_cross_family_definition(palette: PresetPalette) -> ThemeDefinitionV1 {
         DiagramFamilyId::TREE_VIEW,
         DiagramFamilyId::BLOCK,
     ] {
-        styles.push(preset_family_rule(
-            family,
+        design.rules.push(rule(
+            Some(family),
             ThemeTarget::Node,
-            Some(palette.surface),
             None,
+            style(Some("surface"), None),
         ));
     }
-
-    styles.extend([
-        preset_rule(
-            ThemeTarget::EdgeLabelBackground,
-            Some(palette.edge_label_background),
-            None,
-        ),
-        preset_rule(
-            ThemeTarget::Cluster,
-            Some(palette.cluster_background),
-            Some(palette.cluster_border),
-        ),
-        preset_rule(
-            ThemeTarget::Actor,
-            Some(palette.actor_background),
-            Some(palette.actor_border),
-        ),
-        preset_rule(ThemeTarget::ActorLabel, Some(palette.actor_text), None),
-        preset_rule(
-            ThemeTarget::Lifeline,
-            Some(palette.actor_border),
-            Some(palette.actor_border),
-        ),
-        preset_rule(
-            ThemeTarget::SequenceNumberLabel,
-            Some(palette.sequence_number_text),
-            None,
-        ),
-        preset_rule(ThemeTarget::MessageLabel, Some(palette.text), None),
-        preset_rule(
-            ThemeTarget::LoopLabelBackground,
-            Some(palette.surface_alt),
-            Some(palette.border),
-        ),
-        preset_rule(ThemeTarget::LoopLabel, Some(palette.text), None),
-        preset_rule(
-            ThemeTarget::TransitionLabelBackground,
-            Some(palette.edge_label_background),
-            None,
-        ),
-        preset_rule(
-            ThemeTarget::Note,
-            Some(palette.note_background),
-            Some(palette.note_border),
-        ),
-        preset_rule(ThemeTarget::NoteLabel, Some(palette.note_text), None),
-        preset_rule(ThemeTarget::PacketByteLabel, Some(palette.text), None),
-        preset_rule(
-            ThemeTarget::PacketFieldLabel,
-            Some(palette.packet_field_label_text),
-            None,
-        ),
-        preset_rule(
-            ThemeTarget::Activation,
-            Some(palette.activation_background),
-            Some(palette.activation_border),
-        ),
-        preset_rule(ThemeTarget::Axis, Some(palette.text), Some(palette.line)),
-        preset_rule(ThemeTarget::Legend, Some(palette.subtle_text), None),
-        preset_family_rule(
+    for (family, target, fill, stroke) in [
+        (
             DiagramFamilyId::ER,
             ThemeTarget::Relation,
             None,
-            Some(palette.line),
+            Some("line"),
         ),
-        preset_family_rule(
+        (
             DiagramFamilyId::REQUIREMENT,
             ThemeTarget::Requirement,
-            Some(palette.surface),
+            Some("surface"),
             None,
         ),
-        preset_family_rule(
+        (
             DiagramFamilyId::PIE,
             ThemeTarget::PieSlice,
             None,
-            Some(palette.border),
+            Some("border"),
         ),
-        preset_family_rule(
+        (
             DiagramFamilyId::QUADRANT_CHART,
             ThemeTarget::ChartSeries,
-            Some(first_series),
+            Some("series.0"),
             None,
         ),
-        preset_family_rule(
+        (
             DiagramFamilyId::GANTT,
             ThemeTarget::Task,
-            Some(palette.surface),
+            Some("surface"),
             None,
         ),
-        preset_palette_rule(ThemeTarget::Task, palette.series),
-        preset_palette_rule(ThemeTarget::ChartSeries, palette.series),
-        preset_palette_rule(ThemeTarget::TimelineEvent, palette.series),
-        preset_palette_rule(ThemeTarget::JourneyTask, palette.series),
-    ]);
-
+    ] {
+        design
+            .rules
+            .push(rule(Some(family), target, None, style(fill, stroke)));
+    }
+    for target in [
+        ThemeTarget::Node,
+        ThemeTarget::PieSlice,
+        ThemeTarget::Task,
+        ThemeTarget::ChartSeries,
+        ThemeTarget::TimelineEvent,
+        ThemeTarget::JourneyTask,
+    ] {
+        design
+            .palettes
+            .insert(target.id().to_owned(), reference("series"));
+    }
     assert_eq!(
         palette.kanban_task_labels.len(),
         palette.series.len(),
         "each preset series slot must own one Kanban task-label foreground"
     );
+    for (index, color) in palette.kanban_task_labels.iter().enumerate() {
+        color_token(
+            &mut design,
+            &format!("task-label.{index}"),
+            &format!("Task label {}", index + 1),
+            color,
+        );
+    }
     for terminal_slot in 0usize..12 {
-        styles.push(preset_ordinal_fill_rule(
-            DiagramFamilyId::KANBAN,
+        let mut entry = rule(
+            Some(DiagramFamilyId::KANBAN),
             ThemeTarget::TaskLabel,
-            12,
-            terminal_slot as u32,
-            palette.kanban_task_labels[terminal_slot % palette.kanban_task_labels.len()],
-        ));
-    }
-
-    ThemeDefinitionV1::new(tokens).with_styles(styles)
-}
-
-fn preset_rule(
-    target: ThemeTarget,
-    fill: Option<&str>,
-    stroke: Option<&str>,
-) -> ThemeRuleSetWireV1 {
-    preset_rule_for_family(None, target, fill, stroke)
-}
-
-fn preset_family_rule(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    fill: Option<&str>,
-    stroke: Option<&str>,
-) -> ThemeRuleSetWireV1 {
-    preset_rule_for_family(Some(family), target, fill, stroke)
-}
-
-fn preset_rule_for_family(
-    family: Option<DiagramFamilyId>,
-    target: ThemeTarget,
-    fill: Option<&str>,
-    stroke: Option<&str>,
-) -> ThemeRuleSetWireV1 {
-    let mut style = ThemeStylePatchWireV1::default();
-    if let Some(fill) = fill {
-        style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
-    }
-    if let Some(stroke) = stroke {
-        style.stroke = Some(ThemeStrokePatchWireV1 {
-            paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(stroke.to_owned())),
-            ..ThemeStrokePatchWireV1::default()
+            None,
+            style(
+                Some(&format!(
+                    "task-label.{}",
+                    terminal_slot % palette.kanban_task_labels.len()
+                )),
+                None,
+            ),
+        );
+        entry.ordinal = Some(ThemeOrdinalSelectorWireV1::Cycle {
+            cycle: ThemeOrdinalCycleWireV1 {
+                period: 12,
+                offset: terminal_slot as u32,
+            },
         });
+        design.rules.push(entry);
     }
-    ThemeRuleSetWireV1::Rule {
-        target: target.id().to_owned(),
-        family: family.map(|family| family.as_str().to_owned()),
-        variant: None,
-        ordinal: None,
-        style,
-    }
-}
-
-fn preset_palette_rule(target: ThemeTarget, colors: &[&str]) -> ThemeRuleSetWireV1 {
-    ThemeRuleSetWireV1::OrdinalPalette {
-        target: target.id().to_owned(),
-        colors: colors.iter().map(|color| (*color).to_owned()).collect(),
-    }
-}
-
-fn preset_ordinal_fill_rule(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    period: u32,
-    offset: u32,
-    fill: &str,
-) -> ThemeRuleSetWireV1 {
-    let style = ThemeStylePatchWireV1 {
-        fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned())),
-        ..ThemeStylePatchWireV1::default()
-    };
-    ThemeRuleSetWireV1::Rule {
-        target: target.id().to_owned(),
-        family: Some(family.as_str().to_owned()),
-        variant: None,
-        ordinal: Some(ThemeOrdinalSelectorWireV1::Cycle {
-            cycle: ThemeOrdinalCycleWireV1 { period, offset },
-        }),
-        style,
-    }
+    design
 }

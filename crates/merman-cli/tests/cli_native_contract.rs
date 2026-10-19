@@ -38,7 +38,7 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
         "--css-file",
         "--theme-preset",
         "--theme-file",
-        "--theme-definition",
+        "--theme-design-file",
         "--raster-max-width",
         "--icon-pack",
         "--icon-pack-source",
@@ -83,7 +83,7 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--embedded-image-max-bytes",
         "--theme-preset",
         "--theme-file",
-        "--theme-definition",
+        "--theme-design-file",
         "--system-timing",
         "--allow-private-network",
     ] {
@@ -137,7 +137,7 @@ fn batch_help_exposes_only_graphical_batch_options() {
         "--svg-pipeline",
         "--theme-preset",
         "--theme-file",
-        "--theme-definition",
+        "--theme-design-file",
     ] {
         assert!(
             stdout.contains(present),
@@ -172,7 +172,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
                 "--svg-pipeline",
                 "--theme-preset",
                 "--theme-file",
-                "--theme-definition",
+                "--theme-design-file",
             ][..],
         ),
         (
@@ -222,7 +222,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
             "{command} short help needs an example and long-help cue:\n{short}"
         );
         if command == "mmdc" {
-            for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+            for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
                 assert!(
                     !long.contains(removed),
                     "mmdc long help must not expose provisional native option {removed}:\n{long}"
@@ -242,7 +242,7 @@ fn layout_help_excludes_native_theme_selection() {
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+    for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
         assert!(
             !stdout.contains(removed),
             "layout help must not expose provisional native option {removed}:\n{stdout}"

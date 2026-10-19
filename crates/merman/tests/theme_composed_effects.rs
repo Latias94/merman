@@ -2,8 +2,8 @@
 
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue,
-    ThemeTarget,
+    EffectBinding, EffectColorSpace, EffectComposition, EffectGraph, EffectInput, EffectPrimitive,
+    ThemeColorValue, ThemeTarget,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason};
 use std::io::Cursor;
@@ -33,6 +33,24 @@ fn render_classic_effect_with_offsets(
     color_space: EffectColorSpace,
     offsets: [[f32; 2]; 2],
 ) -> merman::RenderedDocument {
+    render_classic_effect_with_composition(
+        source,
+        target,
+        input,
+        color_space,
+        offsets,
+        EffectComposition::Cascade,
+    )
+}
+
+fn render_classic_effect_with_composition(
+    source: &str,
+    target: ThemeTarget,
+    input: EffectInput,
+    color_space: EffectColorSpace,
+    offsets: [[f32; 2]; 2],
+    composition: EffectComposition,
+) -> merman::RenderedDocument {
     let graph = EffectGraph::new(
         "composed",
         [
@@ -55,7 +73,9 @@ fn render_classic_effect_with_offsets(
         ],
     )
     .unwrap()
-    .with_color_space(color_space);
+    .with_color_space(color_space)
+    .with_composition(composition)
+    .unwrap();
     // Match the public recipe's 2px lifeline so both soft-shadow colors remain measurable.
     // The default 0.5px line does not provide enough alpha for the shared pixel threshold.
     let styles = if target == ThemeTarget::Lifeline {
@@ -131,6 +151,129 @@ fn composed_state_shadows_reach_png_and_localized_pdf() {
 #[test]
 fn composed_flowchart_node_shadows_reach_png_and_localized_pdf() {
     assert_composed_shadows("flowchart LR\nReady --> Done", ThemeTarget::Node, 2);
+}
+
+#[test]
+fn independent_red_and_blue_shadows_reach_svg_png_and_localized_pdf() {
+    for color_space in [EffectColorSpace::Srgb, EffectColorSpace::LinearRgb] {
+        for (source, target, applications) in [
+            ("flowchart LR\nReady", ThemeTarget::Node, 1),
+            ("stateDiagram-v2\nReady --> Done", ThemeTarget::State, 2),
+            ("sequenceDiagram\nA->>B: Hello", ThemeTarget::Actor, 4),
+        ] {
+            let document = render_classic_effect_with_composition(
+                source,
+                target,
+                EffectInput::SourceGraphic,
+                color_space,
+                [[-12.0, 0.0], [12.0, 0.0]],
+                EffectComposition::Independent,
+            );
+            let xml = roxmltree::Document::parse(document.svg()).unwrap();
+            let filters: Vec<_> = xml
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("filter")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.contains("-theme-effect-"))
+                })
+                .collect();
+            assert_eq!(
+                filters.len(),
+                applications as usize,
+                "{target:?} {color_space:?}"
+            );
+            for filter in filters {
+                let merges: Vec<_> = filter
+                    .children()
+                    .filter(|node| node.has_tag_name("feMerge"))
+                    .collect();
+                assert_eq!(merges.len(), 1);
+                let inputs: Vec<_> = merges[0]
+                    .children()
+                    .filter(|node| node.has_tag_name("feMergeNode"))
+                    .map(|node| node.attribute("in").unwrap())
+                    .collect();
+                assert_eq!(
+                    inputs,
+                    [
+                        "merman-shadow-0-shadow",
+                        "merman-shadow-1-shadow",
+                        "SourceGraphic"
+                    ]
+                );
+                assert_eq!(
+                    filter
+                        .children()
+                        .filter(|node| node.has_tag_name("feGaussianBlur")
+                            && node.attribute("in") == Some("SourceAlpha"))
+                        .count(),
+                    2
+                );
+            }
+            let png = document
+                .export_png(&Default::default(), OperationControl::new())
+                .unwrap();
+            let pdf = document
+                .export_pdf(&Default::default(), OperationControl::new())
+                .unwrap();
+            for admission in [png.admission(), pdf.admission()] {
+                for reason in [
+                    TargetAdmissionReason::ThemeEvidenceIncomplete,
+                    TargetAdmissionReason::NativeFilterReceiptMismatch,
+                    TargetAdmissionReason::PdfNativeFilterNotLocalized,
+                ] {
+                    assert!(
+                        !admission.reasons().contains(&reason),
+                        "{target:?} {color_space:?}: {admission:?}"
+                    );
+                }
+            }
+            let receipt = png.export_report().native_filter_receipt().unwrap();
+            assert_eq!(receipt.drop_shadow_count(), applications * 2);
+            assert_eq!(receipt.filter_count(), applications);
+            assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
+            let (red, blue) = color_counts(png.bytes());
+            assert!(
+                red > 30 && blue > 30,
+                "{target:?} {color_space:?}: {red}/{blue}"
+            );
+            assert!(pdf.bytes().starts_with(b"%PDF-"));
+            if applications == 1 {
+                assert_red_left_of_blue(png.bytes());
+            }
+        }
+    }
+}
+
+fn assert_red_left_of_blue(bytes: &[u8]) {
+    let mut reader = png::Decoder::new(Cursor::new(bytes)).read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    let mut red = (0usize, 0usize);
+    let mut blue = (0usize, 0usize);
+    for (index, pixel) in pixels[..info.buffer_size()].chunks_exact(4).enumerate() {
+        let [r, g, b] = [
+            u16::from(pixel[0]),
+            u16::from(pixel[1]),
+            u16::from(pixel[2]),
+        ];
+        let x = index % info.width as usize;
+        if r > g + 10 && r > b + 10 {
+            red.0 += x;
+            red.1 += 1;
+        }
+        if b > r + 10 && b > g + 10 {
+            blue.0 += x;
+            blue.1 += 1;
+        }
+    }
+    assert!(red.1 > 0 && blue.1 > 0);
+    assert!(
+        red.0 * blue.1 < blue.0 * red.1,
+        "red shadow must remain on the left of blue shadow"
+    );
 }
 
 #[test]

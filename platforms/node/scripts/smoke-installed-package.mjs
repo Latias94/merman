@@ -111,8 +111,8 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
       });
       assert.deepEqual(exported, original, "customization mutated the exported recipe");
       const preserved = structuredClone(recipe);
-      preserved.complete_spec.canvas.base = original.complete_spec.canvas.base;
-      preserved.complete_spec.styles.splice(-2);
+      preserved.design.canvas.base = original.design.canvas.base;
+      preserved.design.rules.splice(-2);
       assert.deepEqual(preserved, original, "customization replaced unrelated recipe fields");
       const file = path.join(directory, `${name}.json`);
       const saved = JSON.stringify(recipe);
@@ -155,8 +155,8 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
           assert.ok(evidence.target_reason_ids.includes("theme_evidence_incomplete"));
           assert.deepEqual(evidence.diagnostics, [{
             code: "unsupported-paint", subject: "rule", target: "node",
-            source_document: "complete_spec",
-            source_paths: [`/styles/${recipe.complete_spec.styles.length - 1}`], generated: false,
+            source_document: "design",
+            source_paths: [`/rules/${recipe.design.rules.length - 1}`], generated: false,
           }]);
         } else {
           assert.equal(evidence.theme_status, "verified");

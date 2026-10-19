@@ -1,7 +1,7 @@
 [
   {
     "id": "empty-font-stack",
-    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{},\"styles\":[{\"kind\":\"rule\",\"target\":\"node\",\"style\":{\"typography\":{\"font_stack\":[]}}}]}",
+    "source": "{\"styles\":{\"node\":{\"typography\":{\"font_stack\":[]}}}}",
     "code_name": "MERMAN_INVALID_ARGUMENT",
     "typst_status_code": 1,
     "typst_error_kind": "generic",
@@ -11,7 +11,7 @@
         {
           "code": "theme-authoring.invalid-token-value",
           "severity": "error",
-          "path": "/styles/0/style/typography/font_stack",
+          "path": "/styles/node/typography/font_stack",
           "details": {
             "expected_domain_id": "font-stack"
           }
@@ -21,8 +21,8 @@
     "native_status_name": "invalid-argument"
   },
   {
-    "id": "empty-series",
-    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{\"series\":[]}}",
+    "id": "empty-palette",
+    "source": "{\"palettes\":{\"node\":[]}}",
     "code_name": "MERMAN_INVALID_ARGUMENT",
     "typst_status_code": 1,
     "typst_error_kind": "generic",
@@ -30,10 +30,12 @@
       "schema_version": 1,
       "diagnostics": [
         {
-          "code": "theme-authoring.empty-series",
+          "code": "theme-authoring.invalid-token-value",
           "severity": "error",
-          "path": "/tokens/series",
-          "details": {}
+          "path": "/palettes/node",
+          "details": {
+            "expected_domain_id": "bounded-palette"
+          }
         }
       ]
     },

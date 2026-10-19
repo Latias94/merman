@@ -199,7 +199,7 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         !stdout.contains("--presentation-profile") && !stdout.contains("merman-modern"),
         "removed non-upstream presentation inputs must stay absent:\n{stdout}"
     );
-    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+    for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
         assert!(
             !stdout.contains(removed),
             "mmdc help must not advertise provisional native theme option {removed}:\n{stdout}"
@@ -433,7 +433,7 @@ fn compatibility_commands_reject_native_theme_options_before_input_acquisition()
         for (removed, value) in [
             ("--theme-preset", "editor-dark"),
             ("--theme-file", "theme.json"),
-            ("--theme-definition", "theme-definition.json"),
+            ("--theme-design-file", "theme-design-file.json"),
         ] {
             let args = if command == "mmdc" {
                 vec![command, "-i", "missing.mmd", removed, value]
@@ -470,7 +470,7 @@ fn native_theme_inputs_conflict_before_input_acquisition() {
             "missing.mmd",
             "--theme-file",
             "missing-theme.json",
-            "--theme-definition",
+            "--theme-design-file",
             "missing-definition.json",
         ],
     ] {
@@ -695,7 +695,7 @@ fn native_theme_file_uses_the_compiled_theme_contract() {
 fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let exported = merman_bindings_core::export_theme_preset_json(b"cyberpunk")
-        .expect("export complete recipe");
+        .expect("export editable recipe");
     let original: Value = serde_json::from_slice(&exported).expect("recipe JSON");
     let source = "classDiagram\nclass Account {\n +String name\n}\nclass Owned\nAccount --> Owned : link\nstyle Owned fill:#334455,stroke:#778899,stroke-width:4px\n";
 
@@ -723,17 +723,18 @@ fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
         (serde_json::json!("transparent"), "transparent"),
     ] {
         let mut recipe = original.clone();
-        let spec = &mut recipe["complete_spec"];
-        spec["canvas"]["base"] = serde_json::json!("#142535");
-        spec["styles"].as_array_mut().expect("styles").extend([
-            serde_json::json!({"kind":"rule", "target":"node", "style":{"stroke":{"paint":"#fb7185"}}}),
-            serde_json::json!({"kind":"rule", "target":"node", "family":"class", "style":{"fill":fill}}),
+        assert_eq!(recipe["kind"], "design");
+        let design = &mut recipe["design"];
+        design["canvas"]["base"] = serde_json::json!("#142535");
+        design["rules"].as_array_mut().expect("rules").extend([
+            serde_json::json!({"target":"node", "style":{"stroke":{"paint":"#fb7185"}}}),
+            serde_json::json!({"target":"node", "family":"class", "style":{"fill":fill}}),
         ]);
         fs::write(
             tmp.path().join("custom.json"),
             serde_json::to_vec(&recipe).unwrap(),
         )
-        .expect("save complete recipe");
+        .expect("save editable recipe");
         let output = run_with_stdin_in_dir(
             &[
                 "render",
@@ -828,28 +829,31 @@ fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
 }
 
 #[test]
-fn native_theme_definition_materializes_and_renders_without_an_intermediate_spec() {
+fn native_theme_design_file_materializes_and_renders_without_an_intermediate_spec() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(
         tmp.path().join("midnight.json"),
         br##"{
-            "authoring_schema_version": 1,
-            "expansion_version": 1,
             "tokens": {
-                "canvas": "#0f172a",
-                "surface": "#111827",
-                "text": "#e5e7eb",
-                "border": "#475569",
-                "line": "#94a3b8",
-                "series": ["#60a5fa"]
+                "canvas": {"type":"color","value":"#0f172a"},
+                "surface": {"type":"color","value":"#60a5fa"},
+                "text": {"type":"color","value":"#e5e7eb"},
+                "border": {"type":"color","value":"#475569"},
+                "line": {"type":"color","value":"#94a3b8"}
+            },
+            "canvas": {"base":{"kind":"solid","color":{"ref":"canvas"}}},
+            "styles": {
+                "node": {"fill":{"kind":"solid","color":{"ref":"surface"}},"stroke":{"paint":{"kind":"solid","color":{"ref":"border"}}}},
+                "text": {"fill":{"kind":"solid","color":{"ref":"text"}}},
+                "edge": {"stroke":{"paint":{"kind":"solid","color":{"ref":"line"}}}}
             }
         }"##,
     )
-    .expect("write shared theme definition");
+    .expect("write shared theme design");
 
     let args = [
         "render",
-        "--theme-definition",
+        "--theme-design-file",
         "midnight.json",
         "--format",
         "svg",

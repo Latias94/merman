@@ -1,37 +1,27 @@
-//! Brutalist recipe: bold borders and hard shape shadows, with unfiltered text.
+//! Bold borders and hard body shadows, with independently styled labels.
 
-use merman_theme_contract::{
-    DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeCanvasPaintWireV1, ThemeEffectEntryWireV1,
-    ThemeEffectPrimitiveWireV1, ThemeMaterializationErrorV1, ThemeOrdinalCycleWireV1,
-    ThemeOrdinalSelectorWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
-    ThemeTextStylePatchWireV1,
-};
+use merman_theme_contract::*;
 
 use super::catalog::{PresetPalette, build_cross_family_recipe};
+use super::design::*;
 use crate::DiagramFamilyId;
-use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget, ThemeVariant};
+use crate::diagram_theme::{ThemeTarget, ThemeVariant};
 
-const HARD_SHADOW: &str = "brutalist-hard-shadow";
+const HARD_SHADOW: &str = "hard-shadow";
 
-pub(super) fn build_recipe(
-    palette: PresetPalette,
-    resources: &ThemeResourcePolicy,
-) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
-    let mut spec = build_cross_family_recipe(palette, resources)?;
-    spec.effects = Some(vec![ThemeEffectEntryWireV1::Graph {
-        id: HARD_SHADOW.to_owned(),
-        color_space: Some("srgb".to_owned()),
-        primitives: vec![ThemeEffectPrimitiveWireV1::DropShadow {
-            input: Some("source-graphic".to_owned()),
-            offset_x: 6.0,
-            offset_y: 6.0,
-            blur_radius: 0.0,
-            spread: 0.0,
-            color: "#000000".to_owned(),
-        }],
-    }]);
-    let styles = spec.styles.get_or_insert_default();
-    for (family, target, shadow) in [
+pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
+    let mut design = build_cross_family_recipe(palette);
+    color_token(&mut design, "shadow-color", "Shadow color", "#000000");
+    length_token(&mut design, "shadow-offset", "Shadow offset", 6.0);
+    let mut hard_shadow = shadow("shadow-color", 6.0, 0.0, 1.0);
+    hard_shadow.offset_x = reference("shadow-offset");
+    hard_shadow.offset_y = reference("shadow-offset");
+    effect_token(&mut design, HARD_SHADOW, "Hard shadow", vec![hard_shadow]);
+    length_token(&mut design, "border-width", "Border width", 3.0);
+    length_token(&mut design, "chart-line-width", "Chart line width", 4.0);
+    number_token(&mut design, "label-weight", "Label weight", 700.0);
+    number_token(&mut design, "title-weight", "Title weight", 900.0);
+    for (family, target, has_shadow) in [
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node, true),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, false),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, false),
@@ -41,86 +31,90 @@ pub(super) fn build_recipe(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, true),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Lifeline, false),
     ] {
-        styles.push(rule(family, target, None, shape_style(3.0, shadow)));
-    }
-    for (family, target, weight) in [
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, 700),
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::EdgeLabel, 700),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, 700),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, 700),
-        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, 900),
-    ] {
-        styles.push(rule(
-            family,
+        design.rules.push(rule(
+            Some(family),
             target,
             None,
-            ThemeStylePatchWireV1 {
-                typography: Some(ThemeTextStylePatchWireV1 {
-                    font_weight: SpecifiedWireV1::Value(weight),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
+            shape_style("border-width", has_shadow),
         ));
     }
-    for (variant, width, shadow) in [
-        (ThemeVariant::Bar, 3.0, true),
-        (ThemeVariant::Line, 4.0, false),
-    ] {
-        styles.push(rule(
+    for (family, target, weight) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::NodeLabel,
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::EdgeLabel,
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::ActorLabel,
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::NoteLabel,
+            "label-weight",
+        ),
+        (
             DiagramFamilyId::XY_CHART,
+            ThemeTarget::Title,
+            "title-weight",
+        ),
+    ] {
+        design
+            .rules
+            .push(rule(Some(family), target, None, weighted(weight)));
+    }
+    for (variant, width, has_shadow) in [
+        (ThemeVariant::Bar, "border-width", true),
+        (ThemeVariant::Line, "chart-line-width", false),
+    ] {
+        design.rules.push(rule(
+            Some(DiagramFamilyId::XY_CHART),
             ThemeTarget::ChartSeries,
             Some(variant),
-            shape_style(width, shadow),
+            shape_style(width, has_shadow),
         ));
     }
-    // Match the reference's 2n/3n/5n accents using zero-based cycle offsets.
-    for (period, color) in [(2, "#FFE66D"), (3, "#4ECDC4"), (5, "#FF6B35")] {
-        styles.push(ThemeRuleSetWireV1::Rule {
-            target: ThemeTarget::Node.id().to_owned(),
-            family: Some(DiagramFamilyId::FLOWCHART.as_str().to_owned()),
-            variant: None,
-            ordinal: Some(ThemeOrdinalSelectorWireV1::Cycle {
-                cycle: ThemeOrdinalCycleWireV1 {
-                    period,
-                    offset: period - 1,
-                },
-            }),
-            style: ThemeStylePatchWireV1 {
-                fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(color.to_owned())),
-                ..Default::default()
+    // The distinct zero-based 2n/3n/5n accent roles retain authored order and precedence.
+    for (period, id, label, color) in [
+        (2, "accent-even", "Every second node", "#FFE66D"),
+        (3, "accent-third", "Every third node", "#4ECDC4"),
+        (5, "accent-fifth", "Every fifth node", "#FF6B35"),
+    ] {
+        color_token(&mut design, id, label, color);
+        let mut entry = rule(
+            Some(DiagramFamilyId::FLOWCHART),
+            ThemeTarget::Node,
+            None,
+            style(Some(id), None),
+        );
+        entry.ordinal = Some(ThemeOrdinalSelectorWireV1::Cycle {
+            cycle: ThemeOrdinalCycleWireV1 {
+                period,
+                offset: period - 1,
             },
         });
+        design.rules.push(entry);
     }
-    Ok(spec)
+    design
 }
 
-fn shape_style(width: f32, shadow: bool) -> ThemeStylePatchWireV1 {
-    ThemeStylePatchWireV1 {
-        stroke: Some(ThemeStrokePatchWireV1 {
-            width: SpecifiedWireV1::Value(width),
+fn shape_style(width: &str, has_shadow: bool) -> ThemeDesignStyleV1 {
+    ThemeDesignStyleV1 {
+        stroke: Some(literal(ThemeDesignStrokeV1 {
+            width: SpecifiedWireV1::Value(reference(width)),
             ..Default::default()
-        }),
-        effect: if shadow {
-            SpecifiedWireV1::Value(HARD_SHADOW.to_owned())
+        })),
+        effect: if has_shadow {
+            SpecifiedWireV1::Value(reference(HARD_SHADOW))
         } else {
             SpecifiedWireV1::Unspecified
         },
         ..Default::default()
-    }
-}
-
-fn rule(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    variant: Option<ThemeVariant>,
-    style: ThemeStylePatchWireV1,
-) -> ThemeRuleSetWireV1 {
-    ThemeRuleSetWireV1::Rule {
-        target: target.id().to_owned(),
-        family: Some(family.as_str().to_owned()),
-        variant: variant.map(|value| value.id().to_owned()),
-        ordinal: None,
-        style,
     }
 }

@@ -1800,7 +1800,7 @@ mod tests {
         let engine = create_engine("").unwrap();
         let request = serde_json::json!({
             "operation_id": "materialize-theme-json",
-            "source": r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#,
+            "source": r#"{"styles":{"node":{"typography":{"font_stack":[]}}}}"#,
             "uri": null,
         });
         let payload: serde_json::Value =
@@ -1815,7 +1815,7 @@ mod tests {
         );
         assert_eq!(
             authoring["diagnostics"][0]["path"],
-            "/styles/0/style/typography/font_stack"
+            "/styles/node/typography/font_stack"
         );
         assert_eq!(
             authoring["diagnostics"][0]["details"],
@@ -1831,66 +1831,39 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn materialize_theme_wire_preserves_nested_version_diagnostics() {
+    fn materialize_theme_wire_preserves_reference_type_diagnostics() {
         let engine = create_engine("").unwrap();
         let request = serde_json::json!({
             "operation_id": "materialize-theme-json",
-            "source": r#"{"authoring_schema_version":2,"expansion_version":1,"tokens":{}}"#,
+            "source": r#"{"tokens":{"ink":{"type":"number","value":2}},"styles":{"node":{"fill":{"kind":"solid","color":{"ref":"ink"}}}}}"#,
             "uri": null,
         });
         let payload: serde_json::Value =
             serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
         assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
         let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
-        assert_eq!(
-            diagnostic["code"],
-            "theme-authoring.unsupported-version-tuple"
-        );
-        assert_eq!(diagnostic["path"], "");
-        assert_eq!(
-            diagnostic["details"],
-            serde_json::json!({
-                "actual": {"authoring_schema_version": 2, "expansion_version": 1},
-                "supported": [{"authoring_schema_version": 1, "expansion_version": 1}],
-            })
-        );
+        assert_eq!(diagnostic["code"], "theme-authoring.invalid-token-value");
+        assert_eq!(diagnostic["path"], "/styles/node/fill/color");
+        assert_eq!(diagnostic["details"], serde_json::json!({"expected_domain_id":"color"}));
     }
 
     #[cfg(feature = "svg")]
     #[test]
-    fn materialize_theme_wire_preserves_maximally_escaped_target_diagnostics() {
+    fn materialize_theme_wire_bounds_diagnostics_for_escaped_identifiers() {
         let engine = create_engine("").unwrap();
         let target = "\u{0001}".repeat(64 * 1024);
-        let palette = serde_json::json!({
-            "kind": "ordinal-palette", "target": target, "colors": ["#123456"],
-        });
-        let definition = serde_json::json!({
-            "authoring_schema_version": 1,
-            "expansion_version": 1,
-            "tokens": {},
-            "styles": [palette.clone(), palette],
-        });
+        let design = serde_json::json!({ "styles": { target: {"fill":"#123456"} } });
         let request = serde_json::json!({
-            "operation_id": "materialize-theme-json",
-            "source": definition.to_string(),
-            "uri": null,
+            "operation_id": "materialize-theme-json", "source": design.to_string(), "uri": null,
         });
         let wire = execute_wire(&engine, &request.to_string());
         let payload: serde_json::Value = serde_json::from_str(&wire).unwrap();
         assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
         let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
-        assert_eq!(
-            diagnostic["code"],
-            "theme-authoring.duplicate-palette-target"
-        );
-        assert_eq!(diagnostic["path"], "/styles/1/target");
-        assert_eq!(diagnostic["details"]["target_id"], target);
-        assert_eq!(diagnostic["details"]["first_authored_index"], 0);
-        assert_eq!(diagnostic["details"]["duplicate_authored_index"], 1);
-        assert!(
-            wire.len() > 256 * 1024,
-            "fixture must exercise escaped JSON bytes"
-        );
+        assert_eq!(diagnostic["code"], "theme-authoring.invalid-token-value");
+        assert_eq!(diagnostic["path"], "/styles");
+        assert_eq!(diagnostic["details"], serde_json::json!({"expected_domain_id":"bounded-theme-identifier"}));
+        assert!(wire.len() < 4096, "oversized escaped identifiers must not amplify error payloads");
     }
 
     #[test]
