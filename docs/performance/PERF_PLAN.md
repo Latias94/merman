@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 State checkpoint](state_terminal_owner_macos_2026-10-19.md) replaces the 104-cell
+owned terminal CSS table with fixed borrowed selection and 22 final-winner source bits. All forty
+surfaces, truthy/nullish fallbacks, gradient scoping and missing-pair behavior remain. All 402
+public outputs/reports/ordered measurer traces match; 262 jointly stable memory rows never
+regress, while 134 State and six Flowchart rows remain inconclusive. Twenty-six inherited public
+parse errors also match. All 418 catalog cells remain stable and exact; eleven State cells save
+149–173 allocations and 7,376–8,088 bytes each. Renderer tests, Clippy, full DOM and optimized full
+WASM build pass. Sequence's duplicate default and typed CSS owners are the next independent
+candidate; the shared writer's active-state branch still needs a calibrated latency experiment.
+
 The [October 19 Radar checkpoint](radar_series_owner_macos_2026-10-19.md) removes a duplicated
 12-color palette from the CSS binding and constructs it once in the final series plan. All 262
 successful public controls retain exact SVG/reports/ordered measurer traces, and 26 public parse

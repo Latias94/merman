@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use merman_core::MermaidConfig;
 use merman_core::diagrams::state::StateDiagramRenderNode;
@@ -95,39 +96,41 @@ struct StateResolvedValue<T> {
     source_owned: bool,
 }
 
-#[derive(Debug, Clone)]
-enum StateTerminalPaintValue {
-    Css(String),
-    ScopedGradient,
+#[derive(Debug, Clone, Copy)]
+enum StateTerminalPaintSource {
+    StateBkg,
+    StateBorder,
+    MainBkg,
+    NodeBorder,
+    StateLabelColor,
+    TransitionColor,
+    StrokeWidth,
+    TransitionLabelColor,
+    LabelBackground,
+    EdgeLabelBackground,
+    NoteBkg,
+    NoteBorder,
+    NeoStrokeWidth,
+    NoteText,
+    CompositeBackground,
+    AltBackground,
+    CompositeTitleBackground,
+    SpecialStateColor,
+    LineColor,
+    EndInnerFill,
+    TextColor,
+    Gradient,
 }
 
-#[derive(Debug, Clone)]
-struct StateTerminalPaintSelection {
-    value: StateTerminalPaintValue,
-    source_owned: bool,
+enum StateTerminalPaintRef<'a> {
+    Css(&'a str, bool),
+    ScopedGradient(bool),
 }
 
-impl StateTerminalPaintSelection {
-    fn css(value: &StateResolvedValue<String>) -> Self {
-        Self {
-            value: StateTerminalPaintValue::Css(value.value.clone()),
-            source_owned: value.source_owned,
-        }
-    }
-
-    fn scoped_gradient(source_owned: bool) -> Self {
-        Self {
-            value: StateTerminalPaintValue::ScopedGradient,
-            source_owned,
-        }
-    }
-
-    fn css_value<I: std::fmt::Display>(&self, diagram_id: I) -> String {
-        match &self.value {
-            StateTerminalPaintValue::Css(value) => value.clone(),
-            StateTerminalPaintValue::ScopedGradient => {
-                format!("url(#{diagram_id}-gradient)")
-            }
+impl StateTerminalPaintRef<'_> {
+    fn source_owned(&self) -> bool {
+        match self {
+            Self::Css(_, source_owned) | Self::ScopedGradient(source_owned) => *source_owned,
         }
     }
 }
@@ -367,6 +370,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) stroke_width_px: String,
     pub(crate) neo_stroke_width: String,
     pub(crate) neo_stroke_width_px: String,
+    neo_rough_stroke_width: String,
     pub(crate) note_border: String,
     pub(crate) note_bkg: String,
     pub(crate) note_text: String,
@@ -378,6 +382,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) composite_background: String,
     pub(crate) state_bkg: String,
     pub(crate) state_border: String,
+    end_inner_fill: String,
     pub(crate) composite_title_background: String,
     pub(crate) state_label_color: String,
     pub(crate) drop_shadow: String,
@@ -387,8 +392,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) neo_radius: f64,
     pub(crate) rect_radius: f64,
     pub(crate) node_shadow: bool,
-    terminal_paints:
-        BTreeMap<(StateTerminalSurface, StateTerminalPaintProperty), StateTerminalPaintSelection>,
+    terminal_source_owned: u32,
 }
 
 impl StateCompatibilityPlan {
@@ -501,9 +505,6 @@ impl StateCompatibilityPlan {
                 width.to_string()
             }
         });
-        let hand_drawn_stroke_width = StateResolvedValue::constant("1.3".to_string());
-        let rough_default_stroke_width = StateResolvedValue::constant("1".to_string());
-        let end_stroke_width = StateResolvedValue::constant("2".to_string());
         let note_border = resolver.direct_string(&["themeVariables.noteBorderColor"], || {
             StateResolvedValue::constant("#aaaa33".to_string())
         });
@@ -534,11 +535,8 @@ impl StateCompatibilityPlan {
             .direct_string(&["themeVariables.innerEndBackground"], || {
                 node_border.clone()
             });
-        let end_outer_fill = main_bkg.clone();
-        let end_outer_stroke = line_color.clone();
         let end_inner_fill =
             resolver.nullish_string(&["themeVariables.stateBorder"], || node_border.clone());
-        let end_inner_stroke = end_inner_fill.clone();
         let composite_background = resolver
             .truthy_string(&["themeVariables.compositeBackground"], || {
                 background.clone()
@@ -585,418 +583,85 @@ impl StateCompatibilityPlan {
             .pointer("/themeVariables/nodeShadow")
             .is_some_and(crate::config::json_value_is_truthy);
 
-        let mut terminal_paints = BTreeMap::new();
-        macro_rules! bind_css {
-            ($surface:expr, $property:expr, $value:expr) => {
-                terminal_paints.insert(
-                    ($surface, $property),
-                    StateTerminalPaintSelection::css($value),
-                );
-            };
-        }
-        macro_rules! bind_selection {
-            ($surface:expr, $property:expr, $selection:expr) => {
-                terminal_paints.insert(($surface, $property), $selection.clone());
-            };
-        }
-
-        for surface in [
-            StateTerminalSurface::StateClassic,
-            StateTerminalSurface::StateNeo,
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, &state_bkg);
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &stroke_width_px
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::StateClassic,
-            StateTerminalPaintProperty::Stroke,
-            &state_border
-        );
-        bind_css!(
-            StateTerminalSurface::StateHandDrawn,
-            StateTerminalPaintProperty::Fill,
-            &main_bkg
-        );
-        bind_css!(
-            StateTerminalSurface::StateHandDrawn,
-            StateTerminalPaintProperty::Stroke,
-            &node_border
-        );
-        bind_css!(
-            StateTerminalSurface::StateHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &hand_drawn_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::StateLabel,
-            StateTerminalPaintProperty::Fill,
-            &state_label_color
-        );
-        bind_css!(
-            StateTerminalSurface::Transition,
-            StateTerminalPaintProperty::Stroke,
-            &transition_color
-        );
-        bind_css!(
-            StateTerminalSurface::Transition,
-            StateTerminalPaintProperty::StrokeWidth,
-            &stroke_width
-        );
-        for property in [
-            StateTerminalPaintProperty::Fill,
-            StateTerminalPaintProperty::Stroke,
-        ] {
-            bind_css!(
-                StateTerminalSurface::TransitionMarker,
-                property,
-                &transition_color
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::TransitionLabel,
-            StateTerminalPaintProperty::Fill,
-            &transition_label_color
-        );
-        bind_css!(
-            StateTerminalSurface::TransitionLabelBackgroundNative,
-            StateTerminalPaintProperty::Fill,
-            &label_background
-        );
-        bind_css!(
-            StateTerminalSurface::TransitionLabelBackgroundHtml,
-            StateTerminalPaintProperty::Fill,
-            &edge_label_background
-        );
-        for surface in [
-            StateTerminalSurface::NoteClassic,
-            StateTerminalSurface::NoteHandDrawn,
-            StateTerminalSurface::NoteNeo,
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, &note_bkg);
-        }
-        for surface in [
-            StateTerminalSurface::NoteClassic,
-            StateTerminalSurface::NoteHandDrawn,
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Stroke, &note_border);
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &hand_drawn_stroke_width
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::NoteNeo,
-            StateTerminalPaintProperty::StrokeWidth,
-            &neo_rough_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::NoteLabel,
-            StateTerminalPaintProperty::Fill,
-            &note_text
-        );
-        for (surface, fill) in [
-            (
-                StateTerminalSurface::CompositeBodyClassic,
-                &composite_background,
-            ),
-            (
-                StateTerminalSurface::CompositeBodyClassicAlt,
-                &alt_background,
-            ),
-            (
-                StateTerminalSurface::CompositeDividerClassic,
-                &alt_background,
-            ),
-            (
-                StateTerminalSurface::CompositeHeaderClassic,
-                &composite_title_background,
-            ),
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, fill);
-            bind_css!(surface, StateTerminalPaintProperty::Stroke, &state_border);
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &stroke_width_px
-            );
-        }
-        let hand_drawn_divider_fill = StateResolvedValue::constant("lightgrey".to_string());
-        for (surface, fill) in [
-            (
-                StateTerminalSurface::CompositeBodyHandDrawn,
-                &composite_background,
-            ),
-            (
-                StateTerminalSurface::CompositeBodyHandDrawnAlt,
-                &alt_background,
-            ),
-            (
-                StateTerminalSurface::CompositeDividerHandDrawn,
-                &hand_drawn_divider_fill,
-            ),
-            (
-                StateTerminalSurface::CompositeHeaderHandDrawn,
-                &composite_title_background,
-            ),
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, fill);
-            bind_css!(surface, StateTerminalPaintProperty::Stroke, &node_border);
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &rough_default_stroke_width
-            );
-        }
         let neo_gradient_stroke_owned =
             use_gradient.source_owned || gradient_start.source_owned || gradient_stop.source_owned;
-        let neo_node_stroke = if use_gradient.value {
-            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_owned)
-        } else {
-            StateTerminalPaintSelection::css(&node_border)
-        };
-        let neo_cluster_stroke = if use_gradient.value {
-            StateTerminalPaintSelection::scoped_gradient(neo_gradient_stroke_owned)
-        } else {
-            StateTerminalPaintSelection::css(&state_border)
-        };
-        bind_selection!(
-            StateTerminalSurface::StateNeo,
-            StateTerminalPaintProperty::Stroke,
-            &neo_node_stroke
-        );
-        bind_selection!(
-            StateTerminalSurface::NoteNeo,
-            StateTerminalPaintProperty::Stroke,
-            &neo_node_stroke
-        );
-        for surface in [
-            StateTerminalSurface::CompositeBodyNeo,
-            StateTerminalSurface::CompositeHeaderNeo,
+        let mut terminal_source_owned = 0;
+        for (source, owned) in [
+            (StateTerminalPaintSource::StateBkg, state_bkg.source_owned),
+            (
+                StateTerminalPaintSource::StateBorder,
+                state_border.source_owned,
+            ),
+            (StateTerminalPaintSource::MainBkg, main_bkg.source_owned),
+            (
+                StateTerminalPaintSource::NodeBorder,
+                node_border.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::StateLabelColor,
+                state_label_color.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::TransitionColor,
+                transition_color.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::StrokeWidth,
+                stroke_width.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::TransitionLabelColor,
+                transition_label_color.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::LabelBackground,
+                label_background.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::EdgeLabelBackground,
+                edge_label_background.source_owned,
+            ),
+            (StateTerminalPaintSource::NoteBkg, note_bkg.source_owned),
+            (
+                StateTerminalPaintSource::NoteBorder,
+                note_border.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::NeoStrokeWidth,
+                neo_stroke_width.source_owned,
+            ),
+            (StateTerminalPaintSource::NoteText, note_text.source_owned),
+            (
+                StateTerminalPaintSource::CompositeBackground,
+                composite_background.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::AltBackground,
+                alt_background.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::CompositeTitleBackground,
+                composite_title_background.source_owned,
+            ),
+            (
+                StateTerminalPaintSource::SpecialStateColor,
+                special_state_color.source_owned,
+            ),
+            (StateTerminalPaintSource::LineColor, line_color.source_owned),
+            (
+                StateTerminalPaintSource::EndInnerFill,
+                end_inner_fill.source_owned,
+            ),
+            (StateTerminalPaintSource::TextColor, text_color.source_owned),
+            (
+                StateTerminalPaintSource::Gradient,
+                neo_gradient_stroke_owned,
+            ),
         ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, &main_bkg);
-            bind_selection!(
-                surface,
-                StateTerminalPaintProperty::Stroke,
-                &neo_cluster_stroke
-            );
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &neo_stroke_width
-            );
+            if owned {
+                terminal_source_owned |= 1 << source as u32;
+            }
         }
-        bind_css!(
-            StateTerminalSurface::CompositeLabel,
-            StateTerminalPaintProperty::Fill,
-            &state_label_color
-        );
-        for property in [
-            StateTerminalPaintProperty::Fill,
-            StateTerminalPaintProperty::Stroke,
-        ] {
-            bind_css!(
-                StateTerminalSurface::SpecialStartClassic,
-                property,
-                &special_state_color
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::SpecialStartClassic,
-            StateTerminalPaintProperty::StrokeWidth,
-            &rough_default_stroke_width
-        );
-        for property in [
-            StateTerminalPaintProperty::Fill,
-            StateTerminalPaintProperty::Stroke,
-        ] {
-            bind_css!(
-                StateTerminalSurface::SpecialStartHandDrawn,
-                property,
-                &line_color
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::SpecialStartHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &rough_default_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterClassic,
-            StateTerminalPaintProperty::Fill,
-            &end_outer_fill
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterClassic,
-            StateTerminalPaintProperty::Stroke,
-            &end_outer_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterClassic,
-            StateTerminalPaintProperty::StrokeWidth,
-            &end_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterHandDrawn,
-            StateTerminalPaintProperty::Fill,
-            &end_outer_fill
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterHandDrawn,
-            StateTerminalPaintProperty::Stroke,
-            &end_outer_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndOuterHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &end_stroke_width
-        );
-        for property in [
-            StateTerminalPaintProperty::Fill,
-            StateTerminalPaintProperty::Stroke,
-        ] {
-            bind_css!(
-                StateTerminalSurface::SpecialForkJoinClassic,
-                property,
-                &line_color
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::SpecialForkJoinClassic,
-            StateTerminalPaintProperty::StrokeWidth,
-            &hand_drawn_stroke_width
-        );
-        for property in [
-            StateTerminalPaintProperty::Fill,
-            StateTerminalPaintProperty::Stroke,
-        ] {
-            bind_css!(
-                StateTerminalSurface::SpecialForkJoinHandDrawn,
-                property,
-                &line_color
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::SpecialForkJoinHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &hand_drawn_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceClassic,
-            StateTerminalPaintProperty::Fill,
-            &main_bkg
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceClassic,
-            StateTerminalPaintProperty::Stroke,
-            &node_border
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceClassic,
-            StateTerminalPaintProperty::StrokeWidth,
-            &hand_drawn_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceHandDrawn,
-            StateTerminalPaintProperty::Fill,
-            &main_bkg
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceHandDrawn,
-            StateTerminalPaintProperty::Stroke,
-            &node_border
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialChoiceHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &hand_drawn_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialStartNeo,
-            StateTerminalPaintProperty::Fill,
-            &special_state_color
-        );
-        bind_selection!(
-            StateTerminalSurface::SpecialStartNeo,
-            StateTerminalPaintProperty::Stroke,
-            &neo_node_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialStartNeo,
-            StateTerminalPaintProperty::StrokeWidth,
-            &rough_default_stroke_width
-        );
-        for (surface, fill) in [
-            (StateTerminalSurface::SpecialEndOuterNeo, &end_outer_fill),
-            (StateTerminalSurface::SpecialForkJoinNeo, &line_color),
-            (StateTerminalSurface::SpecialChoiceNeo, &main_bkg),
-        ] {
-            bind_css!(surface, StateTerminalPaintProperty::Fill, fill);
-            bind_selection!(
-                surface,
-                StateTerminalPaintProperty::Stroke,
-                &neo_node_stroke
-            );
-            bind_css!(
-                surface,
-                StateTerminalPaintProperty::StrokeWidth,
-                &neo_rough_stroke_width
-            );
-        }
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerClassic,
-            StateTerminalPaintProperty::Fill,
-            &end_inner_fill
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerClassic,
-            StateTerminalPaintProperty::Stroke,
-            &end_inner_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerClassic,
-            StateTerminalPaintProperty::StrokeWidth,
-            &end_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerHandDrawn,
-            StateTerminalPaintProperty::Fill,
-            &end_inner_fill
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerHandDrawn,
-            StateTerminalPaintProperty::Stroke,
-            &end_inner_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerHandDrawn,
-            StateTerminalPaintProperty::StrokeWidth,
-            &end_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerNeo,
-            StateTerminalPaintProperty::Fill,
-            &end_inner_fill
-        );
-        bind_selection!(
-            StateTerminalSurface::SpecialEndInnerNeo,
-            StateTerminalPaintProperty::Stroke,
-            &neo_node_stroke
-        );
-        bind_css!(
-            StateTerminalSurface::SpecialEndInnerNeo,
-            StateTerminalPaintProperty::StrokeWidth,
-            &neo_rough_stroke_width
-        );
-        bind_css!(
-            StateTerminalSurface::Title,
-            StateTerminalPaintProperty::Fill,
-            &text_color
-        );
 
         let redux_palette = if matches!(
             resolver
@@ -1083,6 +748,7 @@ impl StateCompatibilityPlan {
             stroke_width_px: stroke_width_px.value,
             neo_stroke_width: neo_stroke_width.value,
             neo_stroke_width_px: neo_stroke_width_px.value,
+            neo_rough_stroke_width: neo_rough_stroke_width.value,
             note_border: note_border.value,
             note_bkg: note_bkg.value,
             note_text: note_text.value,
@@ -1094,6 +760,7 @@ impl StateCompatibilityPlan {
             composite_background: composite_background.value,
             state_bkg: state_bkg.value,
             state_border: state_border.value,
+            end_inner_fill: end_inner_fill.value,
             composite_title_background: composite_title_background.value,
             state_label_color: state_label_color.value,
             drop_shadow: drop_shadow.value,
@@ -1103,7 +770,7 @@ impl StateCompatibilityPlan {
             neo_radius: neo_radius.value,
             rect_radius,
             node_shadow,
-            terminal_paints,
+            terminal_source_owned,
         }
     }
 
@@ -1127,16 +794,190 @@ impl StateCompatibilityPlan {
         matches!(&self.look, StateCompatibilityLook::Neo)
     }
 
+    fn terminal_paint(
+        &self,
+        surface: StateTerminalSurface,
+        property: StateTerminalPaintProperty,
+    ) -> Option<StateTerminalPaintRef<'_>> {
+        use StateTerminalPaintProperty::{Fill, Stroke, StrokeWidth};
+        use StateTerminalPaintSource as Source;
+        use StateTerminalSurface::*;
+
+        let owned = |source: Source| self.terminal_source_owned & (1 << source as u32) != 0;
+        let css = |value, source| StateTerminalPaintRef::Css(value, owned(source));
+        Some(match (surface, property) {
+            (StateClassic | StateNeo, Fill) => css(&self.state_bkg, Source::StateBkg),
+            (
+                StateClassic
+                | CompositeBodyClassic
+                | CompositeBodyClassicAlt
+                | CompositeDividerClassic
+                | CompositeHeaderClassic,
+                Stroke,
+            ) => css(&self.state_border, Source::StateBorder),
+            (
+                StateClassic
+                | StateNeo
+                | CompositeBodyClassic
+                | CompositeBodyClassicAlt
+                | CompositeDividerClassic
+                | CompositeHeaderClassic,
+                StrokeWidth,
+            ) => css(&self.stroke_width_px, Source::StrokeWidth),
+            (
+                StateHandDrawn
+                | CompositeBodyNeo
+                | CompositeHeaderNeo
+                | SpecialEndOuterClassic
+                | SpecialEndOuterHandDrawn
+                | SpecialEndOuterNeo
+                | SpecialChoiceClassic
+                | SpecialChoiceHandDrawn
+                | SpecialChoiceNeo,
+                Fill,
+            ) => css(&self.main_bkg, Source::MainBkg),
+            (
+                StateHandDrawn
+                | CompositeBodyHandDrawn
+                | CompositeBodyHandDrawnAlt
+                | CompositeDividerHandDrawn
+                | CompositeHeaderHandDrawn
+                | SpecialChoiceClassic
+                | SpecialChoiceHandDrawn,
+                Stroke,
+            ) => css(&self.node_border, Source::NodeBorder),
+            (
+                StateHandDrawn
+                | NoteClassic
+                | NoteHandDrawn
+                | SpecialForkJoinClassic
+                | SpecialForkJoinHandDrawn
+                | SpecialChoiceClassic
+                | SpecialChoiceHandDrawn,
+                StrokeWidth,
+            ) => StateTerminalPaintRef::Css("1.3", false),
+            (
+                StateNeo | NoteNeo | SpecialStartNeo | SpecialEndOuterNeo | SpecialForkJoinNeo
+                | SpecialChoiceNeo | SpecialEndInnerNeo,
+                Stroke,
+            ) if self.use_gradient => {
+                StateTerminalPaintRef::ScopedGradient(owned(Source::Gradient))
+            }
+            (
+                StateNeo | NoteNeo | SpecialStartNeo | SpecialEndOuterNeo | SpecialForkJoinNeo
+                | SpecialChoiceNeo | SpecialEndInnerNeo,
+                Stroke,
+            ) => css(&self.node_border, Source::NodeBorder),
+            (StateLabel | CompositeLabel, Fill) => {
+                css(&self.state_label_color, Source::StateLabelColor)
+            }
+            (Transition | TransitionMarker, Stroke) => {
+                css(&self.transition_color, Source::TransitionColor)
+            }
+            (Transition, StrokeWidth) => css(&self.stroke_width, Source::StrokeWidth),
+            (TransitionMarker, Fill) => css(&self.transition_color, Source::TransitionColor),
+            (TransitionLabel, Fill) => {
+                css(&self.transition_label_color, Source::TransitionLabelColor)
+            }
+            (TransitionLabelBackgroundNative, Fill) => {
+                css(&self.label_background, Source::LabelBackground)
+            }
+            (TransitionLabelBackgroundHtml, Fill) => {
+                css(&self.edge_label_background, Source::EdgeLabelBackground)
+            }
+            (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => css(&self.note_bkg, Source::NoteBkg),
+            (NoteClassic | NoteHandDrawn, Stroke) => css(&self.note_border, Source::NoteBorder),
+            (
+                NoteNeo | SpecialEndOuterNeo | SpecialForkJoinNeo | SpecialChoiceNeo
+                | SpecialEndInnerNeo,
+                StrokeWidth,
+            ) => css(&self.neo_rough_stroke_width, Source::NeoStrokeWidth),
+            (NoteLabel, Fill) => css(&self.note_text, Source::NoteText),
+            (CompositeBodyClassic | CompositeBodyHandDrawn, Fill) => {
+                css(&self.composite_background, Source::CompositeBackground)
+            }
+            (
+                CompositeBodyClassicAlt | CompositeDividerClassic | CompositeBodyHandDrawnAlt,
+                Fill,
+            ) => css(&self.alt_background, Source::AltBackground),
+            (CompositeHeaderClassic | CompositeHeaderHandDrawn, Fill) => css(
+                &self.composite_title_background,
+                Source::CompositeTitleBackground,
+            ),
+            (
+                CompositeBodyHandDrawn
+                | CompositeBodyHandDrawnAlt
+                | CompositeDividerHandDrawn
+                | CompositeHeaderHandDrawn
+                | SpecialStartClassic
+                | SpecialStartHandDrawn
+                | SpecialStartNeo,
+                StrokeWidth,
+            ) => StateTerminalPaintRef::Css("1", false),
+            (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey", false),
+            (CompositeBodyNeo | CompositeHeaderNeo, Stroke) if self.use_gradient => {
+                StateTerminalPaintRef::ScopedGradient(owned(Source::Gradient))
+            }
+            (CompositeBodyNeo | CompositeHeaderNeo, Stroke) => {
+                css(&self.state_border, Source::StateBorder)
+            }
+            (CompositeBodyNeo | CompositeHeaderNeo, StrokeWidth) => {
+                css(&self.neo_stroke_width, Source::NeoStrokeWidth)
+            }
+            (SpecialStartClassic | SpecialStartNeo, Fill) => {
+                css(&self.special_state_color, Source::SpecialStateColor)
+            }
+            (SpecialStartClassic, Stroke) => {
+                css(&self.special_state_color, Source::SpecialStateColor)
+            }
+            (
+                SpecialStartHandDrawn
+                | SpecialForkJoinClassic
+                | SpecialForkJoinHandDrawn
+                | SpecialForkJoinNeo,
+                Fill,
+            ) => css(&self.line_color, Source::LineColor),
+            (
+                SpecialStartHandDrawn
+                | SpecialEndOuterClassic
+                | SpecialEndOuterHandDrawn
+                | SpecialForkJoinClassic
+                | SpecialForkJoinHandDrawn,
+                Stroke,
+            ) => css(&self.line_color, Source::LineColor),
+            (
+                SpecialEndOuterClassic
+                | SpecialEndOuterHandDrawn
+                | SpecialEndInnerClassic
+                | SpecialEndInnerHandDrawn,
+                StrokeWidth,
+            ) => StateTerminalPaintRef::Css("2", false),
+            (SpecialEndInnerClassic | SpecialEndInnerHandDrawn | SpecialEndInnerNeo, Fill) => {
+                css(&self.end_inner_fill, Source::EndInnerFill)
+            }
+            (SpecialEndInnerClassic | SpecialEndInnerHandDrawn, Stroke) => {
+                css(&self.end_inner_fill, Source::EndInnerFill)
+            }
+            (Title, Fill) => css(&self.text_color, Source::TextColor),
+            _ => return None,
+        })
+    }
+
     pub(crate) fn terminal_paint_css<I: std::fmt::Display>(
         &self,
         surface: StateTerminalSurface,
         property: StateTerminalPaintProperty,
         diagram_id: I,
-    ) -> String {
-        self.terminal_paints
-            .get(&(surface, property))
+    ) -> Cow<'_, str> {
+        match self
+            .terminal_paint(surface, property)
             .unwrap_or_else(|| panic!("missing State terminal paint for {surface:?}.{property:?}"))
-            .css_value(diagram_id)
+        {
+            StateTerminalPaintRef::Css(value, _) => Cow::Borrowed(value),
+            StateTerminalPaintRef::ScopedGradient(_) => {
+                Cow::Owned(format!("url(#{diagram_id}-gradient)"))
+            }
+        }
     }
 
     pub(crate) fn owns(
@@ -1144,9 +985,8 @@ impl StateCompatibilityPlan {
         surface: StateTerminalSurface,
         property: StateTerminalPaintProperty,
     ) -> bool {
-        self.terminal_paints
-            .get(&(surface, property))
-            .is_some_and(|selection| selection.source_owned)
+        self.terminal_paint(surface, property)
+            .is_some_and(|selection| selection.source_owned())
     }
 
     pub(crate) fn source_shape_property_reaches(
@@ -1443,6 +1283,14 @@ mod tests {
         assert_eq!(neo_zero.neo_stroke_width, "0");
         assert_eq!(neo_zero.neo_stroke_width_px, "0px");
         assert_eq!(
+            neo_zero.terminal_stroke_width_value(StateTerminalSurface::StateNeo),
+            1.0
+        );
+        assert_eq!(
+            neo_zero.terminal_stroke_width_value(StateTerminalSurface::CompositeBodyNeo),
+            0.0
+        );
+        assert_eq!(
             neo_zero.terminal_stroke_width_value(StateTerminalSurface::SpecialChoiceNeo),
             0.0
         );
@@ -1483,6 +1331,107 @@ mod tests {
             }));
             assert_eq!(plan.use_gradient, expected, "useGradient={value}");
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "missing State terminal paint for StateLabel.Stroke")]
+    fn missing_terminal_paint_is_unowned_and_retains_its_error() {
+        let plan = StateCompatibilityPlan::from_value(&json!({}));
+        assert!(!plan.owns(
+            StateTerminalSurface::StateLabel,
+            StateTerminalPaintProperty::Stroke,
+        ));
+        let _ = plan.terminal_paint_css(
+            StateTerminalSurface::StateLabel,
+            StateTerminalPaintProperty::Stroke,
+            "diagram",
+        );
+    }
+
+    #[test]
+    fn gradient_scoping_formats_each_id_only_when_its_terminal_uses_a_gradient() {
+        struct DiagramId<'a>(&'a std::cell::Cell<usize>, &'static str);
+
+        impl std::fmt::Display for DiagramId<'_> {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.set(self.0.get() + 1);
+                formatter.write_str(self.1)
+            }
+        }
+
+        let calls = std::cell::Cell::new(0);
+        let plan = StateCompatibilityPlan::from_value(&json!({
+            "themeVariables": { "useGradient": true },
+        }));
+        let fill = plan.terminal_paint_css(
+            StateTerminalSurface::StateNeo,
+            StateTerminalPaintProperty::Fill,
+            DiagramId(&calls, "unused"),
+        );
+        assert!(matches!(fill, Cow::Borrowed(_)));
+        assert_eq!(calls.get(), 0);
+
+        let first = plan.terminal_paint_css(
+            StateTerminalSurface::StateNeo,
+            StateTerminalPaintProperty::Stroke,
+            DiagramId(&calls, "first"),
+        );
+        let second = plan.terminal_paint_css(
+            StateTerminalSurface::CompositeHeaderNeo,
+            StateTerminalPaintProperty::Stroke,
+            DiagramId(&calls, "second"),
+        );
+        assert_eq!(first, "url(#first-gradient)");
+        assert_eq!(second, "url(#second-gradient)");
+        assert!(matches!(first, Cow::Owned(_)));
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn gradient_source_ownership_only_reaches_enabled_gradient_terminals() {
+        let mut config = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": { "gradientStart": "#123456" },
+            })))
+            .parse_metadata_sync("stateDiagram-v2\nReady --> Done\n")
+            .unwrap()
+            .effective_config;
+        assert!(merman_core::__private::config_path_overrides_typed_default(
+            &config,
+            "themeVariables.gradientStart",
+        ));
+        assert!(
+            !merman_core::__private::config_path_overrides_typed_default(
+                &config,
+                "themeVariables.useGradient",
+            )
+        );
+
+        config.set_value("themeVariables.useGradient", json!(false));
+        let disabled = StateCompatibilityPlan::from_config(&config);
+        assert!(!disabled.owns(
+            StateTerminalSurface::StateNeo,
+            StateTerminalPaintProperty::Stroke,
+        ));
+        assert!(!disabled.owns(
+            StateTerminalSurface::CompositeBodyNeo,
+            StateTerminalPaintProperty::Stroke,
+        ));
+
+        config.set_value("themeVariables.useGradient", json!(true));
+        let enabled = StateCompatibilityPlan::from_config(&config);
+        assert!(enabled.owns(
+            StateTerminalSurface::StateNeo,
+            StateTerminalPaintProperty::Stroke,
+        ));
+        assert!(enabled.owns(
+            StateTerminalSurface::CompositeBodyNeo,
+            StateTerminalPaintProperty::Stroke,
+        ));
+        assert!(!enabled.owns(
+            StateTerminalSurface::StateClassic,
+            StateTerminalPaintProperty::Stroke,
+        ));
     }
 
     #[test]
