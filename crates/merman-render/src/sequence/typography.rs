@@ -573,10 +573,6 @@ impl SequenceTypographyPlan {
         &self.compat
     }
 
-    pub(super) fn shared_compat_binding(&self) -> std::sync::Arc<super::SequenceCompatBinding> {
-        std::sync::Arc::clone(&self.compat)
-    }
-
     pub(crate) fn base_font_family_css(&self) -> &str {
         &self.base_typography.font_family_css
     }

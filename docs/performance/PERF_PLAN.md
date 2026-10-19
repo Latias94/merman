@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Sequence checkpoint](sequence_css_owner_macos_2026-10-19.md) removes duplicate
+default and typed CSS scalar owners by borrowing the existing immutable prepared artifact.
+All 488 successful controls retain exact SVG/reports/ordered measurer traces, and 26 inherited
+public errors match. Of 347 jointly stable memory rows, 95 improve and none regress; 141 variable
+rows remain inconclusive. All 418 catalog cells are stable and exact; eleven Sequence cells save
+13–14 allocations and 497–571 bytes, with the other 407 unchanged. Renderer tests, Clippy, full
+three-mode DOM and optimized full WASM build pass. This is allocation/work evidence. Next test
+the shared writer's successful-state check and cold error conversion with calibrated public
+timing; frozen machine code confirms an actual call and stack setup on the successful path.
+Sequence's seven foreground/declaration copies remain a separate ownership candidate.
+
 The [October 19 State checkpoint](state_terminal_owner_macos_2026-10-19.md) replaces the 104-cell
 owned terminal CSS table with fixed borrowed selection and 22 final-winner source bits. All forty
 surfaces, truthy/nullish fallbacks, gradient scoping and missing-pair behavior remain. All 402
