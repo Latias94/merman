@@ -373,7 +373,17 @@ linked worktree. The `set` command rejects the primary checkout, tracked or untr
 npm executable that does not match the `packageManager` pin in `playground/package.json`. Cargo and
 npm owners prepare manifests and locks in a disposable detached worktree; the coordinator validates
 the complete projected tree and source preimage, checks one binary patch, then applies that patch
-once to the caller worktree. Verify every checked-in path without supplying a second version value:
+once to the caller worktree.
+
+After a maintenance release from a separate branch, synchronize its workspace version projections
+back to `main` through the same projection command. Retain pending development changes under
+`[Unreleased]` and copy the published release notes beneath them. The version on a development
+checkout is a package baseline, not evidence that its full source was published. The `0.9.1` patch
+tag excludes the theme refactor and Mermaid `12.2.0` alignment; retain its immutable source and
+independent package mappings. Select a new version and pass immutable preflight before publishing
+the development source.
+
+Verify every checked-in path without supplying a second version value:
 
 ```bash
 python3 scripts/release-version.py set --version <version>

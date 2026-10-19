@@ -7,7 +7,7 @@ Pin an exact package version when reproducible installs matter.
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-ascii@0.9.0
+npm install @mermanjs/web-ascii@0.9.1
 ```
 
 ```ts

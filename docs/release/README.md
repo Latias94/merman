@@ -1,9 +1,22 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.0` retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.9.1` is the latest published workspace release and retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
 Development now targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
+
+## Merman 0.9.1
+
+This patch was released from `release/0.9.1`, with selected fixes from development applied to the
+`v0.9.0` source. It fixes ER text geometry, font measurement budgets, lexer progress and cancellation,
+HTML label transforms and IDs, and the locked rustls dependency. See the
+[0.9.1 changelog](../../CHANGELOG.md#091---2026-10-18) for the complete delta and the
+[publication snapshot](PUBLISH_ORDER.md#091-publication-snapshot) for channel evidence.
+
+The theme refactor, Options JSON schema `3`, Web transport API `6`, and Mermaid `12.2.0` alignment
+remain in `[Unreleased]`. They are absent from published `0.9.1` artifacts. For source builds of the
+published patch, use `v0.9.1`; match generated wrappers and artifacts to that same tag. Typst wrapper
+`0.5.0` continues to bundle Merman `0.9.0`.
 
 ## Merman 0.9.0
 
@@ -21,6 +34,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.9.0` | `0.9.1` | [Patch changelog](../../CHANGELOG.md#091---2026-10-18): selected fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
 | `0.7.0` | `0.8.0` | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
 | `0.8.0-alpha.3` | `0.8.0-alpha.5` | [Upgrade guide](ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md): capability selection, Rust APIs, browser packages, and native transports |

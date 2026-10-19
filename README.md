@@ -33,7 +33,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.9.0"
+merman = "0.9.1"
 ```
 
 Render a source string to SVG:
@@ -58,6 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 From a source checkout, run the same maintained example:
+
+```sh
+cargo run --locked -p merman --example render_svg > diagram.svg
+```
 
 ## Diagram themes
 
@@ -133,7 +137,7 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.0", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { version = "0.9.1", default-features = false, features = ["all-diagrams", "complete-svg"] }
 ```
 
 Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts,
@@ -237,8 +241,11 @@ check its guide for available versions and capabilities.
 
 For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI text measurement remains deterministic by default; explicit font files or directories opt into actual-font layout.
 
-Merman follows Mermaid `12.2.0`, with source-backed checks for semantic models, layout, and SVG
-structure. See the [alignment dashboard] for diagram coverage and documented differences.
+Published Merman `0.9.1` carries selected fixes on the `0.9.0` line and retains Mermaid `12.1.0`.
+The development branch targets Mermaid `12.2.0` and includes the unreleased theme APIs described
+here. Use the [release index](docs/release/README.md) and documentation at the matching release tag
+for installed packages. See the [alignment dashboard] for current source-backed checks of semantic
+models, layout, and SVG structure.
 
 Text measurement, browser font fallback, HTML labels, `foreignObject`, and hand-drawn paths can
 produce differences from browser output. Pixel-identical Chromium rendering is not guaranteed.

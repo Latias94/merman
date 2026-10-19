@@ -10,7 +10,7 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Current transition | Development targets Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`; published Merman 0.9.0 retains its historical 12.1.0 target |
+| Current transition | Development targets Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`; published Merman 0.9.0 and 0.9.1 retain their historical 12.1.0 target |
 | Selected reference evidence | All 37 primary SVG manifests bind the executed 12.2.0 runtime; final-source three-mode DOM and strict validation passed on 2026-10-13; see ADR-0094 for gate results and platform boundaries |
 | Reference graph | The selected bundle passes materialized and trusted-base verification and binds source, package, lock and provenance identities |
 | Dashboard review | The 12.2 source delta is recorded in ADR-0094; exact strict gate state belongs to the revision that ran it |

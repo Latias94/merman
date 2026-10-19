@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-wasm",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Explicit Node-targeted WebAssembly rendering package for Merman.",
   "type": "module",
   "engines": {
