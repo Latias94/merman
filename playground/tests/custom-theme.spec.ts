@@ -75,6 +75,39 @@ async function svg(page: Page) {
   );
 }
 
+test("theme workbench resizes with pointer and keyboard and remembers its desktop width", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await start(page);
+  let workbench = await editor(page);
+  const initialSvg = await svg(page);
+  const separator = page.getByRole("separator", { name: "Resize theme workbench", exact: true });
+  const before = (await workbench.boundingBox())!;
+  const grip = (await separator.boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 120, grip.y + grip.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await workbench.boundingBox())!.width).toBeGreaterThan(before.width + 80);
+  const dragged = (await workbench.boundingBox())!.width;
+  await separator.focus();
+  await separator.press("ArrowLeft");
+  await expect.poll(async () => (await workbench.boundingBox())!.width).toBeGreaterThan(dragged);
+  const resized = (await workbench.boundingBox())!.width;
+  expect(await svg(page)).toBe(initialSvg);
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.reload();
+  await waitForPreviewSvg(page);
+  workbench = await editor(page);
+  await expect.poll(async () => Math.abs((await workbench.boundingBox())!.width - resized)).toBeLessThan(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(separator).toHaveAttribute("aria-orientation", "horizontal");
+  const narrow = (await workbench.boundingBox())!.height;
+  await separator.focus();
+  await separator.press("ArrowUp");
+  await expect.poll(async () => (await workbench.boundingBox())!.height).toBeGreaterThan(narrow);
+  await expectNoDocumentOverflow(page);
+});
+
 test("valid drafts preview, require Apply before artifact sharing, and reopen from a workspace link", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await start(page);
@@ -183,8 +216,7 @@ test("customizing Cyberpunk preserves its complete canvas, effects, assets and o
   await base.fill("#fef3c7");
   await base.press("Enter");
   await workbench.getByText("Append an override", { exact: true }).click();
-  await workbench.getByLabel("Family scope", { exact: true }).selectOption("explicit");
-  await workbench.getByLabel("Family ID", { exact: true }).fill("class");
+  await workbench.getByLabel("Family scope", { exact: true }).selectOption("family:class");
   await workbench.getByLabel("Semantic target", { exact: true }).selectOption("node");
   await workbench.getByRole("button", { name: "Append rule", exact: true }).click();
   await workbench.getByLabel("Border / line paint: value mode", { exact: true }).selectOption("color");

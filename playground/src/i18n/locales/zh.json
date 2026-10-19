@@ -1,6 +1,8 @@
 {
   "themeWorkbench": {
     "presets": "预设",
+    "resize": "调整主题工作台大小",
+    "allVariants": "所有变体",
     "none": "无",
     "noneDescription": "仅使用 Mermaid 原生主题和源码样式；图表仍可能包含背景。",
     "unavailable": "当前运行时不可用",
@@ -49,8 +51,6 @@
     "ruleTarget": "规则语义目标",
     "family": "图表族范围",
     "currentFamily": "当前图表族",
-    "explicitFamily": "指定图表族 ID…",
-    "familyId": "图表族 ID",
     "ruleFamily": "规则图表族范围",
     "append": "追加规则",
     "palettePreserved": "序号色板保持完整，可在 JSON 中编辑。",
@@ -73,7 +73,6 @@
     "visual": "可视化",
     "inspect": "检查",
     "variant": "变体",
-    "variantPlaceholder": "变体（可选）",
     "moveUp": "上移",
     "moveDown": "下移",
     "deleteRule": "删除规则",

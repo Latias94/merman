@@ -1,6 +1,8 @@
 {
   "themeWorkbench": {
     "presets": "Presets",
+    "resize": "Resize theme workbench",
+    "allVariants": "All variants",
     "none": "None",
     "noneDescription": "Use the Mermaid theme and source styles only. The diagram may still have a background.",
     "unavailable": "Unavailable in this runtime",
@@ -50,8 +52,6 @@
     "ruleTarget": "Rule semantic target",
     "family": "Family scope",
     "currentFamily": "Current family",
-    "explicitFamily": "Family ID…",
-    "familyId": "Family ID",
     "ruleFamily": "Rule family scope",
     "append": "Append rule",
     "palettePreserved": "Ordinal palettes remain intact and can be edited in JSON.",
@@ -74,7 +74,6 @@
     "visual": "Visual",
     "inspect": "Inspect",
     "variant": "Variant",
-    "variantPlaceholder": "Variant (optional)",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "deleteRule": "Delete rule",

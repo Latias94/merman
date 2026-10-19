@@ -23,7 +23,9 @@ a background-only compiled rule does not infer or recolor labels on another surf
 ## Edit and share in the Playground
 
 Open **Theme** to keep the theme workbench beside the diagram. On narrow screens, the workbench
-reserves space for a compact diagram preview. **Presets** starts with the **Mermaid theme**
+reserves space for a compact diagram preview. Drag the separator, or focus it and use the arrow
+keys, to adjust the workbench width on desktop or height in a stacked layout. The two layouts are
+remembered separately as local display preferences. **Presets** starts with the **Mermaid theme**
 selection shared by both engines, followed by **Merman styling**, which affects Merman only.
 The pinned Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`,
 `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. This is separate from
@@ -37,8 +39,9 @@ Choose **New recipe** for a small `definition` theme, or **Import JSON** for an 
 recipe. **Visual** and **JSON** edit the same versioned document. Visual controls expose definition
 color/series/typography tokens, complete-spec typography and canvas base, and scoped rule
 selectors/facets for selected semantic targets. Existing rules can be retargeted, reordered, or
-removed while ordinal palette entries remain in place. Unrelated fields and rule order are
-preserved. Advanced paints remain intact unless you explicitly replace them; use JSON for effects,
+removed while ordinal palette entries are retained. Choose family scopes and variants from
+the loaded runtime's lists; existing unfamiliar values remain visible. Other edits preserve unrelated
+fields and authored order. Advanced paints remain intact unless you explicitly replace them; use JSON for effects,
 layered canvases, resources, and other advanced values. **Inspect** shows the exact displayed
 execution evidence beside catalog design scope and qualification metadata; those fields explain
 the runtime and do not gate authoring. **Omit**, **Clear**, and **Transparent** have different

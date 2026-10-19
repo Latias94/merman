@@ -279,8 +279,14 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
   const active = rules.find((entry) => entry.index === selectedIndex) ?? rules[0];
   const [newTarget, setNewTarget] = useState("node");
   const [newFamily, setNewFamily] = useState("current");
-  const [explicitFamily, setExplicitFamily] = useState("");
   const [initialPaint, setInitialPaint] = useState("#ffffff");
+  const families = useMemo(() => {
+    try {
+      return [...new Set(facade?.diagramFamilyCapabilities().map((family) => family.family_id) ?? [])].sort();
+    } catch {
+      return [];
+    }
+  }, [facade]);
   const targets = useMemo(() => ruleTargets(catalog), [catalog]);
   const selectedTarget = targets.includes(newTarget) ? newTarget : targets[0] ?? "";
   const canEdit = active && targets.includes(active.rule.target);
@@ -309,11 +315,19 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
               </select>
             </div>
             <div className="min-w-0 space-y-1.5">
-              <label htmlFor={`${id}-active-family`} className="block text-xs font-medium">{t("themeWorkbench.family", { defaultValue: "Family scope" })}</label>
-              <Input id={`${id}-active-family`} aria-label={t("themeWorkbench.ruleFamily", { defaultValue: "Rule family scope" })} value={active.rule.family ?? ""} placeholder={t("themeWorkbench.allFamilies", { defaultValue: "All families" })} className="h-8 text-xs" onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { family: event.target.value }))} />
+              <label htmlFor={`${id}-active-family`} className="block text-xs font-medium">{t("themeWorkbench.ruleFamily")}</label>
+              <select id={`${id}-active-family`} value={active.rule.family ?? ""} className={SELECT_CLASS} onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { family: event.target.value }))}>
+                <option value="">{t("themeWorkbench.allFamilies")}</option>
+                {families.map((family) => <option key={family} value={family}>{t(`diagramTypes.${family}`, { defaultValue: family })}</option>)}
+                {active.rule.family && !families.includes(active.rule.family) && <option value={active.rule.family}>{active.rule.family}</option>}
+              </select>
             </div>
           </div>
-          <Input aria-label={t("themeWorkbench.variant", { defaultValue: "Variant" })} value={active.rule.variant ?? ""} placeholder={t("themeWorkbench.variantPlaceholder", { defaultValue: "Variant (optional)" })} className="h-8 text-xs" onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { variant: event.target.value }))} />
+          <label className="block space-y-1.5 text-xs font-medium"><span>{t("themeWorkbench.variant")}</span><select value={active.rule.variant ?? ""} className={SELECT_CLASS} onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { variant: event.target.value }))}>
+            <option value="">{t("themeWorkbench.allVariants")}</option>
+            {catalog?.known_variant_ids.map((variant) => <option key={variant} value={variant}>{variant}</option>)}
+            {active.rule.variant && !catalog?.known_variant_ids.includes(active.rule.variant) && <option value={active.rule.variant}>{active.rule.variant}</option>}
+          </select></label>
           <PaintField label={t("themeWorkbench.fill", { defaultValue: "Fill" })} value={active.rule.style.fill} clearable onChange={(value) => edit("fill", value)} />
           <PaintField label={t("themeWorkbench.strokePaint", { defaultValue: "Border / line paint" })} value={active.rule.style.stroke?.paint} clearable onChange={(value) => edit("stroke.paint", value)} />
           <NumberField label={t("themeWorkbench.strokeWidth", { defaultValue: "Border / line width" })} value={active.rule.style.stroke?.width} clearable min={0} onChange={(value) => edit("stroke.width", value)} />
@@ -338,13 +352,12 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
           <select id={`${id}-family`} className={SELECT_CLASS} value={newFamily} onChange={(event) => setNewFamily(event.target.value)}>
             <option value="current" disabled={!familyId}>{t("themeWorkbench.currentFamily", { defaultValue: "Current family" })}{familyId ? ` (${familyId})` : ""}</option>
             <option value="all">{t("themeWorkbench.allFamilies", { defaultValue: "All families" })}</option>
-            <option value="explicit">{t("themeWorkbench.explicitFamily", { defaultValue: "Family ID…" })}</option>
+            {families.map((family) => <option key={family} value={`family:${family}`}>{t(`diagramTypes.${family}`, { defaultValue: family })}</option>)}
           </select>
-          {newFamily === "explicit" && <Input aria-label={t("themeWorkbench.familyId", { defaultValue: "Family ID" })} value={explicitFamily} className="h-8 text-xs" placeholder="class" onChange={(event) => setExplicitFamily(event.target.value)} />}
           <label htmlFor={`${id}-initial-paint`} className="block text-xs">{t("themeWorkbench.initialPaint", { defaultValue: "Initial border / line paint" })}</label>
           <Input id={`${id}-initial-paint`} value={initialPaint} className="h-8 font-mono text-xs" onChange={(event) => setInitialPaint(event.target.value)} />
-          <Button type="button" variant="outline" size="sm" disabled={!targets.length || (newFamily === "current" && !familyId) || (newFamily === "explicit" && !explicitFamily.trim())} onClick={() => {
-            const family = newFamily === "all" ? undefined : newFamily === "current" ? familyId : explicitFamily.trim();
+          <Button type="button" variant="outline" size="sm" disabled={!targets.length || (newFamily === "current" && !familyId)} onClick={() => {
+            const family = newFamily === "all" ? undefined : newFamily === "current" ? familyId : newFamily.slice("family:".length);
             onChange(appendThemeRule(document, { target: selectedTarget, ...(family ? { family } : {}) }, { stroke: { paint: initialPaint } }));
             setSelectedIndex(entries.length);
           }}>{t("themeWorkbench.append", { defaultValue: "Append rule" })}</Button>

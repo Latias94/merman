@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { AlertTriangle } from "lucide-react";
+import { useDefaultLayout } from "react-resizable-panels";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -37,6 +38,27 @@ const ConfigEditor = lazy(() =>
     default: module.ConfigEditor,
   }))
 );
+
+const themeLayoutStorage = {
+  getItem(key: string): string | null {
+    try {
+      const stored = localStorage.getItem(key);
+      const parsed: unknown = stored ? JSON.parse(stored) : null;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+        Object.values(parsed).every((size) => typeof size === "number" && Number.isFinite(size))
+        ? stored : null;
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Layout changes still work without storage.
+    }
+  },
+};
 export default function App() {
   const { t, i18n } = useTranslation();
   const {
@@ -57,6 +79,13 @@ export default function App() {
     }))
   );
   const isNarrowLayout = useNarrowLayout();
+  const isWideLayout = useWideLayout();
+  const themeLayout = useDefaultLayout({
+    id: isWideLayout ? "merman-theme-horizontal" : "merman-theme-vertical",
+    onlySaveAfterUserInteractions: true,
+    storage: themeLayoutStorage,
+    panelIds: themeEditSession ? ["diagram-workspace", "theme-workbench-panel"] : ["diagram-workspace"],
+  });
 
   useEffect(() => {
     const lang = i18n.language.startsWith("zh") ? "zh-CN" : "en";
@@ -85,71 +114,85 @@ export default function App() {
             </div>
           )}
 
-          <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-            <div className="flex min-h-40 min-w-0 flex-1 flex-col overflow-hidden">
-              {isNarrowLayout && (
-                <WorkspaceTabs
-                  value={workspacePane}
-                  onValueChange={setWorkspacePane}
-                  editorLabel={t("layout.editor")}
-                  previewLabel={t("layout.preview")}
-                />
-              )}
-              <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
-                <ResizablePanel
-                  defaultSize="45%"
-                  minSize="25%"
-                  maxSize="75%"
-                  className="bg-card"
-                  id={isNarrowLayout ? "workspace-editor-panel" : undefined}
-                  role={isNarrowLayout ? "tabpanel" : undefined}
-                  aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
-                  hidden={isNarrowLayout && workspacePane !== "editor"}
-                  onFocusCapture={() => setWorkspacePane("editor")}
-                  onPointerDownCapture={() => setWorkspacePane("editor")}
-                >
-                  <EditorPanel
-                    activateEditorLanguageImmediately={
-                      isNarrowLayout && workspacePane === "editor"
-                    }
-                    editorMode={editorMode}
-                    mountCodeEditorImmediately={
-                      !isNarrowLayout || workspacePane === "editor"
-                    }
-                    setEditorMode={setEditorMode}
-                    t={t}
-                  />
-                </ResizablePanel>
+          <main className="relative flex min-h-0 flex-1 overflow-hidden">
+            <ResizablePanelGroup
+              direction={isWideLayout ? "horizontal" : "vertical"}
+              className="min-h-0 flex-1"
+              defaultLayout={themeLayout.defaultLayout}
+              onLayoutChanged={themeLayout.onLayoutChanged}
+            >
+              <ResizablePanel id="diagram-workspace" defaultSize={isWideLayout ? "68%" : "55%"} minSize={isWideLayout ? 360 : "25%"}>
+                <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+                  {isNarrowLayout && (
+                    <WorkspaceTabs
+                      value={workspacePane}
+                      onValueChange={setWorkspacePane}
+                      editorLabel={t("layout.editor")}
+                      previewLabel={t("layout.preview")}
+                    />
+                  )}
+                  <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
+                    <ResizablePanel
+                      defaultSize="45%"
+                      minSize="25%"
+                      maxSize="75%"
+                      className="bg-card"
+                      id={isNarrowLayout ? "workspace-editor-panel" : undefined}
+                      role={isNarrowLayout ? "tabpanel" : undefined}
+                      aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
+                      hidden={isNarrowLayout && workspacePane !== "editor"}
+                      onFocusCapture={() => setWorkspacePane("editor")}
+                      onPointerDownCapture={() => setWorkspacePane("editor")}
+                    >
+                      <EditorPanel
+                        activateEditorLanguageImmediately={
+                          isNarrowLayout && workspacePane === "editor"
+                        }
+                        editorMode={editorMode}
+                        mountCodeEditorImmediately={
+                          !isNarrowLayout || workspacePane === "editor"
+                        }
+                        setEditorMode={setEditorMode}
+                        t={t}
+                      />
+                    </ResizablePanel>
 
-                <ResizableHandle
-                  withHandle
-                  className={isNarrowLayout ? "hidden" : undefined}
-                />
+                    <ResizableHandle
+                      withHandle
+                      className={isNarrowLayout ? "hidden" : undefined}
+                    />
 
-                <ResizablePanel
-                  defaultSize="55%"
-                  minSize="25%"
-                  id={isNarrowLayout ? "workspace-preview-panel" : undefined}
-                  role={isNarrowLayout ? "tabpanel" : undefined}
-                  aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
-                  hidden={isNarrowLayout && workspacePane !== "preview"}
-                  onFocusCapture={() => setWorkspacePane("preview")}
-                  onPointerDownCapture={() => setWorkspacePane("preview")}
-                >
-                  <Preview
-                    active={!isNarrowLayout || workspacePane === "preview"}
+                    <ResizablePanel
+                      defaultSize="55%"
+                      minSize="25%"
+                      id={isNarrowLayout ? "workspace-preview-panel" : undefined}
+                      role={isNarrowLayout ? "tabpanel" : undefined}
+                      aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
+                      hidden={isNarrowLayout && workspacePane !== "preview"}
+                      onFocusCapture={() => setWorkspacePane("preview")}
+                      onPointerDownCapture={() => setWorkspacePane("preview")}
+                    >
+                      <Preview
+                        active={!isNarrowLayout || workspacePane === "preview"}
+                        className="h-full min-h-0"
+                      />
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
+                </div>
+              </ResizablePanel>
+              {themeEditSession && <>
+                <ResizableHandle withHandle aria-label={t("themeWorkbench.resize")} />
+                <ResizablePanel id="theme-workbench-panel" defaultSize={isWideLayout ? "32%" : "45%"} minSize={isWideLayout ? 320 : "30%"} maxSize={isWideLayout ? "60%" : "75%"}>
+                  <ThemeWorkbench
                     className="h-full min-h-0"
+                    onClose={() => requestAnimationFrame(() => {
+                      const launchers = document.querySelectorAll<HTMLButtonElement>("[data-theme-launcher]");
+                      Array.from(launchers).find((launcher) => launcher.offsetParent !== null)?.focus({ preventScroll: true });
+                    })}
                   />
                 </ResizablePanel>
-              </ResizablePanelGroup>
-            </div>
-            {themeEditSession && <ThemeWorkbench
-              className="h-[45%] min-h-0 shrink-0 border-t lg:h-full lg:w-96 lg:border-t-0 lg:border-l"
-              onClose={() => requestAnimationFrame(() => {
-                const launchers = document.querySelectorAll<HTMLButtonElement>("[data-theme-launcher]");
-                Array.from(launchers).find((launcher) => launcher.offsetParent !== null)?.focus({ preventScroll: true });
-              })}
-            />}
+              </>}
+            </ResizablePanelGroup>
           </main>
 
           <StatusBar />
@@ -379,5 +422,19 @@ function useNarrowLayout(): boolean {
     subscribeNarrowLayout,
     getNarrowLayoutSnapshot,
     () => false
+  );
+}
+
+function subscribeWideLayout(onChange: () => void): () => void {
+  const mediaQuery = window.matchMedia("(min-width: 1024px)");
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function useWideLayout(): boolean {
+  return useSyncExternalStore(
+    subscribeWideLayout,
+    () => window.matchMedia("(min-width: 1024px)").matches,
+    () => false,
   );
 }
