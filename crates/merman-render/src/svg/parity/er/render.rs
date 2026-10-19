@@ -409,7 +409,6 @@ pub(crate) fn render_er_diagram_svg_model(
     let title_top_margin = er_render_settings.title_top_margin;
     let use_max_width = er_render_settings.use_max_width;
     let label_style = er_render_settings.label_style.clone();
-    let attr_style = er_render_settings.attr_style.clone();
     let edge_html_labels = er_render_settings.relationship_html_labels;
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
