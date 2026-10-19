@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 XY empty-owner checkpoint](xy_empty_paint_owner_macos_2026-10-20.md) defers its
+initial sized empty Arc until the existing active capture phase. Captured empty maps remain real
+owners with pointer identity and single completion. Default XY saves one allocation and 40 bytes,
+including 40 bytes of peak growth. All 645 SVG/report/ordered-callback controls and 26 errors match.
+Of 506 jointly stable rows, 25 improve and 481 stay unchanged; no memory metric increases and
+139 variable rows remain inconclusive. All 418 catalog cells are stable and exact, with eleven
+XY improvements and 407 unchanged. All 106 focused and 5,613 full release tests, Clippy, full DOM,
+optimized full WASM, formatting and independent reviews pass. This is allocation/work removal
+without latency or release-convergence claims. Next independently verify Pie's temporary CSS
+facts against the source-selected active typed catalog cell; retain no-theme as an unchanged
+control and keep receipt/palette/finite-geometry candidates separate.
+
 The [October 20 empty GitGraph palette checkpoint](gitgraph_empty_palette_css_macos_2026-10-20.md)
 skips pure CSS construction only when all eight assignments are absent. The caller's empty
 write/checkpoint remains. Default GitGraph saves one allocation and 16 bytes; its no-theme catalog
