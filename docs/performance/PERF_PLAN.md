@@ -17,6 +17,13 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 TreeView checkpoint](treeview_optional_proof_macos_2026-10-19.md) removes source-tree
+and icon counting plus terminal theme proof work when no theme was requested. Some recipes,
+including empty and unsupported recipes, retain their original proof path. All 231 public controls
+preserve exact SVG/reports/measurer traces; 224 jointly stable memory rows never regress and seven
+remain inconclusive for memory. All 418 catalog cells preserve output and metadata; only no-theme
+TreeView improves, saving three allocations and 79 bytes. This is allocation/work evidence only.
+
 The [October 19 calibrated release observation](theme_v090_confirmation_macos_2026-10-19.md)
 confirms remaining default public E2E gaps against v0.9.0: Packet +27.33%/+2.196 us and Kanban
 +26.15%/+11.712 us. Each stable row has 32 fresh AB/BA pairs after eight A/A pairs per runner;
