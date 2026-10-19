@@ -17,6 +17,20 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 full same-SVG joint confirmation](theme_v090_joint_confirmation_macos_2026-10-19.md)
+completes all 19 preregistered scenes against v0.9.0: 13 are within the joint budget, three
+confirm regression and three remain inconclusive. Both runners complete eight fresh A/A pairs;
+the frozen relative certificates select eight balanced full-cohort A/B pairs. All 912 observations
+retain matching output postflights, and final runner/source identities pass with zero contract
+failures. Zenuml remains +17.81%/+3.56 us, Packet +27.51%/+2.23 us and Kanban +27.58%/+12.44 us.
+Class tiny, Sankey and Wardley cross the relative threshold and remain inconclusive. Seven failed
+absolute certificates retain their uncapped requirements; qualified relative certificates can
+still establish joint non-regression. Compressed raw observations and the pre-A/B plan are
+archived with digests. This is a release observation, not individual-change attribution or
+candidate admission. Next independently measure the registered Info/Error/Treemap terminal
+receipt state candidate, followed by the reviewed ownership queue; keep all-family convergence
+active and the 57 changed-SVG scenes plus 418 catalog cells separate from these release ratios.
+
 The opt-in [joint release confirmation protocol](BENCHMARKING.md#statistics-and-decisions)
 now implements the independently reviewed, preregistered `joint_non_regression_v1` method.
 Both runners complete eight fresh A/A pairs; one qualified metric is selected before A/B, and
@@ -26,9 +40,9 @@ and the 10%/1000 ns budget, reports conditional decision error rather than simul
 of all interval endpoints, and never assesses improvement or candidate admission. All 149
 performance contracts, 16 baseline-manifest tests, 51 native-memory contracts and 29 driver
 contracts pass; independent source and report reviews find no remaining blocker. No new timing
-or historical reclassification is part of this tooling change. Next preregister fresh v0.9.0
-calibration and confirmation over all 19 same-SVG rows, retaining the other 57 changed-output
-rows and all typed catalog controls as separate evidence.
+or historical reclassification is part of this tooling change. The separately preregistered
+fresh full-cohort experiment is reported above; changed-output rows and typed catalog controls
+remain separate evidence.
 
 The comparison helper now implements the documented joint complement: either qualified regression
 upper bound below its threshold proves non-regression, with the mirrored rule for non-improvement.
