@@ -765,13 +765,16 @@ fn hue_to_rgb(p: f64, q: f64, mut hue: f64) -> f64 {
 }
 
 fn stringify_hex(rgba: RgbaChannels) -> String {
-    let red = decimal_to_hex(rgba.red);
-    let green = decimal_to_hex(rgba.green);
-    let blue = decimal_to_hex(rgba.blue);
+    let red = rounded_color_byte(rgba.red);
+    let green = rounded_color_byte(rgba.green);
+    let blue = rounded_color_byte(rgba.blue);
     if rgba.alpha < 1.0 {
-        format!("#{red}{green}{blue}{}", decimal_to_hex(rgba.alpha * 255.0))
+        format!(
+            "#{red:02x}{green:02x}{blue:02x}{:02x}",
+            rounded_color_byte(rgba.alpha * 255.0)
+        )
     } else {
-        format!("#{red}{green}{blue}")
+        format!("#{red:02x}{green:02x}{blue:02x}")
     }
 }
 
@@ -801,7 +804,7 @@ fn stringify_hsl(hsla: HslaChannels) -> String {
             format_js_rounded(hsla.hue_degrees),
             format_js_rounded(hsla.saturation_percent),
             format_js_rounded(hsla.lightness_percent),
-            format_js_number(hsla.alpha)
+            JsNumber(hsla.alpha)
         )
     } else {
         format!(
@@ -813,9 +816,8 @@ fn stringify_hsl(hsla: HslaChannels) -> String {
     }
 }
 
-fn decimal_to_hex(value: f64) -> String {
-    let rounded = js_round(value).clamp(0.0, 255.0) as u8;
-    format!("{rounded:02x}")
+fn rounded_color_byte(value: f64) -> u8 {
+    js_round(value).clamp(0.0, 255.0) as u8
 }
 
 fn round_1e10(value: f64) -> f64 {
@@ -829,25 +831,31 @@ fn js_round(value: f64) -> f64 {
     (value + 0.5).floor()
 }
 
-fn format_js_rounded(value: f64) -> String {
-    format_js_number(round_1e10(value))
+fn format_js_rounded(value: f64) -> JsNumber {
+    JsNumber(round_1e10(value))
 }
 
-fn format_js_number(value: f64) -> String {
-    if value.is_nan() {
-        return "NaN".to_string();
+struct JsNumber(f64);
+
+impl fmt::Display for JsNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = self.0;
+        let special = if value.is_nan() {
+            Some("NaN")
+        } else if value == f64::INFINITY {
+            Some("Infinity")
+        } else if value == f64::NEG_INFINITY {
+            Some("-Infinity")
+        } else if value == 0.0 {
+            Some("0")
+        } else {
+            None
+        };
+        if let Some(special) = special {
+            return formatter.write_str(special);
+        }
+        formatter.write_str(Buffer::new().format_finite(value))
     }
-    if value == f64::INFINITY {
-        return "Infinity".to_string();
-    }
-    if value == f64::NEG_INFINITY {
-        return "-Infinity".to_string();
-    }
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    let mut buffer = Buffer::new();
-    buffer.format_finite(value).to_string()
 }
 
 fn clamp_channel(channel: ColorChannel, value: f64) -> f64 {
@@ -1188,6 +1196,14 @@ mod tests {
         assert_eq!(
             with_alpha("hsl(20, 30%, 40%)", 0.25).unwrap(),
             "hsla(20, 30%, 40%, 0.25)"
+        );
+        assert_eq!(
+            with_alpha("hsl(20, 30%, 40%)", 1.0 / 3.0).unwrap(),
+            "hsla(20, 30%, 40%, 0.3333333333333333)"
+        );
+        assert_eq!(
+            rgba(1.0 / 3.0, 0.0, 0.0, 0.5).unwrap(),
+            "rgba(0.3333333333, 0, 0, 0.5)"
         );
         assert_eq!(with_alpha("#fff", 1.0).unwrap(), "#ffffff");
     }

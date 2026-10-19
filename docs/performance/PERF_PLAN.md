@@ -17,6 +17,15 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 color serialization checkpoint](theme_color_serialization_macos_2026-10-19.md)
+removes temporary numeric/hex component Strings from shared theme color formatting. All 17,091
+direct color operations, 178 public-render controls and 418 catalog cells preserve exact output
+and errors/reports/measurement traces as applicable. Stable memory rows never regress; default
+Kanban saves 36 allocations and 222 bytes per complete render, and 67 catalog cells improve across
+eight logical families. Peak and retained growth remain unchanged. Native 7,624 tests, private
+theme acceptance, Clippy, optimized full WASM, smoke and all-family DOM pass. This is allocation
+evidence, not a latency or theme-regression attribution: the serializer is unchanged since v0.9.0.
+
 The [October 19 v0.9.0 refresh](theme_v090_same_svg_refresh_macos_2026-10-19.md) retains all 19
 same-SVG E2E scenes in 76 fixed diagnostic calls. Seven rows exceed both 10% and 1 us: Class tiny,
 C4, Sankey, Zenuml, Packet, Kanban and Wardley. Packet/Kanban/Zenuml observe
