@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 Pie CSS facts checkpoint](pie_css_facts_macos_2026-10-20.md) borrows five temporary
+success values from the existing immutable binding. Each of ten themed Pie catalog cells saves
+five allocations and 71 bytes; no-theme Pie is unchanged. All 645 SVG/report/ordered-callback
+controls and 26 errors match. All 504 jointly stable controls retain all four memory metrics;
+141 variable rows remain inconclusive. All 418 catalog cells are stable: ten improve and 408
+retain all four metrics, with exact warmup result metadata and all five saved sample SVG/report
+identities. Peak and retained growth are unchanged everywhere. All 75 focused and 5,613 full
+release tests, Clippy, full DOM, optimized full WASM, formatting and independent reviews pass.
+This is allocation/work removal without a latency or release-convergence claim. Next independently
+verify Kanban's duplicated bound-paint owner using its active typed catalog primary and retain
+no-theme controls unchanged; keep receipt and finite-geometry candidates separate.
+
 The [October 20 XY empty-owner checkpoint](xy_empty_paint_owner_macos_2026-10-20.md) defers its
 initial sized empty Arc until the existing active capture phase. Captured empty maps remain real
 owners with pointer identity and single completion. Default XY saves one allocation and 40 bytes,

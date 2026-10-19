@@ -944,43 +944,43 @@ where
 
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.
 #[derive(Debug, Default)]
-pub(super) struct PieCssEmission {
-    slice_stroke: Option<Box<str>>,
-    outer_stroke: Option<Box<str>>,
-    title_fill: Option<Box<str>>,
-    section_text_fill: Option<Box<str>>,
-    font_family: Option<Box<str>>,
+pub(super) struct PieCssEmission<'a> {
+    slice_stroke: Option<&'a str>,
+    outer_stroke: Option<&'a str>,
+    title_fill: Option<&'a str>,
+    section_text_fill: Option<&'a str>,
+    font_family: Option<&'a str>,
 }
 
-impl PieCssEmission {
+impl PieCssEmission<'_> {
     pub(super) fn slice_stroke(&self) -> Option<&str> {
-        self.slice_stroke.as_deref()
+        self.slice_stroke
     }
 
     pub(super) fn outer_stroke(&self) -> Option<&str> {
-        self.outer_stroke.as_deref()
+        self.outer_stroke
     }
 
     pub(super) fn title_fill(&self) -> Option<&str> {
-        self.title_fill.as_deref()
+        self.title_fill
     }
 
     pub(super) fn section_text_fill(&self) -> Option<&str> {
-        self.section_text_fill.as_deref()
+        self.section_text_fill
     }
 
     pub(super) fn font_family(&self) -> Option<&str> {
-        self.font_family.as_deref()
+        self.font_family
     }
 }
 
 #[cfg(feature = "diagram-pie")]
-pub(super) fn write_pie_css<I>(
+pub(super) fn write_pie_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    paint_plan: &crate::pie::PieThemePlan,
+    paint_plan: &'a crate::pie::PieThemePlan,
     slices_present: bool,
-) -> Result<PieCssEmission>
+) -> Result<PieCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
 {
@@ -1021,20 +1021,20 @@ where
         slice_stroke: paint_plan
             .slice_stroke_css()
             .filter(|_| slices_present)
-            .map(|_| values.slice_stroke.css(true).into()),
+            .map(|_| values.slice_stroke.css(true)),
         outer_stroke: paint_plan
             .outer_stroke_css()
             .filter(|_| slices_present)
-            .map(|_| values.outer_stroke.css(true).into()),
+            .map(|_| values.outer_stroke.css(true)),
         title_fill: paint_plan
             .title_fill_css()
-            .map(|_| values.title_text_color.clone().into()),
+            .map(|_| values.title_text_color.as_str()),
         section_text_fill: paint_plan
             .text_fill_css()
-            .map(|_| values.section_text_color.clone().into()),
+            .map(|_| values.section_text_color.as_str()),
         font_family: paint_plan
             .typography_requested()
-            .then(|| values.common.font_family().into()),
+            .then(|| values.common.font_family()),
     };
     Ok(emission)
 }
