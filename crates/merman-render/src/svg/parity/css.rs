@@ -482,7 +482,7 @@ pub(super) struct InfoCssParts {
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedCommonCss {
     font_family: String,
-    root_font_family: String,
+    root_font_family_override: Option<String>,
     font_size_css: String,
     normal_edge_stroke_width_css: String,
     text_color: String,
@@ -625,7 +625,8 @@ impl PreparedCommonCss {
         mut self,
         effective_config: &serde_json::Value,
     ) -> Self {
-        self.root_font_family = crate::config::config_root_font_family_css(effective_config);
+        self.root_font_family_override =
+            Some(crate::config::config_root_font_family_css(effective_config));
         self
     }
 
@@ -634,10 +635,9 @@ impl PreparedCommonCss {
         font_family: String,
         font_size_css: String,
     ) -> Self {
-        let root_font_family = font_family.clone();
         Self {
             font_family,
-            root_font_family,
+            root_font_family_override: None,
             font_size_css,
             normal_edge_stroke_width_css: mermaid_stroke_width_px(effective_config),
             text_color: theme_token(effective_config, "textColor", "#333"),
@@ -733,7 +733,14 @@ fn emit_prepared_common_root<'a>(
     let neo_stroke = NeoStroke { fragment_id, css };
     let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
     write_mermaid_common_neo_css_values(out, selector_id, &neo_stroke, &drop_shadow, css)?;
-    emit_mermaid_base_css_root_rule(out, selector_id, &values.root_font_family)
+    emit_mermaid_base_css_root_rule(
+        out,
+        selector_id,
+        values
+            .root_font_family_override
+            .as_deref()
+            .unwrap_or(&values.font_family),
+    )
 }
 
 pub(super) struct InfoCssWriter {

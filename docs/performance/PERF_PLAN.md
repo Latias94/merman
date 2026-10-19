@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 shared root-font checkpoint](common_root_font_owner_macos_2026-10-20.md) removes
+the redundant initial font clone while retaining configured-root selection and explicit empty
+values. Info, Error and Kanban each save one allocation and 39 bytes; GitGraph saves two through
+construction and its existing subsequent clone. All 642 SVG/report/ordered-callback controls and
+26 errors match. Of 502 jointly stable rows, 201 improve and 301 stay unchanged, with no increase
+in any memory metric; 140 variable rows remain inconclusive. All 418 catalog cells are stable
+and exact: 209 cells across 19 families improve and 209 stay unchanged. Packet remains unchanged.
+All 708 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This is allocation/work removal, not release-distance attribution or
+latency admission. Next independently verify the ZenUML default CSS font owner, keeping its
+Some(empty)/normalization behavior and the finite-geometry fusion candidate separate.
+
 The [October 20 Quadrant checkpoint](quadrant_point_binding_macos_2026-10-20.md) removes the
 retained point-binding array and its independent traversal/settings projection. Borrowed source,
 class and prepared values flow into the necessary layout loop, with one final string copy.
