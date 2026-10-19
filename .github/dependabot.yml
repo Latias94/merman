@@ -19,7 +19,11 @@ updates:
       day: monday
       time: "05:17"
       timezone: Etc/UTC
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     ignore:
       - dependency-name: dtolnay/rust-toolchain
     labels:
