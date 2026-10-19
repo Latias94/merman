@@ -1174,13 +1174,11 @@ impl TreemapTitleThemePlan {
         self.fill.fill_css()
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<TreemapTitleThemeReceipt> {
-        self.fill
-            .fill_css()
-            .map(|fill_css| TreemapTitleThemeReceipt::new(fill_css.into()))
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<TreemapTitleThemeReceipt<'_>> {
+        self.fill.fill_css().map(TreemapTitleThemeReceipt::new)
     }
 
-    pub(crate) fn record_terminal(&self, receipt: TreemapTitleThemeReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: TreemapTitleThemeReceipt<'_>) -> bool {
         self.fill
             .fill_css()
             .is_some_and(|fill_css| receipt.proves(fill_css) && self.fill.record_proven_terminal())
@@ -1193,34 +1191,31 @@ impl TreemapTitleThemePlan {
 
 /// Writer-owned proof that the selected title fill reached both the stylesheet and title node.
 #[derive(Debug)]
-pub(crate) struct TreemapTitleThemeReceipt {
-    expected_fill: Box<str>,
-    stylesheet_fill: Option<Box<str>>,
-    stylesheet_class: Option<Box<str>>,
+pub(crate) struct TreemapTitleThemeReceipt<'a> {
+    expected_fill: &'a str,
+    css_emitted: bool,
     title_text_count: usize,
     terminal_matches: bool,
 }
 
-impl TreemapTitleThemeReceipt {
-    fn new(expected_fill: Box<str>) -> Self {
+impl<'a> TreemapTitleThemeReceipt<'a> {
+    fn new(expected_fill: &'a str) -> Self {
         Self {
             expected_fill,
-            stylesheet_fill: None,
-            stylesheet_class: None,
+            css_emitted: false,
             title_text_count: 0,
             terminal_matches: true,
         }
     }
 
     pub(crate) fn record_stylesheet(&mut self, emitted_class: &str, emitted_fill: &str) {
-        if self.stylesheet_fill.is_some() || self.stylesheet_class.is_some() {
+        if self.css_emitted {
             self.terminal_matches = false;
             return;
         }
         self.terminal_matches &= emitted_class == super::TREEMAP_TITLE_CLASS;
-        self.terminal_matches &= emitted_fill == self.expected_fill.as_ref();
-        self.stylesheet_class = Some(emitted_class.into());
-        self.stylesheet_fill = Some(emitted_fill.into());
+        self.terminal_matches &= emitted_fill == self.expected_fill;
+        self.css_emitted = true;
     }
 
     pub(crate) fn record_title_text(&mut self, emitted_class: &str) {
@@ -1229,9 +1224,8 @@ impl TreemapTitleThemeReceipt {
     }
 
     fn proves(&self, expected_fill: &str) -> bool {
-        self.expected_fill.as_ref() == expected_fill
-            && self.stylesheet_fill.as_deref() == Some(expected_fill)
-            && self.stylesheet_class.as_deref() == Some(super::TREEMAP_TITLE_CLASS)
+        self.expected_fill == expected_fill
+            && self.css_emitted
             && self.title_text_count == 1
             && self.terminal_matches
     }
@@ -1305,23 +1299,45 @@ mod tests {
 
     #[test]
     fn title_receipt_requires_one_matching_stylesheet_and_title_checkpoint() {
-        let mut complete = TreemapTitleThemeReceipt::new("#123456".into());
+        let mut complete = TreemapTitleThemeReceipt::new("#123456");
         complete.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         complete.record_title_text("treemapTitle");
         assert!(complete.proves("#123456"));
+        assert!(!complete.proves("#abcdef"));
+        complete.record_title_text("treemapTitle");
+        assert!(!complete.proves("#123456"));
 
-        let mut missing_title = TreemapTitleThemeReceipt::new("#123456".into());
+        let mut missing_stylesheet = TreemapTitleThemeReceipt::new("#123456");
+        missing_stylesheet.record_title_text("treemapTitle");
+        assert!(!missing_stylesheet.proves("#123456"));
+
+        let mut duplicate_stylesheet = TreemapTitleThemeReceipt::new("#123456");
+        duplicate_stylesheet.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
+        duplicate_stylesheet.record_title_text("treemapTitle");
+        duplicate_stylesheet.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
+        assert!(!duplicate_stylesheet.proves("#123456"));
+
+        let mut empty_fill = TreemapTitleThemeReceipt::new("");
+        empty_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "");
+        empty_fill.record_title_text("treemapTitle");
+        assert!(empty_fill.proves(""));
+
+        let mut missing_title = TreemapTitleThemeReceipt::new("#123456");
         missing_title.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         assert!(!missing_title.proves("#123456"));
 
-        let mut wrong_fill = TreemapTitleThemeReceipt::new("#123456".into());
+        let mut wrong_fill = TreemapTitleThemeReceipt::new("#123456");
         wrong_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#abcdef");
         wrong_fill.record_title_text("treemapTitle");
         assert!(!wrong_fill.proves("#123456"));
+        wrong_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
+        assert!(!wrong_fill.proves("#123456"));
 
-        let mut wrong_class = TreemapTitleThemeReceipt::new("#123456".into());
+        let mut wrong_class = TreemapTitleThemeReceipt::new("#123456");
         wrong_class.record_stylesheet("otherTitle", "#123456");
         wrong_class.record_title_text("treemapTitle");
+        assert!(!wrong_class.proves("#123456"));
+        wrong_class.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         assert!(!wrong_class.proves("#123456"));
     }
 

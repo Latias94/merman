@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 terminal receipt checkpoint](terminal_receipt_value_state_macos_2026-10-19.md)
+replaces copied Info/Error CSS observations with existing sticky comparison state and borrows
+Treemap's expected title fill. All three primaries save three allocations: Info/Error each save
+165 bytes and the active Treemap title saves 48 bytes. All 632 SVG/report/ordered-callback controls
+and 26 errors match. Of 492 jointly stable rows, 64 improve and 428 stay unchanged; no memory
+metric increases and 140 variable rows remain inconclusive. All 418 catalog cells are stable and
+exact, with 22 Info/Error improvements and 396 unchanged. Seven focused and 5,612 full release
+tests pass, as do Clippy, the full DOM gate, optimized full WASM and formatting checks. Independent
+source, raw-evidence and report reviews find no blocker. This is allocation/work removal, not
+a timing or release-convergence claim. Next independently measure Quadrant's duplicated point
+binding owners, retaining source/class/config precedence, exact tokens, all checkpoints and the
+full catalog; the remaining ZenUML font owner and finite-check fusion are separate candidates.
+
 The [October 19 full same-SVG joint confirmation](theme_v090_joint_confirmation_macos_2026-10-19.md)
 completes all 19 preregistered scenes against v0.9.0: 13 are within the joint budget, three
 confirm regression and three remain inconclusive. Both runners complete eight fresh A/A pairs;
