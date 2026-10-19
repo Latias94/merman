@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Radar checkpoint](radar_series_owner_macos_2026-10-19.md) removes a duplicated
+12-color palette from the CSS binding and constructs it once in the final series plan. All 262
+successful public controls retain exact SVG/reports/ordered measurer traces, and 26 public parse
+errors remain identical. Across 256 jointly stable memory controls, 32 improve and none regress;
+six variable Flowchart controls remain inconclusive. All 418 catalog cells retain output and
+metadata; eleven Radar cells each save twelve allocations and 372–766 bytes. Renderer tests,
+Clippy, full three-mode DOM and optimized full WASM build pass. This removes source-backed theme
+ownership overhead without a latency claim. The next larger ownership candidate is State's
+materialized terminal paint table; preserve its distinct truthy/nullish fallbacks and source bits.
+
 The [October 19 Packet/Kanban stage attribution](packet_kanban_stages_macos_2026-10-19.md)
 retains six fixed diagnostic rows and four CPU profiles from the frozen release-comparison
 executables. Exact SVG emission still differs in cost; parse/layout projections differ and

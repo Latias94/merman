@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use merman_core::MermaidConfig;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
-use crate::config::{config_css_number_or_string, value_at};
+use crate::config::{config_css_number_or_string, config_string, value_at};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
@@ -623,14 +623,13 @@ pub(crate) struct RadarSeriesPaintPlan {
 }
 
 impl RadarSeriesPaintPlan {
-    pub(crate) fn resolve_with_binding(
+    pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
-        binding: &super::RadarCssBinding,
         model: &RadarDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline_with_binding(binding, model);
+        let mut plan = Self::baseline(effective_config.as_value(), model);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -698,12 +697,14 @@ impl RadarSeriesPaintPlan {
         Ok(plan)
     }
 
-    pub(crate) fn baseline_with_binding(
-        binding: &super::RadarCssBinding,
-        model: &RadarDiagramRenderModel,
-    ) -> Self {
+    pub(crate) fn baseline(config: &serde_json::Value, model: &RadarDiagramRenderModel) -> Self {
         Self {
-            colors: binding.series_colors.clone(),
+            colors: std::array::from_fn(|index| {
+                config_string(config, &["themeVariables", &format!("cScale{index}")])
+                    .unwrap_or_else(|| {
+                        crate::svg::render_theme::radar_default_series_color(index).to_string()
+                    })
+            }),
             typed_capabilities: [None; RADAR_PALETTE_SLOT_COUNT],
             curve_count: model.curves.len(),
             show_legend: model.options.show_legend,
@@ -852,6 +853,29 @@ impl RadarSeriesPaintReceipt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn series_palette_preserves_raw_slots_and_string_only_fallback() {
+        let config = serde_json::json!({
+            "radar": {"cScale0": "ignored"},
+            "themeVariables": {
+                "cScale0": "var(--series)", "cScale1": "", "cScale2": null,
+                "cScale3": false, "cScale4": 42, "cScale5": {}, "cScale6": [],
+                "cScale11": " &<]]>色 ", "radar": {"cScale0": "also ignored"}
+            }
+        });
+        let plan = RadarSeriesPaintPlan::baseline(&config, &RadarDiagramRenderModel::default());
+        assert_eq!(plan.colors().len(), 12);
+        assert_eq!(plan.colors()[0], "var(--series)");
+        assert_eq!(plan.colors()[1], "");
+        for index in 2..=6 {
+            assert_eq!(
+                plan.colors()[index],
+                crate::svg::render_theme::radar_default_series_color(index)
+            );
+        }
+        assert_eq!(plan.colors()[11], " &<]]>色 ");
+    }
 
     fn resolved_typography() -> ResolvedDiagramTheme {
         let typography = crate::diagram_theme::ThemeTextStyle::default()
