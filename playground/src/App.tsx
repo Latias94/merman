@@ -25,7 +25,7 @@ import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
-import { ThemeWorkbench } from "./components/theme-workbench/ThemeWorkbench";
+import { ThemePanel } from "./components/theme-panel/ThemePanel";
 
 const CodeEditor = lazy(() =>
   import("./components/EditorFeature").then((module) => ({
@@ -84,7 +84,7 @@ export default function App() {
     id: isWideLayout ? "merman-theme-horizontal" : "merman-theme-vertical",
     onlySaveAfterUserInteractions: true,
     storage: themeLayoutStorage,
-    panelIds: themeEditSession ? ["diagram-workspace", "theme-workbench-panel"] : ["diagram-workspace"],
+    panelIds: themeEditSession ? ["diagram-workspace", "theme-panel-container"] : ["diagram-workspace"],
   });
 
   useEffect(() => {
@@ -181,9 +181,9 @@ export default function App() {
                 </div>
               </ResizablePanel>
               {themeEditSession && <>
-                <ResizableHandle withHandle aria-label={t("themeWorkbench.resize")} />
-                <ResizablePanel id="theme-workbench-panel" defaultSize={isWideLayout ? "32%" : "45%"} minSize={isWideLayout ? 320 : "30%"} maxSize={isWideLayout ? "60%" : "75%"}>
-                  <ThemeWorkbench
+                <ResizableHandle withHandle aria-label={t("themePanel.resize")} />
+                <ResizablePanel id="theme-panel-container" defaultSize={isWideLayout ? "32%" : "45%"} minSize={isWideLayout ? 320 : "30%"} maxSize={isWideLayout ? "60%" : "75%"}>
+                  <ThemePanel
                     className="h-full min-h-0"
                     onClose={() => requestAnimationFrame(() => {
                       const launchers = document.querySelectorAll<HTMLButtonElement>("[data-theme-launcher]");

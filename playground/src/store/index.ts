@@ -17,16 +17,12 @@ import {
   DEFAULT_SVG_PRESENTATION_MODE,
   type SvgPresentationMode,
 } from "../lib/svg-presentation.ts";
-import type { ValidatedThemeDocument } from "../lib/theme-document.ts";
 import {
   acceptThemeValidation,
   advanceThemeBaseline,
   beginThemeEditSession,
   beginThemeImport,
   completeThemeImport,
-  editThemeDraft,
-  endThemeEditGrouping,
-  travelThemeHistory,
   failThemeImport,
   isThemeDraftChanged,
   rejectThemeValidation,
@@ -36,7 +32,6 @@ import {
   themeValidationToken,
   type ThemeCandidate,
   type ThemeEditSession,
-  type ThemeEditGrouping,
   type ThemeImportToken,
   type ThemeValidationToken,
 } from "../lib/theme-edit-session.ts";
@@ -73,10 +68,7 @@ export interface AppState {
   themeEditSession: ThemeEditSession | null;
   themeEditGeneration: number;
   beginThemeEdit: () => ThemeValidationToken;
-  editThemeDraft: (rawJson: string, group?: ThemeEditGrouping["key"]) => ThemeValidationToken | null;
-  endThemeEditGrouping: () => void;
-  travelThemeHistory: (direction: "undo" | "redo") => boolean;
-  acceptThemeValidation: (token: ThemeValidationToken, validated: ValidatedThemeDocument) => boolean;
+  acceptThemeValidation: (token: ThemeValidationToken, recipeJson: string) => boolean;
   rejectThemeValidation: (token: ThemeValidationToken, error: string) => boolean;
   selectThemeCandidate: (candidate: Exclude<ThemeCandidate, { kind: "custom" }>) => void;
   beginThemeImport: () => ThemeImportToken | null;
@@ -220,31 +212,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ themeEditSession: session, themeEditGeneration: generation });
     return themeValidationToken(session);
   },
-  editThemeDraft: (rawJson, group) => {
-    const current = get().themeEditSession;
-    if (!current) return null;
-    const session = editThemeDraft(current, rawJson, group ? { key: group, at: performance.now() } : undefined);
-    set({ themeEditSession: session });
-    return themeValidationToken(session);
-  },
-  endThemeEditGrouping: () => {
-    const current = get().themeEditSession;
-    if (!current) return;
-    const session = endThemeEditGrouping(current);
-    if (session !== current) set({ themeEditSession: session });
-  },
-  travelThemeHistory: (direction) => {
+  acceptThemeValidation: (token, recipeJson) => {
     const current = get().themeEditSession;
     if (!current) return false;
-    const session = travelThemeHistory(current, direction);
-    if (session === current) return false;
-    set({ themeEditSession: session });
-    return true;
-  },
-  acceptThemeValidation: (token, validated) => {
-    const current = get().themeEditSession;
-    if (!current) return false;
-    const session = acceptThemeValidation(current, token, validated);
+    const session = acceptThemeValidation(current, token, recipeJson);
     if (session === current) return false;
     set({ themeEditSession: session });
     return true;

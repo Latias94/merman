@@ -400,10 +400,10 @@ export function Preview({ active = true, className }: PreviewProps) {
               label={t("preview.svgBounds")}
               onPressedChange={setShowSvgBounds}
             />
-            <select className="h-7 max-w-28 rounded border bg-background px-1 text-xs" aria-label={t("themeWorkbench.previewBacking")}
-              title={t("themeWorkbench.previewBackingHint")}
+            <select className="h-7 max-w-28 rounded border bg-background px-1 text-xs" aria-label={t("themePanel.previewBacking")}
+              title={t("themePanel.previewBackingHint")}
               value={previewBacking} onChange={(event) => setPreviewBacking(event.target.value as PreviewBacking)}>
-              {(["automatic", "light", "dark", "transparency"] as const).map((backing) => <option key={backing} value={backing}>{t(`themeWorkbench.backing.${backing}`)}</option>)}
+              {(["automatic", "light", "dark", "transparency"] as const).map((backing) => <option key={backing} value={backing}>{t(`themePanel.backing.${backing}`)}</option>)}
             </select>
           </>
         )}
@@ -524,7 +524,7 @@ export function Preview({ active = true, className }: PreviewProps) {
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(toolbarActions)}
       {canvasMode && <ThemeRenderStatus />}
-      {previewMode === "compare" && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themeWorkbench.compareStyled")}</p>}
+      {previewMode === "compare" && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themePanel.compareStyled")}</p>}
       {canvasMode && svgPipeline === "readable" && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-2">
           <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">

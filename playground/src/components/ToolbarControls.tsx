@@ -35,10 +35,10 @@ export function ToolbarControls() {
   const currentLang = getCurrentLanguage();
   const handleLanguageChange = useCallback((language: string) => changeLanguage(language as "en" | "zh"), []);
 
-  function openThemeWorkbench() {
+  function openThemePanel() {
     const store = useAppStore.getState();
     if (store.themeEditSession) {
-      document.querySelector<HTMLElement>("#theme-workbench h2")?.focus();
+      document.querySelector<HTMLElement>("#theme-panel h2")?.focus();
       return;
     }
     store.beginThemeEdit();
@@ -51,7 +51,7 @@ export function ToolbarControls() {
         <TooltipTrigger asChild>
           <Button variant="outline" size={compact ? "icon-sm" : "sm"}
             aria-label={t("toolbar.theme")} aria-expanded={state.themeEditSession !== null}
-            aria-controls="theme-workbench" data-theme-launcher onClick={openThemeWorkbench}>
+            aria-controls="theme-panel" data-theme-launcher onClick={openThemePanel}>
             <Palette className="size-4" />
             {!compact && <span>{t("toolbar.theme")}</span>}
           </Button>

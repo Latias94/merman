@@ -713,7 +713,7 @@ async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
 async function exerciseCompactToolbarMenus(page: Page): Promise<void> {
   const theme = page.getByRole("button", { name: "Theme", exact: true });
   await theme.tap();
-  await expect(page.getByRole("region", { name: "Theme workbench" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Theme panel" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(theme).toBeFocused();
   for (const name of ["Render settings", "Export"]) {

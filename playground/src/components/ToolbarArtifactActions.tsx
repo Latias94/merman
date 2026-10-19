@@ -149,7 +149,7 @@ export function useToolbarArtifactActions() {
 
   const handleCopyWorkspaceLink = useCallback(async () => {
     if (selectThemeDraftChanged(useAppStore.getState())) {
-      toast.error(t("themeWorkbench.applyFirst"));
+      toast.error(t("themePanel.applyFirst"));
       return;
     }
     const snapshot = selectWorkspaceSnapshot(useAppStore.getState());
@@ -168,7 +168,7 @@ export function useToolbarArtifactActions() {
   const handleCopyIssueLink = useCallback(async () => {
     const state = useAppStore.getState();
     if (selectThemeDraftChanged(state)) {
-      toast.error(t("themeWorkbench.applyFirst"));
+      toast.error(t("themePanel.applyFirst"));
       return;
     }
     const snapshot = selectWorkspaceSnapshot(state);
@@ -260,7 +260,7 @@ export function ToolbarArtifactActions({
         </Tooltip>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
-          {owner.themeDraftChanged && <p role="status" className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("themeWorkbench.applyFirst")}</p>}
+          {owner.themeDraftChanged && <p role="status" className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("themePanel.applyFirst")}</p>}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => owner.handleOpenExport(exportTriggerRef.current)}
@@ -368,7 +368,7 @@ function ShareMenu({
           className="w-80 max-w-[calc(100vw-2rem)]"
         >
           <DropdownMenuLabel>{t("share.title")}</DropdownMenuLabel>
-          {owner.themeDraftChanged && <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("themeWorkbench.applyFirst")}</p>}
+          {owner.themeDraftChanged && <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("themePanel.applyFirst")}</p>}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             aria-label={t("share.workspaceLink")}

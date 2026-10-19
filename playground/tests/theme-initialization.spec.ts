@@ -206,8 +206,7 @@ test("Compare backing stays shared and preserves authored white canvas and expor
   await originalMermaidRoot?.dispose();
 
   await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const workbench = page.locator("#theme-workbench");
-  await workbench.getByRole("tab", { name: "Presets", exact: true }).click();
+  const workbench = page.locator("#theme-panel");
   const none = workbench.getByRole("button", { name: /^None/ });
   await expect(none).toHaveAttribute("aria-pressed", "false");
   await none.click();

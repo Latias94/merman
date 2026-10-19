@@ -1,7 +1,7 @@
 # Mermaid Compare Mode
 
 Status: Implemented
-Last updated: 2026-10-18
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -20,8 +20,8 @@ pixel-diff oracle and not the formal benchmark.
 - A Merman failure and Mermaid failure remain independent evidence; partial success is visible.
 - Source/config/theme/font changes produce one latest coherent batch. Actions are disabled while a
   replacement batch is pending.
-- The theme workbench previews valid drafts through the same coordinator without changing the applied
-  workspace theme. Workspace/issue sharing and SVG/image actions require Apply while a changed draft
+- The theme panel previews valid selections through the same coordinator without changing the applied
+  Merman theme. Workspace/issue sharing and SVG/image actions require Apply while a changed selection
   is visible; source and ASCII actions retain their existing ownership.
 - Both panes share a display-only Preview backing choice and preserve engine-owned SVG paint.
 
@@ -103,11 +103,14 @@ The coordinator freezes:
 - diagnostics/Compare flags;
 - exact Merman package version.
 
-An active theme-editing session supplies its last valid candidate to this same frozen operation.
-Invalid recipe text stays editable while current source/configuration/font edits continue rendering
-with that candidate. Apply commits theme fields only; Cancel restores the applied theme without
-rolling back unrelated workspace changes. See
-[Create, Customize, and Share Diagram Themes](../../rendering/custom-diagram-themes.md#edit-and-share-in-the-playground)
+An open theme panel supplies its last valid pending selection to this same frozen operation.
+Imports pass through the existing Rust validator; invalid files report an error while current
+source/configuration/font edits continue rendering with that last valid selection. Apply commits
+Merman theme fields only; Cancel restores the applied selection without rolling back unrelated
+workspace changes. The shared Mermaid theme changes immediately. The panel supports preset
+selection, standalone import/export, and read-only JSON and diagnostics under Advanced. Theme
+creation and revision belong to the repository skill or an external editor. See
+[Create, Customize, and Share Diagram Themes](../../rendering/custom-diagram-themes.md#select-preview-and-share-in-the-playground)
 for the user workflow.
 
 It invokes Merman and, when enabled, the Compare realm. Monotonic request ids make publication
@@ -144,9 +147,9 @@ and affects neither fit nor export. This shared presentation path applies equall
 Mermaid.js; ViewBox Frame remains the diagnostic mode for engine-owned root clipping.
 
 Merman presets and custom recipes affect the Merman pane only. Mermaid.js receives the Mermaid
-source, configuration, and compatibility theme. Selecting None in the theme workbench is an explicit
-way to compare without Merman recipe styling; replacing a modified custom draft requires a discard
-decision. Preset design scope and declared mechanism support are distinct from the same-execution
+source, configuration, and compatibility theme. Selecting None in the theme panel and applying
+it compares without Merman recipe styling. Selecting another preset or importing a corrected file
+replaces the pending selection directly; Cancel restores the applied selection. Preset design scope and declared mechanism support are distinct from the same-execution
 theme metadata published with Merman's displayed SVG. Unknown or missing outcomes remain unverified;
 a successful preview does not certify an export target.
 
@@ -154,7 +157,7 @@ Each Compare pane has one export launcher. The workbench keeps the engine identi
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
 artifact; Merman raster output rerenders the frozen operation once through `resvg-safe`. Preview
 and download use the same encoded Blob.
-Opening or changing an unapplied theme draft invalidates an existing image-export workbench before
+Opening or changing an unapplied theme selection invalidates an existing image-export workbench before
 another action can start. An already-dispatched export can finish against its captured publication.
 After Apply, a newly opened export workbench captures the current applied publication.
 
