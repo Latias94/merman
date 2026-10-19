@@ -147,6 +147,43 @@ fn inspection_propagates_consumer_domains_through_alias_chains() {
 }
 
 #[test]
+fn inspection_propagates_domains_through_cached_alias_chains() {
+    use serde_json::json;
+
+    for alias_count in [2, 32, 40, 255] {
+        let mut tokens = serde_json::Map::new();
+        tokens.insert("t000".to_owned(), json!({"type":"number","value":0.5}));
+        for index in 1..=alias_count {
+            tokens.insert(
+                format!("t{index:03}"),
+                json!({"type":"number","value":{"ref":format!("t{:03}", index - 1)}}),
+            );
+        }
+        let document = serde_json::from_value(json!({
+            "tokens": tokens,
+            "styles": {"node": {"opacity": {"ref": format!("t{alias_count:03}")}}}
+        }))
+        .unwrap();
+        let inspection = inspect_theme_design(&document).unwrap();
+        assert_eq!(inspection.references.len(), alias_count + 1);
+        for entry in inspection.references {
+            assert_eq!(
+                entry.domain.min,
+                Some(0.0),
+                "{} ({alias_count} aliases)",
+                entry.path
+            );
+            assert_eq!(
+                entry.domain.max,
+                Some(1.0),
+                "{} ({alias_count} aliases)",
+                entry.path
+            );
+        }
+    }
+}
+
+#[test]
 fn design_recipe_compiles_through_the_real_compiler_and_metadata_is_not_render_identity() {
     use merman_render::diagram_theme::DiagramThemeCompiler;
     use merman_theme_contract::ThemeRecipeV1;

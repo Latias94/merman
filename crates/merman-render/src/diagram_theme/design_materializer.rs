@@ -317,8 +317,9 @@ fn propagate_alias_domains(design: &ThemeDesignV1, references: &mut [ThemeDesign
         .collect::<BTreeMap<_, _>>();
     for consumer in references.to_vec() {
         let mut id = consumer.token.as_str();
-        // Resolution has already rejected missing values, cycles and overlong alias chains.
-        for _ in 0..MAX_REFERENCE_DEPTH {
+        // Cached resolution can admit chains deeper than the active recursion limit.
+        // Missing values and cycles are already rejected; token count bounds this traversal.
+        for _ in 0..design.tokens.len() {
             let Some(token) = design.tokens.get(id) else {
                 break;
             };
