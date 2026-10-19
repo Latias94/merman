@@ -144,7 +144,7 @@ npm ci --ignore-scripts --prefix playground
 npm ls --all --prefix playground
 npm ci --ignore-scripts --prefix tools/mermaid-cli
 npm ls --all --prefix tools/mermaid-cli
-cargo nextest run -p merman-core baseline
+cargo nextest run -p merman-core --features all-diagrams --lib pinned_baseline
 ```
 
 Run `node --test tools/mermaid-cli/reference-runtime.test.mjs` after installing the reference CLI.
@@ -188,6 +188,12 @@ and owner to every added, removed, or changed:
 Text measurement, font rendering, `getBBox()`, `foreignObject`, RoughJS, and CSS inheritance are
 bounded artifact contracts. Keep raw, browser-computed, and export evidence separate. Do not use a
 heuristic parser, fixture constant, broad normalizer, or comparator whitelist to hide a delta.
+
+Follow the [fixture version policy](../../fixtures/README.md): preserve historical authoring,
+normalization, and copied-source identities. Current reference versions belong to the selected
+bundle and generated SVG manifests. Remove stale release bookkeeping from diagram content only
+through an input edit and the applicable snapshot/reference regeneration; a release upgrade does
+not justify bulk version substitutions in historical fixture headers.
 
 ## 5. Admit Through Family Ownership
 
