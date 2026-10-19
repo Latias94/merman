@@ -1052,29 +1052,29 @@ where
     treemap_css_with_title_fill_and_font_family(diagram_id, &typography).map(|(css, _, _)| css)
 }
 
-pub(super) struct TreemapTitleCssEmission {
+pub(super) struct TreemapTitleCssEmission<'a> {
     class: &'static str,
-    fill: Box<str>,
+    fill: &'a str,
 }
 
-impl TreemapTitleCssEmission {
+impl TreemapTitleCssEmission<'_> {
     pub(super) const fn class(&self) -> &'static str {
         self.class
     }
 
     pub(super) fn fill(&self) -> &str {
-        &self.fill
+        self.fill
     }
 }
 
 #[cfg(feature = "diagram-treemap")]
-pub(super) fn treemap_css_with_title_fill_and_font_family<I>(
+pub(super) fn treemap_css_with_title_fill_and_font_family<'a, I>(
     diagram_id: I,
-    typography_theme: &crate::treemap::TreemapTypographyThemePlan,
+    typography_theme: &'a crate::treemap::TreemapTypographyThemePlan,
 ) -> Result<(
     String,
-    TreemapTitleCssEmission,
-    crate::treemap::TreemapTypographyCssEmission,
+    TreemapTitleCssEmission<'a>,
+    crate::treemap::TreemapTypographyCssEmission<'a>,
 )>
 where
     I: SvgDiagramIdValue,
@@ -1118,7 +1118,7 @@ where
     );
     let title_emission = TreemapTitleCssEmission {
         class: title_class,
-        fill: title_fill.into(),
+        fill: title_fill,
     };
     let root_typography_emitted = theme
         .common

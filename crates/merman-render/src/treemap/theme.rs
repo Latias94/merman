@@ -719,36 +719,36 @@ fn treemap_source_style_retained_upper_bound(
     Ok(retained_bytes)
 }
 
-/// CSS facts returned by the Treemap stylesheet writer. These are writer-owned values; the
-/// typography receipt never reparses the final stylesheet.
+/// CSS facts returned after successful writes, borrowing the prepared values. The typography
+/// receipt never reparses the final stylesheet.
 #[derive(Debug, Clone)]
-pub(crate) struct TreemapTypographyCssEmission {
-    font_family_css: Box<str>,
+pub(crate) struct TreemapTypographyCssEmission<'a> {
+    font_family_css: &'a str,
     base_typography_emitted: bool,
     root_typography_emitted: bool,
-    label_text_fill_css: Box<str>,
-    value_text_fill_css: Box<str>,
+    label_text_fill_css: &'a str,
+    value_text_fill_css: &'a str,
 }
 
-impl TreemapTypographyCssEmission {
+impl<'a> TreemapTypographyCssEmission<'a> {
     pub(crate) fn new(
-        font_family_css: &str,
+        font_family_css: &'a str,
         base_typography_emitted: bool,
         root_typography_emitted: bool,
-        label_text_fill_css: &str,
-        value_text_fill_css: &str,
+        label_text_fill_css: &'a str,
+        value_text_fill_css: &'a str,
     ) -> Self {
         Self {
-            font_family_css: font_family_css.into(),
+            font_family_css,
             base_typography_emitted,
             root_typography_emitted,
-            label_text_fill_css: label_text_fill_css.into(),
-            value_text_fill_css: value_text_fill_css.into(),
+            label_text_fill_css,
+            value_text_fill_css,
         }
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        &self.font_family_css
+        self.font_family_css
     }
 
     pub(crate) const fn base_typography_emitted(&self) -> bool {
@@ -760,11 +760,11 @@ impl TreemapTypographyCssEmission {
     }
 
     pub(crate) fn label_text_fill_css(&self) -> &str {
-        &self.label_text_fill_css
+        self.label_text_fill_css
     }
 
     pub(crate) fn value_text_fill_css(&self) -> &str {
-        &self.value_text_fill_css
+        self.value_text_fill_css
     }
 }
 
@@ -859,7 +859,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
         }
     }
 
-    pub(crate) fn record_css_emission(&mut self, emission: TreemapTypographyCssEmission) {
+    pub(crate) fn record_css_emission(&mut self, emission: TreemapTypographyCssEmission<'_>) {
         self.terminal_matches &= !self.css_emitted;
         self.css_matches = emission.base_typography_emitted()
             && emission.root_typography_emitted()

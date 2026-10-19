@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Treemap CSS checkpoint](treemap_css_receipt_macos_2026-10-19.md) borrows four
+intermediate success values from the immutable prepared plan. All 632 successful controls retain
+exact SVG/reports/ordered measurer traces, and 26 errors match. Among 490 jointly stable rows,
+55 Treemap controls improve and none regress; the same 142 variable rows remain inconclusive.
+Default medium saves four allocations and 51 bytes. All 418 catalog cells are stable and exact:
+eleven Treemap cells improve and 407 stay unchanged. Renderer tests, Clippy, full DOM and optimized
+full WASM build pass. This removes theme-refactor ownership without a clock claim. Next test the
+shared empty source-config owner, then Info/Error and Treemap title terminal state; preserve
+configuration metadata semantics, each proof state machine and successful completion uniqueness.
+
 The [October 19 Sequence foreground checkpoint](sequence_foreground_owner_macos_2026-10-19.md)
 borrows final raw/typed colors, retains the existing source decisions and removes an unconsumed
 BoxTitle declaration. All 584 successful controls retain exact SVG/reports/ordered measurer traces,
