@@ -2301,7 +2301,7 @@ mod tests {
                 entity,
                 &measurer,
                 &settings.label_style,
-                &settings.attr_style,
+                &settings.label_style,
                 settings.entity_measurement,
             )
         };
