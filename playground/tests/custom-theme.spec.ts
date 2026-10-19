@@ -147,6 +147,9 @@ test("Visual edits and JSON share one draft and applying does not depend on a va
   await newRecipe(page, workbench);
   await expect(workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ })).toBeEnabled();
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const target = workbench.getByLabel("Semantic target", { exact: true });
+  await expect(target.locator("option[value='actor']")).toHaveCount(1);
+  await expect(target.locator("option[value='cluster']")).toHaveCount(1);
   const text = workbench.getByRole("textbox", { name: /^text$/i });
   await text.fill("#224466");
   await text.press("Enter");
@@ -293,8 +296,9 @@ test("theme outcome describes the displayed SVG without certifying capability di
   await expect(outcome).toContainText("an empty diagnostic list does not certify portability");
   await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
   await expect(workbench).toContainText("does not infer per-field provenance");
-  await workbench.getByText("Capability discovery", { exact: false }).click();
-  await expect(workbench).toContainText("Declared capabilities are separate from the current render outcome");
+  await workbench.getByRole("tab", { name: "Inspect", exact: true }).click();
+  await expect(workbench).toContainText("Theme catalog details");
+  await expect(workbench).toContainText("Catalog: 10 presets");
 });
 
 test("dirty drafts gate Compare and issue sharing and invalidate an open export target", async ({ page }) => {

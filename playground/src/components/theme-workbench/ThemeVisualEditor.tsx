@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThemeCatalog, ThemePaint, ThemeRecipeV1, ThemeRuleEntry } from "@mermanjs/web";
 
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,15 +12,33 @@ import {
   restoreThemeCanvas,
   setDefinitionToken,
   setDefinitionTypography,
+  setCompleteTypography,
   setThemeCanvasBase,
   setThemeRuleFacet,
+  moveThemeRule,
+  removeThemeRule,
+  setThemeRuleSelector,
   type ThemeRuleFacetValues,
 } from "@/src/lib/theme-document";
 import type { MermanDomainFacade } from "@/src/runtime/merman-core";
 
 const TOKEN_NAMES = ["surface", "surface_alt", "surface_muted", "text", "border", "line", "accent"] as const;
-const VISUAL_TARGETS = ["node", "node-label", "edge", "edge-label", "group", "group-label", "note", "note-label", "chart-series"];
+const FALLBACK_RULE_TARGETS = [
+  "node", "node-label", "edge", "edge-label", "cluster", "cluster-label",
+  "actor", "actor-label", "message", "message-label", "note", "note-label", "chart-series",
+] as const;
+const RULE_FACETS = [
+  "fill", "opacity", "fill-opacity", "stroke-paint", "stroke-width", "stroke-dasharray",
+  "stroke-line-cap", "stroke-line-join", "stroke-opacity", "radius", "padding", "font-stack",
+  "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "word-spacing",
+  "text-transform", "text-decoration", "text-align", "white-space", "wrap", "effect",
+] as const;
 const SELECT_CLASS = "h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function ruleTargets(catalog: ThemeCatalog | null): string[] {
+  const targets = catalog?.known_semantic_target_ids ?? [...FALLBACK_RULE_TARGETS];
+  return targets.filter((target) => target !== "canvas").sort();
+}
 
 export function ThemeVisualEditor({
   document,
@@ -66,6 +85,18 @@ export function ThemeVisualEditor({
           />
           <NumberField label={t("themeWorkbench.fontSize", { defaultValue: "Font size (px)" })} value={document.definition.tokens.typography?.font_size_px} min={1} onChange={(value) => onChange(setDefinitionTypography(document, "font_size_px", value ?? undefined))} />
           <NumberField label={t("themeWorkbench.fontWeight", { defaultValue: "Font weight" })} value={document.definition.tokens.typography?.font_weight} min={1} max={1000} onChange={(value) => onChange(setDefinitionTypography(document, "font_weight", value ?? undefined))} />
+        </section>
+      )}
+      {document.kind === "complete_spec" && (
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold">{t("themeWorkbench.typography", { defaultValue: "Typography" })}</h3>
+          <ListField
+            label={t("themeWorkbench.fontStack", { defaultValue: "Font stack, one family per line" })}
+            value={document.complete_spec.typography?.default?.font_stack}
+            onChange={(value) => onChange(setCompleteTypography(document, "font_stack", value))}
+          />
+          <NumberField label={t("themeWorkbench.fontSize", { defaultValue: "Font size (px)" })} value={document.complete_spec.typography?.default?.font_size_px} min={1} onChange={(value) => onChange(setCompleteTypography(document, "font_size_px", value ?? undefined))} />
+          <NumberField label={t("themeWorkbench.fontWeight", { defaultValue: "Font weight" })} value={document.complete_spec.typography?.default?.font_weight} min={1} max={1000} onChange={(value) => onChange(setCompleteTypography(document, "font_weight", value ?? undefined))} />
         </section>
       )}
       <RuleEditor document={document} facade={facade} catalog={catalog} familyId={familyId} onChange={onChange} />
@@ -250,8 +281,9 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
   const [newFamily, setNewFamily] = useState("current");
   const [explicitFamily, setExplicitFamily] = useState("");
   const [initialPaint, setInitialPaint] = useState("#ffffff");
-  const targets = VISUAL_TARGETS.filter((target) => !catalog || catalog.known_semantic_target_ids.includes(target));
-  const canEdit = active && VISUAL_TARGETS.includes(active.rule.target);
+  const targets = useMemo(() => ruleTargets(catalog), [catalog]);
+  const selectedTarget = targets.includes(newTarget) ? newTarget : targets[0] ?? "";
+  const canEdit = active && targets.includes(active.rule.target);
 
   function edit<Facet extends keyof ThemeRuleFacetValues>(facet: Facet, value: ThemeRuleFacetValues[Facet]) {
     if (active) onChange(setThemeRuleFacet(document, active.index, facet, value));
@@ -268,6 +300,20 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
       {active && <>
         <p className="break-words text-[11px] text-muted-foreground">{t("themeWorkbench.ruleScope", { defaultValue: "Scope: {{family}} · {{target}}", family: active.rule.family ?? t("themeWorkbench.allFamilies", { defaultValue: "All families" }), target: active.rule.target })}{active.rule.variant ? ` · ${active.rule.variant}` : ""}{active.rule.ordinal ? ` · ${JSON.stringify(active.rule.ordinal)}` : ""}</p>
         {canEdit ? <div className="space-y-3 rounded-md border p-3">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor={`${id}-active-target`} className="block text-xs font-medium">{t("themeWorkbench.ruleTarget", { defaultValue: "Rule semantic target" })}</label>
+              <select id={`${id}-active-target`} className={SELECT_CLASS} value={active.rule.target} onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { target: event.target.value }))}>
+                {targets.map((target) => <option key={target} value={target}>{target}</option>)}
+                {!targets.includes(active.rule.target) && <option value={active.rule.target}>{active.rule.target}</option>}
+              </select>
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor={`${id}-active-family`} className="block text-xs font-medium">{t("themeWorkbench.family", { defaultValue: "Family scope" })}</label>
+              <Input id={`${id}-active-family`} aria-label={t("themeWorkbench.ruleFamily", { defaultValue: "Rule family scope" })} value={active.rule.family ?? ""} placeholder={t("themeWorkbench.allFamilies", { defaultValue: "All families" })} className="h-8 text-xs" onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { family: event.target.value }))} />
+            </div>
+          </div>
+          <Input aria-label={t("themeWorkbench.variant", { defaultValue: "Variant" })} value={active.rule.variant ?? ""} placeholder={t("themeWorkbench.variantPlaceholder", { defaultValue: "Variant (optional)" })} className="h-8 text-xs" onChange={(event) => onChange(setThemeRuleSelector(document, active.index, { variant: event.target.value }))} />
           <PaintField label={t("themeWorkbench.fill", { defaultValue: "Fill" })} value={active.rule.style.fill} clearable onChange={(value) => edit("fill", value)} />
           <PaintField label={t("themeWorkbench.strokePaint", { defaultValue: "Border / line paint" })} value={active.rule.style.stroke?.paint} clearable onChange={(value) => edit("stroke.paint", value)} />
           <NumberField label={t("themeWorkbench.strokeWidth", { defaultValue: "Border / line width" })} value={active.rule.style.stroke?.width} clearable min={0} onChange={(value) => edit("stroke.width", value)} />
@@ -275,6 +321,11 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
           <NumberField label={t("themeWorkbench.radius", { defaultValue: "Corner radius" })} value={active.rule.style.radius} clearable min={0} onChange={(value) => edit("radius", value)} />
           <NumberField label={t("themeWorkbench.fontSize", { defaultValue: "Font size (px)" })} value={active.rule.style.typography?.font_size_px} clearable min={1} onChange={(value) => edit("typography.font_size_px", value)} />
           <NumberField label={t("themeWorkbench.fontWeight", { defaultValue: "Font weight" })} value={active.rule.style.typography?.font_weight} clearable min={1} max={1000} onChange={(value) => edit("typography.font_weight", value)} />
+          <div className="flex flex-wrap gap-1.5 border-t pt-2">
+            <Button type="button" variant="outline" size="sm" disabled={active.index === 0} onClick={() => { onChange(moveThemeRule(document, active.index, "up")); setSelectedIndex(active.index - 1); }}><ArrowUp className="size-3.5" />{t("themeWorkbench.moveUp", { defaultValue: "Move up" })}</Button>
+            <Button type="button" variant="outline" size="sm" disabled={active.index >= entries.length - 1} onClick={() => { onChange(moveThemeRule(document, active.index, "down")); setSelectedIndex(active.index + 1); }}><ArrowDown className="size-3.5" />{t("themeWorkbench.moveDown", { defaultValue: "Move down" })}</Button>
+            <Button type="button" variant="destructive" size="sm" onClick={() => { onChange(removeThemeRule(document, active.index)); setSelectedIndex(null); }}><Trash2 className="size-3.5" />{t("themeWorkbench.deleteRule", { defaultValue: "Delete rule" })}</Button>
+          </div>
           <RuleSupport facade={facade} rule={active.rule} familyId={familyId} />
         </div> : <p className="text-xs text-muted-foreground">{t("themeWorkbench.advancedRule", { defaultValue: "Edit this target in JSON. Its authored rule is preserved." })}</p>}
       </>}
@@ -282,7 +333,7 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
         <summary className="cursor-pointer text-xs font-medium">{t("themeWorkbench.appendRule", { defaultValue: "Append an override" })}</summary>
         <div className="mt-3 space-y-2">
           <label htmlFor={`${id}-target`} className="block text-xs">{t("themeWorkbench.target", { defaultValue: "Semantic target" })}</label>
-          <select id={`${id}-target`} className={SELECT_CLASS} value={newTarget} onChange={(event) => setNewTarget(event.target.value)}>{targets.map((target) => <option key={target} value={target}>{target}</option>)}</select>
+          <select id={`${id}-target`} className={SELECT_CLASS} value={selectedTarget} onChange={(event) => setNewTarget(event.target.value)}>{targets.map((target) => <option key={target} value={target}>{target}</option>)}</select>
           <label htmlFor={`${id}-family`} className="block text-xs">{t("themeWorkbench.family", { defaultValue: "Family scope" })}</label>
           <select id={`${id}-family`} className={SELECT_CLASS} value={newFamily} onChange={(event) => setNewFamily(event.target.value)}>
             <option value="current" disabled={!familyId}>{t("themeWorkbench.currentFamily", { defaultValue: "Current family" })}{familyId ? ` (${familyId})` : ""}</option>
@@ -294,7 +345,7 @@ function RuleEditor({ document, facade, catalog, familyId, onChange }: {
           <Input id={`${id}-initial-paint`} value={initialPaint} className="h-8 font-mono text-xs" onChange={(event) => setInitialPaint(event.target.value)} />
           <Button type="button" variant="outline" size="sm" disabled={!targets.length || (newFamily === "current" && !familyId) || (newFamily === "explicit" && !explicitFamily.trim())} onClick={() => {
             const family = newFamily === "all" ? undefined : newFamily === "current" ? familyId : explicitFamily.trim();
-            onChange(appendThemeRule(document, { target: newTarget, ...(family ? { family } : {}) }, { stroke: { paint: initialPaint } }));
+            onChange(appendThemeRule(document, { target: selectedTarget, ...(family ? { family } : {}) }, { stroke: { paint: initialPaint } }));
             setSelectedIndex(entries.length);
           }}>{t("themeWorkbench.append", { defaultValue: "Append rule" })}</Button>
         </div>
@@ -311,22 +362,29 @@ function RuleSupport({ facade, rule, familyId }: {
 }) {
   const { t } = useTranslation();
   const family = rule.family ?? familyId;
+  const [open, setOpen] = useState(false);
+  const [facet, setFacet] = useState<(typeof RULE_FACETS)[number]>(RULE_FACETS[0]);
+  const [output, setOutput] = useState<"standalone-svg" | "browser-svg">("standalone-svg");
   const support = useMemo(() => {
-    if (!facade || !family) return [];
-    return ["fill", "stroke-paint", "stroke-width", "opacity", "radius", "font-size", "font-weight"].map((facet) => {
-      try {
-        return { facet, result: facade.describeThemeSupport({ schema_version: 1, family, output: "browser-svg", subject: { kind: "rule", target: rule.target, facet } }) };
-      } catch {
-        return { facet, result: null };
-      }
-    });
-  }, [facade, family, rule.target]);
+    if (!open || !facade || !family) return null;
+    try {
+      return facade.describeThemeSupport({ schema_version: 1, family, output, subject: { kind: "rule", target: rule.target, facet } });
+    } catch {
+      return null;
+    }
+  }, [facade, family, open, output, facet, rule.target]);
 
   return (
-    <details className="border-t pt-2 text-[11px] text-muted-foreground">
-      <summary className="cursor-pointer">{t("themeWorkbench.support", { defaultValue: "Capability discovery" })}{family ? ` · ${family} / browser-svg` : ""}</summary>
-      <p className="mt-2 leading-relaxed">{t("themeWorkbench.supportHint", { defaultValue: "Declared capabilities are separate from the current render outcome and output portability. Unknown results stay unverified." })}</p>
-      {support.length ? <ul className="mt-2 space-y-1">{support.map(({ facet, result }) => <li key={facet} className="break-words">{facet}: {result?.state ?? "unverified"}{result?.reason_ids.length ? ` (${result.reason_ids.join(", ")})` : ""}</li>)}</ul> : <p className="mt-2">{t("themeWorkbench.unknownFamily", { defaultValue: "A diagram family is needed to query support." })}</p>}
+    <details className="border-t pt-2 text-[11px] text-muted-foreground" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer">{t("themeWorkbench.support", { defaultValue: "Capability discovery" })}{family ? ` · ${family} / ${output}` : ""}</summary>
+      <p className="mt-2 leading-relaxed">{t("themeWorkbench.supportHint", { defaultValue: "Static route information only. It is separate from the current render outcome and output portability. Unknown results stay unverified." })}</p>
+      {family ? <div className="mt-2 space-y-2">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+          <label className="min-w-0 space-y-1"><span className="block">{t("themeWorkbench.facet", { defaultValue: "Facet" })}</span><select className={SELECT_CLASS} value={facet} onChange={(event) => setFacet(event.target.value as (typeof RULE_FACETS)[number])}>{RULE_FACETS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          <label className="min-w-0 space-y-1"><span className="block">{t("themeWorkbench.output", { defaultValue: "Output" })}</span><select className={SELECT_CLASS} value={output} onChange={(event) => setOutput(event.target.value as typeof output)}><option value="standalone-svg">standalone-svg</option><option value="browser-svg">browser-svg</option></select></label>
+        </div>
+        {support ? <p className="break-words">{facet}: <code>{support.state}</code>{support.reason_ids.length ? ` (${support.reason_ids.join(", ")})` : ""}</p> : <p>{t("themeWorkbench.unknownFamily", { defaultValue: "A diagram family is needed to query support." })}</p>}
+      </div> : <p className="mt-2">{t("themeWorkbench.unknownFamily", { defaultValue: "A diagram family is needed to query support." })}</p>}
     </details>
   );
 }

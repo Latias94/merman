@@ -7,6 +7,7 @@ import type {
   ThemeStylePatch,
   ThemeStrokePatch,
   ThemeTextStylePatch,
+  ThemeTextStyle,
   ThemeTokensV1,
 } from "@mermanjs/web";
 
@@ -54,6 +55,26 @@ export function setDefinitionTypography<
     next[property] = structuredClone(value);
     edited.definition.tokens.typography = next;
   }
+  return edited;
+}
+
+export function setCompleteTypography<
+  Property extends keyof ThemeTextStyle,
+>(
+  recipe: ThemeRecipeV1,
+  property: Property,
+  value: ThemeTextStyle[Property] | undefined,
+): ThemeRecipeV1 {
+  if (recipe.kind !== "complete_spec") throw new Error("This recipe has no complete typography spec.");
+  const edited = structuredClone(recipe);
+  const typography = edited.complete_spec.typography ?? {};
+  const defaultStyle = typography.default ?? {};
+  if (value === undefined) delete defaultStyle[property];
+  else defaultStyle[property] = structuredClone(value);
+  if (Object.keys(defaultStyle).length) typography.default = defaultStyle;
+  else delete typography.default;
+  if (Object.keys(typography).length) edited.complete_spec.typography = typography;
+  else delete edited.complete_spec.typography;
   return edited;
 }
 
@@ -110,6 +131,48 @@ export function appendThemeRule(
   owner.styles = [...owner.styles ?? [], {
     ...structuredClone(selector), kind: "rule", style: structuredClone(style),
   }];
+  return edited;
+}
+
+export function moveThemeRule(
+  recipe: ThemeRecipeV1,
+  ruleIndex: number,
+  direction: "up" | "down",
+): ThemeRecipeV1 {
+  const edited = structuredClone(recipe);
+  const owner = edited.kind === "definition" ? edited.definition : edited.complete_spec;
+  const styles = owner.styles ? [...owner.styles] : [];
+  const targetIndex = direction === "up" ? ruleIndex - 1 : ruleIndex + 1;
+  if (!styles[ruleIndex] || targetIndex < 0 || targetIndex >= styles.length) return recipe;
+  [styles[ruleIndex], styles[targetIndex]] = [styles[targetIndex], styles[ruleIndex]];
+  owner.styles = styles;
+  return edited;
+}
+
+export function removeThemeRule(recipe: ThemeRecipeV1, ruleIndex: number): ThemeRecipeV1 {
+  const edited = structuredClone(recipe);
+  const owner = edited.kind === "definition" ? edited.definition : edited.complete_spec;
+  if (!owner.styles?.[ruleIndex] || owner.styles[ruleIndex].kind !== "rule") return recipe;
+  owner.styles = owner.styles.filter((_, index) => index !== ruleIndex);
+  if (!owner.styles.length) delete owner.styles;
+  return edited;
+}
+
+export function setThemeRuleSelector(
+  recipe: ThemeRecipeV1,
+  ruleIndex: number,
+  selector: { target?: string; family?: string; variant?: string },
+): ThemeRecipeV1 {
+  const edited = structuredClone(recipe);
+  const entry = getThemeStyleEntries(edited)[ruleIndex];
+  if (!entry || entry.kind !== "rule") return recipe;
+  if (selector.target !== undefined) entry.target = selector.target;
+  for (const property of ["family", "variant"] as const) {
+    if (!(property in selector)) continue;
+    const value = selector[property];
+    if (value === undefined || value === "") delete entry[property];
+    else entry[property] = value;
+  }
   return edited;
 }
 

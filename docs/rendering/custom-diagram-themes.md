@@ -35,11 +35,14 @@ previews of the current diagram.
 
 Choose **New recipe** for a small `definition` theme, or **Import JSON** for an existing standalone
 recipe. **Visual** and **JSON** edit the same versioned document. Visual controls expose definition
-color/series/typography tokens, complete-spec canvas base, and scoped rule facets for selected
-semantic targets. Unrelated fields and rule order are preserved. Advanced paints remain intact
-unless you explicitly replace them; use JSON for effects, layered canvases, resources, and other
-advanced values. **Omit**, **Clear**, and **Transparent** have different meanings, as explained
-under [Customize an existing preset](#customize-an-existing-preset).
+color/series/typography tokens, complete-spec typography and canvas base, and scoped rule
+selectors/facets for selected semantic targets. Existing rules can be retargeted, reordered, or
+removed while ordinal palette entries remain in place. Unrelated fields and rule order are
+preserved. Advanced paints remain intact unless you explicitly replace them; use JSON for effects,
+layered canvases, resources, and other advanced values. **Inspect** shows the exact displayed
+execution evidence beside catalog design scope and qualification metadata; those fields explain
+the runtime and do not gate authoring. **Omit**, **Clear**, and **Transparent** have different
+meanings, as explained under [Customize an existing preset](#customize-an-existing-preset).
 
 Recipe edits are validated by the existing Rust theme compiler. A valid draft updates the preview
 without changing the applied workspace theme. Invalid JSON or theme values stay editable; the

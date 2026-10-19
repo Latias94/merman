@@ -2,7 +2,7 @@ import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "
 import { CheckCircle2, Copy, Download, FileUp, Palette, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { normalizeThemeName, SUPPORTED_THEMES, type ThemeRecipeV1 } from "@mermanjs/web";
+import { normalizeThemeName, SUPPORTED_THEMES, type ThemeCatalog, type ThemeRecipeV1 } from "@mermanjs/web";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { isThemeDraftChanged, type ThemeCandidate, type ThemeValidationToken } f
 import { exceedsUtf8ByteBudget } from "@/src/lib/utf8";
 import { projectError } from "@/src/runtime/error-projection";
 import { selectMermanFacade, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
-import { selectCurrentDiagramType, useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
+import { selectCurrentDiagramType, selectVisibleMermanRenderMetadata, selectVisibleRenderBatch, useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
 import { useAppStore } from "@/src/store";
 
 import { ThemePresetCards } from "./ThemePresetCards";
@@ -36,7 +36,7 @@ const NEW_THEME: ThemeRecipeV1 = {
   },
 };
 
-type WorkbenchTab = "presets" | "visual" | "json";
+type WorkbenchTab = "presets" | "visual" | "inspect" | "json";
 
 export function ThemeWorkbench({ className, onClose }: {
   className?: string;
@@ -48,6 +48,8 @@ export function ThemeWorkbench({ className, onClose }: {
   const fileInput = useRef<HTMLInputElement>(null);
   const facade = useMermanRuntime(selectMermanFacade);
   const visibleDiagramType = useRenderCoordinator(selectCurrentDiagramType);
+  const visibleBatch = useRenderCoordinator(selectVisibleRenderBatch);
+  const renderMetadata = useRenderCoordinator(selectVisibleMermanRenderMetadata);
   const session = useAppStore((state) => state.themeEditSession);
   const diagramTheme = useAppStore((state) => state.diagramTheme);
   const [tab, setTab] = useState<WorkbenchTab>(() => session?.rawJson === null ? "presets" : "visual");
@@ -254,9 +256,10 @@ export function ThemeWorkbench({ className, onClose }: {
         </div>
       </div>
       <Tabs value={tab} onValueChange={(value) => setTab(value as WorkbenchTab)} className="min-h-0 flex-1 gap-0">
-        <div className="shrink-0 px-3 pt-2"><TabsList className="w-full" aria-label={t("themeWorkbench.editorTabs", { defaultValue: "Theme editor views" })}>
+        <div className="shrink-0 px-3 pt-2"><TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4" aria-label={t("themeWorkbench.editorTabs", { defaultValue: "Theme editor views" })}>
           <TabsTrigger value="presets">{t("themeWorkbench.presets", { defaultValue: "Presets" })}</TabsTrigger>
           <TabsTrigger value="visual">{t("themeWorkbench.visual", { defaultValue: "Visual" })}</TabsTrigger>
+          <TabsTrigger value="inspect">{t("themeWorkbench.inspect", { defaultValue: "Inspect" })}</TabsTrigger>
           <TabsTrigger value="json">JSON</TabsTrigger>
         </TabsList></div>
         <TabsContent value="presets" className="min-h-0 overflow-y-auto overscroll-contain p-3">
@@ -279,6 +282,16 @@ export function ThemeWorkbench({ className, onClose }: {
             <p>{session.rawJson !== null ? t("themeWorkbench.fixJson", { defaultValue: "Fix the JSON recipe to use Visual controls. The last valid theme remains in the preview." }) : t("themeWorkbench.customizeHint", { defaultValue: "Customize the selected preset or create a new theme to edit its recipe." })}</p>
             {session.rawJson !== null && <Button variant="outline" size="sm" onClick={() => setTab("json")}>{t("themeWorkbench.editJson", { defaultValue: "Edit JSON" })}</Button>}
           </div>}
+        </TabsContent>
+        <TabsContent value="inspect" className="min-h-0 overflow-y-auto overscroll-contain p-3">
+          <ThemeTechnicalDetails
+            catalog={catalog}
+            preset={selectedPreset}
+            familyId={familyId}
+            diagramType={visibleDiagramType}
+            batch={visibleBatch}
+            metadata={renderMetadata}
+          />
         </TabsContent>
         <TabsContent value="json" className="min-h-0 overflow-hidden p-0 pt-2">
           {session.rawJson !== null ? <LazyFeatureBoundary feature={t("themeWorkbench.jsonEditor", { defaultValue: "Theme JSON editor" })} presentation={{ kind: "panel" }}><ThemeJsonEditor sessionId={session.id} value={session.rawJson} onChange={(raw) => { setActionError(null); useAppStore.getState().editThemeDraft(raw); }} /></LazyFeatureBoundary> : <p className="p-3 text-xs leading-relaxed text-muted-foreground">{t("themeWorkbench.customizeHint", { defaultValue: "Customize the selected preset or create a new theme to edit its recipe." })}</p>}
@@ -326,4 +339,49 @@ export function ThemeWorkbench({ className, onClose }: {
       </Dialog>
     </aside>
   );
+}
+
+function ThemeTechnicalDetails({
+  catalog,
+  preset,
+  familyId,
+  diagramType,
+  batch,
+  metadata,
+}: {
+  catalog: ThemeCatalog | null;
+  preset: ThemeCatalog["presets"][number] | undefined;
+  familyId?: string;
+  diagramType: string;
+  batch: ReturnType<typeof selectVisibleRenderBatch>;
+  metadata: ReturnType<typeof selectVisibleMermanRenderMetadata>;
+}) {
+  const { t } = useTranslation();
+  const evidence = metadata?.theme_execution_evidence;
+  const operation = batch?.snapshot.operation;
+  return <div className="space-y-4 text-xs">
+    <section className="space-y-2 rounded-md border p-3">
+      <h3 className="font-semibold">{t("themeWorkbench.currentExecution", { defaultValue: "Current execution" })}</h3>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-words [overflow-wrap:anywhere]">
+        <dt className="text-muted-foreground">{t("themeWorkbench.diagramType", { defaultValue: "Diagram" })}</dt><dd>{diagramType}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.family", { defaultValue: "Family" })}</dt><dd>{familyId ?? "unknown"}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.recipeKind", { defaultValue: "Theme input" })}</dt><dd>{operation?.themeRecipeJson ? "custom recipe" : operation?.themePresetId ?? "none"}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.executionStatus", { defaultValue: "Theme execution" })}</dt><dd>{evidence ? String(evidence.theme_status) : t("themeWorkbench.evidenceUnavailable", { defaultValue: "Unavailable" })}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.targetStatus", { defaultValue: "Output target" })}</dt><dd>{evidence ? `${evidence.target_kind} · ${evidence.target_status}` : "unknown"}</dd>
+      </dl>
+      <p className="leading-relaxed text-muted-foreground">{t("themeWorkbench.evidenceExplanation", { defaultValue: "These results describe this SVG execution. Preset design scope and runtime support are separate; an empty diagnostic list does not certify portability." })}</p>
+      {evidence && <details><summary className="cursor-pointer text-muted-foreground">{t("themeWorkbench.rawEvidence", { defaultValue: "Raw execution evidence" })}</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px]">{JSON.stringify(evidence, null, 2)}</pre></details>}
+    </section>
+    <section className="space-y-2 rounded-md border p-3">
+      <h3 className="font-semibold">{t("themeWorkbench.catalogDetails", { defaultValue: "Theme catalog details" })}</h3>
+      <p className="leading-relaxed text-muted-foreground">{t("themeWorkbench.catalogDetailsHint", { defaultValue: "These fields describe authoring scope and runtime discovery. They do not gate editing or certify every diagram/output combination." })}</p>
+      {preset ? <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-words [overflow-wrap:anywhere]">
+        <dt className="text-muted-foreground">ID</dt><dd>{preset.id}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.designScope", { defaultValue: "Design scope" })}</dt><dd>{preset.family_designs.map((design) => `${design.family_id}: ${design.treatment}`).join("; ") || "none"}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.qualifiedCells", { defaultValue: "Qualified cells" })}</dt><dd>{preset.qualified_cells.length || t("themeWorkbench.noneReported", { defaultValue: "none reported" })}</dd>
+        <dt className="text-muted-foreground">{t("themeWorkbench.availability", { defaultValue: "Availability" })}</dt><dd>{preset.available ? "available" : preset.availability_reason_ids.join(", ") || "unavailable"}</dd>
+      </dl> : <p className="text-muted-foreground">{t("themeWorkbench.noPresetDetails", { defaultValue: "Select a Merman preset to inspect its catalog metadata." })}</p>}
+      <p className="text-muted-foreground">{t("themeWorkbench.catalogCounts", { defaultValue: "Catalog: {{presets}} presets · {{targets}} semantic targets · {{variants}} variants", presets: catalog?.presets.length ?? 0, targets: catalog?.known_semantic_target_ids.length ?? 0, variants: catalog?.known_variant_ids.length ?? 0 })}</p>
+    </section>
+  </div>;
 }

@@ -8,8 +8,12 @@ import {
   restoreThemeCanvas,
   setDefinitionToken,
   setDefinitionTypography,
+  setCompleteTypography,
   setThemeCanvasBase,
   setThemeRuleFacet,
+  setThemeRuleSelector,
+  moveThemeRule,
+  removeThemeRule,
   validateThemeDocument,
 } from "./theme-document.ts";
 
@@ -66,6 +70,40 @@ test("complete recipe edits retain ordered rules, layers, effects and assets", (
   assert.deepEqual(restored.document, edited);
 });
 
+test("rule order controls preserve non-rule entries and allow deletion", () => {
+  const recipe: ThemeRecipeV1 = {
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      styles: [
+        { kind: "rule", target: "node", style: { fill: "#111111" } },
+        { kind: "ordinal-palette", target: "series", colors: ["#222222"] },
+        { kind: "rule", target: "edge", style: { stroke: { paint: "#333333" } } },
+      ],
+    },
+  };
+  const moved = moveThemeRule(recipe, 2, "up");
+  assert.equal(moved.kind, "complete_spec");
+  if (moved.kind !== "complete_spec") return;
+  assert.equal(moved.complete_spec.styles?.[1]?.kind, "rule");
+  assert.equal(moved.complete_spec.styles?.[2]?.kind, "ordinal-palette");
+  const removed = removeThemeRule(moved, 1);
+  assert.equal(removed.kind, "complete_spec");
+  if (removed.kind !== "complete_spec") return;
+  assert.deepEqual(removed.complete_spec.styles?.map((entry) => entry.kind), ["rule", "ordinal-palette"]);
+});
+
+test("editing one rule selector field preserves the other selector fields", () => {
+  const recipe: ThemeRecipeV1 = {
+    schema_version: 1, kind: "definition", definition: {
+      authoring_schema_version: 1, expansion_version: 1,
+      tokens: {}, styles: [{ kind: "rule", family: "sequence", variant: "actor", target: "node", style: {} }],
+    },
+  };
+  const changed = setThemeRuleSelector(recipe, 0, { target: "edge" });
+  assert.equal(changed.kind, "definition");
+  if (changed.kind !== "definition") return;
+  assert.deepEqual(changed.definition.styles?.[0], { kind: "rule", family: "sequence", variant: "actor", target: "edge", style: {} });
+});
+
 test("facet omission, Clear, transparent and zero remain distinct", () => {
   const original: ThemeRecipeV1 = {
     schema_version: 1, kind: "complete_spec", complete_spec: {
@@ -110,6 +148,22 @@ test("definition token and typography edits preserve unrelated tokens and styles
   const omitted = setDefinitionToken(edited, "series", undefined);
   assert.equal(omitted.kind, "definition");
   if (omitted.kind === "definition") assert.equal("series" in omitted.definition.tokens, false);
+});
+
+test("complete typography edits preserve family typography and styles", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      typography: { default: { font_stack: ["Arial"], font_weight: 500 }, families: { sequence: { font_weight: 700 } } },
+      styles: [{ kind: "rule", target: "node", style: { radius: 4 } }],
+    },
+  };
+  const edited = setCompleteTypography(original, "font_size_px", 18);
+  assert.equal(edited.kind, "complete_spec");
+  if (edited.kind !== "complete_spec") return;
+  assert.deepEqual(edited.complete_spec.typography, {
+    default: { font_stack: ["Arial"], font_weight: 500, font_size_px: 18 },
+    families: { sequence: { font_weight: 700 } },
+  });
 });
 
 test("removing a layered canvas and restoring it keeps intervening style edits", () => {
