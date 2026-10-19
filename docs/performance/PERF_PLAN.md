@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Packet/Kanban stage attribution](packet_kanban_stages_macos_2026-10-19.md)
+retains six fixed diagnostic rows and four CPU profiles from the frozen release-comparison
+executables. Exact SVG emission still differs in cost; parse/layout projections differ and
+Kanban moved stylesheet work across stages, so stage deltas cannot be added or treated as new
+theme work. Current emission samples identify XML fragment handling and active-state error
+checks as bounded next experiments. The writer already uses bounded geometric growth; changing
+its exact reservation would risk the allocation bound. No new latency or convergence claim is made.
+
 The [October 19 TreeView checkpoint](treeview_optional_proof_macos_2026-10-19.md) removes source-tree
 and icon counting plus terminal theme proof work when no theme was requested. Some recipes,
 including empty and unsupported recipes, retain their original proof path. All 231 public controls
