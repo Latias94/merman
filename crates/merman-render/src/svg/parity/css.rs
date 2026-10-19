@@ -792,23 +792,23 @@ where
 
 /// Font-family values recorded at the successful writer events for the three inherited rules.
 #[derive(Debug)]
-pub(super) struct InheritedFontStackCssWrite {
-    root_font_family_css: Box<str>,
-    inherited_font_family_css: Box<str>,
-    root_variable_font_family_css: Box<str>,
+pub(super) struct InheritedFontStackCssWrite<'a> {
+    root_font_family_css: &'a str,
+    inherited_font_family_css: &'a str,
+    root_variable_font_family_css: &'a str,
 }
 
-impl InheritedFontStackCssWrite {
+impl InheritedFontStackCssWrite<'_> {
     pub(super) fn root_font_family_css(&self) -> &str {
-        &self.root_font_family_css
+        self.root_font_family_css
     }
 
     pub(super) fn inherited_font_family_css(&self) -> &str {
-        &self.inherited_font_family_css
+        self.inherited_font_family_css
     }
 
     pub(super) fn root_variable_font_family_css(&self) -> &str {
-        &self.root_variable_font_family_css
+        self.root_variable_font_family_css
     }
 }
 
@@ -816,22 +816,22 @@ impl InheritedFontStackCssWrite {
 ///
 /// The receipt values come from successful output writes. They deliberately do not inspect or
 /// reparse the emitted stylesheet.
-pub(super) fn write_prepared_info_css<I>(
+pub(super) fn write_prepared_info_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    values: &PreparedCommonCss,
-) -> Result<InheritedFontStackCssWrite>
+    values: &'a PreparedCommonCss,
+) -> Result<InheritedFontStackCssWrite<'a>>
 where
     I: SvgDiagramIdValue,
 {
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     values.write_prefix(out, selector_id)?;
-    let root_font_family_css = values.font_family.clone().into_boxed_str();
-    let inherited_font_family_css = values.font_family.clone().into_boxed_str();
+    let root_font_family_css = values.font_family.as_str();
+    let inherited_font_family_css = values.font_family.as_str();
 
     values.write_root(out, selector_id, fragment_id)?;
-    let root_variable_font_family_css = values.font_family.clone().into_boxed_str();
+    let root_variable_font_family_css = values.font_family.as_str();
 
     Ok(InheritedFontStackCssWrite {
         root_font_family_css,

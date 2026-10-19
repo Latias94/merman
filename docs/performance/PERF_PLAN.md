@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 shared CSS checkpoint](common_css_borrowed_receipt_macos_2026-10-19.md) borrows
+three successful font facts from their immutable prepared owner in Info/Error/Quadrant/XY. All
+584 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.
+Among 444 jointly stable rows, 102 improve by three allocations and 48–129 bytes, with no increase
+in any memory metric; 140 variable rows remain inconclusive. All 418 catalog cells are stable and
+exact: 44 affected cells improve and 374 remain unchanged. Renderer tests, Clippy, full DOM and
+optimized full WASM build pass. This deletes theme-refactor ownership without a latency claim.
+Next evaluate Treemap's temporary success values and Sequence's duplicate foreground owners as
+independent allocation experiments, preserving existing source facts and actual writer fragments.
+
 The [October 19 empty Sequence CSS checkpoint](sequence_empty_css_groups_macos_2026-10-19.md)
 skips empty declarations before constructing groups that were always discarded. All 488 successful
 controls retain exact SVG/reports/ordered measurer traces, and 26 inherited errors match. Among
