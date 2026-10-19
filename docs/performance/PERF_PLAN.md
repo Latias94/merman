@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 ZenUML font checkpoint](zenuml_default_font_owner_macos_2026-10-20.md) borrows
+the static CSS default while retaining owned normalization for every authored Some font.
+Both independent primaries save one allocation and 23 bytes. All 645 SVG/report/ordered-callback
+controls and 26 errors match. Of 504 jointly stable rows, 54 improve and 450 stay unchanged;
+all four memory metrics are nonincreasing, peak/retained growth stay unchanged and 141 variable
+rows remain inconclusive. All 418 catalog cells are stable and exact, with eleven ZenUML
+improvements and 407 unchanged. Real empty and quoted font controls retain all four metrics.
+All 49 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This removes a temporary owner, without quantifying its share of the
+3.561 us release difference or reclassifying latency. Next evaluate empty GitGraph palette CSS
+construction independently; retain the caller's empty write/checkpoint and all active palette
+behavior. XY paint, Pie CSS and the narrower ZenUML finite-check fusion remain separate candidates.
+
 The [October 20 shared root-font checkpoint](common_root_font_owner_macos_2026-10-20.md) removes
 the redundant initial font clone while retaining configured-root selection and explicit empty
 values. Info, Error and Kanban each save one allocation and 39 bytes; GitGraph saves two through
