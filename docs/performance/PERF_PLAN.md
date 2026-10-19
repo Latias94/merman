@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Sequence foreground checkpoint](sequence_foreground_owner_macos_2026-10-19.md)
+borrows final raw/typed colors, retains the existing source decisions and removes an unconsumed
+BoxTitle declaration. All 584 successful controls retain exact SVG/reports/ordered measurer traces,
+and 26 errors match. Among 442 jointly stable rows, 95 Sequence controls improve and none regress;
+142 variable rows remain inconclusive. Default medium saves sixteen allocations and 550 bytes;
+the combined typed control saves twenty-one and 563 bytes. All 418 catalog cells are stable and
+exact, with eleven Sequence improvements and 407 unchanged. Renderer tests, Clippy, full DOM and
+optimized full WASM build pass. This removes ownership spanning math preparation and theme binding
+without a clock claim. Next evaluate Treemap's temporary CSS success values, then independently
+simplify Info/Error receipt state while retaining its completion uniqueness and proof semantics.
+
 The [October 19 shared CSS checkpoint](common_css_borrowed_receipt_macos_2026-10-19.md) borrows
 three successful font facts from their immutable prepared owner in Info/Error/Quadrant/XY. All
 584 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.

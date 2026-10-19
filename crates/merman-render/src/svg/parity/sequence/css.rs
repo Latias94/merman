@@ -126,9 +126,7 @@ pub(super) fn write_sequence_css(
         r#"#{} .actor{{stroke:{};fill:{};stroke-width:{};}}"#,
         id, final_actor_stroke, final_actor_fill, stroke_width
     );
-    let actor_text_fill = css.text[crate::sequence::SequenceTextSurface::ParticipantLabel.index()]
-        .baseline_declaration
-        .as_str();
+    let actor_text_fill = css.actor_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} rect.actor.outer-path[data-look="neo"]{{filter:{};}}#{} rect.note[data-look="neo"]{{stroke:{};fill:{};filter:{};}}"#,
@@ -187,9 +185,7 @@ pub(super) fn write_sequence_css(
         r#"#{} .sequenceNumber,#{} .sequenceNumber>tspan{{fill:{};}}"#,
         id, id, final_sequence_number_fill
     );
-    let message_text_fill = css.text[crate::sequence::SequenceTextSurface::MessageLabel.index()]
-        .baseline_declaration
-        .as_str();
+    let message_text_fill = css.message_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .messageText{{{}stroke:none;}}"#,
@@ -200,27 +196,19 @@ pub(super) fn write_sequence_css(
         r#"#{} .labelBox{{stroke:{};fill:{};filter:{};}}"#,
         id, final_keyword_stroke, final_keyword_fill, label_box_filter
     );
-    let label_text_fill = css.text[crate::sequence::SequenceTextSurface::ControlKeyword.index()]
-        .baseline_declaration
-        .as_str();
+    let label_text_fill = css.label_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .labelText,#{} .labelText>tspan{{{}stroke:none;}}"#,
         id, id, label_text_fill
     );
-    let loop_text_fill = css.text
-        [crate::sequence::SequenceTextSurface::ControlPrimaryTitle.index()]
-    .baseline_declaration
-    .as_str();
+    let loop_text_fill = css.loop_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .loopText,#{} .loopText>tspan{{{}stroke:none;}}"#,
         id, id, loop_text_fill
     );
-    let section_title_fill = css.text
-        [crate::sequence::SequenceTextSurface::ControlSectionTitle.index()]
-    .baseline_declaration
-    .as_str();
+    let section_title_fill = css.section_title_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .sectionTitle,#{} .sectionTitle>tspan{{{}stroke:none;}}"#,
@@ -242,9 +230,7 @@ pub(super) fn write_sequence_css(
         r#"#{} .note{{stroke:{};fill:{};}}"#,
         id, final_note_stroke, final_note_fill
     );
-    let note_text_fill = css.text[crate::sequence::SequenceTextSurface::NoteLabel.index()]
-        .baseline_declaration
-        .as_str();
+    let note_text_fill = css.note_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .noteText,#{} .noteText>tspan{{{}stroke:none;}}"#,

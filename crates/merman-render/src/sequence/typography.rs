@@ -479,7 +479,6 @@ pub(crate) struct SequenceTypographyPlan {
     message: SequenceResolvedTypography,
     note: SequenceResolvedTypography,
     loop_label: SequenceResolvedTypography,
-    terminal_foregrounds: [String; SequenceTextSurface::COUNT],
     terminal_foreground_provenance:
         [SequenceTerminalForegroundProvenance; SequenceTextSurface::COUNT],
 }
@@ -536,7 +535,6 @@ impl SequenceTypographyPlan {
             work_meter,
             &base_typography,
         )?;
-        let mut terminal_foregrounds = compat.text_surface_fills();
         let mut terminal_foreground_provenance =
             [SequenceTerminalForegroundProvenance::MermaidConfig; SequenceTextSurface::COUNT];
         for surface in SequenceTextSurface::ALL {
@@ -546,8 +544,7 @@ impl SequenceTypographyPlan {
                 SequenceTypographyRole::Note => &note,
                 SequenceTypographyRole::Loop => &loop_label,
             };
-            if let Some(fill) = typography.typed_fill_for(surface) {
-                terminal_foregrounds[surface.index()] = fill.to_owned();
+            if typography.typed_fill_for(surface).is_some() {
                 terminal_foreground_provenance[surface.index()] =
                     SequenceTerminalForegroundProvenance::TypedTheme;
             }
@@ -560,7 +557,6 @@ impl SequenceTypographyPlan {
             message,
             note,
             loop_label,
-            terminal_foregrounds,
             terminal_foreground_provenance,
         })
     }
@@ -623,10 +619,23 @@ impl SequenceTypographyPlan {
         &self,
         surface: SequenceTextSurface,
     ) -> SequenceTerminalTextStyle<'_> {
+        let role = self.role(surface.role());
+        let (foreground, foreground_provenance) = match (
+            self.terminal_foreground_provenance[surface.index()],
+            role.typed_fill.as_deref(),
+        ) {
+            (SequenceTerminalForegroundProvenance::TypedTheme, Some(fill)) => {
+                (fill, SequenceTerminalForegroundProvenance::TypedTheme)
+            }
+            _ => (
+                self.compat.text_surface_fill(surface),
+                SequenceTerminalForegroundProvenance::MermaidConfig,
+            ),
+        };
         SequenceTerminalTextStyle {
-            text_style: self.role(surface.role()).terminal_text_style(),
-            foreground: &self.terminal_foregrounds[surface.index()],
-            foreground_provenance: self.terminal_foreground_provenance[surface.index()],
+            text_style: role.terminal_text_style(),
+            foreground,
+            foreground_provenance,
         }
     }
 }
@@ -736,6 +745,50 @@ fn append_font_weight_and_style_declarations(style: &mut String, typography: &Te
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn equal_terminal_foregrounds_keep_distinct_source_provenance() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        };
+        use crate::resources::RenderResourcePolicy;
+        use serde_json::json;
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::ActorLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
+        let config = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": { "actorTextColor": "#123456" },
+            })))
+            .parse_metadata_sync("sequenceDiagram\nA->>B: Message\n")
+            .unwrap()
+            .effective_config;
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter).unwrap();
+        let participant = plan.terminal_text_style(SequenceTextSurface::ParticipantLabel);
+        let box_title = plan.terminal_text_style(SequenceTextSurface::BoxTitle);
+
+        assert_eq!(participant.foreground, "#123456");
+        assert_eq!(box_title.foreground, participant.foreground);
+        assert_eq!(
+            participant.foreground_provenance,
+            SequenceTerminalForegroundProvenance::MermaidConfig
+        );
+        assert_eq!(
+            box_title.foreground_provenance,
+            SequenceTerminalForegroundProvenance::TypedTheme
+        );
+    }
 
     #[test]
     fn cssom_rejected_measurement_font_only_falls_back_for_terminal_text() {

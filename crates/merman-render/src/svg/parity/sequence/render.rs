@@ -314,16 +314,14 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         diagram_id,
         prepared,
     )?;
-    let css = prepared.css();
     sequence_number_receipt
         .record_stylesheet_emission(sequence_number_theme.typed_fill().is_some());
     for surface in crate::sequence::SequenceTextSurface::ALL {
-        let text = &css.text[surface.index()];
-        typography_receipt.record_stylesheet_emission(
-            surface,
-            &text.fill,
-            text.typed_fill.then_some(text.fill.as_str()),
-        );
+        let terminal = prepared.typography().terminal_text_style(surface);
+        let typed_fill = (terminal.foreground_provenance
+            == crate::sequence::SequenceTerminalForegroundProvenance::TypedTheme)
+            .then_some(terminal.foreground);
+        typography_receipt.record_stylesheet_emission(surface, terminal.foreground, typed_fill);
     }
     keyword_receipt.record_stylesheet_emission(
         keyword_theme.typed_fill.is_some(),

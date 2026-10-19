@@ -1,17 +1,13 @@
-use super::{SequencePreparedTerminalTheme, SequenceTextSurface, SequenceTypographyPlan};
+use super::{
+    SequencePreparedTerminalTheme, SequenceTerminalForegroundProvenance, SequenceTextSurface,
+    SequenceTypographyPlan,
+};
 use crate::diagram_theme::ThemeTypographyProperty;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SequencePreparedTextCssGroup {
     pub(crate) declarations: String,
     pub(crate) surfaces: Vec<SequenceTextSurface>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct SequencePreparedTextCss {
-    pub(crate) fill: String,
-    pub(crate) typed_fill: bool,
-    pub(crate) baseline_declaration: String,
 }
 
 /// Sequence CSS values that require formatting or grouping during preparation.
@@ -21,7 +17,12 @@ pub(crate) struct SequencePreparedCss {
     pub(crate) font_size_override: Option<String>,
     pub(crate) lifeline_width: Option<String>,
     pub(crate) message_width_override: Option<String>,
-    pub(crate) text: [SequencePreparedTextCss; SequenceTextSurface::COUNT],
+    pub(crate) actor_text_fill: String,
+    pub(crate) message_text_fill: String,
+    pub(crate) note_text_fill: String,
+    pub(crate) label_text_fill: String,
+    pub(crate) loop_text_fill: String,
+    pub(crate) section_title_fill: String,
     pub(crate) text_groups: Vec<SequencePreparedTextCssGroup>,
 }
 
@@ -42,23 +43,21 @@ impl SequencePreparedCss {
                     crate::number_format::canonical_number(typography.base_font_size_px())
                 )
             });
-        let text = SequenceTextSurface::ALL.map(|surface| {
-            let role = typography.role(surface.role());
-            let typed_fill = role.typed_fill_for(surface).is_some();
-            let fill = typography
-                .terminal_text_style(surface)
-                .foreground
-                .to_owned();
-            SequencePreparedTextCss {
-                baseline_declaration: if typed_fill {
-                    String::new()
-                } else {
-                    format!("fill:{fill};")
-                },
-                fill,
-                typed_fill,
+        let baseline_declaration = |surface| {
+            let terminal = typography.terminal_text_style(surface);
+            match terminal.foreground_provenance {
+                SequenceTerminalForegroundProvenance::TypedTheme => String::new(),
+                SequenceTerminalForegroundProvenance::MermaidConfig => {
+                    format!("fill:{};", terminal.foreground)
+                }
             }
-        });
+        };
+        let actor_text_fill = baseline_declaration(SequenceTextSurface::ParticipantLabel);
+        let message_text_fill = baseline_declaration(SequenceTextSurface::MessageLabel);
+        let note_text_fill = baseline_declaration(SequenceTextSurface::NoteLabel);
+        let label_text_fill = baseline_declaration(SequenceTextSurface::ControlKeyword);
+        let loop_text_fill = baseline_declaration(SequenceTextSurface::ControlPrimaryTitle);
+        let section_title_fill = baseline_declaration(SequenceTextSurface::ControlSectionTitle);
         let mut text_groups = Vec::new();
         for surfaces in [
             &[
@@ -109,7 +108,12 @@ impl SequencePreparedCss {
                     crate::number_format::canonical_number(f64::from(width))
                 )
             }),
-            text,
+            actor_text_fill,
+            message_text_fill,
+            note_text_fill,
+            label_text_fill,
+            loop_text_fill,
+            section_title_fill,
             text_groups,
         }
     }
