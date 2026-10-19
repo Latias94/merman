@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 empty source-config checkpoint](empty_source_config_owner_macos_2026-10-19.md)
+reuses the existing source handle where private consumers only read an empty JSON value. All
+632 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.
+Among 491 jointly stable rows, 459 save four allocations and 240 bytes, 32 nonempty-source rows
+stay unchanged and none regress; 141 variable rows remain inconclusive. All 418 catalog cells
+are stable, exact and improve by four allocations/240 bytes. Expanded core/public/renderer tests,
+Clippy, minimal core features, full DOM and optimized full WASM pass. This removes fresh owner
+construction and its extra destruction stack, without a clock claim. Next correct the benchmark
+classifier's joint complement independently, then simplify terminal receipt value ownership;
+new release calibration must preserve old observations and the complete family scope.
+
 The [October 19 Treemap CSS checkpoint](treemap_css_receipt_macos_2026-10-19.md) borrows four
 intermediate success values from the immutable prepared plan. All 632 successful controls retain
 exact SVG/reports/ordered measurer traces, and 26 errors match. Among 490 jointly stable rows,
