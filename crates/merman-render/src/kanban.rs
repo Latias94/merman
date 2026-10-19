@@ -76,7 +76,6 @@ pub(crate) struct KanbanPreparedArtifact {
     task_theme: KanbanTaskTheme,
     text_paint: KanbanTextPaintPlan,
     css: KanbanCssBinding,
-    task_terminal_decisions: Option<Box<[KanbanTaskTerminalDecision]>>,
 }
 
 impl KanbanPreparedArtifact {
@@ -84,9 +83,6 @@ impl KanbanPreparedArtifact {
         &self.css
     }
 
-    pub(crate) fn task_terminal_decisions(&self) -> Option<&[KanbanTaskTerminalDecision]> {
-        self.task_terminal_decisions.as_deref()
-    }
     pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
         &self.layout
     }
@@ -471,7 +467,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         debug_assert_eq!(task_occurrences.len(), item_capacity);
     }
     debug_assert_eq!(prepared_task_labels.len(), item_capacity);
-    let task_theme = match theme {
+    let mut task_theme = match theme {
         Some(theme) => KanbanTaskTheme::resolve_with_typography(
             theme,
             task_occurrences,
@@ -652,14 +648,12 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         &task_theme,
         text_paint.fill_css(),
     )?;
-    let task_terminal_decisions = task_theme
-        .bind_terminal_decisions(
-            effective_config
-                .get_bool("darkMode")
-                .or_else(|| effective_config.get_bool("themeVariables.darkMode"))
-                .unwrap_or(false),
-        )?
-        .map(Vec::into_boxed_slice);
+    task_theme.bind_terminal_paints(
+        effective_config
+            .get_bool("darkMode")
+            .or_else(|| effective_config.get_bool("themeVariables.darkMode"))
+            .unwrap_or(false),
+    )?;
     Ok(KanbanPreparedArtifact {
         layout,
         sections: prepared_sections,
@@ -667,7 +661,6 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         task_theme,
         text_paint,
         css,
-        task_terminal_decisions,
     })
 }
 
@@ -741,7 +734,6 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         task_theme,
         text_paint: KanbanTextPaintPlan::baseline(),
         css,
-        task_terminal_decisions: None,
     })
 }
 
@@ -874,13 +866,6 @@ mod tests {
                 .all(|item| item.rx == 5.0 && item.ry == 5.0)
         );
         assert_eq!(prepared.task_theme().radius_px(2), None);
-        assert!(
-            prepared
-                .task_theme()
-                .terminal_decisions(&config)
-                .unwrap()
-                .is_none()
-        );
         assert_eq!(
             prepared.task_theme().font_family_css(),
             "Configured,monospace"

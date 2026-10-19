@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 Kanban bound-owner checkpoint](kanban_bound_paint_owner_macos_2026-10-20.md)
+removes the second task-decision array and copied typed strings, binding palette values in the
+existing owner at the original phase. Ten themed catalog cells each save five allocations and
+556 bytes. No-theme medium saves 16 allocated and peak bytes through the smaller boxed artifact,
+with the same allocation count. All 645 SVG/report/ordered-callback controls and 26 errors match.
+Of 503 jointly stable controls, two improve and 501 retain all four metrics; 142 variable rows
+remain inconclusive. All 418 catalog cells are stable and exact within their warmup-metadata and
+five saved sample contracts: eleven improve and 407 retain all four metrics. Retained growth is
+unchanged everywhere. All 87 focused and 5,613 full release tests, Clippy, full DOM, optimized
+full WASM, formatting and independent reviews pass. This is allocation/work removal without a
+clock or release-convergence claim. Next freeze the latest clean revision for a fresh full
+19-scene release confirmation, then use existing stages and bounded system CPU sampling to
+attribute remaining gaps. Keep unimplemented receipt and finite-fusion drafts separate until
+those observations support them; the all-family goal remains active.
+
 The [October 20 Pie CSS facts checkpoint](pie_css_facts_macos_2026-10-20.md) borrows five temporary
 success values from the existing immutable binding. Each of ten themed Pie catalog cells saves
 five allocations and 71 bytes; no-theme Pie is unchanged. All 645 SVG/report/ordered-callback

@@ -244,7 +244,7 @@ fn write_kanban_label_group(
 fn record_kanban_label_emission(
     outcome: Option<&mut crate::kanban::KanbanTaskThemeOutcome>,
     emission: &KanbanLabelGroupEmission,
-    decision: &crate::kanban::KanbanTaskTerminalDecision,
+    decision: &crate::kanban::KanbanTaskTerminalDecision<'_>,
 ) {
     if emission.visible
         && emission.inherited_color_run_count > 0
@@ -277,14 +277,9 @@ pub(crate) fn render_kanban_diagram_svg(
     let task_theme = prepared.task_theme();
     let text_paint = prepared.text_paint();
     let mut text_outcome = text_paint.begin_terminal_outcome();
-    let task_terminal_decisions = prepared.task_terminal_decisions();
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
     debug_assert_eq!(layout.items.len(), task_theme.item_count());
-    debug_assert!(
-        task_terminal_decisions.is_none_or(|decisions| decisions.len() == layout.items.len())
-    );
-    let baseline_decision = crate::kanban::KanbanTaskTerminalDecision::default();
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id_or("merman");
@@ -448,10 +443,7 @@ pub(crate) fn render_kanban_diagram_svg(
             x = fmt(n.center_x),
             y = fmt(n.center_y),
         );
-        let terminal_decision = match task_terminal_decisions.as_ref() {
-            Some(decisions) => &decisions[item_index],
-            None => &baseline_decision,
-        };
+        let terminal_decision = task_theme.terminal_decision(item_index);
         write_kanban_task_rect(
             &mut out,
             n,
@@ -487,7 +479,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     .inherited_color_run_count(),
             },
         )?;
-        record_kanban_label_emission(task_outcome.as_mut(), &title_emission, terminal_decision);
+        record_kanban_label_emission(task_outcome.as_mut(), &title_emission, &terminal_decision);
         if let Some(outcome) = text_outcome.as_mut() {
             outcome.record_label(
                 prepared_item.title.visible_style_facts.parse_valid(),
@@ -537,7 +529,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 record_kanban_label_emission(
                     task_outcome.as_mut(),
                     &ticket_emission,
-                    terminal_decision,
+                    &terminal_decision,
                 );
                 if let Some(outcome) = text_outcome.as_mut() {
                     outcome.record_label(
@@ -578,7 +570,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 record_kanban_label_emission(
                     task_outcome.as_mut(),
                     &ticket_emission,
-                    terminal_decision,
+                    &terminal_decision,
                 );
                 if let Some(outcome) = text_outcome.as_mut() {
                     outcome.record_label(
@@ -645,7 +637,11 @@ pub(crate) fn render_kanban_diagram_svg(
                     .inherited_color_run_count(),
             },
         )?;
-        record_kanban_label_emission(task_outcome.as_mut(), &assigned_emission, terminal_decision);
+        record_kanban_label_emission(
+            task_outcome.as_mut(),
+            &assigned_emission,
+            &terminal_decision,
+        );
         if let Some(outcome) = text_outcome.as_mut() {
             outcome.record_label(
                 prepared_item.assigned.visible_style_facts.parse_valid(),
@@ -680,7 +676,7 @@ pub(crate) fn render_kanban_diagram_svg(
         out.push_str("</g>");
         out.checkpoint()?;
         if let Some(outcome) = task_outcome.as_mut() {
-            outcome.record_item(terminal_decision);
+            outcome.record_item(&terminal_decision);
         }
     }
 
