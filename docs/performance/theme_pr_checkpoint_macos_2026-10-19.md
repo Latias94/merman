@@ -51,6 +51,19 @@ platform artifact and painted browser-containment owners remain in CI. Full stri
 preflight is not certified: the preceding run completed 661 feature builds and 36 artifact checks
 before the missing local Mermaid CLI `esbuild` dependency stopped its final bundle gate.
 
+Native ABI and shared binding-contract verification also pass. The broader platform verifier passes
+Android target Clippy, the Flutter native build, generated ABI freshness and Flutter analysis, then
+stops when the local Dart formatter changes an existing smoke-test expression. Its formatter and
+generated workspace files remain excluded; full platform verification is not claimed.
+
+After PR creation, merge `a7c3a006d` incorporates remote main `8a80b908b`, including the 0.9.1
+workspace versions and fixture-provenance corrections. Only generated license reports conflict;
+the existing generators rebuild all 13 source reports and 424 projections against the merged
+lockfile. License, projection, release-version, 27 related Python contracts and formatting checks
+pass. The independent fuzz lockfile additionally drops the removed facade `sha2` dependency without
+changing any resolved package version; `cargo +nightly-2026-07-01 check --manifest-path
+fuzz/Cargo.toml --locked` passes.
+
 ## Remaining performance work
 
 The [latest same-SVG release diagnostic](theme_v090_same_svg_refresh_macos_2026-10-19.md) retains all
