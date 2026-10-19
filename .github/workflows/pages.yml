@@ -145,7 +145,7 @@ jobs:
           path: target/release
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: wasm-tools@1.261.0
 
