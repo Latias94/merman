@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 empty GitGraph palette checkpoint](gitgraph_empty_palette_css_macos_2026-10-20.md)
+skips pure CSS construction only when all eight assignments are absent. The caller's empty
+write/checkpoint remains. Default GitGraph saves one allocation and 16 bytes; its no-theme catalog
+cell saves one and 19 bytes due to the different fixed ID. All 645 SVG/report/ordered-callback
+controls and 26 errors match. Of 503 jointly stable rows, one improves and 502 stay unchanged;
+142 variable rows remain inconclusive. All 418 catalog cells are stable and exact: one improves,
+417 stay unchanged, including all ten active GitGraph presets. Peak/retained growth stay unchanged.
+All 121 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This is a small allocation/work reduction without a clock claim.
+Next independently verify the XY empty paint owner, preserving captured empty-map identity,
+foreign-receipt rejection and single completion; keep other typed owners and finite-check fusion
+separate and retain the unresolved release-distance goal.
+
 The [October 20 ZenUML font checkpoint](zenuml_default_font_owner_macos_2026-10-20.md) borrows
 the static CSS default while retaining owned normalization for every authored Some font.
 Both independent primaries save one allocation and 23 bytes. All 645 SVG/report/ordered-callback
