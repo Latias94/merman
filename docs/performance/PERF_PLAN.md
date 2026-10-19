@@ -17,6 +17,15 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 v0.9.0 refresh](theme_v090_same_svg_refresh_macos_2026-10-19.md) retains all 19
+same-SVG E2E scenes in 76 fixed diagnostic calls. Seven rows exceed both 10% and 1 us: Class tiny,
+C4, Sankey, Zenuml, Packet, Kanban and Wardley. Packet/Kanban/Zenuml observe
++32.78%/+28.46%/+18.47%; the complete table and separate changed-output lanes remain recorded.
+These observations have no A/A calibration, formal recovery admission or theme-only attribution.
+Kanban CSS work moved from emission to preparation across releases, so its private layout gap
+cannot by itself identify added work. The shared color serializer's temporary component strings
+are the next independent allocation candidate.
+
 The [October 19 default font checkpoint](theme_default_font_fastpath_macos_2026-10-19.md) borrows
 configured font strings and skips CSS parsing only for the two exact built-in Mermaid default
 spellings; all custom and malformed values retain the parser and safety validation. All 178 public
