@@ -404,6 +404,11 @@ cargo run -p xtask -- gen-playground-example-catalog
 cargo run -p xtask -- verify-playground-example-catalog
 ```
 
+Refresh workspace package versions in the governed dependency paths in
+`docs/security/RUSTSEC_EXCEPTIONS.json`, preserving the advisory, affected dependency versions,
+review dates, and exit conditions. Run `python3 scripts/verify_rustsec_exceptions.py` to check those
+paths against the new lockfile.
+
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.
 
 `cargo check --locked` is not sufficient evidence for a prerelease. The release gates also create

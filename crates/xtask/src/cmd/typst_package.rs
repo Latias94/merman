@@ -799,6 +799,8 @@ fn compile_typst_fixture(
         .arg(project_root)
         .arg("--package-path")
         .arg(package_path)
+        .arg("--input")
+        .arg(concat!("merman-version=", env!("CARGO_PKG_VERSION")))
         .arg(&fixture.input)
         .arg(&fixture.output)
         .env("NO_COLOR", "1")
