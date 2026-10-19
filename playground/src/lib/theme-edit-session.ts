@@ -15,6 +15,20 @@ export interface ThemeImportToken extends ThemeValidationToken {
   readonly generation: number;
 }
 
+interface ThemeDraftSnapshot {
+  readonly rawJson: string | null;
+  readonly candidate: ThemeCandidate;
+}
+
+export interface ThemeEditGrouping {
+  readonly key: "json" | "visual";
+  readonly at: number;
+}
+
+const HISTORY_LIMIT = 50;
+const HISTORY_BYTES = 4 * 1024 * 1024;
+const HISTORY_GROUP_MS = 800;
+
 export interface ThemeEditSession {
   readonly id: number;
   readonly revision: number;
@@ -27,6 +41,9 @@ export interface ThemeEditSession {
   readonly document: ThemeRecipeV1 | null;
   readonly validation: "valid" | "pending" | "invalid";
   readonly error: string | null;
+  readonly past: readonly ThemeDraftSnapshot[];
+  readonly future: readonly ThemeDraftSnapshot[];
+  readonly editGrouping: ThemeEditGrouping | null;
 }
 
 export function beginThemeEditSession(id: number, baseline: ThemeCandidate): ThemeEditSession {
@@ -35,6 +52,7 @@ export function beginThemeEditSession(id: number, baseline: ThemeCandidate): The
     id, revision: 0, importGeneration: 0, importing: false,
     baseline, baselineRawJson: rawJson, rawJson, candidate: baseline,
     document: null, validation: baseline.kind === "custom" ? "pending" : "valid", error: null,
+    past: [], future: [], editGrouping: null,
   };
 }
 
@@ -46,9 +64,10 @@ function isCurrentValidation(session: ThemeEditSession, token: ThemeValidationTo
   return session.id === token.sessionId && session.revision === token.revision;
 }
 
-export function editThemeDraft(session: ThemeEditSession, rawJson: string): ThemeEditSession {
+export function editThemeDraft(session: ThemeEditSession, rawJson: string, grouping?: ThemeEditGrouping): ThemeEditSession {
+  if (rawJson === session.rawJson && !session.importing) return session;
   return {
-    ...session, revision: session.revision + 1, importGeneration: session.importGeneration + 1,
+    ...recordThemeEdit(session, grouping), revision: session.revision + 1, importGeneration: session.importGeneration + 1,
     importing: false, rawJson, document: null, validation: "pending", error: null,
   };
 }
@@ -82,7 +101,7 @@ export function selectThemeCandidate(
   candidate: Exclude<ThemeCandidate, { kind: "custom" }>,
 ): ThemeEditSession {
   return {
-    ...session, revision: session.revision + 1, importGeneration: session.importGeneration + 1,
+    ...recordThemeEdit(session), revision: session.revision + 1, importGeneration: session.importGeneration + 1,
     importing: false, candidate, rawJson: null, document: null, validation: "valid", error: null,
   };
 }
@@ -142,5 +161,54 @@ export function advanceThemeBaseline(session: ThemeEditSession): ThemeEditSessio
   return {
     ...session, baseline: session.candidate, baselineRawJson: session.rawJson,
     importGeneration: session.importGeneration + 1,
+    editGrouping: null,
+  };
+}
+
+function snapshot(session: ThemeEditSession): ThemeDraftSnapshot {
+  return { rawJson: session.rawJson, candidate: session.candidate };
+}
+
+function boundedHistory(entries: readonly ThemeDraftSnapshot[]): readonly ThemeDraftSnapshot[] {
+  let bytes = 0;
+  let start = entries.length;
+  while (start > 0 && entries.length - start < HISTORY_LIMIT) {
+    const entry = entries[start - 1];
+    bytes += 2 * ((entry.rawJson?.length ?? 0) + (entry.candidate.kind === "custom" ? entry.candidate.recipeJson.length : 0));
+    if (bytes > HISTORY_BYTES) break;
+    start--;
+  }
+  return entries.slice(start);
+}
+
+function recordThemeEdit(session: ThemeEditSession, grouping?: ThemeEditGrouping): ThemeEditSession {
+  const previous = session.editGrouping;
+  const coalesce = grouping && previous && grouping.key === previous.key &&
+    grouping.at >= previous.at && (grouping.key === "visual" || grouping.at - previous.at < HISTORY_GROUP_MS);
+  return {
+    ...session,
+    past: coalesce ? session.past : boundedHistory([...session.past, snapshot(session)]),
+    future: [],
+    editGrouping: grouping ?? null,
+  };
+}
+
+export function endThemeEditGrouping(session: ThemeEditSession): ThemeEditSession {
+  return session.editGrouping ? { ...session, editGrouping: null } : session;
+}
+
+export function travelThemeHistory(session: ThemeEditSession, direction: "undo" | "redo"): ThemeEditSession {
+  const source = direction === "undo" ? session.past : session.future;
+  const restored = source.at(-1);
+  if (!restored) return session;
+  return {
+    ...session, ...restored,
+    revision: session.revision + 1,
+    importGeneration: session.importGeneration + 1,
+    importing: false, document: null, error: null,
+    validation: restored.rawJson === null ? "valid" : "pending",
+    editGrouping: null,
+    past: direction === "undo" ? source.slice(0, -1) : boundedHistory([...session.past, snapshot(session)]),
+    future: direction === "redo" ? source.slice(0, -1) : boundedHistory([...session.future, snapshot(session)]),
   };
 }

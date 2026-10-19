@@ -10,6 +10,7 @@ import {
   setDefinitionTypography,
   setCompleteTypography,
   setThemeCanvasBase,
+  setThemeCanvasLayers,
   setThemeRuleFacet,
   setThemeRuleSelector,
   moveThemeRule,
@@ -200,4 +201,22 @@ test("definition default, transparent and restored canvas remain distinct", () =
   assert.deepEqual(setThemeCanvasBase(removed, undefined), original);
   assert.deepEqual(restoreThemeCanvas(removed, original), original);
   assert.throws(() => setThemeCanvasBase(original, { kind: "solid", color: "#123456" }), /require a color/);
+});
+
+test("canvas layer editing preserves base, bleed, resources, effects and scoped styles", () => {
+  const original: ThemeRecipeV1 = {
+    schema_version: 1, kind: "complete_spec", complete_spec: {
+      canvas: { base: "#123456", bleed: 12, layers: [{ paint: "#abcdef", opacity: 0.3 }] },
+      effects: [{ kind: "graph", id: "blur", primitives: [{ kind: "gaussian-blur", std_deviation: 2 }] }],
+      styles: [{ kind: "rule", target: "node", family: "class", style: { opacity: 0.5 } }],
+    },
+  };
+  const edited = setThemeCanvasLayers(original, [{ paint: "transparent", offset_x: -2 }]);
+  assert.equal(edited.kind, "complete_spec");
+  if (edited.kind !== "complete_spec") return;
+  assert.deepEqual(edited.complete_spec, { ...original.complete_spec, canvas: { ...original.complete_spec.canvas, layers: [{ paint: "transparent", offset_x: -2 }] } });
+  const removed = setThemeCanvasLayers(edited, []);
+  assert.equal(removed.kind, "complete_spec");
+  if (removed.kind === "complete_spec") assert.deepEqual(removed.complete_spec.canvas, { base: "#123456", bleed: 12 });
+  assert.equal(original.complete_spec.canvas?.layers?.[0].paint, "#abcdef");
 });

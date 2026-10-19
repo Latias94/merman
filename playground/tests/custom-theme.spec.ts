@@ -201,6 +201,150 @@ test("Visual edits and JSON share one draft and applying does not depend on a va
   await expect.poll(() => svg(page)).toContain("#224466");
 });
 
+test("theme history spans Visual, invalid JSON and Apply without undoing source edits", async ({ page }) => {
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  const text = workbench.getByRole("textbox", { name: /^text$/i });
+  await text.fill("#224466");
+  await text.press("Enter");
+  const edited = await copyRecipe(page, workbench);
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(edited);
+  await replaceRecipe(page, workbench, "{");
+  await expect(workbench.getByRole("alert")).toBeVisible();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(edited);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  await expect(workbench.getByRole("alert")).toBeVisible();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await replaceEditorSource(page, "flowchart LR\nA[Source survives history] --> B");
+  const json = workbench.getByRole("textbox", { name: "Theme recipe JSON", exact: true });
+  await json.focus();
+  await json.press("ControlOrMeta+z");
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect.poll(() => svg(page)).toContain("Source survives history");
+  await expect.poll(() => svg(page)).toContain("#224466");
+});
+
+test("gradients and ordered background layers survive conversion, history and JSON exchange", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench);
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByRole("button", { name: "Enable gradients and layers", exact: true }).click();
+  const expanded = await copyRecipe(page, workbench);
+  expect(expanded.kind).toBe("complete_spec");
+  if (expanded.kind !== "complete_spec") return;
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(recipe);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(expanded);
+
+  const base = workbench.getByRole("group", { name: "Canvas base", exact: true });
+  await base.getByLabel("Canvas base: value mode", { exact: true }).selectOption("linear-gradient");
+  await base.getByLabel("Angle (degrees)", { exact: true }).fill("45");
+  await base.getByLabel("Angle (degrees)", { exact: true }).press("Enter");
+  await base.getByRole("textbox", { name: "Color 1", exact: true }).fill("#112233");
+  await base.getByRole("textbox", { name: "Color 1", exact: true }).press("Enter");
+  await base.getByRole("button", { name: "Add color stop", exact: true }).click();
+  await base.getByLabel("Position 2 (%)", { exact: true }).fill("25");
+  await base.getByLabel("Position 2 (%)", { exact: true }).press("Enter");
+  await base.locator("summary").click();
+  await base.getByLabel("Gradient repetition", { exact: true }).selectOption("repeating");
+  await base.getByLabel("Repeat period (px)", { exact: true }).fill("40");
+  await base.getByLabel("Repeat period (px)", { exact: true }).press("Enter");
+
+  await workbench.getByLabel("New layer paint", { exact: true }).selectOption("linear-gradient");
+  await workbench.getByRole("button", { name: "Add layer", exact: true }).click();
+  const layer = workbench.locator("[data-theme-layer-editor]");
+  await layer.getByLabel("Layer opacity", { exact: true }).fill("0.35");
+  await layer.getByLabel("Layer opacity", { exact: true }).press("Enter");
+  await layer.getByLabel("Blend mode", { exact: true }).selectOption("multiply");
+  await layer.getByLabel("Horizontal offset (px)", { exact: true }).fill("-4");
+  await layer.getByLabel("Horizontal offset (px)", { exact: true }).press("Enter");
+  await layer.getByRole("button", { name: "Duplicate layer", exact: true }).click();
+  await layer.getByRole("textbox", { name: "Color 1", exact: true }).fill("#abcdef20");
+  await layer.getByRole("textbox", { name: "Color 1", exact: true }).press("Enter");
+  await layer.getByRole("button", { name: "Send layer backward", exact: true }).click();
+
+  await workbench.getByLabel("New layer paint", { exact: true }).selectOption("radial-gradient");
+  await workbench.getByRole("button", { name: "Add layer", exact: true }).click();
+  await layer.getByLabel("Center X: unit", { exact: true }).selectOption("px");
+  await layer.getByLabel("Gradient radius", { exact: true }).fill("75");
+  await layer.getByLabel("Gradient radius", { exact: true }).press("Enter");
+  await layer.getByRole("button", { name: "Remove layer", exact: true }).click();
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  const withRadial = await copyRecipe(page, workbench);
+  expect(withRadial.kind === "complete_spec" && withRadial.complete_spec.canvas?.layers?.length).toBe(3);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  const edited = await copyRecipe(page, workbench);
+  if (edited.kind !== "complete_spec") throw new Error("Expected a complete theme.");
+  expect(edited.complete_spec.styles).toEqual(expanded.complete_spec.styles);
+  expect(edited.complete_spec.canvas?.base).toEqual({
+    kind: "linear-gradient", angle_degrees: 45, stops: [
+      { offset: 0, color: "#112233" }, { offset: 0.25, color: "#112233" }, { offset: 1, color: "#2563eb" },
+    ], repetition: { kind: "repeating", period_px: 40 },
+  });
+  expect(edited.complete_spec.canvas?.layers?.[0]).toMatchObject({ paint: { kind: "linear-gradient", stops: [{ color: "#abcdef20" }, { color: "#2563eb" }] }, opacity: 0.35, blend_mode: "multiply", offset_x: -4 });
+  await expect.poll(() => svg(page)).toContain("#112233");
+  await expect.poll(() => svg(page)).toContain("data-merman-theme-canvas-layer");
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  await workbench.locator('input[type="file"]').setInputFiles({ name: "layered-theme.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+  expect(await copyRecipe(page, workbench)).toEqual(edited);
+  errors.assertNone();
+});
+
+test("grid layers render on narrow screens, sliders undo as one action and imported pattern paint stays explicit", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await start(page);
+  const workbench = await editor(page);
+  await newRecipe(page, workbench, JSON.stringify({ schema_version: 1, kind: "complete_spec", complete_spec: { canvas: { base: "transparent", bleed: 8 } } }));
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await workbench.getByLabel("New layer paint", { exact: true }).selectOption("grid");
+  await workbench.getByRole("button", { name: "Add layer", exact: true }).click();
+  const before = await copyRecipe(page, workbench);
+  if (before.kind !== "complete_spec") throw new Error("Expected a complete theme.");
+  expect(before.complete_spec.canvas?.layers).toHaveLength(2);
+  await expect.poll(() => page.locator(".preview-container [data-merman-theme-canvas-layer]").count()).toBe(2);
+  const layer = workbench.locator("[data-theme-layer-editor]");
+  const slider = layer.getByRole("slider", { name: "Adjust layer opacity", exact: true });
+  await slider.focus();
+  await slider.press("Home");
+  for (let i = 0; i < 3; i++) await slider.press("ArrowRight");
+  const after = await copyRecipe(page, workbench);
+  if (after.kind !== "complete_spec") throw new Error("Expected a complete theme.");
+  expect(after.complete_spec.canvas?.layers?.[0].opacity).toBe(0.03);
+  await workbench.getByRole("button", { name: "Undo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(before);
+  await workbench.getByRole("button", { name: "Redo theme edit", exact: true }).click();
+  expect(await copyRecipe(page, workbench)).toEqual(after);
+  await layer.getByLabel("Color 1: color picker", { exact: true }).fill("#112233");
+  const alphaEdit = await copyRecipe(page, workbench);
+  if (alphaEdit.kind !== "complete_spec") throw new Error("Expected a complete theme.");
+  const paint = alphaEdit.complete_spec.canvas?.layers?.[0].paint;
+  expect(typeof paint === "object" && paint.kind === "linear-gradient" && paint.stops[0].color).toBe("#11223340");
+  await expectNoDocumentOverflow(page);
+  await workbench.getByRole("button", { name: /^(Validate and apply|Apply)$/ }).click();
+  const imported = { ...alphaEdit, complete_spec: { ...alphaEdit.complete_spec, canvas: { ...alphaEdit.complete_spec.canvas, layers: [{ paint: { kind: "pattern", pattern: "grid", cell_width: 20, cell_height: 20, foreground: "#abcdef40" } }] } } };
+  await workbench.locator('input[type="file"]').setInputFiles({ name: "pattern.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(imported)) });
+  await workbench.getByRole("tab", { name: "Visual", exact: true }).click();
+  await expect(workbench).toContainText("current SVG renderer does not draw pattern paint");
+  expect(await copyRecipe(page, workbench)).toEqual(imported);
+  await layer.getByLabel("Pattern", { exact: true }).selectOption("dots");
+  const patternEdit = await copyRecipe(page, workbench);
+  expect(patternEdit.kind === "complete_spec" && patternEdit.complete_spec.canvas?.layers?.[0].paint).toEqual({ kind: "pattern", pattern: "dots", cell_width: 20, cell_height: 20, foreground: "#abcdef40" });
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
 test("customizing Cyberpunk preserves its complete canvas, effects, assets and ordered family rules", async ({ page }) => {
   await start(page, "cyberpunk");
   const workbench = await editor(page);

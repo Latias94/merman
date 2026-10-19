@@ -18,8 +18,11 @@ refine semantic objects, inspect representative diagrams, and save a reusable re
 complete the ordinary journey without typing identifiers or JSON. Advanced controls should expose
 the renderer's real capabilities rather than confining most of them to the source editor.
 
-This document proposes the next product iteration. Only the immediate repairs below are implemented
-in this change; the remaining sections describe future work, not shipped behavior.
+This document proposes the next product iteration. The immediate repairs below are implemented.
+The subsequent authoring slice also ships bounded shared undo/redo, gradient paint controls,
+canvas-layer composition, gradient-backed grid/stripe templates, and explicit definition-to-complete
+conversion. Imported pattern paints are preserved with an inline SVG writer limitation. The remaining journey,
+workspace redesign, effects, and reusable-role features describe future work.
 
 ## Immediate repairs
 

@@ -41,8 +41,10 @@ color/series/typography tokens, complete-spec typography and canvas base, and sc
 selectors/facets for selected semantic targets. Existing rules can be retargeted, reordered, or
 removed while ordinal palette entries are retained. Choose family scopes and variants from
 the loaded runtime's lists; existing unfamiliar values remain visible. Other edits preserve unrelated
-fields and authored order. Advanced paints remain intact unless you explicitly replace them; use JSON for effects,
-layered canvases, resources, and other advanced values. **Inspect** shows the exact displayed
+fields and authored order. Paint controls support solid/transparent paint and linear/radial gradients.
+Gradient controls retain all authored color stops and repetition settings until you change them.
+Use JSON for effects, resources, and other advanced values.
+**Inspect** shows the exact displayed
 execution evidence beside catalog design scope and qualification metadata; those fields explain
 the runtime and do not gate authoring. **Omit**, **Clear**, and **Transparent** have different
 meanings, as explained under [Customize an existing preset](#customize-an-existing-preset).
@@ -58,6 +60,15 @@ start from that applied baseline. **Cancel** closes the workbench and restores t
 source, configuration, and font edits made during the session remain. Replacing a modified custom
 draft asks whether to keep editing or discard it. Drafts are session-local; download a recipe to
 keep it across reloads.
+
+**Undo theme edit** and **Redo theme edit** in the header share one bounded session history across
+Visual, JSON, imports, preset selection, and recipe conversion. Continuous input is grouped;
+changing controls starts a new action. Use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y) in the
+workbench or JSON editor. Ordinary text and numeric inputs keep their native text undo; the header
+buttons always use theme history. History includes invalid JSON and cancels superseded imports
+and validations. Apply updates the cancellation baseline without clearing history: undo afterward
+creates another unapplied draft, and Cancel still returns to the applied theme. Source and Mermaid
+configuration edits belong to their own editors. Closing the session discards its history.
 
 A Merman visual preset and a custom recipe are mutually exclusive applied selections. Choosing
 **None** removes Merman recipe styling after Apply; it does not remove the Mermaid theme or
@@ -99,6 +110,28 @@ base behavior. A transparent base retains decorative layers such as grids and gr
 while retaining bleed, rules, effects, typography, and assets. **Restore canvas background**
 undoes that canvas change without reverting other recipe edits. Diagram-owned background shapes
 can still be visible; canvas editing does not delete diagram content.
+
+A `definition` stores simple color tokens. Choose **Enable gradients and layers** to expand it
+through the Rust materializer into an independent `complete_spec`, preserving its appearance and
+scoped rules. This enables advanced canvas paint and layers; Undo restores the original token
+document. The conversion does not infer editable tokens from a complete preset.
+
+**Background layers** lists the authored paint order: later layers appear above earlier ones.
+Add a color or gradient layer, then select a layer to edit its paint, opacity, blend mode,
+and horizontal/vertical offsets. Duplicate, send backward, bring forward, and remove operate on
+the selected layer. Removing the final layer leaves the canvas base and bleed intact. The opacity
+slider and precise numeric input edit the same value; a continuous slider adjustment is one history
+action. A layer's paint may be transparent, but cannot be omitted. **Grid** adds two editable tiled
+gradients using the same mechanism as Spotless; **Stripes** adds one angled tiled gradient.
+
+For gradients, edit each color and its percentage position, add a stop between the widest-spaced
+neighbors, or remove a stop while retaining at least two. Positions stay in authored order. Linear
+gradients have an angle; radial gradients expose center and radius in pixels or percentages.
+**Gradient repetition** provides ordinary, repeating, and tiled paint. Imported structured `pattern`
+paints retain editable cell dimensions, colors, pattern kind, and angle, with an inline explanation
+that the current SVG writer does not draw them. They are preserved without silently converting them.
+The actual diagram remains the renderer-owned preview; serialization support alone does not
+guarantee every target consumes every paint.
 
 **Preview backing** offers **Automatic**, **Light**, **Dark**, and **Transparency grid** in Visual and
 Compare. Both Compare panes use the same backing. This is a display preference: it does not change

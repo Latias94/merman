@@ -9,6 +9,8 @@ import {
   beginThemeImport,
   completeThemeImport,
   editThemeDraft,
+  endThemeEditGrouping,
+  travelThemeHistory,
   isThemeDraftChanged,
   rejectThemeValidation,
   selectThemeCandidate,
@@ -86,4 +88,65 @@ test("validating an unchanged applied custom recipe keeps its existing bytes cle
   assert.equal(session.candidate.kind, "custom");
   assert.equal(isThemeDraftChanged(session), false);
   assert.deepEqual(session.candidate, session.baseline);
+});
+
+test("undo and redo preserve raw invalid drafts and invalidate imports and validation", () => {
+  let session = editThemeDraft(beginThemeEditSession(1, { kind: "preset", presetId: "cyberpunk" }), recipe);
+  session = acceptThemeValidation(session, themeValidationToken(session), validateThemeDocument(recipe, (raw) => raw));
+  session = editThemeDraft(session, "{");
+  const oldValidation = themeValidationToken(session);
+  session = beginThemeImport(session);
+  const oldImport = { ...themeValidationToken(session), generation: session.importGeneration };
+  session = travelThemeHistory(session, "undo");
+  assert.equal(session.rawJson, recipe);
+  assert.equal(session.validation, "pending");
+  assert.equal(session.importing, false);
+  assert.equal(completeThemeImport(session, oldImport, "late import"), session);
+  assert.equal(rejectThemeValidation(session, oldValidation, "late rejection"), session);
+  session = travelThemeHistory(session, "redo");
+  assert.equal(session.rawJson, "{");
+  assert.deepEqual(session.candidate, { kind: "custom", recipeJson: recipe });
+  session = travelThemeHistory(travelThemeHistory(session, "undo"), "undo");
+  assert.deepEqual(session.candidate, { kind: "preset", presetId: "cyberpunk" });
+  assert.equal(session.rawJson, null);
+});
+
+test("continuous input groups, explicit boundaries split, and new edits discard redo", () => {
+  let session = beginThemeEditSession(1, { kind: "none" });
+  session = editThemeDraft(session, "a", { key: "json", at: 0 });
+  session = editThemeDraft(session, "ab", { key: "json", at: 100 });
+  session = editThemeDraft(session, "abc", { key: "json", at: 200 });
+  assert.equal(session.past.length, 1);
+  session = endThemeEditGrouping(session);
+  session = editThemeDraft(session, "abcd", { key: "json", at: 210 });
+  assert.equal(session.past.length, 2);
+  session = travelThemeHistory(session, "undo");
+  assert.equal(session.rawJson, "abc");
+  session = editThemeDraft(session, "new branch");
+  assert.equal(session.future.length, 0);
+  assert.equal(travelThemeHistory(session, "redo"), session);
+  session = editThemeDraft(session, "slider first", { key: "visual", at: 300 });
+  const count = session.past.length;
+  session = editThemeDraft(session, "slider final", { key: "visual", at: 5000 });
+  assert.equal(session.past.length, count);
+});
+
+test("Apply keeps history but undo does not move the applied baseline", () => {
+  let session = editThemeDraft(beginThemeEditSession(1, { kind: "none" }), recipe);
+  session = acceptThemeValidation(session, themeValidationToken(session), validateThemeDocument(recipe, (raw) => raw));
+  session = advanceThemeBaseline(session);
+  const baseline = session.baseline;
+  session = travelThemeHistory(session, "undo");
+  assert.equal(isThemeDraftChanged(session), true);
+  assert.deepEqual(session.baseline, baseline);
+  session = travelThemeHistory(session, "redo");
+  assert.equal(isThemeDraftChanged(session), false);
+});
+
+test("history is bounded by count and retained text size", () => {
+  let session = beginThemeEditSession(1, { kind: "none" });
+  for (let i = 0; i < 100; i++) session = editThemeDraft(session, String(i));
+  assert.equal(session.past.length, 50);
+  for (let i = 0; i < 20; i++) session = editThemeDraft(session, String(i).padEnd(256 * 1024, " "));
+  assert.ok(session.past.length < 20);
 });

@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ThemeCatalog, ThemePaint, ThemeRecipeV1, ThemeRuleEntry } from "@mermanjs/web";
+import type { ThemeCatalog, ThemeRecipeV1, ThemeRuleEntry } from "@mermanjs/web";
 
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ import {
   type ThemeRuleFacetValues,
 } from "@/src/lib/theme-document";
 import type { MermanDomainFacade } from "@/src/runtime/merman-core";
+import { NumberField, ListField } from "./ThemeEditorFields";
+import { PaintField } from "./ThemePaintEditor";
+import { ThemeCanvasLayers } from "./ThemeCanvasLayers";
+import { projectError } from "@/src/runtime/error-projection";
 
 const TOKEN_NAMES = ["surface", "surface_alt", "surface_muted", "text", "border", "line", "accent"] as const;
 const FALLBACK_RULE_TARGETS = [
@@ -69,6 +73,7 @@ export function ThemeVisualEditor({
               key={token}
               label={t(`themeWorkbench.token.${token}`, { defaultValue: token.replaceAll("_", " ") })}
               value={document.definition.tokens[token]}
+              allowAdvanced={false}
               onChange={(value) => onChange(setDefinitionToken(document, token, typeof value === "string" ? value : undefined))}
             />
           ))}
@@ -116,6 +121,7 @@ function ThemeCanvasEditor({ document, facade, onChange }: {
 }) {
   const { t } = useTranslation();
   const [removed, setRemoved] = useState<{ before: ThemeRecipeV1; after: string } | null>(null);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const base = document.kind === "definition" ? document.definition.tokens.canvas : document.complete_spec.canvas?.base;
   const layers = document.kind === "complete_spec" ? document.complete_spec.canvas?.layers ?? [] : [];
   const defaultBase = useMemo(() => {
@@ -136,7 +142,7 @@ function ThemeCanvasEditor({ document, facade, onChange }: {
     <section className="space-y-3 rounded-md border p-3" aria-label={t("themeWorkbench.canvas")}>
       <h3 className="text-xs font-semibold">{t("themeWorkbench.canvas")}</h3>
       <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.canvasExportHint")}</p>
-      <PaintField label={t("themeWorkbench.canvasBase")} value={base} omitLabel={defaultLabel} onChange={(value) => {
+      <PaintField label={t("themeWorkbench.canvasBase")} value={base} allowAdvanced={document.kind === "complete_spec"} omitLabel={defaultLabel} onChange={(value) => {
         setRemoved(null);
         onChange(setThemeCanvasBase(document, value ?? undefined));
       }} />
@@ -144,6 +150,16 @@ function ThemeCanvasEditor({ document, facade, onChange }: {
         <p>{t("themeWorkbench.canvasLayers", { count: layers.length })}</p>
         <p>{t("themeWorkbench.canvasLayersHint")}</p>
       </div>
+      {document.kind === "complete_spec" ? <ThemeCanvasLayers document={document} onChange={onChange} /> : <div className="space-y-2 border-t pt-3">
+        <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.advancedStylingHint")}</p>
+        <Button type="button" variant="outline" size="sm" disabled={!facade} onClick={() => {
+          try {
+            if (!facade) return;
+            onChange({ schema_version: 1, kind: "complete_spec", complete_spec: facade.materializeTheme(document.definition).spec });
+          } catch (cause) { setConversionError(projectError(cause).summary); }
+        }}>{t("themeWorkbench.enableAdvancedStyling")}</Button>
+        {conversionError && <p role="alert" className="text-xs text-destructive">{conversionError}</p>}
+      </div>}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" disabled={canUndo} onClick={() => {
           const next = removeThemeCanvasBackground(document);
@@ -157,110 +173,6 @@ function ThemeCanvasEditor({ document, facade, onChange }: {
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeWorkbench.canvasHint")}</p>
     </section>
-  );
-}
-
-function PaintField({ label, value, clearable = false, omitLabel, onChange }: {
-  label: string;
-  value: ThemePaint | null | undefined;
-  clearable?: boolean;
-  omitLabel?: string;
-  onChange(value: ThemePaint | null | undefined): void;
-}) {
-  const { t } = useTranslation();
-  const id = useId();
-  const presentation = paintPresentation(value);
-  const { simple, complex, mode } = presentation;
-
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium capitalize">{label}</label>
-      {complex ? (
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-md border p-2">
-          <span className="min-w-0 break-words text-xs text-muted-foreground">{t("themeWorkbench.complexPaint", { defaultValue: "Advanced paint: {{kind}}", kind: typeof value === "object" && value !== null ? value.kind : "" })}</span>
-          <Button id={id} type="button" variant="outline" size="sm" onClick={() => onChange("#ffffff")}>{t("themeWorkbench.replacePaint", { defaultValue: "Replace with color" })}</Button>
-        </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-2">
-          <select
-            id={id}
-            aria-label={`${label}: ${t("themeWorkbench.valueMode", { defaultValue: "value mode" })}`}
-            value={mode}
-            className={`${SELECT_CLASS} ${omitLabel ? "max-w-48" : "max-w-28"}`}
-            onChange={(event) => onChange(event.target.value === "omit" ? undefined : event.target.value === "clear" ? null : event.target.value === "transparent" ? "transparent" : "#ffffff")}
-          >
-            <option value="omit">{omitLabel ?? t("themeWorkbench.omit", { defaultValue: "Omit" })}</option>
-            {clearable && <option value="clear">{t("themeWorkbench.clear", { defaultValue: "Clear" })}</option>}
-            <option value="color">{t("themeWorkbench.color", { defaultValue: "Color" })}</option>
-            <option value="transparent">{t("themeWorkbench.transparent", { defaultValue: "Transparent" })}</option>
-          </select>
-          {mode === "color" && <>
-            <input type="color" aria-label={`${label}: ${t("themeWorkbench.colorPicker", { defaultValue: "color picker" })}`} className="size-8 shrink-0 cursor-pointer rounded border bg-background p-0.5" value={simple && /^#[\da-f]{6}$/i.test(simple) ? simple : "#ffffff"} onChange={(event) => onChange(event.target.value)} />
-            <Input key={simple ?? ""} aria-label={label} defaultValue={simple ?? ""} className="h-8 min-w-0 px-2 font-mono text-xs" onBlur={(event) => { if (event.target.value !== simple) onChange(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
-          </>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function paintPresentation(value: ThemePaint | null | undefined): {
-  simple: string | null;
-  complex: boolean;
-  mode: "omit" | "clear" | "color" | "transparent";
-} {
-  if (value === undefined) return { simple: null, complex: false, mode: "omit" };
-  if (value === null) return { simple: null, complex: false, mode: "clear" };
-  if (typeof value === "string") return { simple: value, complex: false, mode: value === "transparent" ? "transparent" : "color" };
-  if (value.kind === "transparent") return { simple: "transparent", complex: false, mode: "transparent" };
-  if (value.kind === "solid") return { simple: value.color, complex: false, mode: value.color === "transparent" ? "transparent" : "color" };
-  return { simple: null, complex: true, mode: "color" };
-}
-
-function NumberField({ label, value, clearable = false, min, max, onChange }: {
-  label: string;
-  value: number | null | undefined;
-  clearable?: boolean;
-  min?: number;
-  max?: number;
-  onChange(value: number | null | undefined): void;
-}) {
-  const { t } = useTranslation();
-  const id = useId();
-
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium">{label}</label>
-      <div className="flex min-w-0 gap-2">
-        <Input key={String(value)} id={id} type="number" min={min} max={max} step="any" placeholder={value === null ? t("themeWorkbench.clear", { defaultValue: "Clear" }) : t("themeWorkbench.omit", { defaultValue: "Omit" })} defaultValue={value ?? ""} className="h-8 text-xs" onBlur={(event) => {
-          if (!event.target.validity.valid) return;
-          const next = event.target.value === "" ? undefined : Number(event.target.value);
-          if (next !== value) onChange(next);
-        }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
-        {clearable && <Button type="button" size="sm" variant="outline" onClick={() => onChange(null)}>{t("themeWorkbench.clear", { defaultValue: "Clear" })}</Button>}
-      </div>
-    </div>
-  );
-}
-
-function ListField({ label, value, onChange }: {
-  label: string;
-  value: readonly string[] | undefined;
-  onChange(value: string[] | undefined): void;
-}) {
-  const { t } = useTranslation();
-  const id = useId();
-  const text = value?.join("\n") ?? "";
-
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium">{label}</label>
-      <textarea key={text} id={id} defaultValue={text} spellCheck={false} rows={3} placeholder={t("themeWorkbench.omit", { defaultValue: "Omit" })} className="block w-full min-w-0 resize-y rounded-md border bg-background p-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onBlur={(event) => {
-        if (event.target.value === text) return;
-        const lines = event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        onChange(lines.length ? lines : undefined);
-      }} />
-    </div>
   );
 }
 

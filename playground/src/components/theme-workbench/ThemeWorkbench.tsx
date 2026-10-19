@@ -1,5 +1,5 @@
 import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Copy, Download, FileUp, Palette, Plus, X } from "lucide-react";
+import { CheckCircle2, Copy, Download, FileUp, Palette, Plus, Redo2, Undo2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { normalizeThemeName, SUPPORTED_THEMES, type ThemeCatalog, type ThemeRecipeV1 } from "@mermanjs/web";
@@ -14,7 +14,7 @@ import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { SHARE_THEME_RECIPE_BYTES } from "@/src/lib/share";
 import { themeFamilyTreatment } from "@/src/lib/theme-design";
 import { validateThemeDocument } from "@/src/lib/theme-document";
-import { isThemeDraftChanged, type ThemeCandidate, type ThemeValidationToken } from "@/src/lib/theme-edit-session";
+import { isThemeDraftChanged, type ThemeCandidate, type ThemeEditGrouping, type ThemeValidationToken } from "@/src/lib/theme-edit-session";
 import { exceedsUtf8ByteBudget } from "@/src/lib/utf8";
 import { projectError } from "@/src/runtime/error-projection";
 import { selectMermanFacade, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
@@ -124,11 +124,20 @@ export function ThemeWorkbench({ className, onClose }: {
       ? t("themeWorkbench.custom", { defaultValue: "Custom recipe" })
       : t(`themePresets.${session.candidate.presetId}`, { defaultValue: selectedPreset?.display_name ?? session.candidate.presetId });
 
-  function replaceRaw(raw: string, nextTab: WorkbenchTab) {
+  function replaceRaw(raw: string, nextTab: WorkbenchTab, group?: ThemeEditGrouping["key"]) {
     setActionError(null);
-    const token = useAppStore.getState().editThemeDraft(raw);
+    const token = useAppStore.getState().editThemeDraft(raw, group);
     validateNow(raw, token);
     setTab(nextTab);
+  }
+
+  function travelHistory(direction: "undo" | "redo") {
+    if (!useAppStore.getState().travelThemeHistory(direction)) return;
+    const current = useAppStore.getState().themeEditSession;
+    if (current?.rawJson !== null && current?.rawJson !== undefined) {
+      validateNow(current.rawJson, { sessionId: current.id, revision: current.revision });
+    }
+    setActionError(null);
   }
 
   function requestReplacement(action: () => void, anyDirty = false) {
@@ -225,6 +234,18 @@ export function ThemeWorkbench({ className, onClose }: {
       role="region"
       aria-label={t("themeWorkbench.title", { defaultValue: "Theme workbench" })}
       data-theme-workbench
+      onFocusCapture={() => useAppStore.getState().endThemeEditGrouping()}
+      onPointerDownCapture={() => useAppStore.getState().endThemeEditGrouping()}
+      onKeyDownCapture={(event) => {
+        const target = event.target as HTMLElement;
+        if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && !target.closest(".monaco-editor")) return;
+        if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+        const key = event.key.toLowerCase();
+        if (key !== "z" && key !== "y") return;
+        event.preventDefault();
+        event.stopPropagation();
+        travelHistory(key === "y" || event.shiftKey ? "redo" : "undo");
+      }}
       className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden border-t bg-background lg:border-l lg:border-t-0", className)}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented && !pendingReplacement) {
@@ -239,7 +260,11 @@ export function ThemeWorkbench({ className, onClose }: {
           <h2 ref={heading} id={headingId} tabIndex={-1} className="flex items-center gap-2 text-sm font-semibold outline-none"><Palette className="size-4" aria-hidden="true" />{t("themeWorkbench.title", { defaultValue: "Theme workbench" })}</h2>
           <p className="truncate text-xs text-muted-foreground">{candidateLabel}</p>
         </div>
-        <Button variant="ghost" size="icon-sm" aria-label={t("themeWorkbench.close", { defaultValue: "Close theme workbench" })} onClick={() => requestReplacement(close, true)}><X className="size-4" /></Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("themeWorkbench.undo")} title={t("themeWorkbench.undo")} disabled={!session.past.length} onClick={() => travelHistory("undo")}><Undo2 className="size-3.5" /></Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("themeWorkbench.redo")} title={t("themeWorkbench.redo")} disabled={!session.future.length} onClick={() => travelHistory("redo")}><Redo2 className="size-3.5" /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label={t("themeWorkbench.close", { defaultValue: "Close theme workbench" })} onClick={() => requestReplacement(close, true)}><X className="size-4" /></Button>
+        </div>
       </header>
       <div className="shrink-0 space-y-2 border-b px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs" data-theme-draft-status aria-live="polite">
@@ -278,7 +303,7 @@ export function ThemeWorkbench({ className, onClose }: {
           {selectedPreset && <p data-theme-design-scope className="mt-3 text-xs text-muted-foreground">{t("themeWorkbench.currentDesign", { defaultValue: "Current family: {{family}} · {{treatment}}", family: familyId ?? "unknown", treatment: t(`themeDesign.${selectedTreatment}`, { defaultValue: selectedTreatment === "dedicated" ? "Dedicated family design" : selectedTreatment === "base_only" ? "Base styling only" : "Design unreviewed" }) })}</p>}
         </TabsContent>
         <TabsContent value="visual" className="min-h-0 overflow-y-auto overscroll-contain p-3">
-          {session.document ? <ThemeVisualEditor key={`${session.id}:${session.document.kind}`} document={session.document} disabled={!valid || !facade} facade={facade} catalog={catalog} familyId={familyId} onChange={(document) => replaceRaw(JSON.stringify(document, null, 2), "visual")} /> : <div className="space-y-3 py-2 text-xs text-muted-foreground">
+          {session.document ? <ThemeVisualEditor key={`${session.id}:${session.document.kind}`} document={session.document} disabled={!valid || !facade} facade={facade} catalog={catalog} familyId={familyId} onChange={(document) => replaceRaw(JSON.stringify(document, null, 2), "visual", "visual")} /> : <div className="space-y-3 py-2 text-xs text-muted-foreground">
             <p>{session.rawJson !== null ? t("themeWorkbench.fixJson", { defaultValue: "Fix the JSON recipe to use Visual controls. The last valid theme remains in the preview." }) : t("themeWorkbench.customizeHint", { defaultValue: "Customize the selected preset or create a new theme to edit its recipe." })}</p>
             {session.rawJson !== null && <Button variant="outline" size="sm" onClick={() => setTab("json")}>{t("themeWorkbench.editJson", { defaultValue: "Edit JSON" })}</Button>}
           </div>}
@@ -294,7 +319,7 @@ export function ThemeWorkbench({ className, onClose }: {
           />
         </TabsContent>
         <TabsContent value="json" className="min-h-0 overflow-hidden p-0 pt-2">
-          {session.rawJson !== null ? <LazyFeatureBoundary feature={t("themeWorkbench.jsonEditor", { defaultValue: "Theme JSON editor" })} presentation={{ kind: "panel" }}><ThemeJsonEditor sessionId={session.id} value={session.rawJson} onChange={(raw) => { setActionError(null); useAppStore.getState().editThemeDraft(raw); }} /></LazyFeatureBoundary> : <p className="p-3 text-xs leading-relaxed text-muted-foreground">{t("themeWorkbench.customizeHint", { defaultValue: "Customize the selected preset or create a new theme to edit its recipe." })}</p>}
+          {session.rawJson !== null ? <LazyFeatureBoundary feature={t("themeWorkbench.jsonEditor", { defaultValue: "Theme JSON editor" })} presentation={{ kind: "panel" }}><ThemeJsonEditor sessionId={session.id} value={session.rawJson} onChange={(raw) => { setActionError(null); useAppStore.getState().editThemeDraft(raw, "json"); }} /></LazyFeatureBoundary> : <p className="p-3 text-xs leading-relaxed text-muted-foreground">{t("themeWorkbench.customizeHint", { defaultValue: "Customize the selected preset or create a new theme to edit its recipe." })}</p>}
         </TabsContent>
       </Tabs>
       {(session.error || actionError) && <div role="alert" className="pointer-events-none max-h-28 shrink-0 overflow-y-auto border-t border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"><p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{actionError ?? session.error}</p></div>}

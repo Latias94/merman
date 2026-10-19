@@ -1,5 +1,6 @@
 import type {
   ThemeAuthoringTypographyV1,
+  ThemeCanvasLayer,
   ThemePaint,
   ThemeRecipeV1,
   ThemeRuleEntry,
@@ -93,6 +94,14 @@ export function setThemeCanvasBase(
   } else {
     edited.complete_spec.canvas = { ...canvas, base: structuredClone(value) };
   }
+  return edited;
+}
+
+export function setThemeCanvasLayers(recipe: ThemeRecipeV1, layers: readonly ThemeCanvasLayer[]): ThemeRecipeV1 {
+  if (recipe.kind !== "complete_spec") throw new Error("Canvas layers require a complete theme spec.");
+  const edited = structuredClone(recipe);
+  if (layers.length) edited.complete_spec.canvas = { ...edited.complete_spec.canvas, layers: structuredClone([...layers]) };
+  else if (edited.complete_spec.canvas) delete edited.complete_spec.canvas.layers;
   return edited;
 }
 
