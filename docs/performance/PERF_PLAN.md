@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The comparison helper now implements the documented joint complement: either qualified regression
+upper bound below its threshold proves non-regression, with the mirrored rule for non-improvement.
+Positive regression/improvement still needs both strict bounds. Synthetic contracts reproduce
+nine failures before the two-line fix; all 89 statistics/runner/report tests pass afterward,
+including equality, crossing intervals, sample-count guards and unchanged dual-metric A/A gates.
+This is a method correction, not new timing or historical receipt reclassification. Generic A/A
+still imposes the stronger two-metric precision prerequisite. Next independently review and
+preregister a versioned release joint-convergence protocol before collecting fresh full-scope
+v0.9.0 A/A and A/B; retain the separate terminal receipt ownership candidate.
+
 The [October 19 empty source-config checkpoint](empty_source_config_owner_macos_2026-10-19.md)
 reuses the existing source handle where private consumers only read an empty JSON value. All
 632 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.

@@ -819,8 +819,8 @@ class CompareSelfContractsTest(unittest.TestCase):
             **common,
         )
 
-        self.assertEqual(relative_only["outcome"], "inconclusive")
-        self.assertEqual(absolute_only["outcome"], "inconclusive")
+        self.assertEqual(relative_only["outcome"], "confirmed_non_regression")
+        self.assertEqual(absolute_only["outcome"], "confirmed_non_regression")
         self.assertEqual(both_bounds["outcome"], "confirmed_non_regression")
         self.assertEqual(regression["outcome"], "confirmed_regression")
         self.assertEqual(regression["pair_count"], 8)
@@ -881,6 +881,37 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertTrue(calibration["stable"])
         self.assertTrue(calibration["checks"]["identity_within_equivalence_margin"])
         self.assertTrue(calibration["checks"]["order_effect_within_equivalence_margin"])
+
+    def test_aa_calibration_still_requires_both_metric_margins(self) -> None:
+        for base_ns, head_ns, rejected_metric in (
+            (1_000_000.0, 1_002_000.0, "absolute"),
+            (100.0, 112.0, "log"),
+        ):
+            with self.subTest(rejected_metric=rejected_metric):
+                pairs = [
+                    {
+                        "a": {"normalized_ns": base_ns},
+                        "b": {"normalized_ns": head_ns},
+                        "first": {"normalized_ns": base_ns},
+                        "second": {"normalized_ns": head_ns},
+                    }
+                    for _ in range(8)
+                ]
+                calibration = compare_self._summarize_calibration(
+                    pairs,
+                    expected_pairs=8,
+                    relative_mde=math.log1p(0.10),
+                    absolute_mde_ns=1_000.0,
+                    max_pairs=32,
+                    confidence_level=0.95,
+                    bootstrap_seed=7,
+                    bootstrap_resamples=10_000,
+                )
+                self.assertEqual(calibration["status"], "inconclusive")
+                self.assertFalse(calibration["stable"])
+                for kind in ("identity", "order"):
+                    self.assertFalse(calibration["checks"][f"{kind}_{rejected_metric}_within_margin"])
+                self.assertTrue(calibration["checks"]["required_pairs_fit_cap"])
 
     def test_incomplete_comparison_pairs_are_an_evidence_contract_failure(self) -> None:
         row = compare_self._comparison_row(

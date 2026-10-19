@@ -346,6 +346,14 @@ If A/A is unstable or the derived count exceeds the fixed budget, the result is 
 harness does not weaken thresholds, extend the budget after seeing results, or stop when an interval
 first becomes favorable.
 
+The generic A/A prerequisite still requires identity, order effects and the sampling budget to
+pass separately for both metrics. That is stronger than proving the complement of a joint
+regression, which needs only one qualified upper bound below its threshold. The classifier uses
+that documented complement; it does not relax A/A, sample counts, confidence adjustment or
+improvement admission. Historical receipts retain their original method and outcomes. Any future
+release-specific calibration protocol must be versioned and preregistered before fresh A/A and A/B;
+old observations cannot be reclassified as new confirmation.
+
 One normalized Criterion point estimate per side within an AB/BA pair is one independent
 observation. Corpus schema-v2 lane metadata owns the public operation and normalization. Current and
 registered historical selectors can therefore confirm the same operation even when their Criterion
