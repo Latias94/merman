@@ -744,6 +744,65 @@ mod tests {
     }
 
     #[test]
+    fn preset_presentation_metadata_does_not_change_values_or_declared_bindings() {
+        use merman_theme_contract::ThemeRecipeV1;
+
+        let compiler = DiagramThemeCompiler::new();
+        for preset in [ThemePreset::EditorLight, ThemePreset::Cyberpunk] {
+            let ThemeRecipeV1::Design { mut design } = compiler.export_preset(preset).unwrap()
+            else {
+                panic!("editable preset design")
+            };
+            let groups = design
+                .tokens
+                .values()
+                .filter_map(|token| token.group.as_deref())
+                .collect::<BTreeSet<_>>();
+            for group in [
+                "Core colors",
+                "Diagram details",
+                "Series palette",
+                "Typography",
+            ] {
+                assert!(groups.contains(group), "{} is missing {group}", preset.id());
+            }
+            if preset == ThemePreset::Cyberpunk {
+                assert!(groups.contains("Effects"));
+                assert!(groups.contains("Geometry"));
+            }
+            assert!(design.tokens.values().all(|token| {
+                token
+                    .description
+                    .as_deref()
+                    .is_some_and(|text| !text.is_empty())
+            }));
+
+            let authored = serde_json::to_value(&design).unwrap();
+            let bindings = crate::diagram_theme::inspect_theme_design(&design).unwrap();
+            for (id, token) in &mut design.tokens {
+                token.label = Some(format!("Renamed {id}"));
+                token.group = Some("An author's custom group".to_owned());
+                token.description = None;
+            }
+            assert_ne!(serde_json::to_value(&design).unwrap(), authored);
+            assert_eq!(
+                crate::diagram_theme::inspect_theme_design(&design).unwrap(),
+                bindings
+            );
+            assert_eq!(
+                compiler
+                    .compile_recipe(ThemeRecipeV1::Design { design })
+                    .unwrap()
+                    .recipe_fingerprint(),
+                compiler
+                    .compile_preset(preset)
+                    .unwrap()
+                    .recipe_fingerprint()
+            );
+        }
+    }
+
+    #[test]
     fn preset_shared_color_edit_and_local_detachment_survive_exchange() {
         use merman_theme_contract::*;
 

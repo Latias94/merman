@@ -21,45 +21,69 @@ pub(super) fn token(
     id: &str,
     label: &str,
     group: &str,
+    description: &str,
     value: ThemeDesignTokenValueV1,
 ) {
     design.tokens.insert(
         id.to_owned(),
         ThemeDesignTokenV1 {
             label: Some(label.to_owned()),
-            description: None,
+            description: Some(description.to_owned()),
             group: Some(group.to_owned()),
             value,
         },
     );
 }
 
-pub(super) fn color_token(design: &mut ThemeDesignV1, id: &str, label: &str, value: &str) {
+pub(super) fn color_token(
+    design: &mut ThemeDesignV1,
+    id: &str,
+    label: &str,
+    group: &str,
+    description: &str,
+    value: &str,
+) {
     token(
         design,
         id,
         label,
-        "Colors",
+        group,
+        description,
         ThemeDesignTokenValueV1::Color(literal(value.to_owned())),
     );
 }
 
-pub(super) fn length_token(design: &mut ThemeDesignV1, id: &str, label: &str, value: f32) {
+pub(super) fn length_token(
+    design: &mut ThemeDesignV1,
+    id: &str,
+    label: &str,
+    group: &str,
+    description: &str,
+    value: f32,
+) {
     token(
         design,
         id,
         label,
-        "Geometry",
+        group,
+        description,
         ThemeDesignTokenValueV1::Length(px(value)),
     );
 }
 
-pub(super) fn number_token(design: &mut ThemeDesignV1, id: &str, label: &str, value: f32) {
+pub(super) fn number_token(
+    design: &mut ThemeDesignV1,
+    id: &str,
+    label: &str,
+    description: &str,
+    value: f32,
+) {
     token(
         design,
         id,
         label,
         "Typography",
+        description,
         ThemeDesignTokenValueV1::Number(literal(value)),
     );
 }
@@ -130,6 +154,7 @@ pub(super) fn effect_token(
     design: &mut ThemeDesignV1,
     id: &str,
     label: &str,
+    description: &str,
     shadows: Vec<ThemeDesignShadowV1>,
 ) {
     token(
@@ -137,6 +162,7 @@ pub(super) fn effect_token(
         id,
         label,
         "Effects",
+        description,
         ThemeDesignTokenValueV1::Effect(literal(ThemeDesignEffectV1::ShadowStack {
             composition: ThemeShadowCompositionV1::Cascade,
             color_space: Some("srgb".to_owned()),

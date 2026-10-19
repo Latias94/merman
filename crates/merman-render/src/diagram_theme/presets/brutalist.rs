@@ -11,16 +11,62 @@ const HARD_SHADOW: &str = "hard-shadow";
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
-    color_token(&mut design, "shadow-color", "Shadow color", "#000000");
-    length_token(&mut design, "shadow-offset", "Shadow offset", 6.0);
+    color_token(
+        &mut design,
+        "shadow-color",
+        "Shadow color",
+        "Effects",
+        "Color of the hard body shadow.",
+        "#000000",
+    );
+    length_token(
+        &mut design,
+        "shadow-offset",
+        "Shadow offset",
+        "Effects",
+        "Shared horizontal and vertical displacement of the hard shadow, in pixels.",
+        6.0,
+    );
     let mut hard_shadow = shadow("shadow-color", 6.0, 0.0, 1.0);
     hard_shadow.offset_x = reference("shadow-offset");
     hard_shadow.offset_y = reference("shadow-offset");
-    effect_token(&mut design, HARD_SHADOW, "Hard shadow", vec![hard_shadow]);
-    length_token(&mut design, "border-width", "Border width", 3.0);
-    length_token(&mut design, "chart-line-width", "Chart line width", 4.0);
-    number_token(&mut design, "label-weight", "Label weight", 700.0);
-    number_token(&mut design, "title-weight", "Title weight", 900.0);
+    effect_token(
+        &mut design,
+        HARD_SHADOW,
+        "Hard shadow",
+        "Sharp offset shadow for selected diagram bodies and chart bars.",
+        vec![hard_shadow],
+    );
+    length_token(
+        &mut design,
+        "border-width",
+        "Border width",
+        "Geometry",
+        "Outline thickness for selected diagram bodies, connectors, and chart bars.",
+        3.0,
+    );
+    length_token(
+        &mut design,
+        "chart-line-width",
+        "Chart line width",
+        "Geometry",
+        "Stroke thickness for line-chart series.",
+        4.0,
+    );
+    number_token(
+        &mut design,
+        "label-weight",
+        "Label weight",
+        "Font weight for selected node, edge, actor, and note labels.",
+        700.0,
+    );
+    number_token(
+        &mut design,
+        "title-weight",
+        "Title weight",
+        "Font weight for XY chart titles.",
+        900.0,
+    );
     for (family, target, has_shadow) in [
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node, true),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, false),
@@ -86,7 +132,14 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         (3, "accent-third", "Every third node", "#4ECDC4"),
         (5, "accent-fifth", "Every fifth node", "#FF6B35"),
     ] {
-        color_token(&mut design, id, label, color);
+        color_token(
+            &mut design,
+            id,
+            label,
+            "Diagram details",
+            "Repeating Flowchart node fill; later matching rules take precedence.",
+            color,
+        );
         let mut entry = rule(
             Some(DiagramFamilyId::FLOWCHART),
             ThemeTarget::Node,

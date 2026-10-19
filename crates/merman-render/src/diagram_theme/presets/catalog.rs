@@ -734,68 +734,154 @@ fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
 pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = ThemeDesignV1::default();
     // These are distinct authored roles even when a preset gives them equal initial colors.
-    for (id, label, value) in [
-        ("canvas", "Canvas", palette.canvas),
-        ("surface", "Surface", palette.surface),
-        ("surface-alt", "Alternate surface", palette.surface_alt),
-        ("text", "Text", palette.text),
-        ("subtle-text", "Subtle text", palette.subtle_text),
-        ("border", "Border", palette.border),
-        ("line", "Line", palette.line),
-        ("accent", "Accent", palette.accent),
+    for (id, label, description, value) in [
+        (
+            "canvas",
+            "Canvas",
+            "Exported canvas paint and any object fills explicitly bound to it.",
+            palette.canvas,
+        ),
+        (
+            "surface",
+            "Surface",
+            "Main fill for diagram bodies such as nodes, states, and tasks.",
+            palette.surface,
+        ),
+        (
+            "surface-alt",
+            "Alternate surface",
+            "Secondary fill for composite headers and sequence loop labels.",
+            palette.surface_alt,
+        ),
+        (
+            "text",
+            "Text",
+            "Shared text and title color; dedicated label colors remain separate.",
+            palette.text,
+        ),
+        (
+            "subtle-text",
+            "Subtle text",
+            "Secondary text color used by chart legends.",
+            palette.subtle_text,
+        ),
+        (
+            "border",
+            "Border",
+            "Shared outline color for diagram bodies.",
+            palette.border,
+        ),
+        (
+            "line",
+            "Line",
+            "Shared color for connectors, transitions, and chart axes.",
+            palette.line,
+        ),
+        (
+            "accent",
+            "Accent",
+            "Highlight color for special state markers.",
+            palette.accent,
+        ),
+    ] {
+        color_token(&mut design, id, label, "Core colors", description, value);
+    }
+    for (id, label, description, value) in [
         (
             "edge-label-background",
             "Edge label background",
+            "Fill behind connector and transition labels.",
             palette.edge_label_background,
         ),
         (
             "cluster-background",
             "Group background",
+            "Fill inside grouped diagram bodies.",
             palette.cluster_background,
         ),
-        ("cluster-border", "Group border", palette.cluster_border),
+        (
+            "cluster-border",
+            "Group border",
+            "Outline around grouped diagram bodies.",
+            palette.cluster_border,
+        ),
         (
             "note-background",
             "Note background",
+            "Fill inside note bodies.",
             palette.note_background,
         ),
-        ("note-border", "Note border", palette.note_border),
-        ("note-text", "Note text", palette.note_text),
+        (
+            "note-border",
+            "Note border",
+            "Outline around note bodies.",
+            palette.note_border,
+        ),
+        (
+            "note-text",
+            "Note text",
+            "Text inside note bodies.",
+            palette.note_text,
+        ),
         (
             "actor-background",
             "Actor background",
+            "Fill inside sequence actor bodies.",
             palette.actor_background,
         ),
-        ("actor-border", "Actor border", palette.actor_border),
-        ("actor-text", "Actor text", palette.actor_text),
+        (
+            "actor-border",
+            "Actor border",
+            "Sequence actor outlines and lifelines.",
+            palette.actor_border,
+        ),
+        (
+            "actor-text",
+            "Actor text",
+            "Sequence actor labels.",
+            palette.actor_text,
+        ),
         (
             "activation-background",
             "Activation background",
+            "Fill inside sequence activation bars.",
             palette.activation_background,
         ),
         (
             "activation-border",
             "Activation border",
+            "Outline around sequence activation bars.",
             palette.activation_border,
         ),
         (
             "sequence-number-text",
             "Sequence number",
+            "Text inside sequence message-number markers.",
             palette.sequence_number_text,
         ),
         (
             "packet-field-label-text",
             "Packet field label",
+            "Text inside packet fields.",
             palette.packet_field_label_text,
         ),
     ] {
-        color_token(&mut design, id, label, value);
+        color_token(
+            &mut design,
+            id,
+            label,
+            "Diagram details",
+            description,
+            value,
+        );
     }
     for (index, color) in palette.series.iter().enumerate() {
         color_token(
             &mut design,
             &format!("series.{index}"),
             &format!("Series {}", index + 1),
+            "Series palette",
+            "One color in the shared ordinal palette; dedicated chart rules may override it.",
             color,
         );
     }
@@ -803,7 +889,8 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         &mut design,
         "series",
         "Series palette",
-        "Colors",
+        "Series palette",
+        "Ordered colors shared by diagram categories and series.",
         ThemeDesignTokenValueV1::Palette(literal(
             (0..palette.series.len())
                 .map(|index| reference(&format!("series.{index}")))
@@ -815,6 +902,7 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         "body-font",
         "Font family",
         "Typography",
+        "Default font stack, in fallback order; individual styles can override it.",
         ThemeDesignTokenValueV1::FontStack(literal(
             ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
                 .map(str::to_owned)
@@ -1004,6 +1092,8 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             &mut design,
             &format!("task-label.{index}"),
             &format!("Task label {}", index + 1),
+            "Diagram details",
+            "Kanban task-label text for the corresponding repeating category color.",
             color,
         );
     }

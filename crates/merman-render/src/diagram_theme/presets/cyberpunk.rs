@@ -17,8 +17,22 @@ const NOTE_TEXT_GLOW: &str = "note-text-glow";
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
-    color_token(&mut design, "neon-cyan", "Neon cyan", "#00f2ff");
-    color_token(&mut design, "neon-magenta", "Neon magenta", "#ff00ff");
+    color_token(
+        &mut design,
+        "neon-cyan",
+        "Neon cyan",
+        "Core colors",
+        "Shared cyan source for linked text, outlines, canvas gradients, and glows.",
+        "#00f2ff",
+    );
+    color_token(
+        &mut design,
+        "neon-magenta",
+        "Neon magenta",
+        "Core colors",
+        "Shared magenta source for linked accents, note colors, and note glows.",
+        "#ff00ff",
+    );
     // These bindings are source intent, not an equality-based inference over output colors.
     for id in [
         "text",
@@ -37,15 +51,37 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         design.tokens.get_mut(id).expect("shared color role").value =
             ThemeDesignTokenValueV1::Color(reference("neon-magenta"));
     }
-    length_token(&mut design, "body-border-width", "Body border width", 3.0);
+    length_token(
+        &mut design,
+        "body-border-width",
+        "Body border width",
+        "Geometry",
+        "Outline thickness for Flowchart nodes and sequence actors and activations.",
+        3.0,
+    );
     length_token(
         &mut design,
         "detail-border-width",
         "Detail border width",
+        "Geometry",
+        "Outline thickness for selected connectors and sequence details.",
         2.0,
     );
-    length_token(&mut design, "body-radius", "Body radius", 10.0);
-    number_token(&mut design, "label-weight", "Label weight", 600.0);
+    length_token(
+        &mut design,
+        "body-radius",
+        "Body radius",
+        "Geometry",
+        "Corner radius for Flowchart nodes and sequence actors and notes.",
+        10.0,
+    );
+    number_token(
+        &mut design,
+        "label-weight",
+        "Label weight",
+        "Font weight for Flowchart node and edge labels.",
+        600.0,
+    );
     design
         .canvas
         .as_mut()
@@ -64,18 +100,61 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         screen_layer(grid_line(90.0)),
         screen_layer(grid_line(180.0)),
     ];
-    for (id, label, color, sigma, opacity) in [
-        (SOFT_CYAN_GLOW, "Soft cyan glow", "neon-cyan", 4.0, 0.5),
-        (KEYWORD_GLOW, "Keyword glow", "neon-cyan", 6.0, 0.4),
-        (EDGE_GLOW, "Edge glow", "neon-cyan", 6.0, 0.6),
-        (NOTE_GLOW, "Note body glow", "neon-magenta", 8.0, 0.4),
-        (LOOP_TEXT_GLOW, "Text glow", "neon-cyan", 5.0, 0.5),
-        (NOTE_TEXT_GLOW, "Note text glow", "neon-magenta", 4.0, 0.4),
+    for (id, label, description, color, sigma, opacity) in [
+        (
+            SOFT_CYAN_GLOW,
+            "Soft cyan glow",
+            "Glow for sequence loop outlines and chart legends.",
+            "neon-cyan",
+            4.0,
+            0.5,
+        ),
+        (
+            KEYWORD_GLOW,
+            "Keyword glow",
+            "Glow around sequence loop-label backgrounds.",
+            "neon-cyan",
+            6.0,
+            0.4,
+        ),
+        (
+            EDGE_GLOW,
+            "Edge glow",
+            "Glow for Flowchart edges and sequence messages and lifelines.",
+            "neon-cyan",
+            6.0,
+            0.6,
+        ),
+        (
+            NOTE_GLOW,
+            "Note body glow",
+            "Magenta glow around sequence note bodies.",
+            "neon-magenta",
+            8.0,
+            0.4,
+        ),
+        (
+            LOOP_TEXT_GLOW,
+            "Text glow",
+            "Glow for Flowchart node and edge labels and sequence loop labels.",
+            "neon-cyan",
+            5.0,
+            0.5,
+        ),
+        (
+            NOTE_TEXT_GLOW,
+            "Note text glow",
+            "Magenta glow for sequence note labels.",
+            "neon-magenta",
+            4.0,
+            0.4,
+        ),
     ] {
         effect_token(
             &mut design,
             id,
             label,
+            description,
             vec![shadow(color, 0.0, sigma, opacity)],
         );
     }
@@ -83,6 +162,7 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         &mut design,
         SHAPE_GLOW,
         "Body glow",
+        "Layered cyan glow for Flowchart nodes and sequence actors and actor labels.",
         vec![
             shadow("neon-cyan", 0.0, 8.0, 0.5),
             shadow("neon-cyan", 0.0, 16.0, 0.3),
@@ -277,6 +357,7 @@ fn append_xy_text(design: &mut ThemeDesignV1) {
             design,
             &effect_id,
             &format!("Chart {} glow", target.id()),
+            "Glow for this XY chart text role.",
             vec![shadow("neon-cyan", 0.0, sigma, opacity)],
         );
         let mut patch = style(Some("neon-cyan"), None);
@@ -303,6 +384,8 @@ fn append_xy_series(design: &mut ThemeDesignV1) {
             design,
             &color_id,
             &format!("Chart series {}", offset + 1),
+            "Series palette",
+            "Dedicated XY chart bar and line color, including its matching glow.",
             color,
         );
         for (kind, width, sigma, opacity) in [
@@ -314,6 +397,7 @@ fn append_xy_series(design: &mut ThemeDesignV1) {
                 design,
                 &effect_id,
                 &format!("Chart {} {} glow", kind.id(), offset + 1),
+                "Glow for this repeating XY chart series and variant.",
                 vec![shadow(&color_id, 0.0, sigma, opacity)],
             );
             let mut patch = style(

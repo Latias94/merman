@@ -9,13 +9,34 @@ use crate::diagram_theme::ThemeTarget;
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
-    color_token(&mut design, "grid-color", "Paper grid", "#2c2416");
-    length_token(&mut design, "border-width", "Border width", 2.5);
-    number_token(&mut design, "label-weight", "Label weight", 700.0);
+    color_token(
+        &mut design,
+        "grid-color",
+        "Paper grid",
+        "Effects",
+        "Color of the faint horizontal and vertical grid on the exported canvas.",
+        "#2c2416",
+    );
+    length_token(
+        &mut design,
+        "border-width",
+        "Border width",
+        "Geometry",
+        "Outline thickness for selected diagram bodies, connectors, and chart series.",
+        2.5,
+    );
+    number_token(
+        &mut design,
+        "label-weight",
+        "Label weight",
+        "Font weight for selected node and actor labels and XY chart titles.",
+        700.0,
+    );
     number_token(
         &mut design,
         "secondary-label-weight",
         "Secondary label weight",
+        "Font weight for selected connector and note labels.",
         600.0,
     );
     design
