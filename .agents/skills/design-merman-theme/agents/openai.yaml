@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Merman Themes"
+  short_description: "Create themes through intent and rendered previews"
+  default_prompt: "Use $design-merman-theme to create or refine a portable Merman theme, render representative previews, and deliver the editable JSON with verified limitations."

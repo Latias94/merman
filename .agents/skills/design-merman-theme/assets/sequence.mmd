@@ -1,0 +1,11 @@
+sequenceDiagram
+    actor Author
+    participant Preview
+    participant Renderer
+    Author->>Preview: Load the saved theme
+    Preview->>Renderer: Render the diagram
+    activate Renderer
+    Renderer-->>Preview: SVG and execution evidence
+    deactivate Renderer
+    Note over Author,Preview: Review labels, surfaces, and effects together
+    Preview-->>Author: Show the result

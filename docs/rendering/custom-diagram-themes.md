@@ -21,6 +21,28 @@ unsupported and are reported as such. Choose the corresponding Mermaid family co
 when configuring those source-owned values. Background and text rules have separate owners;
 a background-only compiled rule does not infer or recolor labels on another surface.
 
+## Design a theme with an agent
+
+Use the repository's [design-merman-theme skill](../../.agents/skills/design-merman-theme/SKILL.md)
+to create or refine a theme from a visual brief. For example:
+
+> Use $design-merman-theme to create a warm paper-and-ink theme with restrained orange accents
+> and small hard shadows. Preview Flowchart and Sequence, then deliver editable JSON.
+
+The skill starts from an exported preset or a small design, maintains explicit shared
+relationships, and renders representative diagrams through the existing Rust engine. Its bundled
+Node command exposes preset export, materialization, support queries, and SVG with metadata from
+the same execution. A matching source artifact is required while this contract is unreleased;
+see the skill's [runtime setup](../../.agents/skills/design-merman-theme/references/runtime.md).
+
+The deliverable is an ordinary version-1 recipe, preview SVGs with their sources and options, and
+a short design note listing tested families, output target, and limitations. The recipe remains
+usable without the skill. Runtime validation and support diagnostics do not replace visual review.
+
+Import the resulting recipe into Playground to inspect and apply it, or pass it to CLI
+`--theme-file`. The current visual workbench remains available; using the skill does not require
+changing its forms or the underlying theme contract.
+
 ## Edit and share in the Playground
 
 Open **Theme** to keep the theme workbench beside the diagram. On narrow screens, the workbench
