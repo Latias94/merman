@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 bounded-output experiment](bounded_active_rejected_macos_2026-10-19.md) rejects
+the three-attribute active-state/cold-error candidate under its preregistered diagnostic screen.
+Two fixed public AB/BA pairs observe Packet −3.15%/−0.326 us and Kanban −4.98%/−2.824 us;
+neither clears both primary thresholds. No formal confirmation or integration followed. Machine
+code does remove the hot call, which is insufficient for admission. Next capture and reconcile
+all 76 tag/current public SVG outputs: nineteen exact and fifty-seven changed rows remain in
+scope, and the existing 418 new-preset cells do not establish legacy release equivalence.
+
 The [October 19 Sequence checkpoint](sequence_css_owner_macos_2026-10-19.md) removes duplicate
 default and typed CSS scalar owners by borrowing the existing immutable prepared artifact.
 All 488 successful controls retain exact SVG/reports/ordered measurer traces, and 26 inherited
