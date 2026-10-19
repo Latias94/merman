@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 C4 color checkpoint](c4_consumer_colors_macos_2026-10-19.md) removes color preparation
+for unused element types while retaining all stylesheet fonts and per-type reuse. All 206 public
+controls preserve exact SVG/reports/ordered measurement traces; 200 jointly stable rows never
+regress and six variable Flowchart rows remain inconclusive for memory. All 418 catalog cells
+preserve output and metadata; eleven C4 cells each save 144 allocations and 2,775 allocated bytes.
+The temporary-map candidate was rejected; the retained design reuses existing style entries.
+This is allocation/work evidence, with formal latency convergence still open.
+
 The [October 19 Packet static-style checkpoint](packet_static_style_macos_2026-10-19.md) removes
 ten immutable fallback String allocations from default Packet rendering. All 197 public controls
 preserve SVG/reports/ordered measurement traces; 190 jointly stable rows never regress and seven

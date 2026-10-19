@@ -39,9 +39,14 @@ pub(crate) struct C4TypographyThemePlan {
 pub(crate) struct C4ElementStyle {
     pub(crate) font: crate::text::TextStyle,
     pub(crate) css_font_family: String,
-    pub(crate) background: String,
-    pub(crate) border: String,
-    pub(crate) text: String,
+    source_colors: Option<C4ElementColors>,
+}
+
+#[derive(Debug)]
+pub(super) struct C4ElementColors {
+    pub(super) background: String,
+    pub(super) border: String,
+    pub(super) text: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -119,19 +124,12 @@ impl C4TypographyThemePlan {
                         .as_deref()
                         .unwrap_or(super::C4_DEFAULT_FONT_FAMILY),
                 );
-                let (background, border) = if name.starts_with("external_") {
-                    ("#999999", "#8A8A8A")
-                } else {
-                    ("#08427B", "#073B6F")
-                };
                 (
                     name.to_owned(),
                     C4ElementStyle {
                         font,
                         css_font_family,
-                        background: view.color(&format!("{name}_bg_color"), background),
-                        border: view.color(&format!("{name}_border_color"), border),
-                        text: view.color(&format!("{name}_font_color"), "#FFFFFF"),
+                        source_colors: None,
                     },
                 )
             })
@@ -185,6 +183,26 @@ impl C4TypographyThemePlan {
     }
     pub(crate) fn element_style(&self, name: &str) -> Option<&C4ElementStyle> {
         self.element_styles.get(name)
+    }
+
+    pub(super) fn prepare_element_colors(
+        &mut self,
+        name: &str,
+        config: &super::C4ConfigView<'_>,
+    ) -> Option<&C4ElementColors> {
+        let style = self.element_styles.get_mut(name)?;
+        Some(style.source_colors.get_or_insert_with(|| {
+            let (background, border) = if name.starts_with("external_") {
+                ("#999999", "#8A8A8A")
+            } else {
+                ("#08427B", "#073B6F")
+            };
+            C4ElementColors {
+                background: config.color(&format!("{name}_bg_color"), background),
+                border: config.color(&format!("{name}_border_color"), border),
+                text: config.color(&format!("{name}_font_color"), "#FFFFFF"),
+            }
+        }))
     }
     pub(crate) fn boundary_font(&self) -> &crate::text::TextStyle {
         &self.boundary_font
@@ -410,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_element_fonts_keep_actual_types_and_independent_owners() {
+    fn prepared_element_styles_keep_actual_types_and_independent_owners() {
         let model = serde_json::from_value(serde_json::json!({
             "shapes": [
                 {"alias": "custom", "typeC4Shape": "custom_type"},
@@ -421,17 +439,17 @@ mod tests {
         let config = MermaidConfig::from_value(serde_json::json!({"c4": {
             "custom_typeFontFamily": "  Custom Sans ;  ", "custom_typeFontSize": "19",
             "custom_typeFontWeight": 600, "custom_type_bg_color": "var(--card)",
+            "custom_type_border_color": "", "custom_type_font_color": 42,
             "boundaryFontFamily": "", "boundaryFontSize": 21,
             "messageFontFamily": "Message Sans", "messageFontSize": 17
         }}));
-        let plan = C4TypographyThemePlan::resolve(None, &config, None, &model);
+        let mut plan = C4TypographyThemePlan::resolve(None, &config, None, &model);
         let actual = plan
             .element_style("custom_type")
             .expect("actual type bound");
         assert_eq!(actual.font.font_family.as_deref(), Some("Custom Sans"));
         assert_eq!(actual.font.font_size, 19.0);
         assert_eq!(actual.font.font_weight.as_deref(), Some("600"));
-        assert_eq!(actual.background, "var(--card)");
         assert!(
             plan.element_style("").is_some(),
             "default model type is bound"
@@ -439,9 +457,18 @@ mod tests {
         assert_eq!(plan.boundary_font().font_family.as_deref(), Some(""));
         assert_eq!(plan.boundary_font().font_size, 21.0);
         assert_eq!(plan.message_font().font_size, 17.0);
-        assert_eq!(
-            plan.element_style("external_person").unwrap().background,
-            "#999999"
-        );
+        let view = super::super::C4ConfigView::new(config.as_value());
+        let colors = plan
+            .prepare_element_colors("custom_type", &view)
+            .expect("actual type colors");
+        assert_eq!(colors.background, "var(--card)");
+        assert_eq!(colors.border, "");
+        assert_eq!(colors.text, "#FFFFFF");
+        let colors = plan
+            .prepare_element_colors("external_person", &view)
+            .expect("external type colors");
+        assert_eq!(colors.background, "#999999");
+        assert_eq!(colors.border, "#8A8A8A");
+        assert_eq!(colors.text, "#FFFFFF");
     }
 }
