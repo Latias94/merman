@@ -41,9 +41,11 @@ candidate. Release convergence and the remaining source-attribution gaps stay op
 The [October 19 release SVG audit](theme_release_svg_audit_macos_2026-10-19.md) captures and
 independently replays all 76 public rendering fixtures across 35 logical families. All 152 raw
 files match frozen side-specific SHA/length/element identities; nineteen remain exact and
-fifty-seven changed. Every changed fixture now has a scoped difference inventory. Five Flowchart
-edge/label geometry cases plus Mindmap and Swimlane retain source-attribution gaps; ID/order,
-native CSS, XML spelling and configured-owner differences are kept explicit. No changed row is
+fifty-seven changed. Every changed fixture now has a scoped difference inventory. A later source
+follow-up attributes five Flowchart edge/label cases to the Mermaid 12.2 label-aware terminal gate
+without a runtime rejection trace. Swimlane's 66 geometry fields reconcile with the newly applied
+minimum node width and existing LR formulas; eleven Mindmap solver centers remain independently
+unsolved. ID/order, native CSS, XML spelling and configured-owner differences stay explicit. No changed row is
 promoted to same-SVG or latency convergence. Next remove already empty Sequence CSS groups and
 borrow shared/Treemap CSS success facts from their existing owners, as independent allocation
 experiments. Full new typed presets still require a separate historical-function contract.

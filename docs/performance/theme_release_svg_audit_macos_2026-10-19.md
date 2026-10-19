@@ -34,6 +34,8 @@ The ignored evidence directory is `target/bench/experiments/theme-release-raw-sv
 `experiment.yaml`, `registered-corpus.json`, `execution.json`, `replay-execution.json`, `pairs.json`,
 the `base/` and `head/` raw SVG directories, capture logs and four scoped analysis JSON/Markdown
 pairs. Independent review rechecks all 152 files and the two benchmark-only tree differences.
+The later `flowchart-source-followup` and `mindmap-swimlane-source-followup` JSON/Markdown pairs
+add source and arithmetic checks over these same files, without new rendering or timing.
 
 ## Every changed rendering fixture
 
@@ -50,21 +52,21 @@ to explain output order separately from geometry, with original order/IDs/styles
 | `flowchart_medium` | 77,505 → 82,430 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_large` | 240,109 → 259,951 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_ports_heavy` | 71,312 → 74,529 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
-| `flowchart_weave` | 66,422 → 69,215 | Owned IDs, references, semantic metadata; recorded node/cluster order. Real edge/path/label geometry remains to be attributed. |
+| `flowchart_weave` | 66,422 → 69,215 | Owned IDs/metadata/order; three route and label changes track Mermaid 12.2 label-aware terminal straightening. |
 | `flowchart_backedges_subgraphs` | 60,359 → 62,536 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_sparse_components` | 49,623 → 51,308 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
-| `flowchart_lanes_crossfeed` | 58,651 → 61,313 | Owned IDs, references, semantic metadata; recorded node/cluster order. Real edge/path/label geometry remains to be attributed. |
+| `flowchart_lanes_crossfeed` | 58,651 → 61,313 | Owned IDs/metadata/order; four route and six label changes track terminal straightening and opposite-pair label separation. |
 | `flowchart_grid_feedback` | 68,768 → 71,477 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
-| `flowchart_fanout_returns` | 64,926 → 67,433 | Owned IDs, references, semantic metadata; recorded node/cluster order. Real edge/path/label geometry remains to be attributed. |
+| `flowchart_fanout_returns` | 64,926 → 67,433 | Owned IDs/metadata/order; two route and label changes track Mermaid 12.2 label-aware terminal straightening. |
 | `flowchart_label_collision` | 56,964 → 58,599 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_nested_clusters` | 59,407 → 61,626 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_elk_nested_directions` | 41,902 → 43,158 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_asymmetric_components` | 52,029 → 53,746 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_parallel_merges` | 56,460 → 58,797 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
-| `flowchart_long_edge_labels` | 63,623 → 65,935 | Owned IDs, references, semantic metadata; recorded node/cluster order. Real edge/path/label geometry remains to be attributed. |
+| `flowchart_long_edge_labels` | 63,623 → 65,935 | Owned IDs/metadata/order; four route and label changes track Mermaid 12.2 label-aware terminal straightening. |
 | `flowchart_svg_label_reuse` | 187,748 → 191,689 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_selfloop_bidi` | 59,681 → 61,472 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
-| `flowchart_component_packing` | 55,715 → 58,164 | Owned IDs, references, semantic metadata; recorded node/cluster order. Real edge/path/label geometry remains to be attributed. |
+| `flowchart_component_packing` | 55,715 → 58,164 | Owned IDs/metadata/order; two route and label changes track Mermaid 12.2 label-aware terminal straightening. |
 | `flowchart_direction_conflict` | 58,007 → 59,892 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `flowchart_parallel_label_stack` | 53,071 → 54,504 | Owned IDs, references, semantic metadata; recorded node/cluster order. Matched node/cluster/edge/label geometry agrees. |
 | `state_tiny` | 17,329 → 17,330 | Start-circle style gains a leading semicolon; no geometry change. |
@@ -78,14 +80,14 @@ to explain output order separately from geometry, with original order/IDs/styles
 | `sequence_block_unique_high` | 131,594 → 132,309 | Only stylesheet changes: scoped filter references, native marker selectors and final paint terminals; other raw bytes agree. |
 | `er_medium` | 63,431 → 63,431 | Marker-circle attribute order changes; values and DOM otherwise agree. |
 | `info_medium` | 2,518 → 2,518 | Visible pinned Mermaid version changes from 12.1.0 to 12.2.0. |
-| `mindmap_medium` | 37,560 → 38,537 | HTML color rules and root circle enclosure formula change; downstream geometry attribution remains partial. |
+| `mindmap_medium` | 37,560 → 38,537 | HTML color rules and root circle enclosure change; edge/viewport formulas agree, eleven CoSE centers remain independently unsolved. |
 | `gitgraph_medium` | 10,682 → 10,695 | Concrete prepared font replaces a CSS variable. |
 | `block_medium` | 8,689 → 8,693 | Root width/viewBox and three rectangle bounds change. |
 | `radar_medium` | 6,889 → 6,899 | Title CSS gains SVG fill beside HTML color. |
 | `treemap_medium` | 9,584 → 9,603 | Leaf CSSOM spelling and equivalent color serialization change. |
 | `xychart_medium` | 12,841 → 13,056 | Five Neo rules gain configured drop shadows; no font or geometry difference in this fixture. |
 | `venn_medium` | 2,229 → 2,221 | Four font stacks change from Trebuchet to Recursive Variable. |
-| `swimlane_medium` | 40,716 → 41,215 | Owned IDs/metadata, lane selector and real label/layout dimensions change; source decomposition remains partial. |
+| `swimlane_medium` | 40,716 → 41,215 | Owned IDs/metadata and lane selector change; all 66 geometry fields reconcile with minimum node width and existing LR formulas. |
 | `eventmodeling_medium` | 4,542 → 4,596 | Configured font size and inherited root paint change. |
 | `treeview_medium` | 2,158 → 2,266 | Explicit font inheritance is added. |
 | `ishikawa_medium` | 9,807 → 9,805 | Font stack/semicolon spelling and unit-bearing size change. |
@@ -111,7 +113,13 @@ remain available for formal release timing; this audit adds no timing observatio
   rows. Their matched subtrees retain text, geometry and styles; generated IDs/data attributes
   and output order differ. All stylesheet differences are exact owned-filter references
   (`201212e6a`, `5fe6ce92d`). Five fixtures retain real edge/label geometry changes: Weave, Lanes
-  Crossfeed, Fanout Returns, Long Edge Labels and Component Packing. Those source causes remain open.
+  Crossfeed, Fanout Returns, Long Edge Labels and Component Packing. Across fifteen changed routes
+  and seventeen labels, the source mechanism is Mermaid 12.2's label-aware terminal-straightening
+  gate (`e82da0fa8`): `after <= before` additionally requires `covered_after <= covered_before`.
+  Tag/current helper blobs exactly match the port's parent/result. Route endpoints agree, while
+  current retains short terminal jogs and label anchors; two additional label-only changes follow
+  existing opposite-pair separation. This is source-backed mechanism attribution, not a captured
+  per-candidate overlap/rejection trace. Rounded paths and lengths were not independently rebuilt.
 - Sequence: each of seven complete raw edits independently reconstructs current output; all
   non-style bytes agree. Native-compatible exact marker selectors (`2069e5d85`), terminal paint
   ownership (`e6d7de3d4`) and scoped filters (`aeb9fe2f3`) explain the stylesheet changes. Not every
@@ -127,13 +135,26 @@ remain available for formal release timing; this audit adds no timing observatio
   precedence and Ishikawa's unit-bearing size are observable behavior. Treemap's CSSOM spelling
   follows an actual fitting mutation; equal before/after font size alone would not prove that
   the mutation can be skipped.
-- Mindmap: root radius now encloses the label diagonal (`e82da0fa8`). Remaining downstream
-  coordinates are recorded, but their exclusive attribution is unproven. Swimlane has a source-
-  backed 120-pixel minimum label width plus Neo padding; other geometry still needs decomposition.
+- Mindmap: root radius now encloses the label diagonal (`e82da0fa8`), changing the actual circle
+  attribute from `25.1171875` to `29.301019608045483`. All label boxes and ten other node dimensions
+  agree. The complete CoSE source tree and relevant locked numeric dependencies agree; the changed
+  root dimension is localized at the solver input boundary. Twenty edge fields and two viewport
+  fields reconcile from captured centers. Eleven nonlinear solver centers were not independently
+  recomputed, so exclusive counterfactual attribution remains unproven.
+- Swimlane: the same alignment commit first applies the already configured 120-pixel minimum to
+  ordinary labels. Six content nodes become `120 + 2 * 16 = 152` pixels wide. Two synthetic edge
+  labels keep their dimensions; default typed padding is zero and supplies no delta. The unchanged
+  LR transform uses all eight vertices' total width/height, changing its ratio from approximately
+  2.7293 to 3.4741. All 66 geometry fields reconcile with source formulas over captured values,
+  including lane bounds, route faces, labels and dash lengths. No transient-pass ablation was run.
 
-The remaining seven geometry cases stay unresolved. Equivalent XML/CSS spelling, new native
-selectors, ID collision prevention, upstream layout corrections and configured ownership must
-not be grouped into one supposed theme regression or erased to produce a same-output result.
+The follow-ups retain explicit boundaries: five Flowchart rows have source mechanism attribution
+without a runtime rejection trace; Swimlane's final geometry is formula-accounted; eleven Mindmap
+solver centers lack independent reproduction. The available Mermaid reference lacks the port's
+pinned upstream object, so the Flowchart follow-up verifies the local port and its existing tests
+without claiming a fresh upstream-source verification. Equivalent XML/CSS spelling, new native
+selectors, ID collision prevention, upstream layout corrections and configured ownership must not
+be grouped into one supposed theme regression or erased to produce a same-output result.
 
 ## Next optimization experiments
 
