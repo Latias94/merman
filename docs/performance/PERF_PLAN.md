@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 Packet static-style checkpoint](packet_static_style_macos_2026-10-19.md) removes
+ten immutable fallback String allocations from default Packet rendering. All 197 public controls
+preserve SVG/reports/ordered measurement traces; 190 jointly stable rows never regress and seven
+variable Flowchart rows remain inconclusive. All 418 catalog cells preserve exact output and
+metadata; 11 Packet cells each save ten allocations and 45 bytes. Renderer tests and Clippy pass.
+The invalid shared-target catalog baseline is retained but excluded; the accepted catalog comparison
+uses an isolated clean baseline. This is allocation evidence only, not latency convergence.
+
 The [October 19 PR checkpoint](theme_pr_checkpoint_macos_2026-10-19.md) records integration with
 `origin/main` at `252752f70`, the ER prepared-geometry/consumer-style merge and fresh checks on
 product revision `08688eaf5`. Release native tests pass 8,275 cases; Clippy, private theme acceptance,

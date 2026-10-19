@@ -253,7 +253,7 @@ impl PacketTypographyThemePlan {
                     &title_fill,
                 )
             {
-                *configured = fill.css().to_owned();
+                *configured = fill.css().to_owned().into();
             }
         }
 
