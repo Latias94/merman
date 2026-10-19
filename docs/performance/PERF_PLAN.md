@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 empty Sequence CSS checkpoint](sequence_empty_css_groups_macos_2026-10-19.md)
+skips empty declarations before constructing groups that were always discarded. All 488 successful
+controls retain exact SVG/reports/ordered measurer traces, and 26 inherited errors match. Among
+347 jointly stable rows, 34 no-theme Sequence rows each save ten allocations and 788 bytes, with
+unchanged peak and retained growth; 141 variable rows remain inconclusive. All 418 catalog cells
+are stable and exact; only no-theme Sequence improves and the other 417 cells are unchanged.
+Renderer tests, Clippy, full three-mode DOM and optimized full WASM build pass. This removes
+theme-refactor work without a latency claim. Next borrow the shared Info/Error/Quadrant/XY CSS
+success receipt from its existing prepared owner, then evaluate the independent Treemap receipt
+candidate. Release convergence and the remaining source-attribution gaps stay open.
+
 The [October 19 release SVG audit](theme_release_svg_audit_macos_2026-10-19.md) captures and
 independently replays all 76 public rendering fixtures across 35 logical families. All 152 raw
 files match frozen side-specific SHA/length/element identities; nineteen remain exact and

@@ -79,6 +79,9 @@ impl SequencePreparedCss {
                     .role(surface.role())
                     .css_declarations_for(surface)
                     .unwrap_or_default();
+                if declarations.is_empty() {
+                    continue;
+                }
                 if let Some(group) = groups
                     .iter_mut()
                     .find(|group| group.declarations == declarations)
@@ -91,11 +94,7 @@ impl SequencePreparedCss {
                     });
                 }
             }
-            text_groups.extend(
-                groups
-                    .into_iter()
-                    .filter(|group| !group.declarations.is_empty()),
-            );
+            text_groups.extend(groups);
         }
         Self {
             typed_font,
