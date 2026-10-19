@@ -83,7 +83,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: cargo-semver-checks@0.51.0
       - name: Verify independent crate release metadata
