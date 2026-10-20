@@ -17,6 +17,24 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 literal XHTML paragraph checkpoint](xhtml_plain_paragraph_macos_2026-10-20.md)
+recognizes a narrow, proven plain XML paragraph before constructing its wrapper and DOM. The
+original parser and all callers remain unchanged for every unproven input. The no-theme Kanban
+primary saves 84 allocations and 13,849 allocated bytes, with the same peak and retained growth.
+All 645 saved SVG/report/ordered-measurer controls and 26 errors match. Of 505 jointly stable
+controls, 33 improve and 472 retain all four metrics; 140 variable controls stay inconclusive.
+All 418 catalog cells are stable and exact within the warmup-metadata and five-saved-sample
+contracts: 66 improve across Flowchart, Class, ER, Kanban, Swimlane and Agentflow in all eleven
+modes, with 352 unchanged and no increases. Retained growth stays unchanged everywhere. All
+131 focused and 5,613 full release tests, strict Clippy, full DOM, optimized full WASM and
+format/diff checks pass. The baseline directory collision is preserved with its bounded
+completion amendment, without repeating successful samples. This is allocation/work removal,
+not a latency or release-convergence claim. Next evaluate the bounded ZenUML CSS assembly and
+Packet sink-dispatch hypotheses separately, and prepare immutable compiled-theme initialization
+owners while preserving dynamic journals, host overrides and deferred parse errors. The latest
+full19 scoreboard remains unchanged until a separately frozen confirmation; the all-family goal
+remains active.
+
 The [October 20 post-ownership full confirmation](theme_v090_post_ownership_confirmation_macos_2026-10-20.md)
 compares clean `9f8143a06` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
 and 304 fixed balanced A/B observations establish 12 within the joint budget, three regressions

@@ -585,6 +585,19 @@ pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
 /// case without guessing from Markdown punctuation. Any nested element, additional root node, or
 /// malformed fragment remains on the structured HTML path.
 pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
+    if let Some(text) = fragment
+        .strip_prefix("<p>")
+        .and_then(|text| text.strip_suffix("</p>"))
+    {
+        // Printable XML text needs no entity decoding or newline normalization.
+        if text
+            .bytes()
+            .all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'<' | b'&' | b']'))
+        {
+            return Some(text.to_owned());
+        }
+    }
+
     let wrapped = format!("<merman-fragment>{fragment}</merman-fragment>");
     let document = crate::xml_dom::Document::parse(&wrapped).ok()?;
     let root = document.root_element();
@@ -1053,6 +1066,26 @@ mod tests {
 
     #[test]
     fn xhtml_plain_text_is_decided_from_the_rendered_structure() {
+        assert_eq!(
+            mermaid_xhtml_label_plain_text(r#"<p>literal > "double" 'single'</p>"#).as_deref(),
+            Some(r#"literal > "double" 'single'"#)
+        );
+        assert_eq!(
+            mermaid_xhtml_label_plain_text("<p></p>").as_deref(),
+            Some("")
+        );
+        assert_eq!(
+            mermaid_xhtml_label_plain_text("<p>first\r\nsecond\rthird</p>").as_deref(),
+            Some("first\nsecond\nthird")
+        );
+        assert_eq!(
+            mermaid_xhtml_label_plain_text("<p>first]]>second</p>"),
+            None
+        );
+        assert_eq!(
+            mermaid_xhtml_label_plain_text("<p>first<!-- middle -->second</p>"),
+            None
+        );
         assert_eq!(
             mermaid_xhtml_label_plain_text("<p>Generic&lt;T&gt; driver_license</p>").as_deref(),
             Some("Generic<T> driver_license")
