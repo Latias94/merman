@@ -298,61 +298,6 @@ fn rendered(
 ) -> Option<super::super::emission::FlowchartNodeShapeRenderOutcome> {
     Some(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint))
 }
-#[cfg(test)]
-mod small_state_shadow_tests {
-    use super::write_small_state_shadow_attr;
-
-    #[test]
-    fn small_state_shadow_uses_source_width_theme_and_look_conditions() {
-        for (width, look, enabled, expected) in [
-            (14.0, "neo", true, true),
-            (24.999, "classic", true, true),
-            (25.0, "neo", true, false),
-            (40.0, "neo", true, false),
-            (14.0, "neo", false, false),
-            (14.0, "handDrawn", true, false),
-        ] {
-            let mut out = String::new();
-            write_small_state_shadow_attr(
-                &mut out,
-                "diagram-drop-shadow-small",
-                width,
-                look,
-                enabled,
-                "",
-            );
-            assert_eq!(
-                out,
-                if expected {
-                    r#" style="filter:url(#diagram-drop-shadow-small)""#
-                } else {
-                    ""
-                },
-                "width={width}, look={look}, enabled={enabled}"
-            );
-        }
-        let mut out = String::new();
-        write_small_state_shadow_attr(&mut out, "drop-shadow-small", 14.0, "classic", true, "");
-        assert_eq!(out, r#" style="filter:url(#drop-shadow-small)""#);
-    }
-
-    #[test]
-    fn small_state_shadow_preserves_typed_theme_declarations() {
-        let mut out = String::new();
-        write_small_state_shadow_attr(
-            &mut out,
-            "allocated-shadow",
-            14.0,
-            "classic",
-            true,
-            "fill:#123456 !important;stroke:#654321 !important",
-        );
-        assert_eq!(
-            out,
-            r#" style="filter:url(#allocated-shadow);fill:#123456 !important;stroke:#654321 !important""#
-        );
-    }
-}
 
 fn fork_dimensions(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64) {
     let (w, h) = if common.layout_node.width >= common.layout_node.height {
@@ -448,5 +393,61 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
             );
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod small_state_shadow_tests {
+    use super::write_small_state_shadow_attr;
+
+    #[test]
+    fn small_state_shadow_uses_source_width_theme_and_look_conditions() {
+        for (width, look, enabled, expected) in [
+            (14.0, "neo", true, true),
+            (24.999, "classic", true, true),
+            (25.0, "neo", true, false),
+            (40.0, "neo", true, false),
+            (14.0, "neo", false, false),
+            (14.0, "handDrawn", true, false),
+        ] {
+            let mut out = String::new();
+            write_small_state_shadow_attr(
+                &mut out,
+                "diagram-drop-shadow-small",
+                width,
+                look,
+                enabled,
+                "",
+            );
+            assert_eq!(
+                out,
+                if expected {
+                    r#" style="filter:url(#diagram-drop-shadow-small)""#
+                } else {
+                    ""
+                },
+                "width={width}, look={look}, enabled={enabled}"
+            );
+        }
+        let mut out = String::new();
+        write_small_state_shadow_attr(&mut out, "drop-shadow-small", 14.0, "classic", true, "");
+        assert_eq!(out, r#" style="filter:url(#drop-shadow-small)""#);
+    }
+
+    #[test]
+    fn small_state_shadow_preserves_typed_theme_declarations() {
+        let mut out = String::new();
+        write_small_state_shadow_attr(
+            &mut out,
+            "allocated-shadow",
+            14.0,
+            "classic",
+            true,
+            "fill:#123456 !important;stroke:#654321 !important",
+        );
+        assert_eq!(
+            out,
+            r#" style="filter:url(#allocated-shadow);fill:#123456 !important;stroke:#654321 !important""#
+        );
     }
 }

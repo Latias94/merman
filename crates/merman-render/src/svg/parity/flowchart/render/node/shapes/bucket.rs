@@ -120,30 +120,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
     label.dy = body_center_y;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::bucket_points;
-
-    #[test]
-    fn hand_drawn_bucket_points_follow_both_rims_without_backtracking() {
-        let points = bucket_points(100.0, -30.0, 30.0, 72.0, 8.0);
-
-        assert_eq!(points.len(), 27);
-        assert_eq!(points[0], (-50.0, -30.0));
-        assert_eq!(points[1], (-36.0, 30.0));
-        assert_eq!(points[13], (36.0, 30.0));
-        assert_eq!(points[14], (50.0, -30.0));
-        assert_eq!(points[26], (-50.0, -30.0));
-
-        assert!(points[1..=13].windows(2).all(|pair| pair[0].0 <= pair[1].0));
-        assert!(
-            points[14..=26]
-                .windows(2)
-                .all(|pair| pair[0].0 >= pair[1].0)
-        );
-    }
-}
-
 fn prepare_bucket_geometry(
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeGeometry<'_>,
@@ -184,4 +160,28 @@ pub(super) fn advance_bucket_rough_geometry(
     let (_, _, _, _, hand_drawn_body) = prepare_bucket_geometry(ctx, common, label);
     let target = super::super::roughjs::RoughGeometryTarget::Query;
     let _ = super::super::helpers::prepare_node_path(common, &hand_drawn_body, target);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bucket_points;
+
+    #[test]
+    fn hand_drawn_bucket_points_follow_both_rims_without_backtracking() {
+        let points = bucket_points(100.0, -30.0, 30.0, 72.0, 8.0);
+
+        assert_eq!(points.len(), 27);
+        assert_eq!(points[0], (-50.0, -30.0));
+        assert_eq!(points[1], (-36.0, 30.0));
+        assert_eq!(points[13], (36.0, 30.0));
+        assert_eq!(points[14], (50.0, -30.0));
+        assert_eq!(points[26], (-50.0, -30.0));
+
+        assert!(points[1..=13].windows(2).all(|pair| pair[0].0 <= pair[1].0));
+        assert!(
+            points[14..=26]
+                .windows(2)
+                .all(|pair| pair[0].0 >= pair[1].0)
+        );
+    }
 }
