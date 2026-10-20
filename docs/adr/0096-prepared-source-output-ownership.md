@@ -1,4 +1,4 @@
-# ADR-0095: Prepared source and output ownership
+# ADR-0096: Prepared source and output ownership
 
 Accepted for the development branch on 2026-10-20. Hosts need to redraw unchanged Mermaid source
 when width or font metrics change. Keep one immutable `PreparedSource` with canonical semantics,

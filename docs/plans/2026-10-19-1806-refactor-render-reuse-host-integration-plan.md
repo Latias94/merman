@@ -510,7 +510,7 @@ No benchmark threshold is invented: demonstrate removal of the identified unnece
 ## Delivery evidence — 2026-10-20
 
 U1–U9 are implemented. The [consumer migration](../migrations/render-reuse-host-integration.md)
-and [ownership ADR](../adr/0095-prepared-source-output-ownership.md) describe the resulting APIs.
+and [ownership ADR](../adr/0096-prepared-source-output-ownership.md) describe the resulting APIs.
 New theme behavior remains excluded. Changes are uncommitted; release and publication are separate.
 
 | Requirements | Completed evidence |
