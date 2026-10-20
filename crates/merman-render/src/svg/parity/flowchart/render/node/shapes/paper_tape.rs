@@ -14,45 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 20.0 } else { p };
-    let w = (metrics.width + 2.0 * padding_x).max(0.0);
-    let h = (metrics.height + padding_y).max(0.0);
-    let wave_amplitude = h / 8.0;
-    let final_h = h + wave_amplitude * 2.0;
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((-w / 2.0, final_h / 2.0));
-    points.extend(generate_full_sine_wave_points(
-        -w / 2.0,
-        final_h / 2.0,
-        w / 2.0,
-        final_h / 2.0,
-        wave_amplitude,
-        1.0,
-    ));
-    points.push((w / 2.0, -final_h / 2.0));
-    points.extend(generate_full_sine_wave_points(
-        w / 2.0,
-        -final_h / 2.0,
-        -w / 2.0,
-        -final_h / 2.0,
-        wave_amplitude,
-        -1.0,
-    ));
-
-    let path_data = path_from_points(&points);
+    let (path_data,) = prepare_paper_tape_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -100,4 +62,61 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
             escape_attr(common.style),
         );
     }
+}
+
+fn prepare_paper_tape_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (String,) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 20.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + padding_y).max(0.0);
+    let wave_amplitude = h / 8.0;
+    let final_h = h + wave_amplitude * 2.0;
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push((-w / 2.0, final_h / 2.0));
+    points.extend(generate_full_sine_wave_points(
+        -w / 2.0,
+        final_h / 2.0,
+        w / 2.0,
+        final_h / 2.0,
+        wave_amplitude,
+        1.0,
+    ));
+    points.push((w / 2.0, -final_h / 2.0));
+    points.extend(generate_full_sine_wave_points(
+        w / 2.0,
+        -final_h / 2.0,
+        -w / 2.0,
+        -final_h / 2.0,
+        wave_amplitude,
+        -1.0,
+    ));
+
+    let path_data = path_from_points(&points);
+    (path_data,)
+}
+
+pub(super) fn advance_paper_tape_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (path_data,) = prepare_paper_tape_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

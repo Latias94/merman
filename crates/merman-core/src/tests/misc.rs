@@ -756,13 +756,7 @@ flowchart TD
 "#;
 
     let meta = engine.parse_metadata_sync(text).expect("parse succeeds");
-    assert_eq!(meta.config.get_str("fontFamily"), Some("diagram-font"));
-    assert_eq!(meta.config.as_value()["fontSize"], json!(99));
-    assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
-    assert_eq!(
-        meta.config.get_str("themeCSS"),
-        Some(".node rect { fill: red; }")
-    );
+    assert!(meta.config.is_empty_object());
     assert_eq!(
         meta.effective_config.get_str("fontFamily"),
         Some("site-font")
@@ -792,7 +786,7 @@ flowchart TD
 
     let meta = engine.parse_metadata_sync(text).expect("parse succeeds");
     assert_eq!(meta.config.get_str("theme"), Some("dark"));
-    assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
+    assert!(meta.config.get_str("securityLevel").is_none());
     assert_eq!(
         meta.config.get_str("fontFamily"),
         Some("x;a{b} :not(&){background:green !important} c{d}")
@@ -857,10 +851,7 @@ flowchart TD
     assert_eq!(retained["flowchart"]["htmlLabels"], false);
     assert_eq!(retained["sankey"]["nodeColors"], json!({ "valid": "#abc" }));
 
-    assert_eq!(
-        metadata.config.get_str("flowchart.securityLevel"),
-        Some("loose")
-    );
+    assert!(metadata.config.get_str("flowchart.securityLevel").is_none());
     assert!(
         metadata
             .effective_config

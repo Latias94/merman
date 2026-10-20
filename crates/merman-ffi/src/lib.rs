@@ -5629,6 +5629,42 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn native_svg_operation_rejects_the_geometry_only_resource_override() {
+        let api = api_table();
+        let mut configured = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut configured) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut configured) };
+        let request = native_request_with_options(
+            MERMAN_NATIVE_OPERATION_SVG,
+            b"flowchart LR\nA --> B",
+            br#"{"resources":{"limits":{"max_geometry_json_bytes":1024}}}"#,
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        let error = result_json(&result);
+        assert_eq!(error["status_name"], "invalid-argument");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("max_geometry_json_bytes")
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
     #[cfg(all(
         feature = "svg",
         not(feature = "layout-cytoscape"),

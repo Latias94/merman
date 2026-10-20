@@ -80,7 +80,7 @@ fn render_with_environment(
         .expect("parse real family fixture")
         .expect("detect diagram");
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::headless_svg_defaults(),
         environment.begin_session().unwrap(),
     )

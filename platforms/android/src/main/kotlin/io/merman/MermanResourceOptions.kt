@@ -40,6 +40,7 @@ public class MermanResourceLimitId private constructor(
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
         public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_postprocess", false, 1)
         public val SVG_BACKEND_TREE_DEPTH: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_depth", "svg_postprocess", false, 1)
+        public val MAX_GEOMETRY_JSON_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_geometry_json_bytes", "geometry_output", true, 1)
         public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
         public val MAX_ASCII_GRID_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grid_cells", "ascii_layout", true, 1)
         public val MAX_ASCII_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_layout_work_units", "ascii_layout_work", true, 1)
@@ -74,6 +75,7 @@ public class MermanResourceLimitId private constructor(
             MAX_SVG_ELEMENTS,
             SVG_BACKEND_TREE_NODES,
             SVG_BACKEND_TREE_DEPTH,
+            MAX_GEOMETRY_JSON_BYTES,
             MAX_DOCUMENT_DIAGRAMS,
             MAX_ASCII_GRID_CELLS,
             MAX_ASCII_LAYOUT_WORK_UNITS,
@@ -116,6 +118,7 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_PREPARED_TEXT_RETAINED_BYTES("max_prepared_text_retained_bytes", 1),
     MAX_SVG_BYTES("max_svg_bytes", 1),
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
+    MAX_GEOMETRY_JSON_BYTES("max_geometry_json_bytes", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),
     MAX_ASCII_GRID_CELLS("max_ascii_grid_cells", 1),
     MAX_ASCII_LAYOUT_WORK_UNITS("max_ascii_layout_work_units", 1),

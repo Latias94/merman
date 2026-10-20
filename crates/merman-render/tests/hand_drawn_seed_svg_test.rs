@@ -17,7 +17,7 @@ fn render_svg(diagram_id: &str, source: &str) -> String {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
 
     artifact
         .render_svg(

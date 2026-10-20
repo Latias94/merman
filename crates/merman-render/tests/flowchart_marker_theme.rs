@@ -62,7 +62,7 @@ fn render(
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(
             &SvgRenderOptions {

@@ -51,13 +51,13 @@ impl fmt::Display for FlowchartDocumentId<'_> {
 }
 
 #[derive(Debug)]
-pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIds<'a> {
+pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIds {
     scope: String,
     edge_ids: FxHashSet<crate::flowchart::FlowchartEdgeKey>,
-    node_ids: FxHashMap<&'a str, FlowchartNodeDocumentId>,
-    cluster_ids: FxHashMap<&'a str, usize>,
-    lane_ids: FxHashMap<&'a str, usize>,
-    synthetic_label_ids: FxHashMap<&'a str, usize>,
+    node_ids: FxHashMap<String, FlowchartNodeDocumentId>,
+    cluster_ids: FxHashMap<String, usize>,
+    lane_ids: FxHashMap<String, usize>,
+    synthetic_label_ids: FxHashMap<String, usize>,
 }
 
 pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIdRequest<'plan, 'data> {
@@ -72,9 +72,9 @@ pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIdRequest<'plan, '
         Option<&'data [crate::model::SwimlaneLaneLayout]>,
 }
 
-impl<'a> FlowchartDocumentIds<'a> {
+impl FlowchartDocumentIds {
     pub(in crate::svg::parity::flowchart) fn prepare(
-        request: FlowchartDocumentIdRequest<'_, 'a>,
+        request: FlowchartDocumentIdRequest<'_, '_>,
     ) -> Self {
         let mut scope =
             String::with_capacity(request.diagram_id.len() + 1 + DOCUMENT_NAMESPACE.len());
@@ -87,19 +87,22 @@ impl<'a> FlowchartDocumentIds<'a> {
         let mut node_ids = FxHashMap::default();
         node_ids.reserve(request.node_dom_index.len() + request.subgraph_index_by_id.len());
         for (&raw_id, &dom_index) in request.node_dom_index {
-            node_ids.insert(raw_id, FlowchartNodeDocumentId::Node(dom_index));
+            node_ids.insert(raw_id.to_owned(), FlowchartNodeDocumentId::Node(dom_index));
         }
         for (&raw_id, &subgraph_index) in request.subgraph_index_by_id {
             // Projected edge endpoints can also register a collapsed subgraph in the node
             // ordinal map. Its owner remains the subgraph, whose ordinal namespace is separate
             // from parser-assigned node ordinals (notably Agentflow connectors).
-            node_ids.insert(raw_id, FlowchartNodeDocumentId::Subgraph(subgraph_index));
+            node_ids.insert(
+                raw_id.to_owned(),
+                FlowchartNodeDocumentId::Subgraph(subgraph_index),
+            );
         }
 
         let cluster_ids = request
             .subgraph_index_by_id
             .iter()
-            .map(|(&raw_id, &subgraph_index)| (raw_id, subgraph_index))
+            .map(|(&raw_id, &subgraph_index)| (raw_id.to_owned(), subgraph_index))
             .collect();
 
         let lane_ids = request
@@ -107,7 +110,7 @@ impl<'a> FlowchartDocumentIds<'a> {
             .into_iter()
             .flatten()
             .enumerate()
-            .map(|(lane_index, lane)| (lane.id.as_str(), lane_index))
+            .map(|(lane_index, lane)| (lane.id.clone(), lane_index))
             .collect();
 
         let mut synthetic_label_ids = FxHashMap::default();
@@ -116,7 +119,7 @@ impl<'a> FlowchartDocumentIds<'a> {
         for (layout_index, node) in request.layout_nodes.iter().enumerate() {
             if !node_ids.contains_key(node.id.as_str()) {
                 synthetic_label_ids
-                    .entry(node.id.as_str())
+                    .entry(node.id.clone())
                     .or_insert(layout_index);
             }
         }
@@ -124,7 +127,7 @@ impl<'a> FlowchartDocumentIds<'a> {
         for (swimlane_index, node) in request.swimlane_nodes.into_iter().flatten().enumerate() {
             if node.is_edge_label && !node_ids.contains_key(node.id.as_str()) {
                 synthetic_label_ids
-                    .entry(node.id.as_str())
+                    .entry(node.id.clone())
                     .or_insert(swimlane_offset + swimlane_index);
             }
         }

@@ -186,7 +186,7 @@ fn render_flowchart_with_host(
         TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
     );
     let session = environment.begin_session().expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare flowchart artifact");
     let layout_requests = host.snapshot();
     assert!(
@@ -316,7 +316,7 @@ end
                 ),
             );
             let session = environment.begin_session().expect("render session");
-            let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            let _artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .expect("prepare empty subgraph");
             let requests = host.snapshot();
             let final_title_request = requests
@@ -530,7 +530,7 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
                 .begin_session_with_theme(&theme)
                 .unwrap();
             let artifact =
-                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
             let layout_count = host.snapshot().len();
             artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -586,7 +586,7 @@ fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
                 .expect("parse minimum width fixture")
                 .expect("detect flowchart");
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
             let nodes = projection["layout"]["FlowchartV2"]["nodes"]
                 .as_array()
@@ -678,7 +678,7 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
                     ),
                 );
                 let artifact = family::prepare(
-                    parsed,
+                    &parsed,
                     &LayoutOptions::default(),
                     environment.begin_session().unwrap(),
                 )

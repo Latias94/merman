@@ -42,7 +42,7 @@ fn render_source(input: &str, config: MermaidConfig) -> (FlowchartLayout, String
         .expect("parse circle diagram")
         .expect("detect flowchart");
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::headless_svg_defaults(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )
@@ -375,7 +375,7 @@ fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_re
                 .unwrap()
                 .unwrap();
             let artifact = family::prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::headless_svg_defaults(),
                 RenderEnvironment::deterministic().begin_session().unwrap(),
             )

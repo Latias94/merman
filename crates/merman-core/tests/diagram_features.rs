@@ -123,6 +123,96 @@ fn cancellation_is_not_suppressed_for_unavailable_or_unknown_input() {
     }
 }
 
+#[test]
+fn custom_semantic_and_render_overlays_have_independent_ownership_even_for_enabled_builtins() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("sequence", |_, _, control| {
+            control.checkpoint()?;
+            Ok(Ok(
+                serde_json::json!({"owner": "semantic", "items": [null, [], {}]}),
+            ))
+        });
+    let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
+    let semantic = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let fallback = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        fallback.model(),
+        RenderSemanticModel::CustomJson(_)
+    ));
+    assert!(!fallback.model().supports_diagram_type("sequence"));
+    assert_eq!(
+        semantic.model,
+        fallback
+            .model()
+            .compatibility_json(fallback.metadata())
+            .unwrap()
+    );
+
+    engine
+        .render_diagram_registry_mut()
+        .insert("sequence", |_, _, control| {
+            control.checkpoint()?;
+            Ok(Ok(merman_core::CustomJsonRenderModel::new(
+                "host-render",
+                serde_json::json!({"owner": "render"}),
+            )))
+        });
+    let separate = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::CustomJson(custom) = separate.model() else {
+        panic!("custom render overlay wins")
+    };
+    assert_eq!(custom.value()["owner"], "render");
+    assert_eq!(
+        engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .model,
+        semantic.model
+    );
+}
+
+#[test]
+fn custom_parser_cancellation_keeps_the_outer_channel_instead_of_a_lenient_error_diagram() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("sequence", |_, _, control| {
+            control.cancel();
+            control.checkpoint()?;
+            unreachable!("cancelled parser cannot produce semantic JSON")
+        });
+    let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
+    for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+        let result = engine.parse_diagram_for_render_model_controlled_sync(
+            source,
+            options,
+            &merman_core::OperationControl::new(),
+        );
+        assert_eq!(
+            result.unwrap_err().reason,
+            merman_core::CancelReason::Requested
+        );
+    }
+    let result = engine
+        .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
+    assert_eq!(
+        result.unwrap_err().reason,
+        merman_core::CancelReason::Requested
+    );
+}
+
 #[cfg(feature = "diagram-gantt")]
 #[test]
 fn selected_gantt_preserves_typed_and_json_projections() {

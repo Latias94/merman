@@ -90,6 +90,7 @@ export {
 } from "./runtime-ascii.js";
 export {
   createBrowserTextMeasurementSession,
+  prepareSource,
   describeThemeSupport,
   exportThemePreset,
   edgeGeometryJson,
@@ -124,3 +125,5 @@ export {
   editorRename,
   editorSearchDocumentSymbols,
 } from "./runtime-editor.js";
+
+export { mountDiagram } from "./runtime-mount.js";

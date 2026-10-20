@@ -3668,6 +3668,20 @@ mod tests {
         assert_eq!(value["resources"]["profile"], "constrained");
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
 
+        let geometry = resource_options_json(
+            None,
+            vec![MermanResourceLimitOverride {
+                id: MermanResourceOverrideId::MaxGeometryJsonBytes,
+                value: 8192,
+            }],
+        )
+        .unwrap();
+        let geometry: Value = serde_json::from_str(&geometry).unwrap();
+        assert_eq!(
+            geometry["resources"]["limits"]["max_geometry_json_bytes"],
+            8192
+        );
+
         let inherited = resource_options_json(None, Vec::new()).unwrap();
         assert_eq!(inherited, r#"{"version":3}"#);
     }
@@ -3698,6 +3712,7 @@ mod tests {
             MermanResourceOverrideId::MaxAsciiGraphemeBytes,
             MermanResourceOverrideId::MaxAsciiNestingDepth,
             MermanResourceOverrideId::MaxPreparedTextRetainedBytes,
+            MermanResourceOverrideId::MaxGeometryJsonBytes,
         ];
 
         for (ordinal, variant) in variants.into_iter().enumerate() {

@@ -432,6 +432,16 @@ fn rotate(x: f64, y: f64, angle_rad: f64) -> (f64, f64) {
     (rotated_x, rotated_y)
 }
 
+fn normalized_arc_angle(ratio: f64) -> f64 {
+    // path-data-parser normalizes each asin input with parseFloat(value.toFixed(9)).
+    let mut buffer = ryu_js::Buffer::new();
+    buffer
+        .format_to_fixed(ratio, 9)
+        .parse::<f64>()
+        .expect("ryu-js formats a valid floating-point value")
+        .asin()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn arc_to_cubic_curves(
     mut x1: f64,
@@ -480,8 +490,8 @@ fn arc_to_cubic_curves(
         cx = k * r1 * y / r2 + (x1 + x2) / 2.0;
         cy = k * -r2 * x / r1 + (y1 + y2) / 2.0;
 
-        f1 = ((y1 - cy) / r2).asin();
-        f2 = ((y2 - cy) / r2).asin();
+        f1 = normalized_arc_angle((y1 - cy) / r2);
+        f2 = normalized_arc_angle((y2 - cy) / r2);
 
         if x1 < cx {
             f1 = PI - f1;
@@ -573,7 +583,7 @@ fn arc_to_cubic_curves(
 mod tests {
     use svgtypes::{PathParser, PathSegment};
 
-    use super::{absolutize, normalize};
+    use super::{absolutize, normalize, normalized_arc_angle};
 
     #[test]
     fn absolutize_handles_relative_segments() {
@@ -686,5 +696,49 @@ mod tests {
             normalized.next().unwrap(),
             PathSegment::CurveTo { abs: true, .. }
         ));
+    }
+
+    #[test]
+    fn arc_angles_preserve_javascript_decimal_rounding_boundaries() {
+        for (ratio, normalized) in [
+            (0.9999999995_f64, 0.999999999_f64),
+            (1.0 / 1024.0, 0.000976563),
+            (-1.0 / 1024.0, -0.000976563),
+        ] {
+            assert_eq!(normalized_arc_angle(ratio), normalized.asin());
+        }
+    }
+
+    #[test]
+    fn normalize_keeps_small_rounded_rectangle_arcs_finite() {
+        let path = "M -31.4 -31.5 H 31.4 A 0.1 0.1 0 0 1 31.5 -31.4 V 31.4 A 0.1 0.1 0 0 1 31.4 31.5 H -31.4 A 0.1 0.1 0 0 1 -31.5 31.4 V -31.4 A 0.1 0.1 0 0 1 -31.4 -31.5 Z";
+        let segments: Vec<_> = PathParser::from(path).map(Result::unwrap).collect();
+        let curves: Vec<_> = normalize(absolutize(segments.iter()))
+            .filter_map(|segment| match segment {
+                PathSegment::CurveTo {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                    ..
+                } => Some([x1, y1, x2, y2, x, y]),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(curves.len(), 4);
+        for (curve, endpoint) in
+            curves
+                .iter()
+                .zip([[31.5, -31.4], [31.4, 31.5], [-31.5, 31.4], [-31.4, -31.5]])
+        {
+            assert!(
+                curve.iter().all(|coordinate| coordinate.is_finite()),
+                "{curve:?}"
+            );
+            assert_eq!(curve[4..], endpoint);
+        }
     }
 }

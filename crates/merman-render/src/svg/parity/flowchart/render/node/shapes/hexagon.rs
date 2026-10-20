@@ -15,15 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let geometry = crate::flowchart::HexagonGeometry::from_bounds(
-        common.layout_node.width,
-        common.layout_node.height,
-        common.look_is_neo(),
-    );
-    let w = geometry.width;
-    let h = geometry.height;
-    let path_data = path_from_points(&geometry.points);
-
+    let (geometry, w, h, path_data) = prepare_hexagon_geometry(common);
     let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
@@ -87,4 +79,42 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
             OptionalStyleAttr(common.style)
         );
     }
+}
+
+fn prepare_hexagon_geometry(
+    common: &super::super::FlowchartNodeGeometry<'_>,
+) -> (crate::flowchart::HexagonGeometry, f64, f64, String) {
+    let geometry = crate::flowchart::HexagonGeometry::from_bounds(
+        common.layout_node.width,
+        common.layout_node.height,
+        common.look_is_neo(),
+    );
+    let w = geometry.width;
+    let h = geometry.height;
+    let path_data = path_from_points(&geometry.points);
+
+    (geometry, w, h, path_data)
+}
+
+pub(super) fn advance_hexagon_rough_geometry(
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    _label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, _, _, path_data) = prepare_hexagon_geometry(common);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+        target,
+        &path_data,
+        common.stroke_width,
+        common.stroke_dasharray,
+        FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
+        FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
+        FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
 }

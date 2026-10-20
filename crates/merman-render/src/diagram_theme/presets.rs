@@ -1550,7 +1550,7 @@ mod tests {
                     .begin_session_with_theme(&theme)
                     .unwrap();
                 let rendered =
-                    crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                    crate::family::prepare(&parsed, &crate::LayoutOptions::default(), session)
                         .unwrap()
                         .render_svg(
                             &crate::svg::SvgRenderOptions {

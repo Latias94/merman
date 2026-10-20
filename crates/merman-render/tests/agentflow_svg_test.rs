@@ -78,7 +78,7 @@ end
         .expect("agentflow render model");
     assert_eq!(parsed.metadata().diagram_type, "agentflow");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     assert_eq!(artifact.family_kind().as_str(), "agentflow");
     let layout = artifact.layout_json().unwrap();
     assert_eq!(layout["semantic"]["type"], "agentflow");
@@ -113,7 +113,7 @@ fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
             ParseOptions::strict(),
         ).unwrap().unwrap();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let projection = artifact.layout_json().unwrap();
         let nodes = projection["layout"]["AgentflowDiagram"]["nodes"]
             .as_array()
@@ -444,7 +444,7 @@ fn agentflow_cyclic_container_references_preserve_visible_nodes() {
                 .unwrap()
                 .unwrap();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
             let nodes = projection["layout"]["AgentflowDiagram"]["nodes"]
                 .as_array()
@@ -488,7 +488,7 @@ click a href "https://example.com" "Open task" _blank
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     assert!(
         artifact.layout_json().unwrap()["semantic"]
             .get("presentation")
@@ -549,7 +549,7 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
                 .unwrap()
                 .unwrap();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .unwrap();
@@ -586,7 +586,7 @@ fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
             .unwrap()
             .unwrap();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -634,7 +634,7 @@ C@{label: "`**literal**`", labelType: text}
             .unwrap()
             .unwrap();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -698,7 +698,8 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
                     .unwrap()
                     .unwrap();
                 let session = RenderEnvironment::deterministic().begin_session().unwrap();
-                let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+                let artifact =
+                    family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
                 let projection = artifact.layout_json().unwrap();
                 let width = projection["layout"]["AgentflowDiagram"]["nodes"][0]["width"]
                     .as_f64()
@@ -727,7 +728,7 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
                 .unwrap()
                 .unwrap();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
             let node = &projection["layout"]["AgentflowDiagram"]["nodes"][0];
             dimensions.push((
@@ -766,7 +767,7 @@ fn render_agentflow_config_probe(
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = artifact.layout_json().unwrap()["layout"].clone();
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())

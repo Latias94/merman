@@ -1,11 +1,13 @@
-import { encodeOptions, getMerman } from "./runtime-core.js";
+import { currentRuntimeState, encodeOptions, getMerman } from "./runtime-core.js";
+import { type MermanRuntimeState, withMermanRuntimeState } from "./runtime-state.js";
 import { encodeJsonInput } from "./json-input.js";
-import {
-  assertNavigableSvgForDom,
-  prepareNavigableSvgForDomMount,
-} from "./svg-safety.js";
+import { prepareSvgDomCandidate, publishSvgDomCandidate } from "./svg-dom.js";
 import type {
   BrowserTextMeasurementSession,
+  BrowserPreparedSource,
+  PreparedSourceOutputOptions,
+  HostTextMeasurerPreparedSourceOutputOptions,
+  WasmPreparedSourceBinding,
   HostTextMeasureRequest,
   HostTextMeasureResult,
   HostTextMetricsResult,
@@ -22,6 +24,74 @@ import type {
   ThemeDefinitionV1,
   ThemeSupportQueryV1,
 } from "./public-types.js";
+
+/** Parse once; each method starts a fresh output operation in the creating runtime. */
+export function prepareSource(source: string, options?: SvgBindingOptions | string): BrowserPreparedSource {
+  const state = currentRuntimeState();
+  const PreparedSource = getMerman().PreparedSource;
+  if (!PreparedSource) throw new Error("Merman prepareSource() is not available in this artifact.");
+  const native = new PreparedSource(source, encodeOptions(options));
+  return new BrowserPreparedSourceImpl(native, state);
+}
+
+class BrowserPreparedSourceImpl implements BrowserPreparedSource {
+  private native: WasmPreparedSourceBinding | null;
+  private activeCalls = 0;
+  private pendingFree: WasmPreparedSourceBinding | null = null;
+
+  constructor(native: WasmPreparedSourceBinding, private readonly runtimeState: MermanRuntimeState) {
+    this.native = native;
+  }
+
+  renderSvg(options?: PreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.renderSvg(encodeOptions(options)));
+  }
+  renderSvgResult(options?: PreparedSourceOutputOptions | string): SvgRenderResult {
+    return this.withNative(native => native.renderSvgResult(encodeOptions(options)));
+  }
+  layoutJson(options?: PreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.layoutJson(encodeOptions(options)));
+  }
+  edgeGeometryJson(options?: PreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.edgeGeometryJson(encodeOptions(options)));
+  }
+  renderSvgWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.renderSvgWithTextMeasurer(encodeOptions(options), measurer));
+  }
+  renderSvgResultWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): SvgRenderResult {
+    return this.withNative(native => native.renderSvgResultWithTextMeasurer(encodeOptions(options), measurer));
+  }
+  layoutJsonWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.layoutJsonWithTextMeasurer(encodeOptions(options), measurer));
+  }
+  edgeGeometryJsonWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string {
+    return this.withNative(native => native.edgeGeometryJsonWithTextMeasurer(encodeOptions(options), measurer));
+  }
+
+  dispose(): void {
+    const native = this.native;
+    if (!native) return;
+    this.native = null;
+    if (this.activeCalls > 0) this.pendingFree = native;
+    else withMermanRuntimeState(this.runtimeState, () => native.free());
+  }
+
+  private withNative<T>(run: (native: WasmPreparedSourceBinding) => T): T {
+    const native = this.native;
+    if (!native) throw new Error("Merman prepared source is disposed.");
+    this.activeCalls++;
+    try {
+      return withMermanRuntimeState(this.runtimeState, () => run(native));
+    } finally {
+      this.activeCalls--;
+      if (this.activeCalls === 0 && this.pendingFree) {
+        const retired = this.pendingFree;
+        this.pendingFree = null;
+        withMermanRuntimeState(this.runtimeState, () => retired.free());
+      }
+    }
+  }
+}
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
@@ -142,7 +212,7 @@ export function layoutJsonWithTextMeasurer(
   return layoutWithMeasurer(source, encodeOptions(options), measurer);
 }
 
-export function createBrowserTextMeasurementSession(): BrowserTextMeasurementSession {
+export function createBrowserTextMeasurementSession(ownerDocument?: Document): BrowserTextMeasurementSession {
   let probes: BrowserTextMeasureProbes | null = null;
   let disposed = false;
 
@@ -152,7 +222,7 @@ export function createBrowserTextMeasurementSession(): BrowserTextMeasurementSes
     }
 
     try {
-      probes ??= createTextMeasureProbes();
+      probes ??= createTextMeasureProbes(ownerDocument);
       if (!probes) {
         return undefined;
       }
@@ -350,7 +420,7 @@ function canvasTextWidth(
   request: HostTextMeasureRequest
 ): HostTextMeasureResult | undefined {
   if (probes.canvasContext === undefined) {
-    probes.canvasContext = document.createElement("canvas").getContext("2d");
+    probes.canvasContext = probes.html.ownerDocument.createElement("canvas").getContext("2d");
   }
   const context = probes.canvasContext;
   if (!context || typeof context.measureText !== "function") {
@@ -429,7 +499,7 @@ function svgWrappedMetrics(
   probes.wrappedText.setAttribute("text-anchor", "start");
   probes.wrappedText.textContent = "";
   for (const [index, line] of lines.entries()) {
-    const tspan = document.createElementNS(SVG_NAMESPACE, "tspan");
+    const tspan = probes.svg.ownerDocument.createElementNS(SVG_NAMESPACE, "tspan");
     tspan.setAttribute("x", "0");
     tspan.setAttribute("dy", index === 0 ? "0" : `${Math.max(1, request.line_height)}px`);
     tspan.textContent = line || "\u200b";
@@ -466,7 +536,7 @@ function svgCreateTextBBoxYOffset(
   text.setAttribute("y", "-10.1");
   text.textContent = "";
 
-  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan");
+  const tspan = probes.svg.ownerDocument.createElementNS(SVG_NAMESPACE, "tspan");
   tspan.setAttribute("x", "0");
   tspan.setAttribute("y", "-0.1em");
   tspan.setAttribute("dy", "1.1em");
@@ -652,9 +722,9 @@ function setHtmlProbeText(probe: HTMLDivElement, text: string): void {
   const children: Node[] = [];
   for (const [index, line] of lines.entries()) {
     if (index > 0) {
-      children.push(document.createElement("br"));
+      children.push(probe.ownerDocument.createElement("br"));
     }
-    children.push(document.createTextNode(line));
+    children.push(probe.ownerDocument.createTextNode(line));
   }
   probe.replaceChildren(...children);
 }
@@ -673,9 +743,10 @@ function normalizeMeasureMaxWidth(
   return request.max_width;
 }
 
-function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
+function createTextMeasureProbes(ownerDocument?: Document): BrowserTextMeasureProbes | null {
+  const document = ownerDocument ?? globalThis.document;
   if (
-    typeof document === "undefined" ||
+    !document ||
     !document.body ||
     typeof document.createElementNS !== "function"
   ) {
@@ -812,26 +883,7 @@ function renderSvgElementInDocument(
   source: string,
   options?: SvgBindingOptions | string
 ): SVGSVGElement {
-  const Parser = ownerDocument.defaultView?.DOMParser ?? globalThis.DOMParser;
-  if (!Parser) {
-    throw new Error("Rendering SVG to an element requires DOMParser support.");
-  }
-
-  const svgText = renderSvg(source, options);
-  const admission = assertNavigableSvgForDom(svgText);
-  const parsed = new Parser().parseFromString(svgText, "image/svg+xml");
-  const parseError = parsed.querySelector("parsererror");
-  if (parseError) {
-    throw new Error(parseError.textContent || "Merman rendered invalid SVG.");
-  }
-
-  const svg = parsed.documentElement;
-  if (svg.localName !== "svg") {
-    throw new Error("Merman render output did not contain an SVG root element.");
-  }
-  const imported = ownerDocument.importNode(svg, true) as unknown as SVGSVGElement;
-  prepareNavigableSvgForDomMount(admission, imported, ownerDocument);
-  return imported;
+  return prepareSvgDomCandidate(ownerDocument, renderSvg(source, options)).root;
 }
 
 export function renderSvgToElement(
@@ -843,9 +895,9 @@ export function renderSvgToElement(
   if (!ownerDocument) {
     throw new Error("renderSvgToElement() requires a target with an owner document.");
   }
-  const svg = renderSvgElementInDocument(ownerDocument, source, options);
-  target.replaceChildren(svg);
-  return svg;
+  const candidate = prepareSvgDomCandidate(ownerDocument, renderSvg(source, options));
+  publishSvgDomCandidate(target, candidate);
+  return candidate.root;
 }
 
 export function parseJson(source: string, options?: SvgBindingOptions | string): string {

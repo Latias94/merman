@@ -10,7 +10,25 @@ mod label;
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::paths as roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
+#[cfg(test)]
+mod rough_geometry_tests;
+
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
+    geometry: FlowchartNodeGeometry<'a>,
+    label_emission: &'a label::FlowchartNodeLabelEmissionPlan<'a>,
+    pub style: &'a str,
+    pub junction_style: &'a str,
+    pub effect_filter_attr: &'a str,
+    /// Theme-only declarations for no-label surfaces that do not consume the complete source
+    /// style string (notably flowchart-v2 start nodes).
+    pub theme_style: &'a str,
+    pub rough_group_style: &'a str,
+    pub fill_color: &'a str,
+    pub stroke_color: &'a str,
+    pub wrapped_in_a: bool,
+    pub timing: RenderTiming,
+}
+pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeGeometry<'a> {
     pub node_id: &'a str,
     pub shape: &'a str,
     pub look: &'a str,
@@ -23,16 +41,6 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub node_constraint: Option<&'a str>,
     pub node_asset_width: Option<f64>,
     pub node_asset_height: Option<f64>,
-    label_emission: &'a label::FlowchartNodeLabelEmissionPlan<'a>,
-    pub style: &'a str,
-    pub junction_style: &'a str,
-    pub effect_filter_attr: &'a str,
-    /// Theme-only declarations for no-label surfaces that do not consume the complete source
-    /// style string (notably flowchart-v2 start nodes).
-    pub theme_style: &'a str,
-    pub rough_group_style: &'a str,
-    pub fill_color: &'a str,
-    pub stroke_color: &'a str,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
     pub typed_corner_radius: Option<f64>,
@@ -40,8 +48,46 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub configured_corner_radius: Option<f64>,
     pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
-    pub wrapped_in_a: bool,
-    pub timing: RenderTiming,
+    pub source_text_style: &'a crate::text::TextStyle,
+}
+
+impl FlowchartNodeGeometry<'_> {
+    pub(super) fn look_is_neo(&self) -> bool {
+        self.look == "neo"
+    }
+    pub(super) fn look_is_hand_drawn(&self) -> bool {
+        self.look == "handDrawn"
+    }
+    pub(super) fn label_metrics(
+        &self,
+        ctx: &FlowchartRenderCtx<'_>,
+        label: &FlowchartNodeLabelState<'_>,
+    ) -> crate::text::TextMetrics {
+        let style = ctx
+            .svg_label_sidecar
+            .map_or(
+                crate::flowchart::FlowchartLabelWeights::default(),
+                |sidecar| sidecar.label_weights(),
+            )
+            .apply(
+                crate::diagram_theme::ThemeTarget::NodeLabel,
+                self.source_text_style,
+            );
+        helpers::compute_node_label_metrics_with_style(
+            ctx,
+            Some(self.layout_node),
+            label.text,
+            label.label_type,
+            style.as_ref(),
+        )
+    }
+}
+
+impl<'a> std::ops::Deref for FlowchartNodeRenderCommon<'a> {
+    type Target = FlowchartNodeGeometry<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.geometry
+    }
 }
 
 impl FlowchartNodeRenderCommon<'_> {
@@ -74,14 +120,6 @@ impl FlowchartNodeRenderCommon<'_> {
             }
         }
     }
-
-    pub(super) fn look_is_neo(&self) -> bool {
-        self.look == "neo"
-    }
-
-    pub(super) fn look_is_hand_drawn(&self) -> bool {
-        self.look == "handDrawn"
-    }
 }
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a> {
@@ -107,7 +145,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
-    if let Some(dom_id) = ctx.document_ids.synthetic_label(node_id)
+    if let Some(dom_id) = ctx.document_ids().synthetic_label(node_id)
         && helpers::try_render_self_loop_label_placeholder(
             out,
             node_id,
@@ -128,12 +166,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let tooltip_enabled = !tooltip.trim().is_empty();
 
     let look = ctx.compatibility.look.as_str();
-    let node_dom_id = ctx
-        .document_ids
-        .node(node_id)
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("missing prepared Flowchart DOM id for node `{node_id}`"),
-        })?;
+    let node_dom_id =
+        ctx.document_ids()
+            .node(node_id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart DOM id for node `{node_id}`"),
+            })?;
     let class_attr_base = if look == "handDrawn" {
         match resolved.class_attr_base {
             "node default" => "rough-node default",
@@ -144,16 +182,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         resolved.class_attr_base
     };
     let wrapped_in_a = resolved.wrapped_in_a;
-    let href = resolved.href;
+    let href = resolved.href.as_ref();
     let target = resolved.target;
     let shape: &str = resolved.shape;
-    let node_icon = resolved.node_icon;
-    let node_img = resolved.node_img;
-    let node_pos = resolved.node_pos;
-    let node_constraint = resolved.node_constraint;
-    let node_asset_width = resolved.node_asset_width;
-    let node_asset_height = resolved.node_asset_height;
-    let node_styles = resolved.node_styles;
     let node_classes = resolved.node_classes;
 
     let empty_classes: &[String] = &[];
@@ -174,7 +205,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             data_id: node_id,
             classes: wrapper_classes,
             wrapped_in_a,
-            href: href.as_ref(),
+            href,
             target,
             x,
             y,
@@ -216,8 +247,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let typed_label_fill = selection.typed_label_fill.as_deref();
     let fill_color = selection.fill.as_str();
     let stroke_color = selection.stroke.as_str();
-    let stroke_width = selection.stroke_width;
-    let stroke_dasharray = selection.stroke_dasharray.as_str();
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         node_classes,
         prepared.source_text_style.as_ref(),
@@ -239,18 +268,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             (id, effect, materialized.region(), attribute)
         });
     let common = FlowchartNodeRenderCommon {
-        node_id,
-        shape,
-        look,
-        layout_node,
-        node_classes,
-        node_styles,
-        node_icon,
-        node_img,
-        node_pos,
-        node_constraint,
-        node_asset_width,
-        node_asset_height,
+        geometry: prepare_node_geometry(ctx, node_id, &resolved)?,
+
         label_emission: &label_emission,
         style,
         junction_style: selection.junction_style.as_deref().unwrap_or(style),
@@ -261,13 +280,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         rough_group_style: &prepared.rough_group_style,
         fill_color,
         stroke_color,
-        stroke_width,
-        stroke_dasharray,
-        typed_corner_radius: typed_radius.map(f64::from),
-        source_corner_radii: selection.source_radii,
-        configured_corner_radius: selection.configured_radius,
-        hand_drawn_seed: &ctx.hand_drawn_seed,
-        work_meter: ctx.work_meter,
         wrapped_in_a,
         timing,
     };
@@ -489,4 +501,76 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     // successful render.
     ctx.checkpoint_emit()?;
     Ok(())
+}
+
+fn prepare_node_geometry<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
+    node_id: &'a str,
+    resolved: &helpers::ResolvedNodeRenderInfo<'a>,
+) -> crate::Result<FlowchartNodeGeometry<'a>> {
+    let layout_node =
+        ctx.layout_nodes_by_id
+            .get(node_id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing Flowchart layout node `{node_id}`"),
+            })?;
+    let prepared = ctx
+        .prepared_nodes
+        .node(node_id)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("Flowchart node `{node_id}` has no prepared terminal style"),
+        })?;
+    let selection = &prepared.selection;
+    Ok(FlowchartNodeGeometry {
+        node_id,
+        shape: resolved.shape,
+        look: ctx.compatibility.look.as_str(),
+        layout_node,
+        node_classes: resolved.node_classes,
+        node_styles: resolved.node_styles,
+        node_icon: resolved.node_icon,
+        node_img: resolved.node_img,
+        node_pos: resolved.node_pos,
+        node_constraint: resolved.node_constraint,
+        node_asset_width: resolved.node_asset_width,
+        node_asset_height: resolved.node_asset_height,
+        stroke_width: selection.stroke_width,
+        stroke_dasharray: selection.stroke_dasharray.as_str(),
+        typed_corner_radius: selection.typed_radius.map(f64::from),
+        source_corner_radii: selection.source_radii,
+        configured_corner_radius: selection.configured_radius,
+        hand_drawn_seed: &ctx.hand_drawn_seed,
+        work_meter: ctx.work_meter,
+        source_text_style: prepared.source_text_style.as_ref(),
+    })
+}
+
+pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+) -> crate::Result<()> {
+    ctx.work_meter
+        .checkpoint(merman_core::OperationPhase::Layout)
+        .map_err(crate::Error::from)?;
+    if !ctx.layout_nodes_by_id.contains_key(node_id) {
+        return Ok(());
+    }
+    let Some(resolved) = helpers::resolve_node_render_info(ctx, node_id) else {
+        return Ok(());
+    };
+    let geometry = prepare_node_geometry(ctx, node_id, &resolved)?;
+    let mut label = FlowchartNodeLabelState {
+        text: if resolved.label_text_is_node_id {
+            node_id
+        } else {
+            resolved.label_text
+        },
+        label_type: resolved.label_type,
+        dx: 0.0,
+        dy: 0.0,
+    };
+    shapes::advance_rough_geometry(ctx, &geometry, &mut label)?;
+    ctx.work_meter
+        .checkpoint(merman_core::OperationPhase::Layout)
+        .map_err(crate::Error::from)
 }

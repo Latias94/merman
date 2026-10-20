@@ -309,3 +309,78 @@ jobs:
             fuzz/logs/**
           if-no-files-found: ignore
           retention-days: 14
+
+  parser-differential:
+    name: Selected Mermaid parser discovery
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          key: parser-differential
+          cache-targets: false
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: tools/mermaid-cli/package-lock.json
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+      - name: Verify selected reference before runtime install
+        run: cargo run --locked --release -p xtask -- verify-mermaid-reference
+      - name: Install selected Mermaid runtime
+        working-directory: tools/mermaid-cli
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+      - name: Resolve selected Mermaid parser source
+        id: parser-source
+        shell: python
+        run: |
+          import json, os, re
+          from pathlib import Path
+          selected = json.loads(Path("tools/upstreams/REPOS.lock.json").read_text(encoding="utf-8"))["repos"]["mermaid"]
+          commit = selected["commit"]
+          if not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("Invalid selected Mermaid commit")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"commit={commit}", file=output)
+      - name: Checkout selected Mermaid parser source
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mermaid-js/mermaid
+          ref: ${{ steps.parser-source.outputs.commit }}
+          path: repo-ref/mermaid
+          persist-credentials: false
+          sparse-checkout: |
+            packages/mermaid/src/Diagram.ts
+            packages/mermaid/src/mermaidAPI.ts
+            packages/mermaid/src/diagrams/flowchart/parser/flow.jison
+            packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
+            packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison
+          sparse-checkout-cone-mode: false
+      - name: Install selected parser oracle browser and dependencies
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
+        run: sudo env "PATH=$PATH" "PUPPETEER_CACHE_DIR=$PUPPETEER_CACHE_DIR" node tools/mermaid-cli/node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell --install-deps
+      - name: Replay and discover bounded parser differences
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
+        run: cargo run --locked --release -p xtask -- parser-differential --cases 5000 --timeout-seconds 900
+      - name: Upload parser differential evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: parser-differential-discovery
+          path: target/parser-differential/
+          if-no-files-found: ignore
+          retention-days: 14

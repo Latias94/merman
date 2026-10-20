@@ -1318,7 +1318,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{name}: {error}"))
                 .unwrap();
             let artifact =
-                crate::family::prepare(parsed, &crate::LayoutOptions::default(), render_session())
+                crate::family::prepare(&parsed, &crate::LayoutOptions::default(), render_session())
                     .unwrap_or_else(|error| panic!("{name}: {error}"));
             let rendered = artifact
                 .render_svg(

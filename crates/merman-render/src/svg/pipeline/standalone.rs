@@ -211,7 +211,7 @@ mod tests {
                 .begin_session()
                 .unwrap();
             let artifact = crate::family::prepare(
-                parsed,
+                &parsed,
                 &crate::LayoutOptions::headless_svg_defaults(),
                 session,
             )

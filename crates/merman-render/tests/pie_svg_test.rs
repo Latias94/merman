@@ -27,7 +27,7 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize Pie layout");
     serde_json::from_value(projection["layout"]["PieDiagram"].clone())
         .expect("Pie layout projection")
@@ -47,7 +47,7 @@ fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> 
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact
         .render_svg(options, &SvgDebugOptions::default())
@@ -91,7 +91,7 @@ fn try_render_pie_with_theme_requirement(
         .begin_session_with_theme(theme)
         .expect("begin themed Pie session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)?
+    family::prepare(&parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -1040,7 +1040,7 @@ fn try_render_pie_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Pie resource-bound session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -1106,7 +1106,7 @@ fn render_pie_with_svg_limit(
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .expect("begin bounded Pie session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact
         .render_svg(

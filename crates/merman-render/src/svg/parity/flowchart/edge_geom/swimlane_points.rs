@@ -146,9 +146,7 @@ mod tests {
         use crate::svg::parity::flowchart::render_config::{
             flowchart_node_label_fill_config_override, prepare_flowchart_render_config,
         };
-        use crate::svg::parity::flowchart::svg_emit::{
-            FlowchartSvgModelRequest, render_flowchart_svg_model,
-        };
+        use crate::svg::parity::flowchart::svg_emit::FlowchartSvgModelRequest;
         use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
         use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
@@ -272,33 +270,45 @@ mod tests {
         let theme_evidence = crate::flowchart::FlowchartThemeEvidenceRecorder::default();
         let effect_evidence = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
         let expected_effect_applications = std::cell::Cell::new(0);
-        let mut painted_edges = Vec::new();
-        render_flowchart_svg_model(
-            FlowchartSvgModelRequest {
-                render_config: &render_config,
-                prepared_nodes: &prepared_nodes,
-                prepared_theme: &prepared_theme,
-                layout: &layout,
-                swimlane_layout: Some(&swimlane_layout),
-                model: &model,
-                render_context: &render_context,
-                effective_config: &metadata.effective_config,
-                diagram_type: metadata.diagram_type.as_str(),
-                diagram_title: None,
-                svg_label_sidecar: &sidecar,
-                theme_evidence: &theme_evidence,
-                effect_evidence: &effect_evidence,
-                expected_effect_applications: &expected_effect_applications,
-                edge_style_plan: &edge_style_plan,
-                edge_theme: &edge_theme,
-            },
-            &execution,
-            Some(&mut painted_edges),
-        )
-        .unwrap();
+        let request = FlowchartSvgModelRequest {
+            render_config: &render_config,
+            prepared_nodes: &prepared_nodes,
+            prepared_theme: &prepared_theme,
+            layout: &layout,
+            swimlane_layout: Some(&swimlane_layout),
+            model: &model,
+            render_context: &render_context,
+            effective_config: &metadata.effective_config,
+            diagram_type: metadata.diagram_type.as_str(),
+            diagram_title: None,
+            svg_label_sidecar: &sidecar,
+            theme_evidence: &theme_evidence,
+            effect_evidence: &effect_evidence,
+            expected_effect_applications: &expected_effect_applications,
+            edge_style_plan: &edge_style_plan,
+            edge_theme: &edge_theme,
+        };
+        let painted_edges = super::super::paint::edge_geometry(request, &execution).unwrap();
         assert_eq!(
             coordinates(painted_edges[0].points.as_ref().unwrap()),
             [(0.0, 10.0), (0.0, 90.0)]
+        );
+        let svg = super::super::svg_emit::render_flowchart_svg_model(request, &execution).unwrap();
+        let document = crate::xml_dom::Document::parse(svg.as_str()).unwrap();
+        let encoded = document
+            .descendants()
+            .find_map(|node| node.attribute("data-points"))
+            .unwrap();
+        use base64::Engine as _;
+        let points: Vec<LayoutPoint> = serde_json::from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            coordinates(&points),
+            coordinates(painted_edges[0].points.as_ref().unwrap())
         );
     }
 }

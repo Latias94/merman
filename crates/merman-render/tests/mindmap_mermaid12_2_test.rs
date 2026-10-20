@@ -59,7 +59,7 @@ fn render(source: &str, diagram_id: &str) -> (String, MindmapDiagramLayout) {
         .unwrap()
         .unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     let layout = serde_json::from_value(projection["layout"]["MindmapDiagram"].clone()).unwrap();
     let svg = artifact

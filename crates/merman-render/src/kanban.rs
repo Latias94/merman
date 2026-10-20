@@ -71,6 +71,7 @@ pub(crate) use theme::{
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,
+    adaptation: Option<crate::LayoutAdaptationObservation>,
     sections: Vec<KanbanPreparedMarkdownLabel>,
     items: Vec<KanbanPreparedItem>,
     task_theme: KanbanTaskTheme,
@@ -80,6 +81,10 @@ pub(crate) struct KanbanPreparedArtifact {
 }
 
 impl KanbanPreparedArtifact {
+    pub(crate) const fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
+        self.adaptation
+    }
+
     pub(crate) fn css(&self) -> &KanbanCssBinding {
         &self.css
     }
@@ -345,6 +350,7 @@ pub(crate) fn layout_kanban_diagram_typed(
         None,
         measurer,
         &work_meter,
+        &crate::LayoutOptions::default(),
     )
     .map(|prepared| prepared.layout)
 }
@@ -356,6 +362,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
+    options: &crate::LayoutOptions,
 ) -> Result<KanbanPreparedArtifact> {
     work_meter
         .policy()
@@ -524,7 +531,10 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         prepared_sections.push(prepared_label);
     }
 
+    let mut section_item_ranges = (options.adaptation == crate::LayoutAdaptation::FitWidth)
+        .then(|| Vec::with_capacity(sections.len()));
     for (section, (_, item_range)) in sections.iter_mut().zip(&section_inputs) {
+        let item_start = items.len();
         let top = section_rect_y + max_label_height;
         let mut y = top;
 
@@ -588,8 +598,42 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         let height = (y - top + 3.0 * padding).max(50.0)
             + (max_label_height - KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX);
         section.rect_height = height.max(1.0);
+        if let Some(ranges) = &mut section_item_ranges {
+            ranges.push(item_start..items.len());
+        }
     }
     debug_assert!(prepared_task_labels.next().is_none());
+
+    if let Some(ranges) = section_item_ranges {
+        let gap = padding / 2.0;
+        let inner_width = (options.container_width - 2.0 * viewbox_padding).max(0.0);
+        let capacity = (((inner_width + gap) / (section_width + gap)).floor() as usize)
+            .max(1)
+            .min(sections.len().max(1));
+        let mut row_offset = 0.0;
+        let mut row_height: f64 = 0.0;
+        for (index, (section, item_range)) in sections.iter_mut().zip(ranges).enumerate() {
+            work_meter.charge(1)?;
+            let column = index % capacity;
+            if column == 0 && index > 0 {
+                row_offset += row_height + padding;
+                row_height = 0.0;
+            }
+            row_height = row_height.max(section.rect_height);
+            if index >= capacity {
+                let x = section_width * (column + 1) as f64 + column as f64 * gap;
+                let dx = x - section.center_x;
+                section.center_x = x;
+                section.center_y += row_offset;
+                section.rect_y += row_offset;
+                for item in &mut items[item_range] {
+                    work_meter.charge(1)?;
+                    item.center_x += dx;
+                    item.center_y += row_offset;
+                }
+            }
+        }
+    }
 
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -629,6 +673,24 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         None
     };
 
+    let adaptation = if options.adaptation == crate::LayoutAdaptation::FitWidth {
+        let actual_width = match &bounds {
+            Some(bounds) => bounds.max_x - bounds.min_x,
+            None if sections.is_empty() => 100.0,
+            None => f64::NAN,
+        };
+        if !actual_width.is_finite() {
+            return Err(crate::Error::InvalidModel {
+                message: "fit-width Kanban bounds exceed finite layout coordinates".to_owned(),
+            });
+        }
+        Some(crate::LayoutAdaptationObservation::fit_width(
+            options.container_width,
+            actual_width.max(1.0),
+        ))
+    } else {
+        None
+    };
     let layout = KanbanDiagramLayout {
         bounds,
         section_width,
@@ -662,6 +724,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         .map(Vec::into_boxed_slice);
     Ok(KanbanPreparedArtifact {
         layout,
+        adaptation,
         sections: prepared_sections,
         items: prepared_items,
         task_theme,
@@ -736,6 +799,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     let css = KanbanCssBinding::resolve(effective_config.as_value(), &task_theme, None)?;
     Ok(KanbanPreparedArtifact {
         layout: layout.clone(),
+        adaptation: None,
         sections,
         items,
         task_theme,
@@ -820,6 +884,7 @@ mod tests {
                 None,
                 &measurer,
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+                &crate::LayoutOptions::default(),
             )
             .unwrap()
         });
@@ -854,6 +919,7 @@ mod tests {
             None,
             &CountingTextMeasurer::default(),
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            &crate::LayoutOptions::default(),
         )
         .unwrap();
 
@@ -936,6 +1002,7 @@ mod tests {
             None,
             &measurer,
             &narrow_meter,
+            &crate::LayoutOptions::default(),
         )
         .unwrap_err();
 
@@ -958,6 +1025,7 @@ mod tests {
             None,
             &exact_measurer,
             &exact_meter,
+            &crate::LayoutOptions::default(),
         )
         .unwrap();
 

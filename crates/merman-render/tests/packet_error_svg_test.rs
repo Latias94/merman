@@ -24,7 +24,7 @@ fn try_render_svg_with_resource_policy(
         .with_resource_policy(policy)
         .begin_session()
         .expect("begin bounded SVG session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()

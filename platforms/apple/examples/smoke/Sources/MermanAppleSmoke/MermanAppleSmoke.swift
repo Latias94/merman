@@ -38,6 +38,28 @@ struct MermanAppleSmoke {
               resourceOptions.contains(#""max_svg_bytes":2097152"#) else {
             throw SmokeError.failed("generated resource override IDs drifted from Options JSON")
         }
+        let geometryOptions = try resourceOptionsJson(
+            profile: nil,
+            overrides: [MermanResourceLimitOverride(id: .maxGeometryJsonBytes, value: 1)]
+        )
+        guard geometryOptions.contains(#""max_geometry_json_bytes":1"#) else {
+            throw SmokeError.failed("geometry resource override was lost in the generated binding")
+        }
+        do {
+            _ = try engine.edgeGeometryJson(source: basicSource, optionsJson: geometryOptions)
+            throw SmokeError.failed("geometry output ceiling was not enforced")
+        } catch let error as MermanError {
+            switch error {
+            case let .Binding(_, codeName, _, _, resource, _, _, _, _, _):
+                guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+                      resource?.limitId == "max_geometry_json_bytes",
+                      resource?.phase == "geometry_output",
+                      resource?.max == 1,
+                      (resource?.actual ?? 0) > 1 else {
+                    throw SmokeError.failed("geometry resource failure lost its structured details")
+                }
+            }
+        }
         let svg = try engine.renderSvg(source: source, optionsJson: nil)
         guard svg.contains("<svg"), svg.contains("Hello"),
               svg.contains("apple-registry"), measurer.callCount > 0 else {

@@ -51,7 +51,7 @@ fn render_config_with_environment(
         .expect("parse Usecase")
         .expect("detect Usecase");
     let session = environment.begin_session().expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Usecase");
     let projection = artifact.layout_json().expect("layout JSON");
     let svg = artifact
@@ -1002,7 +1002,7 @@ fn usecase_math_capability_admission_matches_html_label_rendering() {
                 if html_labels { vec!["math"] } else { vec![] },
                 "{source}"
             );
-            let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session);
+            let result = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session);
             if html_labels {
                 assert!(
                     matches!(result, Err(merman_render::Error::MissingCapability { .. })),
@@ -1131,7 +1131,7 @@ json Data@{"surrogate":"\ud800","values":["$$x^2$$"]}
             "{source}"
         );
         assert!(matches!(
-            family::prepare(parsed, &LayoutOptions::default(), session),
+            family::prepare(&parsed, &LayoutOptions::default(), session),
             Err(merman_render::Error::MissingCapability { .. })
         ));
     }

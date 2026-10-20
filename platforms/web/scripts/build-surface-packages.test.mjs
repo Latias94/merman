@@ -117,7 +117,7 @@ describe("browser package assembly", () => {
     assert.match(source, /assertBrowserRuntime, bindSurfaceRuntime/);
     assert.match(
       source,
-      /bindSurfaceRuntime\(loadMermanWasmModule, implementation, MERMAN_WASM_URL\)/,
+      /bindSurfaceRuntime\(loadMermanWasmModule, implementation, MERMAN_WASM_URL, \[/,
     );
     assert.match(source, /from "\.\.\/runtime-core\.js"/);
     assert.match(source, /from "\.\.\/runtime-analysis\.js"/);

@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad872de92e2b1"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -369,7 +369,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "describe-theme-support-json", "alpha", "svg", "Describe the static support bound for a versioned theme query.", "theme-support-query-json", "application/json", 0, MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "document-analysis-facts-json", "stable", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "document-analysis-json", "stable", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
-    { "edge-geometry-json", "stable", "svg", "Render Mermaid input and report post-paint edge geometry as JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "edge-geometry-json", "stable", "svg", "Compute Mermaid edge paint geometry as JSON without serializing SVG.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "export-theme-preset-json", "alpha", "svg", "Export a built-in theme preset as a self-contained editable recipe.", "theme-preset-id", "application/json", 0, MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "jpeg", "stable", "jpeg", "Render Mermaid input as JPEG.", "mermaid-source", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
     { "layout-json", "stable", "svg", "Render Mermaid input into layout model JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },

@@ -28,7 +28,7 @@ fn try_render_c4_svg_with_environment(
         .expect("parse ok")
         .expect("diagram detected");
     let session = environment.begin_session().expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
     Ok(artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
@@ -121,7 +121,7 @@ fn try_render_c4_rendered_with_engine(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable C4 session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
     artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
@@ -151,7 +151,7 @@ fn try_render_c4_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin C4 resource-bound session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -163,7 +163,7 @@ fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLay
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, options, session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize C4 layout");
     serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("C4 layout projection")
 }
@@ -1074,7 +1074,7 @@ fn c4_public_layout_and_svg_render_handle_deep_boundary_chain() {
     assert_eq!(parsed.metadata().diagram_type, "c4");
 
     let options = LayoutOptions::default();
-    let artifact = family::prepare(parsed, &options, session)
+    let artifact = family::prepare(&parsed, &options, session)
         .expect("layout should not depend on recursive boundary traversal");
     let projection = artifact.layout_json().expect("serialize C4 layout");
     let c4: C4DiagramLayout = serde_json::from_value(projection["layout"]["C4Diagram"].clone())
@@ -1594,7 +1594,7 @@ UpdateRelStyle(system, external, $textColor="{authored_color}")
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let svg = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap()

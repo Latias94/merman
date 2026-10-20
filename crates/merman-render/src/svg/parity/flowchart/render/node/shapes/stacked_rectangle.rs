@@ -46,6 +46,44 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
+    let (outer_path, inner_path) = prepare_stacked_rectangle_geometry(common, label);
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" style="{}">"#,
+            escape_attr(common.rough_group_style),
+        );
+    } else {
+        out.push_str(r#"<g class="basic label-container outer-path">"#);
+    }
+    for path_data in [&outer_path, &inner_path] {
+        let hand_drawn = common.look_is_hand_drawn();
+        let paths = if hand_drawn {
+            helpers::hand_drawn_path_pair(common, details, path_data)
+        } else {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_paths_for_svg_path(
+                    path_data,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    common.hand_drawn_seed,
+                )
+            })
+        };
+
+        if let Some((fill_d, stroke_d)) = paths {
+            write_stacked_rectangle_path_group(out, common, &fill_d, &stroke_d, hand_drawn);
+        } else if hand_drawn {
+            write_stacked_rectangle_path_group(out, common, path_data, path_data, false);
+        }
+    }
+    out.push_str("</g>");
+}
+
+fn prepare_stacked_rectangle_geometry(
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (String, String) {
     let rect_offset = if common.look_is_neo() { 10.0 } else { 5.0 };
     let total_w = common.layout_node.width.max(1.0);
     let total_h = common.layout_node.height.max(1.0);
@@ -84,37 +122,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
     let outer_path = path_from_points(&outer_points);
     let inner_path = path_from_points(&inner_points);
 
-    if common.look_is_hand_drawn() {
-        let _ = write!(
-            out,
-            r#"<g class="basic label-container outer-path" style="{}">"#,
-            escape_attr(common.rough_group_style),
-        );
-    } else {
-        out.push_str(r#"<g class="basic label-container outer-path">"#);
-    }
-    for path_data in [&outer_path, &inner_path] {
-        let hand_drawn = common.look_is_hand_drawn();
-        let paths = if hand_drawn {
-            helpers::hand_drawn_path_pair(common, details, path_data)
-        } else {
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_paths_for_svg_path(
-                    path_data,
-                    common.stroke_width,
-                    common.stroke_dasharray,
-                    common.hand_drawn_seed,
-                )
-            })
-        };
+    (outer_path, inner_path)
+}
 
-        if let Some((fill_d, stroke_d)) = paths {
-            write_stacked_rectangle_path_group(out, common, &fill_d, &stroke_d, hand_drawn);
-        } else if hand_drawn {
-            // RoughJS only accepts a strict color subset. Preserve the complete geometry when a
-            // user supplies a CSS color that cannot be represented by the hand-drawn generator.
-            write_stacked_rectangle_path_group(out, common, path_data, path_data, false);
-        }
+pub(super) fn advance_stacked_rectangle_rough_geometry(
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (outer_path, inner_path) = prepare_stacked_rectangle_geometry(common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    for path in [&outer_path, &inner_path] {
+        let _ = super::super::helpers::prepare_node_path(common, path, target);
     }
-    out.push_str("</g>");
 }

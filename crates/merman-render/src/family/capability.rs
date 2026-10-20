@@ -1,5 +1,5 @@
 use crate::environment::RenderSession;
-use crate::{Error, RenderCapability, Result};
+use crate::{Error, LayoutAdaptation, LayoutOptions, RenderCapability, Result};
 use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::{DiagramFamilyId, ParsedDiagramRender, RenderSemanticModel};
@@ -26,6 +26,11 @@ impl RenderCapabilityPlan {
     /// Returns the authoritative typed render family selected before layout starts.
     pub const fn family_id(&self) -> DiagramFamilyId {
         self.family_id
+    }
+
+    /// Placement modes supported by this actual typed render family.
+    pub fn supported_layout_adaptations(&self) -> &'static [LayoutAdaptation] {
+        supported_layout_adaptations(self.family_id)
     }
 
     /// Returns every optional capability this operation requires.
@@ -276,10 +281,7 @@ pub fn supports_diagram_type(diagram_type: &str) -> bool {
     }
 }
 
-fn validate_render_input(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-) -> Result<DiagramFamilyId> {
+fn validate_paired_render_model(parsed: &ParsedDiagramRender) -> Result<DiagramFamilyId> {
     let meta = parsed.metadata();
     let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
@@ -305,6 +307,60 @@ fn validate_render_input(
             diagram_type: diagram_type.to_owned(),
         });
     }
+    parsed.family_id().ok_or_else(|| Error::InvalidModel {
+        message: format!(
+            "render model variant {} has no built-in family for diagram type: {diagram_type}",
+            model.kind()
+        ),
+    })
+}
+
+fn supported_layout_adaptations(family: DiagramFamilyId) -> &'static [LayoutAdaptation] {
+    if family == DiagramFamilyId::KANBAN {
+        &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
+    } else {
+        &[LayoutAdaptation::None]
+    }
+}
+
+/// Admits explicit placement requests without starting layout or installing render services.
+#[doc(hidden)]
+pub fn validate_layout_options(
+    parsed: &ParsedDiagramRender,
+    options: &LayoutOptions,
+) -> Result<()> {
+    if options.adaptation == LayoutAdaptation::None {
+        return Ok(());
+    }
+    let family = validate_paired_render_model(parsed)?;
+    if !supported_layout_adaptations(family).contains(&options.adaptation) {
+        return Err(Error::UnsupportedLayoutAdaptation {
+            adaptation: options.adaptation.id(),
+            diagram_type: parsed.metadata().diagram_type.clone(),
+        });
+    }
+    if !options.container_width.is_finite() || options.container_width <= 0.0 {
+        return Err(Error::InvalidAdaptationWidth);
+    }
+    Ok(())
+}
+
+/// Identifies the existing edge-geometry projection after closed typed model admission.
+#[doc(hidden)]
+pub fn has_edge_geometry(parsed: &ParsedDiagramRender) -> Result<bool> {
+    let family = validate_paired_render_model(parsed)?;
+    Ok(matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::AGENTFLOW
+    ))
+}
+
+fn validate_render_input(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+) -> Result<DiagramFamilyId> {
+    let family = validate_paired_render_model(parsed)?;
+    let meta = parsed.metadata();
     if !merman_core::__private::theme_parse_matches_recipe(
         meta,
         session.theme_compatibility_recipe(),
@@ -314,12 +370,7 @@ fn validate_render_input(
     session
         .work_meter()
         .preflight_parsed_render(parsed, OperationPhase::Layout)?;
-    parsed.family_id().ok_or_else(|| Error::InvalidModel {
-        message: format!(
-            "render model variant {} has no built-in family for diagram type: {diagram_type}",
-            model.kind()
-        ),
-    })
+    Ok(family)
 }
 
 /// Plans capability admission for a canonically paired typed render model without running layout.

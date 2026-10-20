@@ -119,7 +119,7 @@ impl BindingOperationKind {
             OperationKey::SvgPlanJson => BindingResourceScope::Svg,
             OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
-            OperationKey::EdgeGeometryJson => BindingResourceScope::Svg,
+            OperationKey::EdgeGeometryJson => BindingResourceScope::EdgeGeometry,
             OperationKey::Svg => BindingResourceScope::Svg,
             OperationKey::Png => BindingResourceScope::Png,
             OperationKey::Jpeg => BindingResourceScope::Jpeg,
@@ -313,6 +313,7 @@ impl BindingOperationResult {
 pub(crate) struct BindingOperationOutput {
     data: Vec<u8>,
     output_plan: Option<BindingOutputPlan>,
+    layout_adaptation: Option<BindingLayoutAdaptationObservation>,
     theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
 }
 
@@ -324,7 +325,7 @@ struct BindingOperationExecution {
 
 impl BindingOperationExecution {
     fn into_data(self) -> Vec<u8> {
-        self.output.data
+        self.output.into_data()
     }
 
     fn into_result(
@@ -771,6 +772,41 @@ impl Serialize for BindingUnknownOutputPlan {
     }
 }
 
+/// Actual layout width retained beside operation metadata, independently of terminal output plans.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BindingLayoutAdaptationObservation {
+    mode: String,
+    requested_width: f64,
+    actual_width: f64,
+    overflowed: bool,
+}
+
+impl BindingLayoutAdaptationObservation {
+    pub fn mode(&self) -> &str {
+        &self.mode
+    }
+    pub const fn requested_width(&self) -> f64 {
+        self.requested_width
+    }
+    pub const fn actual_width(&self) -> f64 {
+        self.actual_width
+    }
+    pub const fn overflowed(&self) -> bool {
+        self.overflowed
+    }
+
+    #[cfg(feature = "svg")]
+    pub(crate) fn from_render(value: merman::svg::LayoutAdaptationObservation) -> Self {
+        Self {
+            mode: value.mode().id().to_owned(),
+            requested_width: value.requested_width(),
+            actual_width: value.actual_width(),
+            overflowed: value.overflowed(),
+        }
+    }
+}
+
 /// Typed schema-1 metadata plus the exact JSON bytes received or produced at the boundary.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -781,6 +817,7 @@ pub struct BindingOperationMetadata {
     runtime_policy: String,
     byte_length: u64,
     output_plan: Option<BindingOutputPlan>,
+    layout_adaptation: Option<BindingLayoutAdaptationObservation>,
     theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
     json: Arc<[u8]>,
 }
@@ -809,6 +846,27 @@ impl BindingOperationMetadata {
             None | Some(Value::Null) => None,
             Some(value) => Some(parse_output_plan(value)?),
         };
+        let layout_adaptation = match object.get("layout_adaptation") {
+            None | Some(Value::Null) => None,
+            Some(value) => {
+                let object = value.as_object().ok_or_else(|| {
+                    BindingError::invalid_argument("layout_adaptation must be an object")
+                })?;
+                let requested_width = required_f64(object, "requested_width")?;
+                let actual_width = required_f64(object, "actual_width")?;
+                if requested_width <= 0.0 || actual_width <= 0.0 {
+                    return Err(BindingError::invalid_argument(
+                        "layout_adaptation widths must be positive",
+                    ));
+                }
+                Some(BindingLayoutAdaptationObservation {
+                    mode: required_string(object, "mode")?.to_owned(),
+                    requested_width,
+                    actual_width,
+                    overflowed: required_bool(object, "overflowed")?,
+                })
+            }
+        };
         let theme_execution_evidence = match object.get("theme_execution_evidence") {
             None | Some(Value::Null) => None,
             Some(value) => Some(parse_theme_execution_evidence(value)?),
@@ -821,6 +879,7 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan,
+            layout_adaptation,
             theme_execution_evidence,
             json: Arc::from(json),
         })
@@ -831,6 +890,7 @@ impl BindingOperationMetadata {
         runtime_policy: &str,
         byte_length: u64,
         output_plan: Option<BindingOutputPlan>,
+        layout_adaptation: Option<BindingLayoutAdaptationObservation>,
         theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
     ) -> Result<Self, BindingError> {
         #[cfg(test)]
@@ -843,6 +903,7 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan: output_plan.as_ref(),
+            layout_adaptation: layout_adaptation.as_ref(),
             theme_execution_evidence: theme_execution_evidence.as_ref(),
         })
         .map_err(|error| {
@@ -856,6 +917,7 @@ impl BindingOperationMetadata {
             runtime_policy: runtime_policy.to_owned(),
             byte_length,
             output_plan,
+            layout_adaptation,
             theme_execution_evidence,
             json: Arc::from(json),
         })
@@ -887,6 +949,11 @@ impl BindingOperationMetadata {
     }
 
     #[must_use]
+    pub const fn layout_adaptation(&self) -> Option<&BindingLayoutAdaptationObservation> {
+        self.layout_adaptation.as_ref()
+    }
+
+    #[must_use]
     pub const fn output_plan(&self) -> Option<&BindingOutputPlan> {
         self.output_plan.as_ref()
     }
@@ -908,10 +975,24 @@ impl BindingOperationMetadata {
 }
 
 impl BindingOperationOutput {
+    #[cfg(feature = "svg")]
+    pub(crate) fn with_layout_adaptation(
+        mut self,
+        value: Option<merman::svg::LayoutAdaptationObservation>,
+    ) -> Self {
+        self.layout_adaptation = value.map(BindingLayoutAdaptationObservation::from_render);
+        self
+    }
+
+    pub(crate) fn into_data(self) -> Vec<u8> {
+        self.data
+    }
+
     pub(crate) fn plain(data: Vec<u8>) -> Self {
         Self {
             data,
             output_plan: None,
+            layout_adaptation: None,
             theme_execution_evidence: None,
         }
     }
@@ -921,6 +1002,7 @@ impl BindingOperationOutput {
         Self {
             data,
             output_plan: None,
+            layout_adaptation: None,
             theme_execution_evidence: Some(evidence),
         }
     }
@@ -934,6 +1016,7 @@ impl BindingOperationOutput {
         Self {
             data: output.into_bytes(),
             output_plan: Some(plan),
+            layout_adaptation: None,
             theme_execution_evidence: None,
         }
     }
@@ -955,6 +1038,7 @@ impl BindingOperationOutput {
                 effective_scale: plan.effective_scale,
                 limited: plan.limited,
             })),
+            layout_adaptation: None,
             theme_execution_evidence: Some(evidence),
         }
     }
@@ -977,6 +1061,7 @@ impl BindingOperationOutput {
                     limited: plan.limited,
                 },
             )),
+            layout_adaptation: None,
             theme_execution_evidence: Some(evidence),
         }
     }
@@ -991,6 +1076,8 @@ struct BindingOperationMetadataWire<'a> {
     byte_length: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_plan: Option<&'a BindingOutputPlan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layout_adaptation: Option<&'a BindingLayoutAdaptationObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     theme_execution_evidence: Option<&'a BindingThemeExecutionEvidence>,
 }
@@ -1432,7 +1519,7 @@ impl BindingEngine {
     }
 }
 
-fn operation_result(
+pub(crate) fn operation_result(
     operation: BindingOperationKind,
     runtime_policy_id: &'static str,
     output: BindingOperationOutput,
@@ -1440,6 +1527,7 @@ fn operation_result(
     let BindingOperationOutput {
         data,
         output_plan,
+        layout_adaptation,
         theme_execution_evidence,
     } = output;
     let byte_length = u64::try_from(data.len()).map_err(|_| {
@@ -1450,6 +1538,7 @@ fn operation_result(
         runtime_policy_id,
         byte_length,
         output_plan,
+        layout_adaptation,
         theme_execution_evidence,
     )?;
 
@@ -1894,15 +1983,25 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn edge_geometry_json_is_scoped_to_the_svg_resource_budget() {
+    fn edge_geometry_json_is_scoped_to_its_actual_output_budget() {
         let operation = BindingOperationKind::from_id("edge-geometry-json").unwrap();
         let scope = operation.resource_scope();
 
-        // Renderer-scale output, so hosts may cap it with the same `max_svg_bytes` override that
-        // `svg` accepts. The `layout` scope rejects render limits, which is why this operation is
-        // not scoped like `layout-json`.
-        assert!(scope.accepts("max_svg_bytes"));
-        assert!(!BindingResourceScope::Layout.accepts("max_svg_bytes"));
+        assert!(scope.accepts("max_geometry_json_bytes"));
+        assert!(scope.accepts("max_layout_work_units"));
+        assert!(scope.accepts("max_prepared_text_retained_bytes"));
+        assert!(!scope.accepts("max_svg_bytes"));
+        assert!(!scope.accepts("max_svg_elements"));
+        assert!(!scope.accepts("svg_backend_tree_depth"));
+        for scope in [
+            BindingResourceScope::Layout,
+            BindingResourceScope::Svg,
+            BindingResourceScope::Png,
+            BindingResourceScope::Jpeg,
+            BindingResourceScope::Pdf,
+        ] {
+            assert!(!scope.accepts("max_geometry_json_bytes"));
+        }
     }
 
     #[test]

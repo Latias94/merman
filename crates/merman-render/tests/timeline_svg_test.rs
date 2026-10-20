@@ -27,7 +27,7 @@ fn render_timeline_svg_from_text(text: &str) -> String {
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout ok");
 
     artifact
@@ -176,7 +176,7 @@ fn try_render_timeline_with_theme_engine_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Timeline session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -204,7 +204,7 @@ fn try_render_timeline_with_theme_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Timeline session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -233,7 +233,7 @@ fn try_render_timeline_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Timeline resource-bound session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -1157,7 +1157,7 @@ fn timeline_typed_typography_reaches_layout_css_and_terminal_receipt() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin typed {direction} Timeline session: {error}"));
-        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap_or_else(|error| panic!("prepare typed {direction} Timeline: {error}"));
         let requests = host.snapshot();
         for label in ["Plan", "Task", "Event"] {

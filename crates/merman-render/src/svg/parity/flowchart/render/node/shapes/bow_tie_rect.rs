@@ -14,48 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        None,
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 12.0 } else { p };
-    let w = metrics.width + 2.0 * padding_x;
-    let h = metrics.height + padding_y;
-    let ry = h / 2.0;
-    let rx = ry / (2.5 + h / 50.0);
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((w / 2.0, -h / 2.0));
-    points.push((-w / 2.0, -h / 2.0));
-    points.extend(arc_points(
-        -w / 2.0,
-        -h / 2.0,
-        -w / 2.0,
-        h / 2.0,
-        rx,
-        ry,
-        false,
-    ));
-    points.push((w / 2.0, h / 2.0));
-    points.extend(arc_points(
-        w / 2.0,
-        h / 2.0,
-        w / 2.0,
-        -h / 2.0,
-        rx,
-        ry,
-        true,
-    ));
-
-    let path_data = path_from_points(&points);
+    let (rx, path_data) = prepare_bow_tie_rect_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -113,4 +72,64 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_bow_tie_rect_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = metrics.width + 2.0 * padding_x;
+    let h = metrics.height + padding_y;
+    let ry = h / 2.0;
+    let rx = ry / (2.5 + h / 50.0);
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push((w / 2.0, -h / 2.0));
+    points.push((-w / 2.0, -h / 2.0));
+    points.extend(arc_points(
+        -w / 2.0,
+        -h / 2.0,
+        -w / 2.0,
+        h / 2.0,
+        rx,
+        ry,
+        false,
+    ));
+    points.push((w / 2.0, h / 2.0));
+    points.extend(arc_points(
+        w / 2.0,
+        h / 2.0,
+        w / 2.0,
+        -h / 2.0,
+        rx,
+        ry,
+        true,
+    ));
+
+    let path_data = path_from_points(&points);
+    (rx, path_data)
+}
+
+pub(super) fn advance_bow_tie_rect_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, path_data) = prepare_bow_tie_rect_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

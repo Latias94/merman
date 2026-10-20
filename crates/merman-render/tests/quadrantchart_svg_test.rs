@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 mod common;
 
 use common::legacy_init_theme_compat_engine;
@@ -62,7 +68,7 @@ fn prepare_quadrantchart_family_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     prepare_quadrantchart_family_with_theme_requirement_and_engine(
         source,
         theme,
@@ -76,7 +82,7 @@ fn prepare_quadrantchart_family_with_theme_requirement_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
     portability: ThemePortabilityRequirement,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Quadrant Chart")
@@ -85,8 +91,7 @@ fn prepare_quadrantchart_family_with_theme_requirement_and_engine(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Quadrant Chart session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Quadrant Chart artifact")
+    (parsed, LayoutOptions::default(), session)
 }
 
 fn render_quadrantchart_with_theme_and_engine(
@@ -94,7 +99,10 @@ fn render_quadrantchart_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
 ) -> family::RenderedFamilySvg {
-    prepare_quadrantchart_family_with_theme_and_engine(source, theme, engine)
+    let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+        prepare_quadrantchart_family_with_theme_and_engine(source, theme, engine);
+    family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+        .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed Quadrant Chart SVG")
 }
@@ -105,13 +113,16 @@ fn render_quadrantchart_with_theme_requirement_and_engine(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    prepare_quadrantchart_family_with_theme_requirement_and_engine(
-        source,
-        theme,
-        engine,
-        portability,
-    )
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+        prepare_quadrantchart_family_with_theme_requirement_and_engine(
+            source,
+            theme,
+            engine,
+            portability,
+        );
+    family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
 fn render_quadrantchart_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
@@ -163,7 +174,7 @@ fn render_quadrantchart_svg_from_text(text: &str) -> String {
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -184,7 +195,7 @@ fn try_render_quadrantchart_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin QuadrantChart resource-bound session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -901,12 +912,15 @@ fn quadrantchart_point_fill_rejects_variant_ordinal_clear_gradient_and_pattern_r
 
     for rule in cases {
         let theme = quadrantchart_series_rule_theme(rule);
-        let error = match prepare_quadrantchart_family_with_theme_and_engine(
-            "quadrantChart\nPoint: [0.5, 0.5]\n",
-            &theme,
-            Engine::new(),
-        )
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+            prepare_quadrantchart_family_with_theme_and_engine(
+                "quadrantChart\nPoint: [0.5, 0.5]\n",
+                &theme,
+                Engine::new(),
+            );
+        let error = match family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
+            .expect("prepare family fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         {
             Ok(_) => panic!("unsupported Quadrant Chart point fills must fail closed"),
             Err(error) => error,

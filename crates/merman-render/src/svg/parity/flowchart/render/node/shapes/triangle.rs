@@ -14,22 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        None,
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
-    let h = w + metrics.height;
-    let tw = w + metrics.height;
-    let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
-    let path_data = path_from_points(&pts);
+    let (metrics, p, h, path_data) = prepare_triangle_extract_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let rough_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_hand_drawn_svg_path(
@@ -118,4 +103,38 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     };
     let padding_term = if ctx.node_html_labels { p / 2.0 } else { p };
     label.dy = h / 2.0 - metrics.height / 2.0 - padding_term + bbox_y_offset;
+}
+
+fn prepare_triangle_extract_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::text::TextMetrics, f64, f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
+    let h = w + metrics.height;
+    let tw = w + metrics.height;
+    let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
+    let path_data = path_from_points(&pts);
+    (metrics, p, h, path_data)
+}
+
+pub(super) fn advance_triangle_extract_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, _, _, path_data) = prepare_triangle_extract_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

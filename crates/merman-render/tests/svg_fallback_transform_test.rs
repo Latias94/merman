@@ -255,7 +255,7 @@ fn swimlane_issue_200_export_keeps_lane_titles_rotated_and_centered() {
         .unwrap()
         .unwrap();
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )

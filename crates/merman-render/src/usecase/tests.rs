@@ -49,7 +49,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
         .begin_session()
         .unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     let layout = artifact.layout_json().unwrap();
     let node = &layout["layout"]["UsecaseDiagram"]["nodes"][0];
     assert_eq!(node["width"], json!(262.0));
@@ -78,7 +78,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
     let plan = family::plan_render(&parsed, &session).unwrap();
     assert!(!plan.required_capability_ids().any(|id| id == "math"));
     let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();

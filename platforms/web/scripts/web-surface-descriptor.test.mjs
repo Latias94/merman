@@ -255,3 +255,12 @@ function artifactDescriptorPath() {
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+
+test("prepared parsing stays in the full and rendering artifact closure", () => {
+  for (const descriptor of webPackages) {
+    const rendering = descriptor.id === "full" || descriptor.id === "render";
+    assert.equal(descriptor.runtimeExportNames.includes("prepareSource"), rendering, descriptor.id);
+    assert.equal(descriptor.wasmExportNames.includes("PreparedSource"), rendering, descriptor.id);
+  }
+});

@@ -1533,6 +1533,7 @@ function svgPlan({
     diagram_type: diagramType,
     required_capability_ids: [],
     missing_capability_ids: [],
+    supported_layout_adaptation_ids: ["none"],
     ready: true,
   };
 }

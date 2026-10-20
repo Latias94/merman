@@ -67,8 +67,9 @@ pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
-    Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,
-    Result as RenderResult, layout_cytoscape_available, layout_elk_available, math_available,
+    Error as RenderError, LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions,
+    RenderCapability, RenderCapabilityPolicy, Result as RenderResult, layout_cytoscape_available,
+    layout_elk_available, math_available,
 };
 
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.

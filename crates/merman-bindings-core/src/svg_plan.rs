@@ -19,6 +19,7 @@ pub struct SvgPlanPayload {
     required_capability_ids: Vec<String>,
     missing_capability_ids: Vec<String>,
     ready: bool,
+    supported_layout_adaptation_ids: Vec<String>,
 }
 
 impl SvgPlanPayload {
@@ -45,6 +46,11 @@ impl SvgPlanPayload {
     #[must_use]
     pub fn missing_capability_ids(&self) -> &[String] {
         &self.missing_capability_ids
+    }
+
+    #[must_use]
+    pub fn supported_layout_adaptation_ids(&self) -> &[String] {
+        &self.supported_layout_adaptation_ids
     }
 
     #[must_use]
@@ -89,6 +95,11 @@ impl SvgPlanPayload {
             planned_operation_id: "svg".to_string(),
             diagram_type: plan.diagram_type().to_string(),
             ready: missing_capability_ids.is_empty(),
+            supported_layout_adaptation_ids: plan
+                .supported_layout_adaptations()
+                .iter()
+                .map(|mode| mode.id().to_owned())
+                .collect(),
             required_capability_ids,
             missing_capability_ids,
         })
@@ -142,6 +153,7 @@ mod tests {
                 },
                 "missing_capability_ids": [],
                 "ready": true,
+                "supported_layout_adaptation_ids": ["none"],
             })
         );
     }

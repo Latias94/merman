@@ -17,11 +17,13 @@ use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnviron
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
     renderer: Renderer,
+    runtime_policy: merman::runtime::RuntimePolicy,
     svg: SvgRequest,
     theme: Option<merman::svg::DiagramTheme>,
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
+    render_resources: merman::svg::RenderResourcePolicy,
     #[cfg(feature = "native-fonts")]
     native_font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -30,10 +32,12 @@ pub(super) struct RenderRequestPlan {
     pdf_options: merman::svg::export::PdfOptions,
 }
 
+#[derive(Clone)]
 pub(super) struct RenderOperationConfig {
     environment: SvgEnvironment,
     runtime_policy: merman::runtime::RuntimePolicy,
     input_resources: merman::resources::InputResourcePolicy,
+    render_resources: merman::svg::RenderResourcePolicy,
     lenient_parsing: bool,
     theme: Option<merman::svg::DiagramTheme>,
     site_config: Option<merman::MermaidConfig>,
@@ -46,64 +50,115 @@ pub(super) struct RenderOperationConfig {
     pdf_options: merman::svg::export::PdfOptions,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum RenderInput<'a> {
+    Source(&'a str),
+    Prepared(&'a merman::PreparedSource),
+}
+
 impl RenderRequestPlan {
-    pub(super) fn render_svg_output(
+    pub(super) fn prepare_source(
         &self,
         source: &str,
         control: OperationControl,
+    ) -> Result<merman::PreparedSource, BindingError> {
+        let request = merman::PrepareSourceRequest::new(source, control)
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.input_resources);
+        let request = match &self.theme {
+            Some(theme) => request.with_theme(theme.clone()),
+            None => request,
+        };
+        self.renderer
+            .prepare_source(request)
+            .map_err(|error| classify_render_error(error, self.resource_profile))?
+            .ok_or_else(no_diagram_error)
+    }
+
+    pub(super) fn runtime_policy(&self) -> merman::runtime::RuntimePolicy {
+        self.runtime_policy.clone()
+    }
+
+    fn render_input(
+        &self,
+        input: RenderInput<'_>,
+        target: merman::RenderTarget,
+        control: OperationControl,
+    ) -> Result<RenderOutput, BindingError> {
+        match input {
+            RenderInput::Source(source) => {
+                self.renderer.render(self.request(source, target, control))
+            }
+            RenderInput::Prepared(prepared) => self.renderer.render_prepared_with_resource_policy(
+                prepared,
+                target,
+                control,
+                self.input_resources,
+            ),
+        }
+        .map_err(|error| classify_render_error(error, self.resource_profile))
+    }
+
+    pub(super) fn render_svg_output(
+        &self,
+        input: RenderInput<'_>,
+        control: OperationControl,
         include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let request = self.request(
-            source,
-            merman::RenderTarget::Svg(self.svg_for_operation(&control)?),
-            control,
-        );
+        let target = merman::RenderTarget::Svg(self.svg_for_operation(&control)?);
         if !include_metadata {
-            let svg = self
-                .renderer
-                .render_svg_data(request)
-                .map_err(|error| classify_render_error(error, self.resource_profile))?
-                .ok_or_else(no_diagram_error)?;
+            let merman::RenderTarget::Svg(request) = target else {
+                unreachable!("SVG output target");
+            };
+            let svg = match input {
+                RenderInput::Source(source) => self
+                    .renderer
+                    .render_svg_data(self.request(
+                        source,
+                        merman::RenderTarget::Svg(request),
+                        control,
+                    ))
+                    .map_err(|error| classify_render_error(error, self.resource_profile))?
+                    .ok_or_else(no_diagram_error)?,
+                RenderInput::Prepared(prepared) => self
+                    .renderer
+                    .render_prepared_svg_data(prepared, request, control)
+                    .map_err(|error| classify_render_error(error, self.resource_profile))?,
+            };
             return Ok(crate::operation::BindingOperationOutput::plain(
                 svg.into_bytes(),
             ));
         }
-        let output = self
-            .renderer
-            .render(request)
-            .map_err(|error| classify_render_error(error, self.resource_profile))?;
-        let RenderOutput::Svg(svg) = output else {
+        let RenderOutput::Svg(svg) = self.render_input(input, target, control)? else {
             return Err(unexpected_render_output("svg"));
         };
         let output = svg.ok_or_else(no_diagram_error)?;
+        let layout_adaptation = output.layout_adaptation();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::svg(
             output.into_parts().0.into_bytes(),
             evidence,
-        ))
+        )
+        .with_layout_adaptation(layout_adaptation))
     }
 
     pub(super) fn layout_json(
         &self,
-        source: &str,
+        input: RenderInput<'_>,
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        let output = self
-            .renderer
-            .render(self.request(
-                source,
-                merman::RenderTarget::LayoutJson(self.svg_for_operation(&control)?),
-                control.clone(),
-            ))
-            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let output = self.render_input(
+            input,
+            merman::RenderTarget::LayoutJson(self.svg_for_operation(&control)?),
+            control.clone(),
+        )?;
         let RenderOutput::LayoutJson(layout_json) = output else {
             return Err(unexpected_render_output("layout-json"));
         };
         let layout_json = layout_json
             .map(|output| output.into_parts().0)
             .ok_or_else(no_diagram_error)?;
-
         let mut bytes = Vec::new();
         layout_json
             .write_json_controlled(&mut bytes, &control.for_phase(merman::OperationPhase::Emit))
@@ -114,23 +169,35 @@ impl RenderRequestPlan {
 
     pub(super) fn edge_geometry_json(
         &self,
-        source: &str,
+        input: RenderInput<'_>,
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        let output = self
-            .renderer
-            .render(self.request(
-                source,
-                merman::RenderTarget::EdgeGeometryJson(self.svg_for_operation(&control)?),
-                control,
-            ))
-            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let svg = self.svg.clone();
+        #[cfg(feature = "native-fonts")]
+        let svg = if let Some(context) = &self.native_font_context {
+            let mut svg = svg;
+            svg.environment = svg
+                .environment
+                .with_native_font_context(context.clone())
+                .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
+            svg
+        } else {
+            svg
+        };
+        let output = self.render_input(
+            input,
+            merman::RenderTarget::EdgeGeometryJson(svg),
+            control.clone(),
+        )?;
         let RenderOutput::EdgeGeometryJson(edge_geometry_json) = output else {
             return Err(unexpected_render_output("edge-geometry-json"));
         };
-        let edge_geometry_json = edge_geometry_json.ok_or_else(no_diagram_error)?;
-
-        serde_json::to_vec(&edge_geometry_json).map_err(internal_json_error)
+        let mut bytes = Vec::new();
+        edge_geometry_json
+            .ok_or_else(no_diagram_error)?
+            .write_json_controlled(&mut bytes, self.render_resources, &control)
+            .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
+        Ok(bytes)
     }
 
     pub(super) fn svg_plan_json(
@@ -182,13 +249,13 @@ impl RenderRequestPlan {
             ));
         }
         let plan = output.plan();
+        let layout_adaptation = output.layout_adaptation();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
-        Ok(crate::operation::BindingOperationOutput::raster(
-            output.into_bytes(),
-            plan,
-            evidence,
-        ))
+        Ok(
+            crate::operation::BindingOperationOutput::raster(output.into_bytes(), plan, evidence)
+                .with_layout_adaptation(layout_adaptation),
+        )
     }
 
     #[cfg(feature = "jpeg")]
@@ -219,13 +286,13 @@ impl RenderRequestPlan {
             ));
         }
         let plan = output.plan();
+        let layout_adaptation = output.layout_adaptation();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
-        Ok(crate::operation::BindingOperationOutput::raster(
-            output.into_bytes(),
-            plan,
-            evidence,
-        ))
+        Ok(
+            crate::operation::BindingOperationOutput::raster(output.into_bytes(), plan, evidence)
+                .with_layout_adaptation(layout_adaptation),
+        )
     }
 
     #[cfg(feature = "pdf")]
@@ -256,13 +323,13 @@ impl RenderRequestPlan {
             ));
         }
         let plan = output.plan();
+        let layout_adaptation = output.layout_adaptation();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
-        Ok(crate::operation::BindingOperationOutput::pdf(
-            output.into_bytes(),
-            plan,
-            evidence,
-        ))
+        Ok(
+            crate::operation::BindingOperationOutput::pdf(output.into_bytes(), plan, evidence)
+                .with_layout_adaptation(layout_adaptation),
+        )
     }
 
     fn svg_for_operation(&self, control: &OperationControl) -> Result<SvgRequest, BindingError> {
@@ -405,6 +472,17 @@ impl RenderOperationConfig {
 
         let mut layout = LayoutOptions::headless_svg_defaults();
         if let Some(layout_json) = options.layout.as_ref() {
+            if let Some(adaptation) = layout_json.adaptation.as_deref() {
+                layout.adaptation = match normalize_option(adaptation).as_str() {
+                    "none" => merman::svg::LayoutAdaptation::None,
+                    "fit-width" => merman::svg::LayoutAdaptation::FitWidth,
+                    _ => {
+                        return Err(BindingError::invalid_argument(format!(
+                            "unsupported layout.adaptation: {adaptation}"
+                        )));
+                    }
+                };
+            }
             if let Some(width) = layout_json.container_width {
                 layout.container_width = finite_positive(width, "layout.container_width")?;
             }
@@ -460,6 +538,7 @@ impl RenderOperationConfig {
             environment,
             runtime_policy,
             input_resources,
+            render_resources,
             lenient_parsing,
             theme,
             site_config,
@@ -496,11 +575,13 @@ impl RenderOperationConfig {
         };
         let input_resources = self.input_resources;
         let resource_profile = input_resources.profile();
-        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
+        let runtime_policy = self.runtime_policy;
+        let mut engine = merman::Engine::new().with_runtime_policy(runtime_policy.clone());
         if let Some(site_config) = self.site_config {
             engine = engine.with_site_config(site_config);
         }
         RenderRequestPlan {
+            runtime_policy,
             renderer: Renderer::new()
                 .with_engine(engine)
                 .with_parse_options(parse_options)
@@ -516,6 +597,7 @@ impl RenderOperationConfig {
             parse_options,
             input_resources,
             resource_profile,
+            render_resources: self.render_resources,
             #[cfg(feature = "native-fonts")]
             native_font_context: services.native_font_context(),
             #[cfg(any(feature = "png", feature = "jpeg"))]

@@ -104,7 +104,7 @@ fn render_eventmodeling_with_theme_requirement_and_id(
         .begin_session_with_theme(theme)
         .expect("begin strict portable Event Modeling session");
 
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -127,7 +127,7 @@ fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::Rend
         ))
         .begin_session_with_theme(theme)
         .expect("begin trusted Event Modeling author CSS session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Event Modeling author CSS fixture")
         .render_svg(
             &SvgRenderOptions {
@@ -147,7 +147,7 @@ fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Val
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(theme)
         .expect("begin themed Event Modeling layout session");
-    let projection = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let projection = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Event Modeling layout")
         .layout_json()
         .expect("serialize themed Event Modeling layout");
@@ -241,7 +241,7 @@ fn try_render_eventmodeling_svg_with_resource_policy(
         .with_resource_policy(policy)
         .begin_session()
         .expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     Ok(artifact
         .render_svg(
             &SvgRenderOptions {
@@ -831,7 +831,7 @@ data ItemAddedData {
     assert_eq!(parsed.metadata().diagram_type, "eventmodeling");
 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -870,7 +870,7 @@ tf 01 event Start
         .expect("parse eventmodeling")
         .expect("detect eventmodeling");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let svg = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -904,7 +904,7 @@ fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() 
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact
         .layout_json()
         .expect("serialize EventModeling layout");
@@ -953,7 +953,7 @@ fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations
         .unwrap()
         .unwrap();
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )

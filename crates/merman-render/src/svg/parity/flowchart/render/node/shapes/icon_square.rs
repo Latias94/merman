@@ -68,45 +68,19 @@ fn render_icon_rect_frame(
     corner_radius: f64,
     frame_class: Option<&str>,
 ) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
-    // Port of Mermaid `iconSquare.ts` and `iconRounded.ts` (`icon-shape default`).
+    let (
+        top_label,
+        icon_size,
+        _width,
+        label_bbox_w,
+        label_bbox_h,
+        outer_w,
+        outer_h,
+        icon_dy,
+        rounded_rect,
+        hand_drawn,
+    ) = prepare_icon_rect_frame_geometry(ctx, common, label, corner_radius);
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
-    // Mermaid `labelHelper(...)` uses the flowchart `nodePadding` (15px) and returns `halfPadding`.
-    let half_padding = (ctx.node_padding / 2.0).max(0.0);
-    let has_label = !label.text.is_empty();
-    let label_padding = if has_label { 8.0 } else { 0.0 };
-    let top_label = common.node_pos == Some("t");
-
-    let asset_h = common.node_asset_height.unwrap_or(48.0);
-    let asset_w = common.node_asset_width.unwrap_or(48.0);
-    let icon_size = asset_h.max(asset_w);
-
-    let height = icon_size + half_padding * 2.0;
-    let width = icon_size + half_padding * 2.0;
-    let x = -width / 2.0;
-    let y = -height / 2.0;
-    let mut metrics = common
-        .label_emission
-        .metrics(ctx, Some(common.layout_node), label);
-    if !has_label {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
-
-    // Mermaid's `labelHelper(...)` wraps icon labels in `.labelBkg` (2px padding).
-    let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
-    let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-
-    let outer_w = width.max(label_bbox_w);
-    let outer_h = height + label_bbox_h + label_padding;
-
-    let icon_dy = if top_label {
-        label_bbox_h / 2.0 + label_padding / 2.0
-    } else {
-        -label_bbox_h / 2.0 - label_padding / 2.0
-    };
-
-    let rounded_rect = rounded_rect_path_d(x, y, width, height, corner_radius);
-    let hand_drawn = common.look_is_hand_drawn();
     let frame_paths = if hand_drawn {
         helpers::hand_drawn_path_pair_with_stroke(
             true,
@@ -260,4 +234,96 @@ fn render_icon_rect_frame(
         out.push_str("</a>");
     }
     Ok(label_receipt)
+}
+
+fn prepare_icon_rect_frame_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+    corner_radius: f64,
+) -> (bool, f64, f64, f64, f64, f64, f64, f64, String, bool) {
+    // Port of Mermaid `iconSquare.ts` and `iconRounded.ts` (`icon-shape default`).
+    let has_label = !label.text.is_empty();
+    let label_padding = if has_label { 8.0 } else { 0.0 };
+    let top_label = common.node_pos == Some("t");
+    let (icon_size, width, height, rounded_rect) = icon_frame_geometry(ctx, common, corner_radius);
+    let mut metrics = common.label_metrics(ctx, label);
+    if !has_label {
+        metrics.width = 0.0;
+        metrics.height = 0.0;
+    }
+
+    // Mermaid's `labelHelper(...)` wraps icon labels in `.labelBkg` (2px padding).
+    let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
+    let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+
+    let outer_w = width.max(label_bbox_w);
+    let outer_h = height + label_bbox_h + label_padding;
+
+    let icon_dy = if top_label {
+        label_bbox_h / 2.0 + label_padding / 2.0
+    } else {
+        -label_bbox_h / 2.0 - label_padding / 2.0
+    };
+
+    let hand_drawn = common.look_is_hand_drawn();
+
+    (
+        top_label,
+        icon_size,
+        width,
+        label_bbox_w,
+        label_bbox_h,
+        outer_w,
+        outer_h,
+        icon_dy,
+        rounded_rect,
+        hand_drawn,
+    )
+}
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    _label: &super::super::FlowchartNodeLabelState<'_>,
+    corner_radius: f64,
+) {
+    let (_, _, _, path) = icon_frame_geometry(ctx, common, corner_radius);
+    if common.look_is_hand_drawn() {
+        let _ = super::super::roughjs::roughjs_prepare_paths_for_hand_drawn_svg_path(
+            super::super::roughjs::RoughGeometryTarget::Query,
+            &path,
+            1.3,
+            "0 0",
+            common.work_meter,
+            common.hand_drawn_seed,
+        );
+    } else {
+        let _ = super::super::roughjs::roughjs_prepare_paths_for_svg_path_single_set(
+            &path,
+            1.3,
+            "0 0",
+            common.hand_drawn_seed,
+        );
+    }
+}
+
+fn icon_frame_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    corner_radius: f64,
+) -> (f64, f64, f64, String) {
+    let half_padding = (ctx.node_padding / 2.0).max(0.0);
+    let icon_size = common
+        .node_asset_height
+        .unwrap_or(48.0)
+        .max(common.node_asset_width.unwrap_or(48.0));
+    let width = icon_size + half_padding * 2.0;
+    let height = icon_size + half_padding * 2.0;
+    (
+        icon_size,
+        width,
+        height,
+        rounded_rect_path_d(-width / 2.0, -height / 2.0, width, height, corner_radius),
+    )
 }

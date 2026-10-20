@@ -219,7 +219,7 @@ fn try_render_packet_source_with_theme_and_engine(
         .begin_session_with_theme(theme)
         .expect("begin strict portable Packet session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -1083,7 +1083,7 @@ fn render_packet(source: &str) -> (PacketDiagramLayout, String) {
         .expect("packet diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("packet layout");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("packet layout");
     let projection = artifact.layout_json().expect("layout projection");
     let layout = serde_json::from_value(projection["layout"]["PacketDiagram"].clone())
         .expect("packet layout");

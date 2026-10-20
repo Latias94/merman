@@ -150,3 +150,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
         geometry.translate_y,
     );
 }
+
+pub(super) fn advance_rough_geometry(
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    kind: crate::flowchart::LeanKind,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let geometry = crate::flowchart::LeanGeometry::from_bounds(
+        kind,
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    let path = path_from_points(&geometry.points);
+    let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+        super::super::roughjs::RoughGeometryTarget::Query,
+        &path,
+        common.stroke_width,
+        common.stroke_dasharray,
+        FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
+        FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
+        FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
+}

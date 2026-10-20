@@ -137,6 +137,10 @@ async function doInit(
     await module.default({ module_or_path: wasm });
   }
   assertWebTransportApiVersion(module);
+  const missing = state.requiredWasmExports.filter(name => typeof (module as unknown as Record<string, unknown>)[name] !== "function");
+  if (missing.length > 0) {
+    throw new Error(`Merman WASM is missing required exports: ${missing.join(", ")}. Rebuild the matching browser package.`);
+  }
   state.wasmModule = module;
   return module;
 }

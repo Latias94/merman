@@ -33,6 +33,7 @@ const FULL_WEB_OPERATIONS: &[OperationKey] = &[
     OperationKey::DocumentAnalysisFactsJson,
     OperationKey::DocumentAnalysisJson,
     OperationKey::LayoutJson,
+    OperationKey::EdgeGeometryJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -243,6 +244,7 @@ const UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER: &[&str] = &[
     "max_ascii_grapheme_bytes",
     "max_ascii_nesting_depth",
     "max_prepared_text_retained_bytes",
+    "max_geometry_json_bytes",
 ];
 
 #[derive(Clone, Copy)]
@@ -1257,6 +1259,7 @@ mod tests {
                 "max_ascii_grapheme_bytes",
                 "max_ascii_nesting_depth",
                 "max_prepared_text_retained_bytes",
+                "max_geometry_json_bytes",
             ]
         );
         assert_eq!(

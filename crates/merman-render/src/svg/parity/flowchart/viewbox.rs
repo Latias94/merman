@@ -223,178 +223,23 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     // edge path `d` into our base bbox. getBBox() excludes source/default strokes; expand only for
     // an actually applied typed stroke, whose additional paint must fit without relayout.
     {
-        let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
         let _g = timing.section(viewbox_edge_curve_bounds);
-        let mut scratch = FlowchartEdgeDataPointsScratch::default();
-        let mut prepared_routes = Vec::new();
-        let mut prepared_edges = Vec::new();
-        for e in render_edges {
-            let edge_ref = e.as_ref();
-            let key = edge_ref.key;
-            let edge = edge_ref.edge;
-            let root_id = {
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_root_lookup);
-                hierarchy_plan.edge_root(key)?.unwrap_or("")
-            };
-            let off = {
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_offsets);
-                hierarchy_plan
-                    .root_offsets(root_id)
-                    .unwrap_or(FlowchartRootOffsets {
-                        origin_x: 0.0,
-                        origin_y: 0.0,
-                        abs_top_transform: 0.0,
-                    })
-            };
-
-            let request = FlowchartEdgePathGeomRequest {
-                ctx,
-                key,
-                edge,
-                origin_x: off.origin_x,
-                origin_y: off.origin_y,
-                trace_enabled: false,
-            };
-            if ctx.uses_elk_adapter_dom {
-                if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
-                    prepared_routes.push(route);
-                    prepared_edges.push((edge_ref, off));
-                }
-                continue;
-            }
-            detail.viewbox_edge_curve_geom_calls += 1;
-            let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
-            let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch) else {
-                continue;
-            };
-            if geom.bounds_skipped_for_viewbox {
+        *edge_path_cache = super::paint::prepare_edge_routes(ctx, render_edges, hierarchy_plan)?;
+        detail.viewbox_edge_curve_geom_calls += edge_path_cache.len() as u32;
+        for (&key, entry) in edge_path_cache.iter() {
+            if entry.geom.bounds_skipped_for_viewbox {
                 detail.viewbox_edge_curve_geom_skipped_bounds += 1;
             }
-            let paint_outset = ctx
-                .edge_style_plan
-                .stroke_width_for(key)?
-                .typed_value()
-                .map_or(0.0, |width| f64::from(width) / 2.0);
-
-            {
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
-                if let Some(pb) = geom.pb {
-                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x - paint_outset);
-                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform - paint_outset);
-                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x + paint_outset);
-                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform + paint_outset);
-                }
-
-                edge_path_cache.insert(
-                    key,
-                    FlowchartEdgePathCacheEntry {
-                        origin_x: off.origin_x,
-                        origin_y: off.origin_y,
-                        abs_top_transform: off.abs_top_transform,
-                        geom,
-                    },
-                );
-            }
-        }
-
-        if ctx.uses_elk_adapter_dom {
-            if ctx
-                .config
-                .as_value()
-                .get("elk")
-                .and_then(|elk| elk.get("straightenEdges"))
-                .and_then(serde_json::Value::as_bool)
-                != Some(false)
-            {
-                edge_geom::straighten_edge_terminals(&mut prepared_routes, ctx.work_meter)?;
-            }
-            edge_geom::separate_edge_labels(
-                &mut prepared_routes,
-                prepared_edges.iter().map(|(edge, _)| {
-                    (
-                        edge.edge.from.as_str(),
-                        edge.edge.to.as_str(),
-                        ctx.model
-                            .edge_label_for_occurrence(edge.key, edge.edge)
-                            .is_some_and(|label| !label.is_empty()),
-                    )
-                }),
-                ctx.work_meter,
-            )?;
-            for ((edge, off), route) in prepared_edges.into_iter().zip(prepared_routes) {
-                let key = edge.key;
-                let edge = edge.edge;
-                detail.viewbox_edge_curve_geom_calls += 1;
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
-                let Some(geom) = edge_geom::finish_edge_route(
-                    FlowchartEdgePathGeomRequest {
-                        ctx,
-                        key,
-                        edge,
-                        origin_x: off.origin_x,
-                        origin_y: off.origin_y,
-                        trace_enabled: false,
-                    },
-                    route,
-                    &mut scratch,
-                ) else {
-                    continue;
-                };
+            if let Some(pb) = entry.geom.pb {
                 let paint_outset = ctx
                     .edge_style_plan
                     .stroke_width_for(key)?
                     .typed_value()
                     .map_or(0.0, |width| f64::from(width) / 2.0);
-                if let Some(pb) = geom.pb {
-                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x - paint_outset);
-                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform - paint_outset);
-                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x + paint_outset);
-                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform + paint_outset);
-                }
-                edge_path_cache.insert(
-                    key,
-                    FlowchartEdgePathCacheEntry {
-                        origin_x: off.origin_x,
-                        origin_y: off.origin_y,
-                        abs_top_transform: off.abs_top_transform,
-                        geom,
-                    },
-                );
-            }
-        }
-
-        if ctx.swimlane_direction.is_some() || ctx.uses_elk_adapter_dom {
-            super::swimlane::apply_line_hops_to_edge_geometries(
-                edge_path_cache,
-                render_edges,
-                ctx.config,
-                ctx.work_meter,
-                ctx.uses_elk_adapter_dom,
-            )?;
-
-            // Line hops are a render-time replacement of the original path. Rebuild edge bounds
-            // from the same post-processed geometry that SVG emission consumes, while retaining
-            // node, cluster, and label bounds as the base.
-            (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = edge_bounds_base;
-            for edge in render_edges {
-                let edge = edge.as_ref();
-                let Some(cache_entry) = edge_path_cache.get(&edge.key) else {
-                    continue;
-                };
-                let paint_outset = ctx
-                    .edge_style_plan
-                    .stroke_width_for(edge.key)?
-                    .typed_value()
-                    .map_or(0.0, |width| f64::from(width) / 2.0);
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
-                if let Some(pb) = cache_entry.geom.pb {
-                    bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x - paint_outset);
-                    bbox_min_y =
-                        bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform - paint_outset);
-                    bbox_max_x = bbox_max_x.max(pb.max_x + cache_entry.origin_x + paint_outset);
-                    bbox_max_y =
-                        bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform + paint_outset);
-                }
+                bbox_min_x = bbox_min_x.min(pb.min_x + entry.origin_x - paint_outset);
+                bbox_min_y = bbox_min_y.min(pb.min_y + entry.abs_top_transform - paint_outset);
+                bbox_max_x = bbox_max_x.max(pb.max_x + entry.origin_x + paint_outset);
+                bbox_max_y = bbox_max_y.max(pb.max_y + entry.abs_top_transform + paint_outset);
             }
         }
 

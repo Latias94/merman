@@ -22,27 +22,27 @@ const sourceRoot = path.join(webRoot, "src");
 const capabilityModulesByPackage = Object.freeze({
   analysis: {
     required: ["runtime-analysis.ts"],
-    forbidden: ["runtime-ascii.ts", "runtime-editor.ts", "runtime-render.ts"],
+    forbidden: ["runtime-ascii.ts", "runtime-editor.ts", "runtime-render.ts", "runtime-mount.ts"],
   },
   ascii: {
     required: ["runtime-ascii.ts"],
-    forbidden: ["runtime-analysis.ts", "runtime-editor.ts", "runtime-render.ts"],
+    forbidden: ["runtime-analysis.ts", "runtime-editor.ts", "runtime-render.ts", "runtime-mount.ts"],
   },
   editor: {
     required: ["runtime-analysis.ts", "runtime-editor.ts"],
-    forbidden: ["runtime-ascii.ts", "runtime-render.ts"],
+    forbidden: ["runtime-ascii.ts", "runtime-render.ts", "runtime-mount.ts"],
   },
   full: {
     required: [
       "runtime-analysis.ts",
       "runtime-ascii.ts",
       "runtime-editor.ts",
-      "runtime-render.ts",
+      "runtime-render.ts", "runtime-mount.ts",
     ],
     forbidden: [],
   },
   render: {
-    required: ["runtime-render.ts"],
+    required: ["runtime-render.ts", "runtime-mount.ts"],
     forbidden: ["runtime-analysis.ts", "runtime-ascii.ts", "runtime-editor.ts"],
   },
 });

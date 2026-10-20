@@ -66,7 +66,7 @@ fn render_sankey_with_theme_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Sankey session");
-    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("sankey-theme".to_string()),
             ..SvgRenderOptions::default()
@@ -120,7 +120,7 @@ fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("layout ok")
         .render_svg(options, &SvgDebugOptions::default())
         .expect("render SVG")
@@ -141,7 +141,7 @@ fn try_render_sankey_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Sankey resource-bound session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)?
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)?
         .render_svg(options, &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
 }

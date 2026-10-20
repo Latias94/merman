@@ -85,7 +85,7 @@ fn render_zenuml_with_theme(
         .begin_session_with_theme(theme)
         .expect("begin themed ZenUML session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed ZenUML")
         .render_svg(
             &SvgRenderOptions {
@@ -110,7 +110,7 @@ fn try_render_zenuml_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin ZenUML resource-bound session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -349,7 +349,7 @@ fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> Strin
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap()
@@ -465,7 +465,7 @@ fn zenuml_configured_css_obeys_the_actual_svg_byte_ceiling() {
             .with_resource_policy(policy)
             .begin_session()
             .unwrap();
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     };
     let baseline = render(RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();

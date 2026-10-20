@@ -27,7 +27,7 @@ fn render_with_engine(engine: &Engine, source: &str, diagram_id: &str) -> (Strin
         .expect("diagram is detected");
     let config = parsed.metadata().effective_config.clone();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout succeeds");
     let svg = artifact
         .render_svg(
@@ -159,7 +159,7 @@ fn render_flowchart_label_weights(
         )
         .begin_session_with_theme(theme)
         .unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 

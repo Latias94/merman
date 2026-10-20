@@ -10,42 +10,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid `windowPane.ts` (non-handDrawn): RoughJS multi-subpath with `roughness=0` + a
-    // fixed `rectOffset=10` and a translation of `(+5, +5)`.
-    let rect_offset = 10.0;
-    let out_w = common.layout_node.width.max(1.0);
-    let out_h = common.layout_node.height.max(1.0);
-    let w = (out_w - rect_offset).max(1.0);
-    let h = (out_h - rect_offset).max(1.0);
-    let x = -w / 2.0;
-    let y = -h / 2.0;
-
-    // Label transform includes the same `rectOffset/2` shift as the container.
-    label.dx = rect_offset / 2.0;
-    label.dy = rect_offset / 2.0;
-
-    let path_data = format!(
-        "M{},{} L{},{} L{},{} L{},{} L{},{} M{},{} L{},{} M{},{} L{},{}",
-        fmt(x - rect_offset),
-        fmt(y - rect_offset),
-        fmt(x + w),
-        fmt(y - rect_offset),
-        fmt(x + w),
-        fmt(y + h),
-        fmt(x - rect_offset),
-        fmt(y + h),
-        fmt(x - rect_offset),
-        fmt(y - rect_offset),
-        fmt(x - rect_offset),
-        fmt(y),
-        fmt(x + w),
-        fmt(y),
-        fmt(x),
-        fmt(y - rect_offset),
-        fmt(x),
-        fmt(y + h),
-    );
-
+    let (rect_offset, path_data) = prepare_window_pane_geometry(common, label);
     if let Some((fill_d, stroke_d)) =
         super::super::helpers::hand_drawn_path_pair(common, details, &path_data)
     {
@@ -115,4 +80,57 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
         );
         out.push_str("</g>");
     }
+}
+
+fn prepare_window_pane_geometry(
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, String) {
+    // Mermaid `windowPane.ts` (non-handDrawn): RoughJS multi-subpath with `roughness=0` + a
+    // fixed `rectOffset=10` and a translation of `(+5, +5)`.
+    let rect_offset = 10.0;
+    let out_w = common.layout_node.width.max(1.0);
+    let out_h = common.layout_node.height.max(1.0);
+    let w = (out_w - rect_offset).max(1.0);
+    let h = (out_h - rect_offset).max(1.0);
+    let x = -w / 2.0;
+    let y = -h / 2.0;
+
+    // Label transform includes the same `rectOffset/2` shift as the container.
+    label.dx = rect_offset / 2.0;
+    label.dy = rect_offset / 2.0;
+
+    let path_data = format!(
+        "M{},{} L{},{} L{},{} L{},{} L{},{} M{},{} L{},{} M{},{} L{},{}",
+        fmt(x - rect_offset),
+        fmt(y - rect_offset),
+        fmt(x + w),
+        fmt(y - rect_offset),
+        fmt(x + w),
+        fmt(y + h),
+        fmt(x - rect_offset),
+        fmt(y + h),
+        fmt(x - rect_offset),
+        fmt(y - rect_offset),
+        fmt(x - rect_offset),
+        fmt(y),
+        fmt(x + w),
+        fmt(y),
+        fmt(x),
+        fmt(y - rect_offset),
+        fmt(x),
+        fmt(y + h),
+    );
+
+    (rect_offset, path_data)
+}
+
+pub(super) fn advance_window_pane_rough_geometry(
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, path_data) = prepare_window_pane_geometry(common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

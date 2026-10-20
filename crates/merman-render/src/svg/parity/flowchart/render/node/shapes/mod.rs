@@ -92,3 +92,123 @@ pub(super) use tagged_wave_document::render_tagged_wave_document;
 pub(super) use triangle::render_triangle_extract;
 pub(super) use wave_document::render_wave_document;
 pub(super) use window_pane::render_window_pane;
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::FlowchartNodeGeometry<'_>,
+    label: &mut super::FlowchartNodeLabelState<'_>,
+) -> crate::Result<()> {
+    use crate::flowchart::{FlowchartShape, LeanKind};
+    match FlowchartShape::resolve(common.shape)? {
+        FlowchartShape::Anchor
+        | FlowchartShape::Choice
+        | FlowchartShape::CrossedCircle
+        | FlowchartShape::FilledCircle
+        | FlowchartShape::ForkJoin
+        | FlowchartShape::FramedCircle
+        | FlowchartShape::LightningBolt
+        | FlowchartShape::SmallCircle => no_label::advance_rough_geometry(common),
+        FlowchartShape::Bang => organic::advance_rough_geometry(ctx, common, false),
+        FlowchartShape::Cloud => organic::advance_rough_geometry(ctx, common, true),
+        FlowchartShape::Browser => browser::advance_browser_rough_geometry(ctx, common, label),
+        FlowchartShape::BowTieRectangle => {
+            bow_tie_rect::advance_bow_tie_rect_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::BraceLeft | FlowchartShape::BraceRight | FlowchartShape::Braces => {
+            curly_braces::advance_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Bucket => bucket::advance_bucket_rough_geometry(ctx, common, label),
+        FlowchartShape::Circle | FlowchartShape::Diamond | FlowchartShape::DoubleCircle => {
+            basic_geoms::advance_rough_geometry(ctx, common)?
+        }
+        FlowchartShape::CollapsedGroup => {
+            collapsed_group::advance_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Console => console::advance_console_rough_geometry(ctx, common, label),
+        FlowchartShape::CurvedTrapezoid => {
+            curved_trapezoid::advance_curved_trapezoid_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Datastore => datastore::advance_rough_geometry(common),
+        FlowchartShape::Delay => delay::advance_delay_rough_geometry(ctx, common, label),
+        FlowchartShape::DividedRectangle => {
+            divided_rect::advance_divided_rect_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Folder => folder::advance_folder_rough_geometry(ctx, common, label),
+        FlowchartShape::Document => {
+            wave_document::advance_wave_document_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Ellipse => {
+            return Err(crate::Error::InvalidModel {
+                message:
+                    "Flowchart ellipse is present in FlowDB but broken in Mermaid 11.16's renderer"
+                        .into(),
+            });
+        }
+        FlowchartShape::Hexagon => hexagon::advance_hexagon_rough_geometry(ctx, common, label),
+        FlowchartShape::Hourglass => label_container::advance_hourglass_rough_geometry(common),
+        FlowchartShape::IconCircle => icon_circle::advance_rough_geometry(ctx, common, label),
+        FlowchartShape::IconRounded => icon_square::advance_rough_geometry(ctx, common, label, 5.0),
+        FlowchartShape::IconSquare => icon_square::advance_rough_geometry(ctx, common, label, 0.1),
+        FlowchartShape::ImageSquare => image_square::advance_rough_geometry(ctx, common, label),
+        FlowchartShape::InvertedTrapezoid => {
+            lean_trapezoids::advance_rough_geometry(common, LeanKind::InvertedTrapezoid)
+        }
+        FlowchartShape::LeanLeft => lean_trapezoids::advance_rough_geometry(common, LeanKind::Left),
+        FlowchartShape::LeanRight => {
+            lean_trapezoids::advance_rough_geometry(common, LeanKind::Right)
+        }
+        FlowchartShape::LinedDocument => {
+            lined_wave_document::advance_lined_wave_document_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::ManualFile => {
+            manuals::advance_manual_file_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::ManualInput => {
+            manuals::advance_manual_input_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::NotchedPentagon => {
+            notched_pentagon::advance_notched_pentagon_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Note => note::advance_rough_geometry(common),
+        FlowchartShape::Odd => odd::advance_odd_rough_geometry(ctx, common, label),
+        FlowchartShape::PaperTape => {
+            paper_tape::advance_paper_tape_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Person => person::advance_person_rough_geometry(ctx, common, label),
+        FlowchartShape::Process => process::advance_rough_geometry(common),
+        FlowchartShape::RoundedRectangle => rounded_rect::advance_rough_geometry(ctx, common),
+        FlowchartShape::ShadedProcess => {
+            shaded_process::advance_shaded_process_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::StackedDocument => {
+            stacked_document::advance_stacked_document_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::StackedRectangle => {
+            stacked_rectangle::advance_stacked_rectangle_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Stadium => stadium::advance_stadium_rough_geometry(ctx, common, label),
+        FlowchartShape::TaggedDocument => {
+            tagged_wave_document::advance_tagged_wave_document_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::TaggedRectangle => {
+            tag_rect::advance_tag_rect_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Trapezoid => {
+            lean_trapezoids::advance_rough_geometry(common, LeanKind::Trapezoid)
+        }
+        FlowchartShape::Triangle => {
+            triangle::advance_triangle_extract_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::WindowPane => {
+            window_pane::advance_window_pane_rough_geometry(ctx, common, label)
+        }
+        FlowchartShape::Cylinder
+        | FlowchartShape::HorizontalCylinder
+        | FlowchartShape::LinedCylinder
+        | FlowchartShape::Icon
+        | FlowchartShape::NotchedRectangle
+        | FlowchartShape::Subroutine
+        | FlowchartShape::Text => {}
+    }
+    Ok(())
+}
