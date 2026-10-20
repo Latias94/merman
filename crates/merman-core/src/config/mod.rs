@@ -825,6 +825,36 @@ impl MermaidConfig {
         matches!(self.as_value(), Value::Object(map) if map.is_empty())
     }
 
+    pub(crate) fn is_pristine_empty_object(&self) -> bool {
+        self.is_empty_object()
+            && self.theme_compatibility.is_none()
+            && self.explicit_config_paths.is_empty()
+            && self.mutation_paths.is_empty()
+            && self.mutation_revision == 0
+    }
+
+    pub(crate) fn refresh_initialization_mutations_after(&mut self, before: &Self) {
+        // Initialization deep-merges record their unique paths in BTreeSet order. Retain that
+        // order and read the detector clock separately for every original public assignment.
+        for stamp in Arc::make_mut(&mut self.mutation_paths).values_mut() {
+            if stamp.revision > before.mutation_revision {
+                stamp.detector_epoch = DETECTOR_EPOCH.load(Ordering::Relaxed);
+            }
+        }
+    }
+
+    pub(crate) fn inherit_initialization_mutation_epochs(&mut self, initialized: &Self) {
+        // Theme calculation keeps inherited assignments but can overwrite a path with a later
+        // framework revision. Only the original assignments inherit the installation's epochs.
+        for (path, stamp) in Arc::make_mut(&mut self.mutation_paths) {
+            if let Some(inherited) = initialized.mutation_paths.get(path)
+                && stamp.revision == inherited.revision
+            {
+                stamp.detector_epoch = inherited.detector_epoch;
+            }
+        }
+    }
+
     pub(crate) fn has_tracking_theme_compatibility(&self) -> bool {
         matches!(
             self.theme_compatibility,

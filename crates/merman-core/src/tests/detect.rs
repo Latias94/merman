@@ -1976,3 +1976,296 @@ fn auto_detect_common_headers_with_deep_config_small_stack() {
         .join()
         .expect("common header detection should finish without stack overflow");
 }
+
+mod compiled_theme_install_contract {
+    use super::*;
+    use crate::__private::{
+        GitGraphPaintInput, ThemeCompatibilityPlan, config_path_overrides_typed_default,
+        gitgraph_paint_inputs, install_theme_compatibility, theme_parse_evidence,
+    };
+
+    #[derive(Clone, Copy)]
+    enum Installation {
+        Legacy,
+        Compiled,
+    }
+
+    struct Compatibility {
+        binding: ThemeParseBinding,
+        plan: ThemeCompatibilityPlan,
+    }
+
+    impl Compatibility {
+        fn new(value: Value) -> Self {
+            let config = MermaidConfig::from_value(value);
+            Self {
+                binding: theme_binding_for(config.clone()),
+                plan: ThemeCompatibilityPlan::try_new([0x5a; 32], config).unwrap(),
+            }
+        }
+
+        fn install(&self, engine: Engine, installation: Installation) -> Engine {
+            match installation {
+                Installation::Legacy => engine.with_theme_compatibility(self.binding.clone()),
+                Installation::Compiled => install_theme_compatibility(engine, &self.plan),
+            }
+        }
+    }
+
+    fn assert_same_metadata(
+        expected: &ParseMetadata,
+        actual: &ParseMetadata,
+        plan: &ThemeCompatibilityPlan,
+    ) {
+        assert_eq!(actual.diagram_type, expected.diagram_type);
+        assert_eq!(actual.title, expected.title);
+        for (expected, actual) in [
+            (&expected.config, &actual.config),
+            (&expected.effective_config, &actual.effective_config),
+        ] {
+            assert_eq!(
+                serde_json::to_vec(actual.as_value()).unwrap(),
+                serde_json::to_vec(expected.as_value()).unwrap(),
+                "public ordered JSON must remain identical"
+            );
+            for path in [
+                "theme",
+                "darkMode",
+                "secure",
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "themeVariables.fontSize",
+                "themeVariables.primaryColor",
+                "themeVariables.mainBkg",
+                "themeVariables.useGradient",
+            ] {
+                assert_eq!(
+                    actual.explicit_config_owns_path(path),
+                    expected.explicit_config_owns_path(path),
+                    "explicit ownership at {path}"
+                );
+                assert_eq!(
+                    config_path_overrides_typed_default(actual, path),
+                    config_path_overrides_typed_default(expected, path),
+                    "typed default authority at {path}"
+                );
+            }
+        }
+        let expected_evidence = theme_parse_evidence(expected);
+        let actual_evidence = theme_parse_evidence(actual);
+        assert!(expected_evidence.matches_recipe(Some(plan.recipe())));
+        assert!(actual_evidence.matches_recipe(Some(plan.recipe())));
+        assert_eq!(
+            actual_evidence.mermaid_fields().collect::<Vec<_>>(),
+            expected_evidence.mermaid_fields().collect::<Vec<_>>()
+        );
+        for input in [
+            GitGraphPaintInput::PrimaryColor,
+            GitGraphPaintInput::MainBackground,
+            GitGraphPaintInput::TagBackground,
+            GitGraphPaintInput::PrimaryBorder,
+            GitGraphPaintInput::NodeBorder,
+            GitGraphPaintInput::TagBorder,
+        ] {
+            assert_eq!(
+                gitgraph_paint_inputs(&actual.effective_config).map(|paint| paint.is_owned(input)),
+                gitgraph_paint_inputs(&expected.effective_config)
+                    .map(|paint| paint.is_owned(input))
+            );
+        }
+    }
+
+    #[test]
+    fn compiled_install_matches_legacy_host_reset_unknown_and_font_authority() {
+        let recipe = json!({
+            "theme": "base",
+            "themeVariables": {"primaryColor": "#123456", "useGradient": true}
+        });
+        let prior = Engine::new()
+            .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
+                "theme": "dark", "themeVariables": {"useGradient": false}
+            }))))
+            .with_site_config(MermaidConfig::from_value(
+                json!({"fontFamily": "Prior Host"}),
+            ))
+            .with_exact_site_config(None);
+        let cases = [
+            ("pristine", Engine::new(), recipe.clone()),
+            ("ordinary empty host", Engine::new().with_site_config(MermaidConfig::empty_object()), recipe.clone()),
+            ("same-value authored host", Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {"primaryColor": "#123456"}
+            }))), recipe.clone()),
+            ("exact reset replaces previous recipe", prior, recipe.clone()),
+            ("unknown host theme", Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "theme": "unknown-host-theme", "secure": []
+            }))), recipe.clone()),
+            ("unknown compatibility theme", Engine::new(), json!({
+                "theme": "unknown-compatibility-theme", "themeVariables": {"useGradient": true}
+            })),
+            ("host and compatibility fonts", Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "secure": [], "fontFamily": "Host Root", "themeVariables": {"fontFamily": "Host Theme", "fontSize": "22px"}
+            }))), json!({
+                "theme": "base", "themeVariables": {"fontFamily": "Plan Theme", "fontSize": "18px"}
+            })),
+        ];
+        for (name, base, recipe) in cases {
+            let compatibility = Compatibility::new(recipe);
+            let legacy = compatibility.install(base.clone(), Installation::Legacy);
+            let compiled = compatibility.install(base, Installation::Compiled);
+            for source in [
+                "gitGraph\ncommit",
+                "%%{init: {\"theme\": \"forest\", \"themeVariables\": {\"primaryColor\": \"#654321\", \"fontFamily\": \"Source Theme\"}}}%%\ngitGraph\ncommit",
+                "gitGraph\ncommit",
+            ] {
+                let expected = legacy
+                    .parse_metadata_sync(source)
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                let actual = compiled
+                    .parse_metadata_sync(source)
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                assert_same_metadata(&expected, &actual, &compatibility.plan);
+                if name == "same-value authored host" {
+                    assert!(
+                        actual
+                            .effective_config
+                            .explicit_config_owns_path("themeVariables.primaryColor")
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compiled_bad_compatibility_color_stays_deferred_behind_preprocess_and_cancellation() {
+        let compatibility = Compatibility::new(json!({
+            "theme": "base", "themeVariables": {"primaryColor": "not-a-color"}
+        }));
+        for installation in [
+            Installation::Legacy,
+            Installation::Compiled,
+            Installation::Compiled,
+        ] {
+            let engine = compatibility.install(Engine::new(), installation);
+            for source in [
+                "gitGraph\ncommit",
+                "not-a-known-diagram",
+                "%%{init: {invalid}}%%\ngitGraph\ncommit",
+            ] {
+                let error = engine.parse_metadata_sync(source).unwrap_err();
+                let Error::ThemeColor(crate::theme_color::ColorError::UnsupportedFormat { input }) =
+                    error
+                else {
+                    panic!("theme calculation must precede detection: {error:?}");
+                };
+                assert_eq!(input, "not-a-color");
+            }
+            assert!(matches!(
+                engine.parse_metadata_sync("---\nconfig:\n  theme: base\ngitGraph\ncommit"),
+                Err(Error::MalformedFrontMatter)
+            ));
+            let operation = OperationControl::new();
+            operation.cancel();
+            let cancelled = engine
+                .parse_diagram_for_render_model_controlled_sync(
+                    "gitGraph\ncommit",
+                    ParseOptions::strict(),
+                    &operation,
+                )
+                .expect_err("admission cancellation must precede deferred theme failure");
+            assert_eq!(cancelled.reason, CancelReason::Requested);
+            assert_eq!(cancelled.phase, OperationPhase::Admission);
+        }
+    }
+
+    #[test]
+    fn compiled_install_preserves_unfinished_nested_detector_clone_claims() {
+        use std::cell::RefCell;
+
+        thread_local! {
+            static INNER: RefCell<Option<(Installation, Compatibility)>> = const { RefCell::new(None) };
+            static ESCAPED: RefCell<Option<MermaidConfig>> = const { RefCell::new(None) };
+            static CALLS: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+        }
+
+        fn capture_unfinished(_text: &str, config: &mut MermaidConfig) -> bool {
+            CALLS.with(|calls| calls.borrow_mut().push("inner capture"));
+            ESCAPED.with(|escaped| *escaped.borrow_mut() = Some(config.clone()));
+            true
+        }
+
+        fn replace_with_unfinished_clone(_text: &str, config: &mut MermaidConfig) -> bool {
+            CALLS.with(|calls| calls.borrow_mut().push("outer enter"));
+            let mut inner = INNER.with(|inner| {
+                let inner = inner.borrow();
+                let (installation, compatibility) = inner.as_ref().unwrap();
+                compatibility.install(Engine::new(), *installation)
+            });
+            *inner.registry_mut() = DetectorRegistry::new();
+            inner.registry_mut().add_fn("gitGraph", capture_unfinished);
+            let completed = inner.parse_metadata_sync("inner probe").unwrap();
+            assert!(
+                !completed
+                    .effective_config
+                    .explicit_config_owns_path("themeVariables.primaryColor")
+            );
+            CALLS.with(|calls| calls.borrow_mut().push("inner complete"));
+            *config = ESCAPED.with(|escaped| escaped.borrow_mut().take().unwrap());
+            assert!(!config.explicit_config_owns_path("themeVariables.primaryColor"));
+            CALLS.with(|calls| calls.borrow_mut().push("outer assign escaped clone"));
+            true
+        }
+
+        for warm in [false, true] {
+            let compatibility = Compatibility::new(json!({
+                "theme": "base", "themeVariables": {"primaryColor": "#123456"}
+            }));
+            if warm {
+                drop(compatibility.install(Engine::new(), Installation::Compiled));
+            }
+            let mut results = Vec::new();
+            for installation in [Installation::Legacy, Installation::Compiled] {
+                let mut outer =
+                    Engine::new().with_theme_compatibility(compatibility.binding.clone());
+                *outer.registry_mut() = DetectorRegistry::new();
+                outer
+                    .registry_mut()
+                    .add_fn("gitGraph", replace_with_unfinished_clone);
+                CALLS.with(|calls| calls.borrow_mut().clear());
+                INNER.with(|inner| {
+                    *inner.borrow_mut() = Some((
+                        installation,
+                        Compatibility {
+                            binding: compatibility.binding.clone(),
+                            plan: compatibility.plan.clone(),
+                        },
+                    ))
+                });
+                let result = outer.parse_metadata_sync("outer probe").unwrap();
+                INNER.with(|inner| *inner.borrow_mut() = None);
+                assert!(
+                    result
+                        .effective_config
+                        .explicit_config_owns_path("themeVariables.primaryColor")
+                );
+                assert!(
+                    !result
+                        .effective_config
+                        .explicit_config_owns_path("themeVariables.mainBkg")
+                );
+                CALLS.with(|calls| {
+                    assert_eq!(
+                        calls.borrow().as_slice(),
+                        [
+                            "outer enter",
+                            "inner capture",
+                            "inner complete",
+                            "outer assign escaped clone",
+                        ]
+                    )
+                });
+                results.push(result);
+            }
+            assert_same_metadata(&results[0], &results[1], &compatibility.plan);
+        }
+    }
+}

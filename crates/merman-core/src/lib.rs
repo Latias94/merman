@@ -97,13 +97,13 @@ pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 pub mod __private {
     use std::collections::BTreeMap;
     use std::fmt;
-    use std::sync::Arc;
+    use std::sync::{Arc, OnceLock};
 
     use crate::config::{
         FrozenThemeCompatibilityField, ThemeCompatibilityFieldKind as ConfigFieldKind,
         ThemeParseBinding, ThemeParseBindingError,
     };
-    use crate::{Engine, MermaidConfig, ParseMetadata};
+    use crate::{Engine, MermaidConfig, ParseMetadata, SiteConfigInitialization};
 
     /// Opaque normalized identity for one compiled theme's parse compatibility contract.
     #[derive(Clone, PartialEq, Eq)]
@@ -127,6 +127,8 @@ pub mod __private {
     #[derive(Clone)]
     pub struct ThemeCompatibilityPlan {
         recipe: ThemeCompatibilityRecipe,
+        initialization: Arc<OnceLock<SiteConfigInitialization>>,
+        compatibility_config: MermaidConfig,
     }
 
     impl fmt::Debug for ThemeCompatibilityPlan {
@@ -144,11 +146,16 @@ pub mod __private {
             recipe_identity: [u8; 32],
             compatibility_config: MermaidConfig,
         ) -> Result<Self, ThemeCompatibilityPlanError> {
+            let recipe = ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
+                recipe_identity,
+                compatibility_config,
+            )?);
+            let compatibility_config = MermaidConfig::from_theme_parse_binding(recipe.0.clone());
+            let initialization = Arc::new(OnceLock::new());
             Ok(Self {
-                recipe: ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
-                    recipe_identity,
-                    compatibility_config,
-                )?),
+                recipe,
+                initialization,
+                compatibility_config,
             })
         }
 
@@ -174,10 +181,25 @@ pub mod __private {
         mut engine: Engine,
         plan: &ThemeCompatibilityPlan,
     ) -> Engine {
-        engine.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(
-            plan.recipe.0.clone(),
-        ));
-        engine.rebuild_site_config();
+        engine.theme_compatibility_config = Some(plan.compatibility_config.clone());
+        if engine.site_config_overrides.is_pristine_empty_object() {
+            // Prepare after Engine has initialized the pinned defaults. Keep errors in the
+            // cached Result so operation admission and parse configuration retain their order.
+            let initialized = plan
+                .initialization
+                .get_or_init(|| {
+                    SiteConfigInitialization::new(
+                        Some(plan.compatibility_config.clone()),
+                        &engine.site_config_overrides,
+                    )
+                })
+                .for_pristine_install(&engine.site_config_overrides);
+            engine.site_config = initialized.site_config;
+            engine.initialization_inputs = initialized.initialization_inputs;
+            engine.default_effective_config = initialized.default_effective_config;
+        } else {
+            engine.rebuild_site_config();
+        }
         engine
     }
 
@@ -497,6 +519,46 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
     family::diagram_header_facts()
 }
 
+#[derive(Clone)]
+struct SiteConfigInitialization {
+    site_config: MermaidConfig,
+    initialization_inputs: MermaidConfig,
+    default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
+}
+
+impl SiteConfigInitialization {
+    fn for_pristine_install(&self, overrides: &MermaidConfig) -> Self {
+        let mut initialized = self.clone();
+        initialized
+            .initialization_inputs
+            .refresh_initialization_mutations_after(overrides);
+        initialized
+            .site_config
+            .refresh_initialization_mutations_after(&generated::default_site_config());
+        if let Ok(effective) = &mut initialized.default_effective_config {
+            effective.inherit_initialization_mutation_epochs(&initialized.site_config);
+        }
+        initialized
+    }
+
+    fn new(theme_config: Option<MermaidConfig>, overrides: &MermaidConfig) -> Self {
+        let mut site_config = generated::default_site_config();
+        let mut initialization_inputs = MermaidConfig::empty_object();
+        if let Some(theme_config) = theme_config {
+            initialization_inputs.deep_merge(theme_config.as_value());
+            merge_theme_compatibility_config(&mut site_config, theme_config);
+        }
+        initialization_inputs.deep_merge(overrides.as_value());
+        merge_site_config_override(&mut site_config, overrides.clone());
+        let default_effective_config = build_default_effective_config(&site_config);
+        Self {
+            site_config,
+            initialization_inputs,
+            default_effective_config,
+        }
+    }
+}
+
 fn build_default_effective_config(
     site_config: &MermaidConfig,
 ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
@@ -745,17 +807,13 @@ impl Engine {
     }
 
     fn rebuild_site_config(&mut self) {
-        let mut site_config = generated::default_site_config();
-        let mut initialization_inputs = MermaidConfig::empty_object();
-        if let Some(theme_config) = self.theme_compatibility_config.clone() {
-            initialization_inputs.deep_merge(theme_config.as_value());
-            merge_theme_compatibility_config(&mut site_config, theme_config);
-        }
-        initialization_inputs.deep_merge(self.site_config_overrides.as_value());
-        merge_site_config_override(&mut site_config, self.site_config_overrides.clone());
-        self.default_effective_config = build_default_effective_config(&site_config);
-        self.site_config = site_config;
-        self.initialization_inputs = initialization_inputs;
+        let initialized = SiteConfigInitialization::new(
+            self.theme_compatibility_config.clone(),
+            &self.site_config_overrides,
+        );
+        self.site_config = initialized.site_config;
+        self.initialization_inputs = initialized.initialization_inputs;
+        self.default_effective_config = initialized.default_effective_config;
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

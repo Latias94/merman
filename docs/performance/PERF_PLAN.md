@@ -17,6 +17,24 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 prepared compiled-theme initialization checkpoint](compiled_theme_initialization_macos_2026-10-20.md)
+reuses one lazily prepared initialization per compiled plan only when host overrides are exactly
+pristine. Host authority, deferred errors and per-installation detector journals retain their
+original behavior. The preselected Kanban / Editor Light primary saves 2695 allocations and
+602,095 allocated bytes per warmed render; all 380 themed catalog cells improve and the 38 None
+cells retain all four operation-growth metrics. All 645 saved SVG/report identities, independent
+ordered callback controls and 26 errors match; 503 jointly stable controls have 208 improvements,
+295 unchanged and no increases, with 142 variable controls retained as inconclusive. This trades
+per-request work for bounded plan retention: absolute process-live counters increase 175,285 to
+284,624 bytes in themed cells; the primary's absolute process peak increases 35,463 bytes despite
+its smaller operation peak growth. The constant None +12 bytes follow retained probe argument
+lengths and remain unadjusted in raw evidence. All 930 focused and 7651 full release tests pass
+(seven skipped), together with strict Clippy, 37 DOM entries, optimized full WASM and format/path
+checks. This is warmed allocation/work removal, with no cold-start, compilation, latency or
+v0.9.0 convergence claim. Next freeze the newly admitted clean head for a fresh full19 release
+confirmation covering this and the preceding XHTML change. Keep the bounded ZenUML CSS and Packet
+sink hypotheses separate; the all-family goal remains active.
+
 The [October 20 literal XHTML paragraph checkpoint](xhtml_plain_paragraph_macos_2026-10-20.md)
 recognizes a narrow, proven plain XML paragraph before constructing its wrapper and DOM. The
 original parser and all callers remain unchanged for every unproven input. The no-theme Kanban
