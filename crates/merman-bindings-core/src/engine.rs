@@ -546,11 +546,11 @@ impl BindingEngine {
         }
     }
 
-    /// Materializes one versioned theme definition under this engine's resource policy.
-    pub fn materialize_theme(&self, definition_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    /// Materializes one editable theme design under this engine's resource policy.
+    pub fn materialize_theme(&self, design_json: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new(
             "materialize-theme-json",
-            definition_json,
+            design_json,
         ))
     }
 
@@ -1121,19 +1121,19 @@ pub(crate) fn execute_theme_authoring_with_compiler(
 ) -> Result<Vec<u8>, BindingError> {
     match operation {
         crate::OperationKey::MaterializeThemeJson => {
-            crate::theme_definition::materialize_theme_definition_json_with_resource_policy(
+            crate::theme_design::materialize_theme_design_json_with_resource_policy(
                 input,
                 compiler.resource_policy(),
             )
         }
         crate::OperationKey::DescribeThemeSupportJson => {
-            crate::theme_definition::describe_theme_support_json_with_resource_policy(
+            crate::theme_design::describe_theme_support_json_with_resource_policy(
                 input,
                 compiler.resource_policy(),
             )
         }
         crate::OperationKey::ExportThemePresetJson => {
-            crate::theme_definition::export_theme_preset_json_with(compiler, input)
+            crate::theme_design::export_theme_preset_json_with(compiler, input)
         }
         _ => unreachable!("theme authoring dispatch requires a theme authoring operation"),
     }
@@ -1605,18 +1605,17 @@ mod tests {
     fn reusable_engine_exposes_theme_authoring_under_one_resource_policy() {
         let engine = BindingEngine::new(br#"{"resources":{"profile":"constrained"}}"#)
             .expect("constrained engine");
-        let definition = br##"{
-            "authoring_schema_version": 1,
-            "expansion_version": 1,
-            "tokens": { "text": "#123456", "accent": "#abcdef" }
+        let design = br##"{
+            "tokens": { "text": { "type": "color", "value": "#123456" } },
+            "styles": { "text": { "fill": { "kind": "solid", "color": { "ref": "text" } } } }
         }"##;
         let materialized = engine
-            .materialize_theme(definition)
-            .expect("the reusable engine should materialize definitions");
+            .materialize_theme(design)
+            .expect("the reusable engine should materialize editable designs");
         let generic = engine
             .execute_data(crate::BindingOperationRequest::new(
                 "materialize-theme-json",
-                definition,
+                design,
             ))
             .expect("the generic operation should share the same implementation");
         assert_eq!(materialized, generic);
@@ -1637,7 +1636,7 @@ mod tests {
             .export_theme_preset(b"editor-light")
             .expect("the reusable engine should export built-in presets");
         let preset: Value = serde_json::from_slice(&preset).unwrap();
-        assert_eq!(preset["kind"], "complete_spec");
+        assert_eq!(preset["kind"], "design");
 
         let catalog = engine
             .metadata_json("theme-catalog")

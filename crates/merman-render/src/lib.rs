@@ -295,6 +295,7 @@ pub use merman_core::DiagramFamilyId;
 /// Bounded facade and actual-output projections may evolve independently of the public renderer API.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::diagram_theme::EffectComposition;
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
 
     pub use crate::diagram_theme::{EffectColorSpace, EffectInput};

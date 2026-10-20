@@ -13,7 +13,7 @@ use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec, materialize_theme,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec, materialize_theme_design,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -25,7 +25,7 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
+use merman_theme_contract::ThemeDesignV1;
 use regex::Regex;
 use serde_json::json;
 use std::path::PathBuf;
@@ -1127,16 +1127,22 @@ erDiagram
 }
 
 #[test]
-fn er_tokens_only_definition_reaches_the_model_owned_entity_surface() {
-    let definition = ThemeDefinitionV1::new(
-        ThemeTokensV1::default()
-            .with_color(ThemeColorTokenV1::Surface, "#123456")
-            .with_color(ThemeColorTokenV1::Border, "#654321"),
-    );
-    let materialized = materialize_theme(&definition).expect("materialize tokens-only ER theme");
+fn er_referenced_design_reaches_the_model_owned_entity_surface() {
+    let design: ThemeDesignV1 = serde_json::from_value(json!({
+        "tokens": {
+            "color.surface": {"type":"color","value":"#123456"},
+            "color.border": {"type":"color","value":"#654321"}
+        },
+        "styles": {"entity": {
+            "fill": {"kind":"solid","color":{"ref":"color.surface"}},
+            "stroke": {"paint":{"kind":"solid","color":{"ref":"color.border"}}}
+        }}
+    }))
+    .expect("decode editable ER design");
+    let materialized = materialize_theme_design(&design).expect("materialize editable ER theme");
     let theme = DiagramThemeCompiler::new()
-        .compile_spec_wire(materialized.into_spec())
-        .expect("compile tokens-only ER theme");
+        .compile_spec_wire(materialized)
+        .expect("compile editable ER theme");
 
     let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
         .parse_diagram_for_render_model_sync("---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n", ParseOptions::strict())

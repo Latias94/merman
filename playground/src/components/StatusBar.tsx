@@ -154,7 +154,7 @@ export function StatusBar() {
         <span className="hidden shrink-0 xl:inline">
           {t("status.themePreset")}:{" "}
           {themeRecipeJson
-            ? t("customTheme.title")
+            ? t("themePanel.custom")
             : themePresetId
               ? t(`themePresets.${themePresetId}`, {
                   defaultValue: themePresetId,

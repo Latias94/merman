@@ -460,8 +460,8 @@
       "capability": "svg",
       "output": null,
       "compiled_prerequisites": [],
-      "description": "Materialize a versioned theme definition into a complete theme specification.",
-      "input_kind": "theme-definition-json",
+      "description": "Materialize an editable theme design into a complete specification with declared reference bindings.",
+      "input_kind": "theme-design-json",
       "media_type": "application/json",
       "requires_uri": false,
       "targets": ["native", "web", "typst"]

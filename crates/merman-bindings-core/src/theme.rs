@@ -8,6 +8,10 @@ use serde_json::{Value, value::RawValue};
 use crate::common::{BindingError, BindingStatus};
 
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "A theme selection is one decoded options value; retain its by-value payload"
+)]
 pub(crate) enum BindingThemeOptionsJson {
     Selection(ThemeSelectionJson),
     Recipe(ThemeRecipeV1),
@@ -96,7 +100,7 @@ pub(crate) fn validate_theme_input_json_with(
 }
 
 // Borrow payloads so version and authoring admission precede Value normalization. In particular,
-// normalizing first would silently discard duplicate definition, spec, or complete-spec fields.
+// normalizing first would silently discard duplicate design, spec, or complete-spec fields.
 #[derive(Deserialize)]
 struct ThemeInputProbe<'a> {
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
@@ -104,7 +108,7 @@ struct ThemeInputProbe<'a> {
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     kind: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
-    definition: Option<&'a RawValue>,
+    design: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     complete_spec: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
@@ -132,14 +136,11 @@ fn check_theme_json_input(
             .schema_version
             .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok());
         check_recipe_version(version)?;
-        if let Some(definition) = probe.definition {
+        if let Some(design) = probe.design {
             compiler
-                .check_definition_json_input(definition.get().as_bytes())
+                .check_design_json_input(design.get().as_bytes())
                 .map_err(|error| {
-                    crate::theme_definition::materialization_error(
-                        compiler.resource_policy(),
-                        error,
-                    )
+                    crate::theme_design::materialization_error(compiler.resource_policy(), error)
                 })?;
         }
         probe.complete_spec
@@ -258,10 +259,7 @@ pub(crate) fn compile_theme_with(
                 .compile_recipe(recipe.clone())
                 .map(Some)
                 .map_err(|error| {
-                    crate::theme_definition::definition_compile_error(
-                        compiler.resource_policy(),
-                        error,
-                    )
+                    crate::theme_design::design_compile_error(compiler.resource_policy(), error)
                 });
         }
         BindingThemeOptionsJson::Selection(selection) => selection,
@@ -272,7 +270,7 @@ pub(crate) fn compile_theme_with(
                 invalid_theme("theme.preset", format!("unknown theme preset `{id}`"))
             })?;
             compiler.compile_preset(preset).map_err(|error| {
-                crate::theme_definition::definition_compile_error(compiler.resource_policy(), error)
+                crate::theme_design::design_compile_error(compiler.resource_policy(), error)
             })?
         }
         (None, Some(spec)) => compiler
@@ -301,9 +299,7 @@ pub(crate) fn theme_compile_error(error: merman::svg::ThemeCompileError) -> Bind
     }
 }
 
-pub(crate) fn theme_definition_compile_error(
-    error: merman::svg::ThemeCompileError,
-) -> BindingError {
+pub(crate) fn theme_design_compile_error(error: merman::svg::ThemeCompileError) -> BindingError {
     match error {
         merman::svg::ThemeCompileError::FontCatalog(
             merman::svg::FontCatalogError::EmbeddedFontsUnavailable,
@@ -324,11 +320,11 @@ pub(crate) fn theme_definition_compile_error(
                 | merman::svg::ThemeCompileValidationError::UnsupportedMermaidTheme {
                     field, ..
                 } => *field,
-                _ => "definition",
+                _ => "design",
             };
-            invalid_theme(format!("theme definition {field}"), error.to_string())
+            invalid_theme(format!("theme design {field}"), error.to_string())
         }
-        error => invalid_theme("theme definition", error.to_string()),
+        error => invalid_theme("theme design", error.to_string()),
     }
 }
 
@@ -397,10 +393,7 @@ fn invalid_options(message: impl Into<String>) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman::diagram_theme::{
-        ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
-        compile_theme_definition, materialize_theme,
-    };
+    use merman::diagram_theme::{ThemeDesignV1, materialize_theme_design};
     use merman::svg::{ThemeCapability, ThemeResourceLimitId};
 
     #[test]
@@ -439,21 +432,76 @@ mod tests {
     }
 
     #[test]
-    fn recipe_definition_uses_the_existing_materializer_and_admission() {
-        let definition = ThemeDefinitionV1::new(
-            ThemeTokensV1::default().with_color(ThemeColorTokenV1::Accent, "#123456"),
-        );
-        let bytes = serde_json::to_vec(&serde_json::json!({
-            "schema_version": 1,
-            "kind": "definition",
-            "definition": definition,
+    fn recipe_design_uses_typed_materialization_and_rejects_legacy_definition() {
+        let design: ThemeDesignV1 = serde_json::from_value(serde_json::json!({
+            "tokens": {"brand": {"type":"color", "value":"#123456"}},
+            "styles": {"node": {"fill": {"kind":"solid", "color":{"ref":"brand"}}}}
         }))
         .unwrap();
+        let bytes = serde_json::to_vec(&ThemeRecipeV1::Design {
+            design: design.clone(),
+        })
+        .unwrap();
         let compiler = DiagramThemeCompiler::new();
-        let expected = compile_theme_definition(&compiler, &definition).unwrap();
-        let imported = compile_theme_selection_json_with(&compiler, &bytes)
-            .expect("a versioned definition recipe must materialize before compilation");
+        let expected = compiler
+            .compile_spec_wire(materialize_theme_design(&design).unwrap())
+            .unwrap();
+        let imported = compile_theme_selection_json_with(&compiler, &bytes).unwrap();
         assert_eq!(imported.recipe_fingerprint(), expected.recipe_fingerprint());
+        let legacy = br#"{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#;
+        assert_eq!(
+            compile_theme_selection_json(legacy).unwrap_err().status(),
+            BindingStatus::OptionsJsonError
+        );
+    }
+
+    #[test]
+    fn recipe_design_and_complete_spec_render_through_both_engine_forms() {
+        let recipe = serde_json::json!({
+            "schema_version": 1, "kind": "design",
+            "design": {
+                "tokens": {"brand": {"type":"color", "value":"#123456"}},
+                "styles": {"node": {"fill": {"kind":"solid", "color":{"ref":"brand"}}}}
+            }
+        });
+        let complete_spec = merman::diagram_theme::materialize_theme_design(
+            &serde_json::from_value::<ThemeDesignV1>(recipe["design"].clone()).unwrap(),
+        )
+        .unwrap();
+        let source = b"flowchart LR\nA-->B\n";
+        let options = serde_json::to_vec(&serde_json::json!({
+            "svg": {"diagram_id":"authored-design"}, "theme": recipe,
+        }))
+        .unwrap();
+        let complete_options = serde_json::to_vec(&serde_json::json!({
+            "svg": {"diagram_id":"authored-design"},
+            "theme": {"schema_version":1, "kind":"complete_spec", "complete_spec":complete_spec},
+        }))
+        .unwrap();
+        let actual = crate::render_svg(source, &options).unwrap();
+        assert_eq!(
+            actual,
+            crate::render_svg(source, &complete_options).unwrap()
+        );
+        assert_eq!(
+            actual,
+            crate::BindingEngine::new(&options)
+                .unwrap()
+                .render_svg(source)
+                .unwrap()
+        );
+
+        let mut invalid: Value = serde_json::from_slice(&options).unwrap();
+        invalid["theme"]["design"]["styles"]["node"]["fill"]["color"]["ref"] =
+            Value::String("missing".to_owned());
+        let error = crate::BindingEngine::new(&serde_json::to_vec(&invalid).unwrap())
+            .err()
+            .expect("a missing design reference must fail");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert_eq!(
+            error.theme_authoring_details().unwrap().diagnostic().path(),
+            "/styles/node/fill/color"
+        );
     }
 
     #[test]
@@ -472,13 +520,13 @@ mod tests {
 
     #[test]
     fn theme_raw_admission_rejects_duplicates_and_invalid_versions_in_both_entries() {
-        let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        let design = r#"{}"#;
         let mut invalid = vec![
             r#"{"schema_version":1,"kind":"complete_spec","complete_spec":{"future":true},"complete_spec":{}}"#.to_owned(),
-            format!(r#"{{"kind":"definition","schema_version":null,"schema_version":1,"definition":{definition}}}"#),
-            format!(r#"{{"kind":"definition","schema_version":2,"schema_\u0076ersion":1,"definition":{definition}}}"#),
-            r#"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
-            r##"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#111111","accent":"#222222"}}}"##.to_owned(),
+            format!(r#"{{"kind":"design","schema_version":null,"schema_version":1,"design":{design}}}"#),
+            format!(r#"{{"kind":"design","schema_version":2,"schema_\u0076ersion":1,"design":{design}}}"#),
+            r#"{"kind":"design","schema_version":1,"design":{"tokens":{},"tokens":{}}}"#.to_owned(),
+            r##"{"kind":"design","schema_version":1,"design":{"tokens":{"accent":{"type":"color","value":"#111111"},"acc\u0065nt":{"type":"color","value":"#222222"}}}}"##.to_owned(),
         ];
         for spec in [
             r##"{"styles":[{"kind":"rule","target":"node","style":{"fill":"#ff0000"}}],"styles":[]}"##,
@@ -495,14 +543,14 @@ mod tests {
         invalid.push(r#"{"schema_version":1,"kind":"complete_spec","complete_spec":null,"complete_\u0073pec":{}}"#.to_owned());
         for version in ["null", "0", "2", "1.0", "1e0", "\"1\"", "true"] {
             invalid.push(format!(
-                r#"{{"definition":{definition},"kind":"definition","schema_version":{version}}}"#
+                r#"{{"design":{design},"kind":"design","schema_version":{version}}}"#
             ));
         }
-        invalid.push(format!(
-            r#"{{"kind":"definition","definition":{definition}}}"#
-        ));
+        invalid.push(format!(r#"{{"kind":"design","design":{design}}}"#));
         let nested = format!("{}0{}", "[".repeat(40), "]".repeat(40));
-        invalid.push(format!(r#"{{"kind":"definition","schema_version":1,"definition":{{"tokens":{{"accent":{nested}}}}}}}"#));
+        invalid.push(format!(
+            r#"{{"kind":"design","schema_version":1,"design":{{"tokens":{{"accent":{nested}}}}}}}"#
+        ));
         let tiny = DiagramThemeCompiler::new().with_resource_policy(
             ThemeResourcePolicy::default()
                 .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
@@ -653,183 +701,6 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::SemanticRules)
         );
-    }
-
-    #[test]
-    fn authoring_definition_json_matches_the_typed_rust_definition() {
-        const DEFINITION_JSON: &[u8] = br##"{
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "tokens": {
-                    "canvas": "#0f172a",
-                    "surface": "#111827",
-                    "surface_alt": "#1f2937",
-                    "surface_muted": "#334155",
-                    "text": "#e5e7eb",
-                    "border": "#475569",
-                    "line": "#94a3b8",
-                    "accent": "#60a5fa",
-                    "series": ["#60a5fa", "#34d399", "#f59e0b"],
-                    "typography": {
-                        "font_stack": ["Inter", "system-ui", "sans-serif"],
-                        "font_size_px": 15,
-                        "font_weight": 500
-                    }
-                }
-            }"##;
-        let typed_definition = ThemeDefinitionV1::new(
-            ThemeTokensV1::default()
-                .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
-                .with_color(ThemeColorTokenV1::Surface, "#111827")
-                .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
-                .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
-                .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
-                .with_color(ThemeColorTokenV1::Border, "#475569")
-                .with_color(ThemeColorTokenV1::Line, "#94a3b8")
-                .with_color(ThemeColorTokenV1::Accent, "#60a5fa")
-                .with_series(vec![
-                    "#60a5fa".to_owned(),
-                    "#34d399".to_owned(),
-                    "#f59e0b".to_owned(),
-                ])
-                .with_typography(
-                    ThemeAuthoringTypographyV1::default()
-                        .with_font_stack(vec![
-                            "Inter".to_owned(),
-                            "system-ui".to_owned(),
-                            "sans-serif".to_owned(),
-                        ])
-                        .with_font_size_px(15.0)
-                        .with_font_weight(500),
-                ),
-        );
-        let decoded_definition: ThemeDefinitionV1 = serde_json::from_slice(DEFINITION_JSON)
-            .expect("the readable binding definition should decode through the shared contract");
-
-        assert_eq!(
-            decoded_definition
-                .canonical_json_bytes()
-                .expect("the JSON definition should canonicalize"),
-            typed_definition
-                .canonical_json_bytes()
-                .expect("the typed definition should canonicalize"),
-        );
-
-        let decoded_materialized =
-            materialize_theme(&decoded_definition).expect("the JSON definition should materialize");
-        let typed_materialized =
-            materialize_theme(&typed_definition).expect("the typed definition should materialize");
-        assert_eq!(decoded_materialized.spec(), typed_materialized.spec());
-
-        let binding_theme = crate::compile_theme_definition_json(DEFINITION_JSON)
-            .expect("the binding definition should materialize and compile");
-        let typed_theme = compile_theme_definition(&DiagramThemeCompiler::new(), &typed_definition)
-            .expect("the typed definition should materialize and compile");
-        assert_eq!(
-            binding_theme.recipe_fingerprint(),
-            typed_theme.recipe_fingerprint(),
-        );
-
-        assert!(
-            binding_theme
-                .report()
-                .requires_capability(ThemeCapability::SemanticRules)
-        );
-        assert!(
-            binding_theme
-                .report()
-                .requires_capability(ThemeCapability::SolidPaint)
-        );
-    }
-
-    #[test]
-    fn authoring_definition_preserves_binding_error_classification() {
-        let materialization_error = crate::compile_theme_definition_json(
-            br#"{
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "tokens": { "series": [] }
-            }"#,
-        )
-        .expect_err("an empty authored series should fail during materialization");
-        assert_eq!(
-            materialization_error.status(),
-            BindingStatus::InvalidArgument
-        );
-        assert!(
-            materialization_error
-                .message()
-                .contains("invalid theme definition")
-        );
-        assert!(materialization_error.message().contains("series"));
-
-        let compilation_error = crate::compile_theme_definition_json(
-            br#"{
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "tokens": {},
-                "styles": [{
-                    "kind": "rule",
-                    "target": "future-node",
-                    "style": {}
-                }]
-            }"#,
-        )
-        .expect_err("an unknown semantic target should fail during compilation");
-        assert_eq!(compilation_error.status(), BindingStatus::InvalidArgument);
-        assert!(
-            compilation_error
-                .message()
-                .contains("theme definition styles.rule.target")
-        );
-        assert!(!compilation_error.message().contains("theme.spec"));
-    }
-
-    #[test]
-    fn authoring_resource_errors_only_project_discoverable_theme_limits() {
-        let policy = ThemeResourcePolicy::default()
-            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
-            .expect("one byte is a valid encoded-theme ceiling");
-        let compiler = DiagramThemeCompiler::new().with_resource_policy(policy);
-        let error = crate::compile_theme_definition_json_with(&compiler, br#"{}"#)
-            .expect_err("the caller-owned encoded byte limit must fail before decoding");
-        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        let details = error
-            .resource_details()
-            .expect("catalogued theme limit details");
-        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
-        assert_eq!(details.phase, "theme_input");
-        assert_eq!(details.actual, 2);
-        assert_eq!(details.max, 1);
-        assert_eq!(details.profile, "interactive");
-
-        let colors = std::iter::repeat_n(r##""#123456""##, 257)
-            .collect::<Vec<_>>()
-            .join(",");
-        let json = format!(
-            r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{"series":[{colors}]}}}}"#
-        );
-        let error = crate::compile_theme_definition_json(json.as_bytes())
-            .expect_err("an authoring-only palette ceiling must remain an authoring diagnostic");
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert_eq!(error.resource_details(), None);
-        assert!(error.message().contains("invalid theme definition"));
-    }
-
-    #[test]
-    fn authoring_definition_rejects_duplicate_members_before_typed_projection() {
-        let duplicate = br##"{
-            "authoring_schema_version": 1,
-            "expansion_version": 1,
-            "tokens": {
-                "canvas": "#ffffff",
-                "canv\u0061s": "#000000"
-            }
-        }"##;
-        let error = crate::compile_theme_definition_json(duplicate)
-            .expect_err("decoded-equivalent duplicate keys must fail before typed projection");
-        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-        assert!(error.message().contains("duplicate object key"));
     }
 
     #[test]

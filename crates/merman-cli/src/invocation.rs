@@ -428,7 +428,7 @@ pub(crate) struct ResolvedRuntimeOptions {
 pub(crate) struct ResolvedRenderOptions {
     pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
     pub(crate) theme_file: Option<PathBuf>,
-    pub(crate) theme_definition: Option<PathBuf>,
+    pub(crate) theme_design_file: Option<PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(crate) fonts: crate::cli::FontCliArgs,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
@@ -923,7 +923,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let render = RenderCliArgs {
         theme_preset: None,
         theme_file: None,
-        theme_definition: None,
+        theme_design_file: None,
         #[cfg(feature = "native-fonts")]
         fonts: args.render.fonts.clone(),
         math_renderer: args.render.math_renderer,
@@ -1561,7 +1561,7 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
         theme_preset: args.theme_preset,
         theme_file: args.theme_file,
-        theme_definition: args.theme_definition,
+        theme_design_file: args.theme_design_file,
         #[cfg(feature = "native-fonts")]
         fonts: args.fonts,
         math_renderer: args.math_renderer,
@@ -1763,7 +1763,7 @@ fn validate_graphical_output_options(
         #[cfg(feature = "svg")]
         if options.render.theme_preset.is_some()
             || options.render.theme_file.is_some()
-            || options.render.theme_definition.is_some()
+            || options.render.theme_design_file.is_some()
             || options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
@@ -1811,7 +1811,7 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
     }
     if options.render.theme_preset.is_some()
         || options.render.theme_file.is_some()
-        || options.render.theme_definition.is_some()
+        || options.render.theme_design_file.is_some()
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()

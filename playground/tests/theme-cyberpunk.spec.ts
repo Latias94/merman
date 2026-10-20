@@ -209,7 +209,7 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
       0, expect.closeTo(0.025, 5), expect.closeTo(0.025, 5), 1,
     ]);
     expect(gradient.stops.map(({ color }) => color)).toEqual([
-      "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)",
+      "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0)", "rgba(0, 242, 255, 0)",
     ]);
     expect(gradient.stops.map(({ opacity }) => opacity)).toEqual([1, 1, 1, 1]);
     const pattern = canvas.patterns[index];

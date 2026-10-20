@@ -13,6 +13,14 @@ pub enum EffectInput {
     Previous,
 }
 
+/// Whether ordered shadows consume the preceding result or share the original silhouette.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EffectComposition {
+    #[default]
+    Cascade,
+    Independent,
+}
+
 /// Color interpolation used by every primitive in an effect graph.
 /// Existing typed effects retain the SVG default; CSS-derived recipes select sRGB explicitly.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -117,6 +125,7 @@ pub struct EffectGraph {
     id: String,
     primitives: Vec<EffectPrimitive>,
     color_space: EffectColorSpace,
+    composition: EffectComposition,
 }
 
 impl EffectGraph {
@@ -140,6 +149,7 @@ impl EffectGraph {
             id,
             primitives,
             color_space: EffectColorSpace::default(),
+            composition: EffectComposition::default(),
         })
     }
 
@@ -150,6 +160,35 @@ impl EffectGraph {
 
     pub const fn color_space(&self) -> EffectColorSpace {
         self.color_space
+    }
+
+    /// Independent composition is a bounded shadow stack, not a general filter graph.
+    pub fn with_composition(
+        mut self,
+        composition: EffectComposition,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        if composition == EffectComposition::Independent
+            && self.primitives.iter().any(|primitive| {
+                !matches!(
+                    primitive,
+                    EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        spread: 0.0,
+                        ..
+                    }
+                )
+            })
+        {
+            return Err(ThemeCompileValidationError::InvalidValue {
+                field: "effects.graph.composition",
+            });
+        }
+        self.composition = composition;
+        Ok(self)
+    }
+
+    pub const fn composition(&self) -> EffectComposition {
+        self.composition
     }
 
     pub fn id(&self) -> &str {
@@ -406,4 +445,53 @@ fn validate_nonnegative(
         return Err(ThemeCompileValidationError::InvalidNumber { field });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shadow(input: EffectInput, spread: f32) -> EffectPrimitive {
+        EffectPrimitive::DropShadow {
+            input,
+            offset_x: 6.0,
+            offset_y: 6.0,
+            blur_radius: 0.0,
+            spread,
+            color: ThemeColorValue::parse("#171717").unwrap(),
+        }
+    }
+
+    #[test]
+    fn independent_composition_rejects_unsupported_graphs() {
+        for primitives in [
+            vec![shadow(EffectInput::SourceGraphic, 1.0)],
+            vec![
+                shadow(EffectInput::SourceGraphic, 0.0),
+                shadow(EffectInput::Previous, 0.0),
+            ],
+            vec![EffectPrimitive::GaussianBlur {
+                input: EffectInput::SourceGraphic,
+                std_deviation: 2.0,
+            }],
+        ] {
+            assert!(matches!(
+                EffectGraph::new("invalid-stack", primitives)
+                    .unwrap()
+                    .with_composition(EffectComposition::Independent),
+                Err(ThemeCompileValidationError::InvalidValue {
+                    field: "effects.graph.composition"
+                })
+            ));
+        }
+        let graph = EffectGraph::new("stack", [shadow(EffectInput::SourceGraphic, 0.0)]).unwrap();
+        assert_eq!(graph.composition(), EffectComposition::Cascade);
+        assert_eq!(
+            graph
+                .with_composition(EffectComposition::Independent)
+                .unwrap()
+                .composition(),
+            EffectComposition::Independent
+        );
+    }
 }

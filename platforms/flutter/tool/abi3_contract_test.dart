@@ -418,7 +418,7 @@ void decodesTypedMetadataCatalogs() {
         'qualified_cells': <Object?>[],
         'license_expression': 'MIT OR Apache-2.0',
         'required_attribution': null,
-        'export_kind': 'complete_spec',
+        'export_kind': 'design',
       },
     ],
     'known_capability_ids': ['semantic-rules'],
@@ -465,7 +465,7 @@ void decodesTypedMetadataCatalogs() {
         theme.presets.single.id == 'one-dark' &&
         theme.presets.single.maturity == 'alpha' &&
         theme.presets.single.available &&
-        theme.presets.single.exportKind == 'complete_spec' &&
+        theme.presets.single.exportKind == 'design' &&
         theme.knownSemanticTargetIds.last == 'state-label' &&
         theme.knownFontContainerIds.single == 'woff2' &&
         theme.resourceLimits.single.effectiveValue == 2097152,
@@ -2774,7 +2774,7 @@ void preservesThemeAuthoringAndAdditiveErrorDetails() {
         {
           'code': 'theme-authoring.invalid-token-value',
           'severity': 'error',
-          'path': '/styles/0/style/typography/font_stack',
+          'path': '/styles/node/typography/font_stack',
           'details': {'expected_domain_id': 'font-stack'},
           'message': 'font stack must not be empty',
         },
@@ -2794,7 +2794,7 @@ void preservesThemeAuthoringAndAdditiveErrorDetails() {
           'kind': 'generic',
           'capability_id': null,
           'details': details,
-          'message': 'invalid theme definition',
+          'message': 'invalid theme design',
         }),
       ),
     ),

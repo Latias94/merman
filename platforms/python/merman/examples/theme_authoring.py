@@ -142,9 +142,9 @@ def run_theme_authoring_smoke() -> None:
 
         definitions = {}
         for name in ("light", "dark"):
-            readable = (FIXTURES / f"{name}.definition.json").read_text(encoding="utf-8")
+            readable = (FIXTURES / f"{name}.design.json").read_text(encoding="utf-8")
             definition = json.loads(readable)
-            expected_definition = (FIXTURES / f"{name}.definition.canonical.json").read_bytes().strip()
+            expected_definition = (FIXTURES / f"{name}.design.canonical.json").read_bytes().strip()
             expected_spec = (FIXTURES / f"{name}.spec.canonical.json").read_bytes().strip()
             require(fixture_canonical_bytes(definition) == expected_definition,
                     f"{name} canonical definition differs from the Rust typed vector")
@@ -173,10 +173,9 @@ def run_theme_authoring_smoke() -> None:
                 require(state_fill(dark) == "#172554", "dark surface missed its terminal")
 
         edited = json.loads(definitions["light"])
-        edited["styles"] = [{
-            "kind": "rule", "target": "state", "family": "state",
-            "style": {"fill": "#123abc"},
-        }]
+        edited["rules"].append({
+            "target": "state", "family": "state", "style": {"fill": "#123abc"},
+        })
         require(state_fill(render_definition(engine, json.dumps(edited), "state")) == "#123abc",
                 "family-scoped rule failed to override the token-derived terminal fill")
         require(render_definition(engine, json.dumps(edited), "sequence")
@@ -202,9 +201,9 @@ def run_theme_authoring_smoke() -> None:
 
         for preset in ("brutalist", "spotless", "cyberpunk"):
             exported = execute_json(api, "export-theme-preset-json", preset)
-            require(exported["kind"] == "complete_spec", "preset must export a closed recipe")
+            require(exported["kind"] == "design", "preset must export a closed recipe")
             require(exported["schema_version"] == 1, "unexpected recipe schema version")
-            spec = exported["complete_spec"]
+            spec = execute_json(api, "materialize-theme-json", json.dumps(exported["design"]))["spec"]
             require("assets" not in spec and "mermaid" not in spec,
                     "native preset export must not embed fonts or Mermaid compatibility")
             options = {"version": 3, "site_config": {"htmlLabels": False},

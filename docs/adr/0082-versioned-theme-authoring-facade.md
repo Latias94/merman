@@ -4,6 +4,11 @@
 - Date: 2026-08-14
 - Accepted: 2026-08-21
 
+The compact-only authoring restrictions and preset-specific creation-parameter direction are
+superseded for the next unreleased contract by
+[ADR 0095](0095-general-theme-authoring-and-retained-bindings.md). The compiler, family-writer,
+resource-admission, and snapshot ownership principles below continue to apply.
+
 ## Context
 
 Merman is a headless Mermaid engine with typed theme customization. The renderer already has the

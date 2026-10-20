@@ -17,6 +17,37 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 19 TreeView checkpoint](treeview_optional_proof_macos_2026-10-19.md) removes source-tree
+and icon counting plus terminal theme proof work when no theme was requested. Some recipes,
+including empty and unsupported recipes, retain their original proof path. All 231 public controls
+preserve exact SVG/reports/measurer traces; 224 jointly stable memory rows never regress and seven
+remain inconclusive for memory. All 418 catalog cells preserve output and metadata; only no-theme
+TreeView improves, saving three allocations and 79 bytes. This is allocation/work evidence only.
+
+The [October 19 calibrated release observation](theme_v090_confirmation_macos_2026-10-19.md)
+confirms remaining default public E2E gaps against v0.9.0: Packet +27.33%/+2.196 us and Kanban
++26.15%/+11.712 us. Each stable row has 32 fresh AB/BA pairs after eight A/A pairs per runner;
+both exceed the joint 10% and 1 us goal. C4's historical absolute calibration fails and requires
+44 pairs above the registered cap of 32, so it remains inconclusive with no A/B ratio. All three
+inputs and SVG identities match, and there are no evidence-contract failures. Other same-SVG and
+changed-output rows remain in scope. Allocation cleanup has not yet established release convergence.
+
+The [October 19 C4 color checkpoint](c4_consumer_colors_macos_2026-10-19.md) removes color preparation
+for unused element types while retaining all stylesheet fonts and per-type reuse. All 206 public
+controls preserve exact SVG/reports/ordered measurement traces; 200 jointly stable rows never
+regress and six variable Flowchart rows remain inconclusive for memory. All 418 catalog cells
+preserve output and metadata; eleven C4 cells each save 144 allocations and 2,775 allocated bytes.
+The temporary-map candidate was rejected; the retained design reuses existing style entries.
+This is allocation/work evidence, with formal latency convergence still open.
+
+The [October 19 Packet static-style checkpoint](packet_static_style_macos_2026-10-19.md) removes
+ten immutable fallback String allocations from default Packet rendering. All 197 public controls
+preserve SVG/reports/ordered measurement traces; 190 jointly stable rows never regress and seven
+variable Flowchart rows remain inconclusive. All 418 catalog cells preserve exact output and
+metadata; 11 Packet cells each save ten allocations and 45 bytes. Renderer tests and Clippy pass.
+The invalid shared-target catalog baseline is retained but excluded; the accepted catalog comparison
+uses an isolated clean baseline. This is allocation evidence only, not latency convergence.
+
 The [October 19 PR checkpoint](theme_pr_checkpoint_macos_2026-10-19.md) records integration with
 `origin/main` at `252752f70`, the ER prepared-geometry/consumer-style merge and fresh checks on
 product revision `08688eaf5`. Release native tests pass 8,275 cases; Clippy, private theme acceptance,

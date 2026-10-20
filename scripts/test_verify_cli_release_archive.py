@@ -549,7 +549,7 @@ class ThemeAuthoringCapabilityTests(unittest.TestCase):
         operation = next(row for row in canonical["binding_operations"]
                          if row["id"] == "materialize-theme-json")
         self.assertEqual(operation["maturity"], "alpha")
-        self.assertEqual(operation["input_kind"], "theme-definition-json")
+        self.assertEqual(operation["input_kind"], "theme-design-json")
         for field in ("maturity", "input_kind"):
             with self.subTest(field=field):
                 changed = copy.deepcopy(surface)

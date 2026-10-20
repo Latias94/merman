@@ -8,7 +8,7 @@
 //! ```
 //!
 //! The lowering implementation is renderer-internal. Callers enter through the bounded
-//! `materialize_theme` operations instead of constructing a materializer or bypassing admission:
+//! `materialize_theme_design` operations instead of constructing a materializer or bypassing admission:
 //!
 //! ```compile_fail
 //! use merman_render::diagram_theme::ThemeMaterializer;
@@ -21,10 +21,10 @@ mod canonical;
 mod canvas;
 mod compiler;
 mod definition_admission;
+mod design_materializer;
 mod effects;
 mod family_mechanism_matrix;
 mod family_program;
-mod materializer;
 mod mechanisms;
 mod mermaid_compatibility;
 mod presets;
@@ -48,7 +48,7 @@ use std::sync::Arc;
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
     DiagramThemeSpecWireV1, MaterializedThemeWireV1, THEME_SUPPORT_SCHEMA_VERSION_V1,
-    ThemeCapabilityDescriptorV1, ThemeDefinitionV1, ThemeMaterializationDiagnosticV1,
+    ThemeCapabilityDescriptorV1, ThemeDesignV1, ThemeMaterializationDiagnosticV1,
     ThemeMaterializationErrorV1, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1,
     ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
     ThemeSupportSubjectV1,
@@ -76,13 +76,15 @@ pub use canvas::{
     PatternKind, PatternSpec, RadialGradient, ThemeColorValue, ThemeLength,
 };
 pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
-pub use definition_admission::{
-    ThemeDefinitionCompileError, compile_theme_definition, compile_theme_definition_json,
-    materialize_theme, materialize_theme_json, materialize_theme_json_with_resource_policy,
-    materialize_theme_with_resource_policy,
+pub use design_materializer::{
+    ThemeDesignCompileError, inspect_theme_design, materialize_theme_design,
+    materialize_theme_design_json_with_bindings,
+    materialize_theme_design_json_with_resource_policy,
+    materialize_theme_design_with_resource_policy,
 };
 pub use effects::{
-    DiagramEffectSet, EffectBinding, EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive,
+    DiagramEffectSet, EffectBinding, EffectColorSpace, EffectComposition, EffectGraph, EffectInput,
+    EffectPrimitive,
 };
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
@@ -94,6 +96,9 @@ pub(crate) use mechanisms::{
 pub use merman_theme_contract::{
     THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetFamilyDesignV1, ThemePresetMetadataV1,
     ThemePresetQualifiedCellV1, ThemeRecipeV1,
+};
+pub use merman_theme_contract::{
+    ThemeDesignInspection, ThemeDesignReferenceUse, ThemeDesignValueDomain,
 };
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,

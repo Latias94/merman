@@ -430,21 +430,20 @@ if (hasCapability("svg")) {
     adaptive.dispose();
   }
 
-  const themeDefinition = {
-    authoring_schema_version: 1,
-    expansion_version: 1,
-    tokens: { text: "#123456", accent: "#abcdef" },
+  const themeDesign = {
+    tokens: { text: { type: "color", value: "#123456" } },
+    styles: { text: { fill: { kind: "solid", color: { ref: "text" } } } },
   };
   const themeResourceOptions = { resources: { profile: "constrained" } };
   const materializedTheme = api.materializeTheme(
-    themeDefinition,
+    themeDesign,
     themeResourceOptions,
   );
   assert.equal(materializedTheme.schema_version, 1);
   assert.ok(Array.isArray(materializedTheme.spec.styles));
   assert.deepEqual(
     exportedWasmModule.materializeTheme(
-      JSON.stringify(themeDefinition),
+      JSON.stringify(themeDesign),
       JSON.stringify(themeResourceOptions),
     ),
     materializedTheme,
@@ -485,8 +484,8 @@ if (hasCapability("svg")) {
 
   const presetExport = api.exportThemePreset("editor-light");
   assert.equal(presetExport.schema_version, 1);
-  assert.equal(presetExport.kind, "complete_spec");
-  assert.equal(typeof presetExport.complete_spec, "object");
+  assert.equal(presetExport.kind, "design");
+  assert.equal(typeof presetExport.design, "object");
   assert.deepEqual(
     exportedWasmModule.exportThemePreset("editor-light"),
     presetExport,
@@ -505,8 +504,8 @@ if (hasCapability("svg")) {
   })), presetSvg, "raw WASM and public recipe selection must agree");
   const cyberpunk = api.exportThemePreset("cyberpunk");
   // Exercise the public recipe, not a separately authored C6 mechanism fixture.
-  const canvas = cyberpunk.complete_spec.canvas;
-  assert.equal(canvas.base, "#051423");
+  const canvas = api.materializeTheme(cyberpunk.design).spec.canvas;
+  assert.deepEqual(canvas.base, { kind: "solid", color: "#051423" });
   assert.equal(canvas.layers.length, 3);
   const [radial, xGrid, yGrid] = canvas.layers;
   assert.deepEqual(canvas.layers.map((layer) => layer.blend_mode), ["screen", "screen", "screen"]);
@@ -523,7 +522,7 @@ if (hasCapability("svg")) {
     assert.equal(layer.paint.angle_degrees, angle);
     assert.deepEqual(layer.paint.repetition, { kind: "tiled", width_px: 40, height_px: 40 });
     assert.deepEqual(layer.paint.stops.map((stop) => stop.color),
-      ["rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "transparent", "transparent"]);
+      ["rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0)", "rgba(0, 242, 255, 0)"]);
     for (const [index, offset] of [0, 1 / 40, 1 / 40, 1].entries()) {
       assert.ok(Math.abs(layer.paint.stops[index].offset - offset) < 0.000001);
     }
@@ -542,7 +541,7 @@ if (hasCapability("svg")) {
     background: "#142535", nodeBorder: "#fb7185", classFill: "#22354d",
   });
   assert.deepEqual(cyberpunk, originalCyberpunk, "editing a copy must not mutate the exported preset");
-  assert.deepEqual(customized.complete_spec.styles.slice(0, -2), cyberpunk.complete_spec.styles,
+  assert.deepEqual(customized.design.rules.slice(0, -2), cyberpunk.design.rules,
     "scoped edits must preserve unrelated authored facets and source order");
   const reloaded = JSON.parse(JSON.stringify(customized));
   const editedSource = "classDiagram\nclass Account {\n +String name\n}";
@@ -666,21 +665,19 @@ if (hasCapability("svg")) {
     assert.throws(() => api.renderSvgResult(geometrySource, geometryOnlyOptions),
       (error) => error.code_name === "MERMAN_RENDER_ERROR");
   }
-  const diagnosticDefinition = {
-    schema_version: 1, kind: "definition", definition: {
-      authoring_schema_version: 1, expansion_version: 1, tokens: {}, styles: [
-        { kind: "ordinal-palette", target: "node", colors: ["#123456"] },
-        { kind: "rule", family: "sequence", target: "lifeline", style: { radius: 6 } },
-      ],
+  const diagnosticDesign = {
+    schema_version: 1, kind: "design", design: {
+      palettes: { node: ["#123456"] },
+      rules: [{ family: "sequence", target: "lifeline", style: { radius: 6 } }],
     },
   };
-  const definitionOutcome = api.renderSvgResult(portableSource, {
-    theme: diagnosticDefinition, svg: { pipeline: "resvg-safe" },
+  const designOutcome = api.renderSvgResult(portableSource, {
+    theme: diagnosticDesign, svg: { pipeline: "resvg-safe" },
   });
-  assert.ok(definitionOutcome.metadata.theme_execution_evidence.diagnostics.some((diagnostic) =>
-    diagnostic.target === "lifeline" && diagnostic.source_document === "definition"
-      && JSON.stringify(diagnostic.source_paths) === '["/styles/1"]' && !diagnostic.generated),
-  "authoring expansion must preserve the original mixed-entry index");
+  assert.ok(designOutcome.metadata.theme_execution_evidence.diagnostics.some((diagnostic) =>
+    diagnostic.target === "lifeline" && diagnostic.source_document === "design"
+      && JSON.stringify(diagnostic.source_paths) === '["/rules/0/style"]' && !diagnostic.generated),
+  "authoring materialization must preserve the authored rule path");
   for (const invalidRecipe of [
     { ...restoredRecipe, schema_version: 2 },
     { ...restoredRecipe, preset: "editor-light" },

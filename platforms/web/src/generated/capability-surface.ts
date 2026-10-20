@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad872de92e2b1" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -156,7 +156,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
-    "input_kind": "theme-definition-json",
+    "input_kind": "theme-design-json",
     "media_type": "application/json",
     "requires_uri": false
   },

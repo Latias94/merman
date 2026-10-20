@@ -54,6 +54,7 @@ impl SvgShadowEvidenceRecorder {
                 stages,
                 1,
             )
+            .and_then(|application| application.with_composition(effect.composition()))
         });
         let Some(application) = application else {
             self.state.borrow_mut().invalid = true;

@@ -855,7 +855,7 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       throw new Error(`Merman WASM returned inconsistent availability for theme preset ${id}.`);
     }
     const exportKind = entry.export_kind;
-    if (exportKind !== "definition" && exportKind !== "complete_spec") {
+    if (exportKind !== "design" && exportKind !== "complete_spec") {
       throw new Error(`Merman WASM returned an invalid export kind for theme preset ${id}.`);
     }
     return {

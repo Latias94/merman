@@ -86,16 +86,14 @@ void _checkError(
 }
 
 void _checkRawRecipeAdmission(Merman oneShot, MermanEngine engine) {
-  const definition =
-      '{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}';
+  const design = '{}';
   for (final recipe in [
-    '{"schema_version":2,"schema_version":1,"kind":"definition",'
-        '"definition":$definition}',
-    '{"schema_version":2,"schema_\\u0076ersion":1,"kind":"definition",'
-        '"definition":$definition}',
-    '{"schema_version":1,"kind":"definition","definition":'
-        '{"authoring_schema_version":2,"authoring_schema_version":1,'
-        '"expansion_version":1,"tokens":{}}}',
+    '{"schema_version":2,"schema_version":1,"kind":"design",'
+        '"design":$design}',
+    '{"schema_version":2,"schema_\\u0076ersion":1,"kind":"design",'
+        '"design":$design}',
+    '{"schema_version":1,"kind":"design","design":'
+        '{"tokens":{},"tokens":{}}}',
   ]) {
     for (final policy in ['', '"runtime_policy":"deterministic",']) {
       final options = '{$policy"theme":$recipe}';
@@ -123,7 +121,7 @@ void _checkRawRecipeAdmission(Merman oneShot, MermanEngine engine) {
   }
   final options =
       '{"runtime_policy":"deterministic","theme":'
-      '{"schema_version":1,"kind":"definition","definition":$definition}}';
+      '{"schema_version":1,"kind":"design","design":$design}}';
   final valid = oneShot.execute(
     MermanOperation.svg,
     'flowchart LR\nA --> B',
@@ -246,7 +244,7 @@ void _checkAuthoringRuntimePolicies(
     // Punctuation, escaped quotes, Unicode and nested values must remain opaque.
     const invalidRecipe =
         r'{"schema_version":2,"schema_\u0076ersion":1,'
-        r'"kind":"definition","definition":{"tokens":{"text":"雪,}\"",'
+        r'"kind":"design","design":{"tokens":{"text":"雪,}\"",'
         r'"nested":[{"value":"a:b"}]}}}';
     for (final policy in [
       '"runtime_policy":"deterministic"',
@@ -333,14 +331,14 @@ void main(List<String> args) {
   try {
     _checkRawRecipeAdmission(oneShot, engine);
     _checkAuthoringRuntimePolicies(oneShot, {
-      MermanOperation.materializeThemeJson: read('light.definition.json'),
+      MermanOperation.materializeThemeJson: read('light.design.json'),
       MermanOperation.describeThemeSupportJson: jsonEncode(
         support.first['query'],
       ),
       MermanOperation.exportThemePresetJson: 'editor-light',
     });
     _checkAuthoringResourceProfiles(oneShot, engine, {
-      MermanOperation.materializeThemeJson: read('light.definition.json'),
+      MermanOperation.materializeThemeJson: read('light.design.json'),
       MermanOperation.describeThemeSupportJson: jsonEncode(
         support.first['query'],
       ),
@@ -355,7 +353,7 @@ void main(List<String> args) {
       for (final name in ['light', 'dark']) {
         final result = execute(
           MermanOperation.materializeThemeJson,
-          read('$name.definition.json'),
+          read('$name.design.json'),
         );
         _expectJson(
           result.mediaType,
@@ -368,6 +366,7 @@ void main(List<String> args) {
           'expansion_version': 1,
           'spec_schema_version': 1,
           'spec': jsonDecode(read('$name.spec.canonical.json')),
+          'references': jsonDecode(read('$name.references.json')),
         }, '${consumer.key}/$name materialization');
       }
       for (final vector in support) {
@@ -406,7 +405,7 @@ void main(List<String> args) {
         );
       }
       final budgetedInputs = <MermanOperation, String>{
-        MermanOperation.materializeThemeJson: read('light.definition.json'),
+        MermanOperation.materializeThemeJson: read('light.design.json'),
         MermanOperation.describeThemeSupportJson: jsonEncode(
           support.first['query'],
         ),

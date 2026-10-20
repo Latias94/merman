@@ -200,10 +200,10 @@ const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", JSON.stringify({ the
 Initialize the runtime before these calls. Passing the options JSON lets Rust validate a document
 loaded from storage; a TypeScript assertion cannot validate untrusted JSON. Keep `schema_version`
 and `kind` with the payload. Unknown versions and mixed recipe/preset/spec selections are rejected.
-A recipe with `kind: "definition"` exposes compact `tokens` and family-scoped `styles` under
-`definition`; a `complete_spec` recipe retains the full specification, including its canvas,
-effects, and resources. Export preserves the recipe's representation, so inspect `kind` before
-editing it. You can also select a preset directly with `{ theme: { preset: "editor-light" } }`.
+A recipe with `kind: "design"` retains typed reusable values, explicit bindings, semantic defaults,
+scoped rules, canvas layers, and effects under `design`. All built-in presets export this editable
+representation. A `complete_spec` recipe carries the concrete specification. Inspect `kind` before
+editing an imported document. You can also select a preset with `{ theme: { preset: "editor-light" } }`.
 
 A reusable recipe is not a claim that every diagram family or output target supports every authored
 style. Query `describeThemeSupport()` for the relevant family, output, and mechanism. Saving a recipe

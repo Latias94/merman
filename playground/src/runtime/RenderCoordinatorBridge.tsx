@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { selectWorkspaceSnapshot, useAppStore } from "../store";
+import { selectRenderInputSnapshot, useAppStore } from "../store";
 import { setRenderCoordinatorInput } from "./render-coordinator-browser.ts";
 import {
   selectMermanFacade,
@@ -12,7 +12,7 @@ import { captureRenderViewport } from "./render-viewport.ts";
 const PLAYGROUND_RENDER_VIEWPORT = captureRenderViewport();
 
 export function RenderCoordinatorBridge() {
-  const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const workspace = useAppStore(useShallow(selectRenderInputSnapshot));
   const facade = useMermanRuntime(selectMermanFacade);
 
   useEffect(() => {

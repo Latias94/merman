@@ -228,9 +228,7 @@ fn execute_typst_theme_authoring_operation(
 ) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
     match operation {
         OperationKey::MaterializeThemeJson => {
-            merman_bindings_core::materialize_theme_definition_json_with_resource_policy(
-                input, policy,
-            )
+            merman_bindings_core::materialize_theme_design_json_with_resource_policy(input, policy)
         }
         OperationKey::DescribeThemeSupportJson => {
             merman_bindings_core::describe_theme_support_json_with_resource_policy(input, policy)
@@ -621,11 +619,11 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn theme_operation_json_materializes_the_shared_definition_contract() {
+    fn theme_operation_json_materializes_the_shared_design_contract() {
         let definition = br##"{
-            "authoring_schema_version": 1,
-            "expansion_version": 1,
-            "tokens": {"canvas": "#0f172a", "text": "#e5e7eb"}
+            "tokens": {"text": {"type":"color", "value":"#e5e7eb"}},
+            "canvas": {"base":"#0f172a"},
+            "styles": {"text":{"fill":{"kind":"solid", "color":{"ref":"text"}}}}
         }"##;
         let payload: Value = serde_json::from_slice(&theme_operation_json(
             b"materialize-theme-json",

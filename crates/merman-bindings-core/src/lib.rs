@@ -26,7 +26,7 @@ mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
 #[cfg(feature = "svg")]
-mod theme_definition;
+mod theme_design;
 mod theme_execution_evidence;
 mod transport_contract;
 
@@ -160,11 +160,11 @@ pub use text_measurement::{
 #[cfg(feature = "svg")]
 pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
 #[cfg(feature = "svg")]
-pub use theme_definition::{
-    compile_theme_definition_json, compile_theme_definition_json_with, describe_theme_support_json,
+pub use theme_design::{
+    compile_theme_design_json, compile_theme_design_json_with, describe_theme_support_json,
     describe_theme_support_json_with_resource_policy, export_theme_preset_json,
     export_theme_preset_json_with, export_theme_preset_json_with_resource_policy,
-    materialize_theme_definition_json, materialize_theme_definition_json_with_resource_policy,
+    materialize_theme_design_json, materialize_theme_design_json_with_resource_policy,
 };
 pub use transport_contract::{
     BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,

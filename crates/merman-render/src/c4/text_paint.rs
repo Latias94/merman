@@ -201,7 +201,8 @@ impl C4TextPaintPlan {
         &self,
         model: &merman_core::diagrams::c4::C4DiagramRenderModel,
         layout: &crate::model::C4DiagramLayout,
-        typography: &super::C4TypographyThemePlan,
+        typography: &mut super::C4TypographyThemePlan,
+        config: &MermaidConfig,
     ) -> crate::Result<()> {
         // The writer historically selected the last source metadata for an alias, while
         // defaults came from the actual alias-keyed layout type. Preserve both owners.
@@ -210,6 +211,7 @@ impl C4TextPaintPlan {
             .iter()
             .map(|shape| (shape.alias.as_str(), shape))
             .collect();
+        let view = super::C4ConfigView::new(config.as_value());
         let mut elements = BTreeMap::new();
         for shape in &layout.shapes {
             let source = source_shapes.get(shape.alias.as_str()).ok_or_else(|| {
@@ -218,7 +220,7 @@ impl C4TextPaintPlan {
                 }
             })?;
             let defaults = typography
-                .element_style(&shape.type_c4_shape)
+                .prepare_element_colors(&shape.type_c4_shape, &view)
                 .ok_or_else(|| crate::Error::InvalidModel {
                     message: format!("c4: missing prepared element style {}", shape.type_c4_shape),
                 })?;
@@ -417,7 +419,8 @@ mod tests {
         let config = MermaidConfig::from_value(serde_json::json!({"c4": {
             "person_border_color": "var(--actual-border)", "custom_border_color": "red"
         }}));
-        let typography = super::super::C4TypographyThemePlan::resolve(None, &config, None, &model);
+        let mut typography =
+            super::super::C4TypographyThemePlan::resolve(None, &config, None, &model);
         let plan = C4TextPaintPlan::resolve(
             None,
             &config,
@@ -427,7 +430,7 @@ mod tests {
             ),
         )
         .expect("C4 text plan");
-        plan.bind_source_terminal_paint(&model, &layout, &typography)
+        plan.bind_source_terminal_paint(&model, &layout, &mut typography, &config)
             .expect("C4 terminal binding");
         let paint = plan.element_paint("duplicate").expect("bound alias");
         assert_eq!(paint.background, "");

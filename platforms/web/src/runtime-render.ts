@@ -21,7 +21,7 @@ import type {
   SvgRenderResult,
   ThemeCapabilityDescriptor,
   ThemeCapabilityDescriptorV1,
-  ThemeDefinitionV1,
+  ThemeDesignV1,
   ThemeSupportQueryV1,
 } from "./public-types.js";
 
@@ -122,11 +122,11 @@ export function svgPlanJson(
 }
 
 export function materializeTheme(
-  definition: ThemeDefinitionV1 | string,
+  design: ThemeDesignV1 | string,
   options?: ThemeAuthoringOptions | string
 ): MaterializedThemeWireV1 {
   return getMerman().materializeTheme(
-    encodeThemeAuthoringInput(definition, "theme definition"),
+    encodeThemeAuthoringInput(design, "theme design"),
     encodeOptions(options)
   );
 }
@@ -153,7 +153,7 @@ export function exportThemePreset(
 }
 
 function encodeThemeAuthoringInput(
-  value: ThemeDefinitionV1 | ThemeSupportQueryV1 | string,
+  value: ThemeDesignV1 | ThemeSupportQueryV1 | string,
   label: string
 ): string {
   return typeof value === "string" ? value : encodeJsonInput(value, label);

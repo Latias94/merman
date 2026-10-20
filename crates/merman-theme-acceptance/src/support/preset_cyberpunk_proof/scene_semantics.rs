@@ -303,8 +303,8 @@ fn canvas(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             &[
                 (0.0, "rgba(0, 242, 255, 0.03)"),
                 (2.5, "rgba(0, 242, 255, 0.03)"),
-                (2.5, "#00000000"),
-                (100.0, "#00000000"),
+                (2.5, "rgba(0, 242, 255, 0)"),
+                (100.0, "rgba(0, 242, 255, 0)"),
             ]
         };
         let stops = receipt

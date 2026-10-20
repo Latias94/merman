@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad872de92e2b1";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -500,8 +500,8 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
-        description: "Materialize a versioned theme definition into a complete theme specification.",
-        input_kind: "theme-definition-json",
+        description: "Materialize an editable theme design into a complete specification with declared reference bindings.",
+        input_kind: "theme-design-json",
         media_type: "application/json",
         requires_uri: false,
         targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],

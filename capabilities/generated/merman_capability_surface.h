@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad872de92e2b1"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -373,7 +373,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "export-theme-preset-json", "alpha", "svg", "Export a built-in theme preset as a self-contained editable recipe.", "theme-preset-id", "application/json", 0, MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "jpeg", "stable", "jpeg", "Render Mermaid input as JPEG.", "mermaid-source", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
     { "layout-json", "stable", "svg", "Render Mermaid input into layout model JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },
-    { "materialize-theme-json", "alpha", "svg", "Materialize a versioned theme definition into a complete theme specification.", "theme-definition-json", "application/json", 0, MERMAN_BINDING_OPERATION_MATERIALIZE_THEME_JSON_TARGETS, 3, NULL, NULL, 0 },
+    { "materialize-theme-json", "alpha", "svg", "Materialize an editable theme design into a complete specification with declared reference bindings.", "theme-design-json", "application/json", 0, MERMAN_BINDING_OPERATION_MATERIALIZE_THEME_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "pdf", "stable", "pdf", "Render Mermaid input as PDF.", "mermaid-source", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1, "pdf", MERMAN_BINDING_OPERATION_PDF_COMPILED_PREREQUISITES, 1 },
     { "png", "stable", "png", "Render Mermaid input as PNG.", "mermaid-source", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1, "png", MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES, 1 },
     { "semantic-json", "stable", NULL, "Parse Mermaid input into canonical semantic JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2, NULL, NULL, 0 },

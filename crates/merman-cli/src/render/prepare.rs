@@ -788,7 +788,7 @@ fn prepare_rustdoc_renderer(
     let render = crate::invocation::ResolvedRenderOptions {
         theme_preset: None,
         theme_file: None,
-        theme_definition: None,
+        theme_design_file: None,
         #[cfg(feature = "native-fonts")]
         fonts: crate::cli::FontCliArgs {
             measurement: Some(crate::cli::FontMeasurementKind::Deterministic),

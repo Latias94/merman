@@ -1,8 +1,8 @@
 //! Bounded ordered shadow lowering shared by family-owned paint terminals.
 
 use super::{
-    EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue,
-    ThemeResourceLimitExceeded, ThemeResourcePolicy,
+    EffectColorSpace, EffectComposition, EffectGraph, EffectInput, EffectPrimitive,
+    ThemeColorValue, ThemeResourceLimitExceeded, ThemeResourcePolicy,
 };
 
 const DROP_SHADOW_PAINT_BOUNDS_SIGMAS: f64 = 4.0;
@@ -91,6 +91,23 @@ impl EffectOutsets {
         Some(outsets)
     }
 
+    pub(crate) fn with_independent_shadows(
+        self,
+        stages: impl IntoIterator<Item = ([f32; 2], [f32; 2])>,
+    ) -> Option<Self> {
+        let mut outsets = self;
+        for (offset, deviation) in stages {
+            let extension = Self::for_drop_shadow(0.0, offset[0], offset[1], deviation)?;
+            outsets.include(Self {
+                top: self.top + extension.top,
+                right: self.right + extension.right,
+                bottom: self.bottom + extension.bottom,
+                left: self.left + extension.left,
+            });
+        }
+        Some(outsets)
+    }
+
     fn for_drop_shadow(
         stroke_width: f64,
         offset_x: f32,
@@ -141,6 +158,7 @@ pub(crate) struct SvgShadowStage {
 pub(crate) struct SvgShadowEffect {
     id: String,
     color_space: EffectColorSpace,
+    composition: EffectComposition,
     stages: Vec<SvgShadowStage>,
 }
 
@@ -176,6 +194,7 @@ impl SvgShadowEffect {
         Some(Self {
             id: graph.id().to_owned(),
             color_space: graph.color_space(),
+            composition: graph.composition(),
             stages,
         })
     }
@@ -188,11 +207,22 @@ impl SvgShadowEffect {
         self.color_space
     }
 
+    pub(crate) const fn composition(&self) -> EffectComposition {
+        self.composition
+    }
+
     pub(crate) fn id(&self) -> &str {
         &self.id
     }
 
     fn paint_outsets(&self, source: EffectOutsets) -> Option<EffectOutsets> {
+        if self.composition == EffectComposition::Independent {
+            return source.with_independent_shadows(
+                self.stages
+                    .iter()
+                    .map(|stage| ([stage.offset_x, stage.offset_y], [stage.std_deviation; 2])),
+            );
+        }
         source.with_shadow_stages(self.stages.iter().map(|stage| {
             (
                 stage.input,
@@ -383,6 +413,25 @@ fn round_up_f32(value: f64) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn independent_shadow_bounds_union_without_cascade_or_reset() {
+        let source = EffectOutsets {
+            top: 2.0,
+            right: 2.0,
+            bottom: 2.0,
+            left: 2.0,
+        };
+        assert_eq!(
+            source.with_independent_shadows([([-12.0, 0.0], [2.0; 2]), ([12.0, 0.0], [2.0; 2]),]),
+            Some(EffectOutsets {
+                top: 10.0,
+                right: 22.0,
+                bottom: 10.0,
+                left: 22.0
+            })
+        );
+    }
 
     fn glow(blur_radius: f32) -> SvgShadowEffect {
         SvgShadowEffect::from_graph(

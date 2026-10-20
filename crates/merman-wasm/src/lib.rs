@@ -368,12 +368,12 @@ pub fn theme_catalog() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = materializeTheme)]
 pub fn materialize_theme(
-    definition_json: &str,
+    design_json: &str,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     json_value_result(execute_wasm_operation(
         "materialize-theme-json",
-        definition_json.as_bytes(),
+        design_json.as_bytes(),
         options_bytes(options_json.as_deref()),
         None,
     ))
@@ -966,7 +966,7 @@ mod tests {
 
     #[test]
     fn wasm_timeout_preserves_raw_options_members_for_shared_admission() {
-        let raw_theme = r#"{"schema_version":2,"schema_version":1,"kind":"definition","definition":{"tokens":{}}}"#;
+        let raw_theme = r#"{"schema_version":2,"schema_version":1,"kind":"design","design":{}}"#;
         let raw_options =
             format!(r#"{{"theme":{raw_theme},"theme":{raw_theme},"timeout_ms":125}}"#);
         let (normalized, timeout) = wasm_options(raw_options.as_bytes()).unwrap();
@@ -981,20 +981,28 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn wasm_timeout_does_not_hide_duplicate_recipe_fields() {
-        let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        let design = r#"{"tokens":{}}"#;
         for recipe in [
-            format!(r#"{{"schema_version":2,"schema_version":1,"kind":"definition","definition":{definition}}}"#),
-            format!(r#"{{"schema_version":2,"schema_\u0076ersion":1,"kind":"definition","definition":{definition}}}"#),
-            r#"{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
+            format!(
+                r#"{{"schema_version":2,"schema_version":1,"kind":"design","design":{design}}}"#
+            ),
+            format!(
+                r#"{{"schema_version":2,"schema_\u0076ersion":1,"kind":"design","design":{design}}}"#
+            ),
+            r#"{"schema_version":1,"kind":"design","design":{"tokens":{},"tokens":{}}}"#.to_owned(),
         ] {
             let options = format!(r#"{{"theme":{recipe}}}"#);
             let timed_options = format!(r#"{{"theme":{recipe},"timeout_ms":60000}}"#);
-            let plain = execute_wasm_operation(
-                "svg", b"flowchart LR\nA --> B", options.as_bytes(), None,
-            ).expect_err("duplicate recipe fields must be rejected");
+            let plain =
+                execute_wasm_operation("svg", b"flowchart LR\nA --> B", options.as_bytes(), None)
+                    .expect_err("duplicate recipe fields must be rejected");
             let timed = execute_wasm_operation(
-                "svg", b"flowchart LR\nA --> B", timed_options.as_bytes(), None,
-            ).expect_err("transport timeout must preserve duplicate recipe rejection");
+                "svg",
+                b"flowchart LR\nA --> B",
+                timed_options.as_bytes(),
+                None,
+            )
+            .expect_err("transport timeout must preserve duplicate recipe rejection");
             assert_eq!(timed.status(), plain.status());
             assert_eq!(timed.message(), plain.message());
             assert!(plain.message().contains("duplicate"), "{plain:?}");
@@ -1214,14 +1222,13 @@ mod tests {
         let materialized = execute_wasm_operation(
             "materialize-theme-json",
             br##"{
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "tokens": { "text": "#123456", "accent": "#abcdef" }
+                "tokens": { "paint.ink": {"type":"paint","value":"#123456"} },
+                "styles": {"text":{"fill":{"ref":"paint.ink"}}}
             }"##,
             b"",
             None,
         )
-        .expect("WASM should materialize a theme definition");
+        .expect("WASM should materialize an editable theme design");
         let materialized: serde_json::Value = serde_json::from_slice(&materialized).unwrap();
         assert_eq!(materialized["schema_version"], 1);
         assert!(materialized["spec"]["styles"].is_array());
@@ -1240,7 +1247,7 @@ mod tests {
         let preset = execute_wasm_operation("export-theme-preset-json", b"editor-light", b"", None)
             .expect("WASM should export a built-in preset");
         let preset: serde_json::Value = serde_json::from_slice(&preset).unwrap();
-        assert_eq!(preset["kind"], "complete_spec");
+        assert_eq!(preset["kind"], "design");
     }
 
     #[cfg(all(

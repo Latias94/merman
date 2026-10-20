@@ -1,6 +1,7 @@
 use crate::config::{config_bool, config_css_number_or_string, config_f64};
 use merman_core::diagrams::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
 use serde_json::Value;
+use std::borrow::Cow;
 
 const DEFAULT_SHOW_BITS: bool = true;
 const DEFAULT_ROW_HEIGHT: f64 = 32.0;
@@ -99,16 +100,16 @@ impl<'a> PacketConfigView<'a> {
         self.packet_config.get(key)?.as_i64()
     }
 
-    fn packet_style(&self, key: &str, default_value: &str) -> String {
+    fn packet_style(&self, key: &str, default_value: &'static str) -> Cow<'static, str> {
         let Some(mut value) = config_css_number_or_string(self.packet_config, &[key]) else {
-            return default_value.to_string();
+            return Cow::Borrowed(default_value);
         };
         // Preserve the declaration parser's second delimiter normalization after JSON projection.
         value.truncate(value.trim_end_matches(';').trim_end().len());
         if merman_core::style::is_safe_css_declaration_value(&value) {
-            value
+            Cow::Owned(value)
         } else {
-            default_value.to_string()
+            Cow::Borrowed(default_value)
         }
     }
 }
@@ -132,16 +133,16 @@ pub(crate) struct PacketLayoutSettings {
 
 #[derive(Debug)]
 pub(crate) struct PacketStyleSettings {
-    pub(crate) byte_font_size: String,
-    pub(crate) start_byte_color: String,
-    pub(crate) end_byte_color: String,
-    pub(crate) label_color: String,
-    pub(crate) label_font_size: String,
-    pub(crate) title_color: String,
-    pub(crate) title_font_size: String,
-    pub(crate) block_stroke_color: String,
-    pub(crate) block_stroke_width: String,
-    pub(crate) block_fill_color: String,
+    pub(crate) byte_font_size: Cow<'static, str>,
+    pub(crate) start_byte_color: Cow<'static, str>,
+    pub(crate) end_byte_color: Cow<'static, str>,
+    pub(crate) label_color: Cow<'static, str>,
+    pub(crate) label_font_size: Cow<'static, str>,
+    pub(crate) title_color: Cow<'static, str>,
+    pub(crate) title_font_size: Cow<'static, str>,
+    pub(crate) block_stroke_color: Cow<'static, str>,
+    pub(crate) block_stroke_width: Cow<'static, str>,
+    pub(crate) block_fill_color: Cow<'static, str>,
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad872de92e2b1`
+Semantic digest: `sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94`
 
 ## Public Leaves
 
@@ -54,7 +54,7 @@ Semantic digest: `sha256:fae651a30d88c09563ad0b7393a3106e3ad1261eb0ee7a22d93ad87
 | `export-theme-preset-json` | `alpha` | `svg` | none | none | `theme-preset-id` | `application/json` | no | `native`, `web`, `typst` |
 | `jpeg` | `stable` | `jpeg` | `jpeg` | `svg` | `mermaid-source` | `image/jpeg` | no | `native` |
 | `layout-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
-| `materialize-theme-json` | `alpha` | `svg` | none | none | `theme-definition-json` | `application/json` | no | `native`, `web`, `typst` |
+| `materialize-theme-json` | `alpha` | `svg` | none | none | `theme-design-json` | `application/json` | no | `native`, `web`, `typst` |
 | `pdf` | `stable` | `pdf` | `pdf` | `svg` | `mermaid-source` | `application/pdf` | no | `native` |
 | `png` | `stable` | `png` | `png` | `svg` | `mermaid-source` | `image/png` | no | `native` |
 | `semantic-json` | `stable` | none | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |

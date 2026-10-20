@@ -6,13 +6,20 @@
 )
 
 #let definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
   tokens: (
-    canvas: "#0f172a",
-    surface: "#1e293b",
-    text: "#e5e7eb",
-    accent: "#38bdf8",
+    canvas: (type: "color", value: "#0f172a"),
+    surface: (type: "color", value: "#1e293b"),
+    text: (type: "color", value: "#e5e7eb"),
+    accent: (type: "color", value: "#38bdf8"),
+  ),
+  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
+  styles: (
+    text: (fill: (kind: "solid", color: (ref: "text"))),
+    actor: (
+      fill: (kind: "solid", color: (ref: "surface")),
+      stroke: (paint: (kind: "solid", color: (ref: "accent"))),
+    ),
+    message: (stroke: (paint: (kind: "solid", color: (ref: "accent")))),
   ),
 )
 

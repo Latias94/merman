@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  selectRenderInputSnapshot,
+  selectThemeDraftChanged,
   selectWorkspaceSnapshot,
   useAppStore,
   type WorkspaceSnapshot,
@@ -68,9 +70,12 @@ test("stores Preview-owned SVG presentation preferences outside workspace snapsh
 
   useAppStore.getState().setShowSvgBounds(true);
   useAppStore.getState().setSvgPresentationMode("viewbox");
+  useAppStore.getState().setPreviewBacking("transparency");
 
   assert.equal(useAppStore.getState().showSvgBounds, true);
   assert.equal(useAppStore.getState().svgPresentationMode, "viewbox");
+  assert.equal(useAppStore.getState().previewBacking, "transparency");
+  assert.equal("previewBacking" in selectWorkspaceSnapshot(useAppStore.getState()), false);
   assert.equal("showSvgBounds" in selectWorkspaceSnapshot(useAppStore.getState()), false);
   assert.equal(
     "svgPresentationMode" in selectWorkspaceSnapshot(useAppStore.getState()),
@@ -142,7 +147,7 @@ function renderingState() {
 
 test("preset and custom recipe setters replace one another atomically", () => {
   useAppStore.getState().setThemePresetId("brutalist");
-  const recipe = '{"schema_version":1,"kind":"definition","definition":{}}';
+  const recipe = '{"schema_version":1,"kind":"design","design":{}}';
   const notifications: Array<[string | null, string | null]> = [];
   const unsubscribe = useAppStore.subscribe((state) => {
     notifications.push([state.themePresetId, state.themeRecipeJson]);
@@ -176,4 +181,94 @@ test("applying and selecting a custom workspace retains its recipe", () => {
   };
   useAppStore.getState().applyWorkspaceSnapshot(snapshot);
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), snapshot);
+});
+
+const validRecipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#abcdef"}}}}';
+
+function beginValidThemeDraft() {
+  useAppStore.getState().cancelThemeEdit();
+  useAppStore.getState().beginThemeEdit();
+  const importing = useAppStore.getState().beginThemeImport()!;
+  const token = useAppStore.getState().completeThemeImport(importing, validRecipe)!;
+  useAppStore.getState().acceptThemeValidation(token, validRecipe);
+}
+
+test("valid draft previews overlay only theme fields and leave sharing applied", () => {
+  useAppStore.getState().applyWorkspaceSnapshot({
+    ...selectWorkspaceSnapshot(useAppStore.getState()),
+    themePresetId: "cyberpunk", themeRecipeJson: null,
+  });
+  const baseline = selectWorkspaceSnapshot(useAppStore.getState());
+  beginValidThemeDraft();
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), baseline);
+  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), {
+    ...baseline, themePresetId: null, themeRecipeJson: validRecipe,
+  });
+  assert.equal(selectThemeDraftChanged(useAppStore.getState()), true);
+});
+
+test("invalid theme text retains the valid candidate with current source, config and font", () => {
+  beginValidThemeDraft();
+  const importing = useAppStore.getState().beginThemeImport()!;
+  const invalid = useAppStore.getState().completeThemeImport(importing, "{")!;
+  useAppStore.getState().rejectThemeValidation(invalid, "Invalid JSON");
+  useAppStore.getState().setCode("classDiagram\nclass Latest");
+  useAppStore.getState().setMermaidConfig('{"theme":"forest"}');
+  useAppStore.getState().setDiagramFont("arial");
+  const snapshot = selectRenderInputSnapshot(useAppStore.getState());
+  assert.equal(snapshot.code, "classDiagram\nclass Latest");
+  assert.equal(snapshot.mermaidConfig, '{"theme":"forest"}');
+  assert.equal(snapshot.diagramFont, "arial");
+  assert.equal(snapshot.themeRecipeJson, validRecipe);
+  assert.equal(useAppStore.getState().themeEditSession!.rawJson, "{");
+  assert.equal(selectThemeDraftChanged(useAppStore.getState()), true);
+  assert.equal(useAppStore.getState().applyThemeEdit(), false);
+});
+
+test("Cancel preserves unrelated workspace edits and rejects closed-session work", () => {
+  beginValidThemeDraft();
+  useAppStore.getState().setCode("sequenceDiagram\nAlice->>Bob: Keep this edit");
+  const pendingImport = useAppStore.getState().beginThemeImport()!;
+  const invalidToken = {
+    sessionId: useAppStore.getState().themeEditSession!.id,
+    revision: useAppStore.getState().themeEditSession!.revision,
+  };
+  const latest = selectWorkspaceSnapshot(useAppStore.getState());
+  useAppStore.getState().cancelThemeEdit();
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), latest);
+  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), latest);
+  assert.equal(useAppStore.getState().completeThemeImport(pendingImport, validRecipe), null);
+  assert.equal(useAppStore.getState().acceptThemeValidation(invalidToken, validRecipe), false);
+  useAppStore.getState().beginThemeEdit();
+  assert.equal(useAppStore.getState().completeThemeImport(pendingImport, validRecipe), null);
+  assert.equal(useAppStore.getState().acceptThemeValidation(invalidToken, validRecipe), false);
+  useAppStore.getState().cancelThemeEdit();
+});
+
+test("Apply commits only theme fields, stays open and advances the cancellation baseline", () => {
+  beginValidThemeDraft();
+  const before = selectWorkspaceSnapshot(useAppStore.getState());
+  const expected = { ...before, themePresetId: null, themeRecipeJson: validRecipe };
+  const notifications: WorkspaceSnapshot[] = [];
+  const unsubscribe = useAppStore.subscribe((state) => notifications.push(selectWorkspaceSnapshot(state)));
+  assert.equal(useAppStore.getState().applyThemeEdit(), true);
+  unsubscribe();
+  assert.deepEqual(notifications, [expected]);
+  assert.ok(useAppStore.getState().themeEditSession);
+  assert.equal(selectThemeDraftChanged(useAppStore.getState()), false);
+  useAppStore.getState().selectThemeCandidate({ kind: "none" });
+  assert.equal(selectRenderInputSnapshot(useAppStore.getState()).themeRecipeJson, null);
+  useAppStore.getState().cancelThemeEdit();
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), expected);
+});
+
+test("workspace replacement invalidates a pending theme session", () => {
+  useAppStore.getState().beginThemeEdit();
+  const importing = useAppStore.getState().beginThemeImport()!;
+  const token = useAppStore.getState().completeThemeImport(importing, validRecipe)!;
+  const replacement = { ...selectWorkspaceSnapshot(useAppStore.getState()), themeRecipeJson: null, themePresetId: "spotless" };
+  useAppStore.getState().applyWorkspaceSnapshot(replacement);
+  assert.equal(useAppStore.getState().themeEditSession, null);
+  assert.equal(useAppStore.getState().acceptThemeValidation(token, validRecipe), false);
+  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), replacement);
 });

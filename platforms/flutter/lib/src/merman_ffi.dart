@@ -1326,7 +1326,7 @@ class MermanThemePreset {
       );
     }
     final exportKind = _requiredString(json, 'export_kind', 'theme preset $id');
-    if (exportKind != 'definition' && exportKind != 'complete_spec') {
+    if (exportKind != 'design' && exportKind != 'complete_spec') {
       throw MermanException.contract(
         'theme preset $id.export_kind is unsupported',
       );
