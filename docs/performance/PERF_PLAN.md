@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 CSS identifier checkpoint](css_identifier_borrow_macos_2026-10-20.md) borrows
+unchanged identifiers inside the existing serializer. On the fresh `7e0582307` base, Packet medium /
+None saves one allocation and 19 bytes; all 418 catalog cells are stable, with 132 improvements,
+286 unchanged and no increases. All 645 SVG/report and ordered-measurer controls and 26 complete
+errors match. Full release nextest passes 8100 tests (seven skipped), with strict Clippy, 37 fresh
+archived DOM reports, optimized full WASM and 34 theme acceptance tests. A test-only formatting
+failure is preserved explicitly; all five final-format supplemental stages pass. Final source
+verification uses two explicit test-format overrides, preserving all other measured source and
+frozen inputs. This is allocation/work removal, without a latency claim. Refresh the full release
+comparison against the final clean revision after integrating main.
+
 The [October 20 scoped appearance checkpoint](scoped_appearance_path_macos_2026-10-20.md)
 defers scoped path construction until the existing scoped-assignment branch consumes it. On the
 fresh post-main base `88351fe6a`, Packet medium / None saves six allocations and 72 bytes; all
@@ -26,8 +37,8 @@ replace retired authoring controls explicitly; historical input equivalence is n
 All 8100 full release tests pass (seven skipped), together with strict Clippy, 37 archived DOM
 reports, optimized full WASM, 34 release theme acceptance tests and format/path checks. All 15
 serial stages finish successfully and all 15,303 frozen source hashes remain unchanged. This is
-allocation/work removal, without a timing or v0.9.0 convergence claim. Evaluate CSS identifier
-ownership separately, then refresh release comparison against the final clean revision.
+allocation/work removal, without a timing or v0.9.0 convergence claim. CSS identifier ownership
+now has the separate admitted checkpoint above; release comparison still needs a fresh run.
 
 The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
 validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
@@ -1240,8 +1251,12 @@ latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within 
 three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
 actual consumers before selecting further repairs. Empty explicit-owner queries now have an
 independent admitted allocation checkpoint. Absent scoped appearance paths now have a separate
-admitted checkpoint. Keep frozen path storage and duplicate normalized CSS-ID owners as separate
-candidates. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+admitted checkpoint. Unchanged CSS identifiers now borrow from their existing serializer in an
+independent admitted checkpoint. Frozen path storage remains a separate candidate; a newly observed
+intermediate metadata clone has a source-backed consumer audit but no measured benefit. Refresh
+all 76 release output identities and collect fresh A/A plus fixed AB/BA for the prospectively
+selected exact-output cohort. Use fresh adjacent evidence and calibrated confirmation for latency
+claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
