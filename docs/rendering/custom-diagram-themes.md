@@ -15,11 +15,25 @@ C4 element, boundary and relationship colors, `themeVariables.zenuml` colors and
 Wardley anchor/annotation colors, Gantt axis color, and Mindmap label backgrounds use their
 family owners. Measurement and SVG paint consume the same prepared font values.
 
-This does not extend compiled-theme admission to every family target. In particular, ZenUML's
-compiled theme adapter supports `Title.fill`; generic text and typography rules remain
-unsupported and are reported as such. Choose the corresponding Mermaid family configuration
-when configuring those source-owned values. Background and text rules have separate owners;
-a background-only compiled rule does not infer or recolor labels on another surface.
+An explicit source or site Mermaid theme selects its materialized paint palette, including
+derived colors. Existing palette values take precedence over compiled paint defaults; roles
+absent from that palette retain their compiled fallback. Individual explicit variables keep
+their property-specific dependencies. A recipe's own compatibility theme supplies recipe
+defaults and does not suppress its compiled rules. Typography, geometry, effects, and the
+host canvas retain their independent owners.
+
+C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
+text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
+done and critical task paints with paired inside-label colors; outside labels use the surrounding
+surface. An unqualified custom task rule still applies to every task state. Wardley anchor
+labels follow compiled text/node-label colors while annotations, arrow labels and evolved
+labels retain their independent foreground/background pairs.
+
+ZenUML prepares frame, participant, message, lifeline, note, group, activation and text styles
+together. Its font preparation is shared by measurement and SVG paint. Explicit namespace
+values retain per-property precedence. Support reports describe the implemented terminals;
+unsupported facets still produce residuals. Background and text rules have separate owners;
+a background-only rule does not infer label colors.
 
 ## Design a theme with an agent
 
