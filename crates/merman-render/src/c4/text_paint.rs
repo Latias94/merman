@@ -355,14 +355,16 @@ impl C4TextPaintPlan {
                 explicit_text.is_some(),
                 work,
             )?;
-            let (_, line_paint) =
-                self.role_paints(ThemeTarget::Edge, index + 1, explicit_line.is_some(), work)?;
-            let (marker_fill, marker_stroke) = self.role_paints(
-                ThemeTarget::Marker,
-                index + 1,
-                explicit_line.is_some(),
-                work,
-            )?;
+            let (_, line_paint) = self.role_paints(ThemeTarget::Edge, index + 1, false, work)?;
+            let (marker_fill, marker_stroke) =
+                self.role_paints(ThemeTarget::Marker, index + 1, false, work)?;
+            // Mermaid's source colors retain the shared, unpainted markers. A requested
+            // host paint activates colored markers even when source colors override it.
+            let themed_markers =
+                line_paint.is_some() || marker_fill.is_some() || marker_stroke.is_some();
+            let line_paint = line_paint.filter(|_| explicit_line.is_none());
+            let marker_fill = marker_fill.filter(|_| explicit_line.is_none());
+            let marker_stroke = marker_stroke.filter(|_| explicit_line.is_none());
             if label_visible {
                 relation_text_owned.push(explicit_text.is_some());
                 record_role_paint(
@@ -383,11 +385,6 @@ impl C4TextPaintPlan {
                 .or_else(|| line_paint.as_ref().map(DirectStaticPaint::css))
                 .unwrap_or(typography.relationship_line_color())
                 .to_owned();
-            let themed_markers = explicit_line.is_some()
-                || line_paint.is_some()
-                || marker_fill.is_some()
-                || marker_stroke.is_some()
-                || typography.themed_relationship_markers();
             relations.push(C4RelationTerminalPaint {
                 text: source
                     .and_then(|source| source.text_color.as_deref())

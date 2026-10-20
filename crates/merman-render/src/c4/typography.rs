@@ -24,7 +24,6 @@ pub(crate) struct C4TypographyThemePlan {
     message_font: crate::text::TextStyle,
     relationship_text_color: String,
     relationship_line_color: String,
-    themed_relationship_markers: bool,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
@@ -155,9 +154,6 @@ impl C4TypographyThemePlan {
             message_font: view.message_font(),
             relationship_text_color: view.color("relationship_text_color", "#444444"),
             relationship_line_color: view.color("relationship_line_color", "#444444"),
-            themed_relationship_markers: effective_config
-                .get_str("c4.relationship_line_color")
-                .is_some(),
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
@@ -212,9 +208,6 @@ impl C4TypographyThemePlan {
     }
     pub(crate) fn relationship_line_color(&self) -> &str {
         &self.relationship_line_color
-    }
-    pub(crate) const fn themed_relationship_markers(&self) -> bool {
-        self.themed_relationship_markers
     }
 
     #[cfg(test)]
