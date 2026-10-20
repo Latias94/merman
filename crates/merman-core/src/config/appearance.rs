@@ -123,7 +123,6 @@ impl<'a> AppearanceDecision<'a> {
                 winner.origin,
                 AppearanceOrigin::Source | AppearanceOrigin::Initialize
             );
-            let scoped_key = format!("{}.{key}", self.section);
             // The detector may add or delete scoped keys between applications of the same decision.
             let section_has_key = effective
                 .as_value()
@@ -137,6 +136,7 @@ impl<'a> AppearanceDecision<'a> {
                 effective.set_value_preserving_theme_compatibility(key, value.clone());
             }
             if section_has_key {
+                let scoped_key = format!("{}.{key}", self.section);
                 if explicit {
                     effective.set_value_explicit(&scoped_key, value.clone());
                 } else if effective.as_value()[self.section].get(key) != Some(value) {
