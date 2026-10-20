@@ -17,6 +17,22 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 appearance/CSS release checkpoint](theme_v090_appearance_css_macos_2026-10-20.md)
+compares production `b9a58731c` with v0.9.0 using fresh 608 A/A and 304 fixed balanced A/B
+observations: 14 within the joint budget, two confirmed regressions and three inconclusive scenes,
+with zero consumer contract failures. ZenUML remains +17.51% / +3.499 us and Packet +28.83% /
++2.332 us. Kanban is +18.95% / +8.521 us but remains inconclusive because its absolute A/A order
+certificate is unqualified; it is not recovered. Sankey and Wardley relative bounds cross 10%.
+All 76 fresh input/output inventories and physical raw replays remain exact to their receipts:
+19 comparable scenes, 57 changed-output scenes with source-backed reasons. The first timing
+attempt is rejected for shared-target reuse of a hook executable; its records are preserved and
+none of its observations is reused. Bounded rebuild and independent physical executable admission
+precede this accepted run, and both actual no-hook binaries are archived before later native work.
+PR #226 is merged as `a933b02c1`, whose complete source tree equals tested `b9a58731c`; the tested
+revision remains explicit. These release-range observations do not attribute latency to an
+individual repair. Next separately admit the unused facade SVG metadata owner, then audit the
+fresh-render prepared-source Arc. The all-family convergence goal remains incomplete.
+
 The [October 20 CSS identifier checkpoint](css_identifier_borrow_macos_2026-10-20.md) borrows
 unchanged identifiers inside the existing serializer. On the fresh `7e0582307` base, Packet medium /
 None saves one allocation and 19 bytes; all 418 catalog cells are stable, with 132 improvements,
@@ -25,8 +41,8 @@ errors match. Full release nextest passes 8100 tests (seven skipped), with stric
 archived DOM reports, optimized full WASM and 34 theme acceptance tests. A test-only formatting
 failure is preserved explicitly; all five final-format supplemental stages pass. Final source
 verification uses two explicit test-format overrides, preserving all other measured source and
-frozen inputs. This is allocation/work removal, without a latency claim. Refresh the full release
-comparison against the final clean revision after integrating main.
+frozen inputs. This is allocation/work removal, without a latency claim. The separate accepted release
+comparison above retains its own production revision and qualification boundaries.
 
 The [October 20 scoped appearance checkpoint](scoped_appearance_path_macos_2026-10-20.md)
 defers scoped path construction until the existing scoped-assignment branch consumes it. On the
@@ -38,7 +54,7 @@ All 8100 full release tests pass (seven skipped), together with strict Clippy, 3
 reports, optimized full WASM, 34 release theme acceptance tests and format/path checks. All 15
 serial stages finish successfully and all 15,303 frozen source hashes remain unchanged. This is
 allocation/work removal, without a timing or v0.9.0 convergence claim. CSS identifier ownership
-now has the separate admitted checkpoint above; release comparison still needs a fresh run.
+and the full release comparison now have their separate admitted checkpoints above.
 
 The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
 validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
@@ -1247,16 +1263,18 @@ cancellation and measurement callbacks. Engine borrowing, root style borrowing a
 root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
 in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
 compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
-latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
-three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
-actual consumers before selecting further repairs. Empty explicit-owner queries now have an
-independent admitted allocation checkpoint. Absent scoped appearance paths now have a separate
-admitted checkpoint. Unchanged CSS identifiers now borrow from their existing serializer in an
-independent admitted checkpoint. Frozen path storage remains a separate candidate; a newly observed
-intermediate metadata clone has a source-backed consumer audit but no measured benefit. Refresh
-all 76 release output identities and collect fresh A/A plus fixed AB/BA for the prospectively
-selected exact-output cohort. Use fresh adjacent evidence and calibrated confirmation for latency
-claims; see the
+latest admitted full 19-scene same-SVG confirmation at `b9a58731c` establishes 14 within the joint
+budget, two confirmed regressions (ZenUML and Packet) and three inconclusive scenes (Sankey,
+Kanban and Wardley). Kanban's +18.95% / +8.521 us remains a priority despite its unqualified
+absolute A/A certificate. The earlier b9 attempt is rejected for source/executable mismatch;
+the accepted identity repair uses entirely fresh observations and physical no-hook admission.
+Attribute actual consumers before selecting further repairs. Empty explicit-owner queries,
+absent scoped appearance paths and borrowed unchanged CSS identifiers now have independent
+admitted allocation checkpoints. Frozen path storage remains separate. The intermediate metadata
+clone has a reviewed source draft and one public ownership/pipeline regression test, but no
+measured benefit. Register it independently with the full adjacent catalog and behavior controls.
+The fresh-render prepared-source Arc is a later independent ownership candidate. Use calibrated
+confirmation for subsequent latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
