@@ -12,7 +12,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Need | Package | Includes |
 | --- | --- | --- |
 | A complete SDK or a starting point | [`@mermanjs/web`](packages/full/README.md) | SVG, analysis, ASCII, and editor APIs |
-| SVG rendering only | [`@mermanjs/web-render`](packages/render/README.md) | Cytoscape and ELK layouts plus math |
+| SVG rendering only | [`@mermanjs/web-render`](packages/render/README.md) | Cytoscape and ELK layouts |
 | Validation and semantic facts | [`@mermanjs/web-analysis`](packages/analysis/README.md) | Detection, validation, analysis, and lint facts |
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
@@ -20,6 +20,9 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 All public browser packages use one lockstep version. Version `0.9.1` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
 
 This checkout also documents unreleased compiled-theme, prepared-source and adaptive Kanban APIs with Web transport API `8`.
+Current-source full/render recipes omit math. Mathematical labels return typed `missing-capability`
+with capability `math`; custom source builds can select the existing WASM `math` leaf. Installed
+`0.9.1` packages retain their published capability sets; no new npm SKU is introduced.
 Published `0.9.1` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
 matching artifacts. See the [release boundary](../../docs/release/README.md#merman-091).
 

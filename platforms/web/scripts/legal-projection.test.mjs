@@ -66,7 +66,7 @@ test("browser scopes select distinct reports bound to their artifact recipes", (
   assert.equal(sources.size, webPackages.length);
 });
 
-test("slim browser legal scopes exclude full-renderer-only components", () => {
+test("browser legal scopes retain selected renderers and exclude math components", () => {
   const full = legalProjectionForArtifactProfile("web-full");
   const analysis = legalProjectionForArtifactProfile("web-analysis");
   const editor = legalProjectionForArtifactProfile("web-editor");
@@ -74,8 +74,6 @@ test("slim browser legal scopes exclude full-renderer-only components", () => {
   const render = legalProjectionForArtifactProfile("web-render");
 
   assert.equal(full.componentIds.includes("eclipse-elk"), true);
-  assert.equal(full.componentIds.includes("ratex"), true);
-  assert.equal(full.componentIds.includes("katex-fonts"), true);
 
   for (const projection of [analysis, editor, ascii]) {
     assert.equal(
@@ -83,16 +81,19 @@ test("slim browser legal scopes exclude full-renderer-only components", () => {
       false,
       `${projection.scopeId} must not carry ELK legal material.`,
     );
-    assert.equal(
-      projection.componentIds.includes("ratex"),
-      false,
-      `${projection.scopeId} must not carry RaTeX legal material.`,
-    );
+  }
+  for (const projection of [full, render, analysis, editor, ascii]) {
+    for (const componentId of ["ratex", "katex-fonts"]) {
+      assert.equal(
+        projection.componentIds.includes(componentId),
+        false,
+        `${projection.scopeId} must not carry ${componentId} legal material.`,
+      );
+    }
   }
   assert.equal(ascii.componentIds.includes("mermaid-ascii"), true);
   assert.equal(render.componentIds.includes("cose-base-v1"), true);
   assert.equal(render.componentIds.includes("eclipse-elk"), true);
-  assert.equal(render.componentIds.includes("ratex"), true);
 });
 
 test("scoped Rust report validation fails closed on input and closure drift", () => {

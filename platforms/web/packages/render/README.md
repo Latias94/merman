@@ -1,9 +1,11 @@
 # @mermanjs/web-render
 
-Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts plus math support,
+Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
-Pin an exact package version when reproducible installs matter.
+Pin an exact package version when reproducible installs matter. Current development builds omit
+math; custom WASM source builds can enable `math` explicitly. Published `0.9.1` retains its
+original capability set.
 
 ## Quick start
 

@@ -360,7 +360,7 @@ class RepositoryContractTests(unittest.TestCase):
     def test_repository_contract_and_notice_are_current(self) -> None:
         verify.verify_repository(REPOSITORY_ROOT)
 
-    def test_web_full_scope_tracks_structured_wasm_capabilities(self) -> None:
+    def test_web_render_scopes_track_math_free_wasm_capabilities(self) -> None:
         contract = json.loads(
             (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(
                 encoding="utf-8"
@@ -381,15 +381,17 @@ class RepositoryContractTests(unittest.TestCase):
                 inherits(parent, expected_parent) for parent in scopes[scope_id]["extends"]
             )
 
-        capabilities = set(profiles["web-full"]["expected"]["capabilities"])
-        self.assertTrue(inherits("web-full", "elk-render"))
-        self.assertIn("layout-elk", capabilities)
-        self.assertIn("math", capabilities)
-        self.assertTrue(inherits("web-full", "ratex-render"))
-        self.assertIn("ascii", capabilities)
+        for profile_id in ("web-full", "web-render"):
+            with self.subTest(profile_id=profile_id):
+                capabilities = set(profiles[profile_id]["expected"]["capabilities"])
+                self.assertTrue(inherits(profile_id, "elk-render"))
+                self.assertIn("layout-elk", capabilities)
+                self.assertNotIn("math", capabilities)
+                self.assertFalse(inherits(profile_id, "ratex-render"))
+        self.assertIn("ascii", profiles["web-full"]["expected"]["capabilities"])
         self.assertTrue(inherits("web-full", "ascii-render"))
 
-    def test_cli_scopes_include_default_and_release_elk_closures(self) -> None:
+    def test_cli_scopes_keep_elk_and_require_release_opt_in_for_math(self) -> None:
         contract = json.loads(
             (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(
                 encoding="utf-8"
@@ -407,8 +409,10 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("elkjs", resolved("cli-default"))
         self.assertIn("eclipse-elk", resolved("cli-release"))
         self.assertIn("elkjs", resolved("cli-release"))
-        self.assertIn("katex-fonts", resolved("cli-default"))
-        self.assertIn("katex-fonts", resolved("cli-release"))
+        for component_id in ("katex-fonts", "ratex"):
+            with self.subTest(component_id=component_id):
+                self.assertNotIn(component_id, resolved("cli-default"))
+                self.assertIn(component_id, resolved("cli-release"))
 
     def test_every_web_scope_owns_one_exact_rust_dependency_report(self) -> None:
         contract = json.loads(

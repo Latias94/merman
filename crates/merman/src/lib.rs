@@ -46,20 +46,20 @@
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
 //! - `png`, `jpeg`, and `pdf`: bounded binary export through `merman::svg::export`; each
 //!   implies `svg` but does not imply either of the other binary formats.
-//! - `math`: pure-Rust math label rendering for the SVG path; this implies
-//!   `svg`.
+//! - `math`: opt-in pure-Rust math label rendering for the SVG path; this implies
+//!   `svg` and is not included in defaults.
 //!
-//! The default feature set combines `all-diagrams` with [`complete-svg-elk`](#features): it supports
-//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, the Cytoscape
-//! layout engine, and math labels without ambient system adapters. Distributed artifacts must
-//! retain the ELK implementation's EPL-2.0 notices and source provenance. Use `default-features = false`
-//! with explicit family selectors and [`complete-svg`](#features) to omit ELK, or choose individual
-//! capability leaves when you need a measured artifact closure. Neither SVG aggregate selects families.
+//! The default feature set is `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`: it supports
+//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, and the Cytoscape
+//! layout engine without ambient system adapters. Enable `math` explicitly to render math labels.
+//! Distributed artifacts must retain the ELK implementation's EPL-2.0 notices and source provenance.
+//! Use `default-features = false` with explicit family selectors, `svg`, and `layout-cytoscape` to omit
+//! ELK, or choose individual capability leaves when you need a measured artifact closure.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's
 //! re-exports instead, set `default-features = false` and select the required `diagram-*` features
 //! (or `all-diagrams` to retain the previous parser surface). An ordinary `merman` dependency
-//! intentionally compiles the complete SVG workflow.
+//! intentionally compiles SVG rendering with both layout engines.
 //!
 //! # Quick start
 //!

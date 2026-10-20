@@ -32,8 +32,6 @@ features = [
     "pdf",
     "layout-cytoscape",
     "layout-elk",
-    "complete-svg",
-    "complete-svg-elk",
     "math",
     "system-clock",
     "system-timezone",
@@ -320,9 +318,7 @@ diagram-zenuml = [
     "merman-editor-core?/diagram-zenuml",
     "merman-render?/diagram-zenuml",
 ]
-# The facade is the ergonomic Rust entry point. Low-level implementation crates stay
-# default-empty; this product default intentionally provides a complete deterministic SVG path.
-default = ["all-diagrams", "complete-svg-elk"]
+default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
 system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]
@@ -340,13 +336,6 @@ math = ["svg", "merman-render/math"]
 png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
 pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
-complete-svg = [
-    "svg",
-    "layout-cytoscape",
-    "math",
-]
-complete-svg-elk = ["complete-svg", "layout-elk"]
-
 [dependencies]
 merman-core.workspace = true
 merman-analysis = { workspace = true, optional = true }
@@ -545,7 +534,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "layout_work_calibration"
-required-features = ["complete-svg-elk"]
+required-features = ["svg", "layout-cytoscape", "layout-elk", "math"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

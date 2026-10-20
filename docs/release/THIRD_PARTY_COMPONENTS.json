@@ -123,8 +123,8 @@
     },
     {
       "id": "web-render",
-      "description": "Published complete browser SVG renderer with Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload, but without analysis, ASCII, or editor APIs.",
-      "extends": ["elk-render", "ratex-render"],
+      "description": "Browser SVG renderer with Cytoscape and ELK, without math, analysis, ASCII, or editor APIs.",
+      "extends": ["elk-render"],
       "components": []
     },
     {
@@ -135,8 +135,8 @@
     },
     {
       "id": "cli-default",
-      "description": "The default CLI feature closure including ELK and RaTeX math/font support.",
-      "extends": ["elk-render", "ratex-render"],
+      "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
+      "extends": ["elk-render"],
       "components": []
     },
     {
@@ -147,8 +147,8 @@
     },
     {
       "id": "web-full",
-      "description": "The published complete browser SVG renderer, including Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload.",
-      "extends": ["ascii-render", "elk-render", "ratex-render"],
+      "description": "Browser SDK including ASCII, Cytoscape and ELK without RaTeX math/font support.",
+      "extends": ["ascii-render", "elk-render"],
       "components": []
     },
     {

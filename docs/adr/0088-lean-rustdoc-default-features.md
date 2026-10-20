@@ -2,6 +2,9 @@
 
 ## Status
 
+The later [explicit math decision](0097-explicit-math-capability.md) retires the complete aggregates
+and removes implicit facade/CLI math. The original historical selections below remain evidence.
+
 Accepted for the next release after `0.8.0-alpha.6`. The no-ELK product default is superseded by
 [Mermaid 12 Default ELK Products](0089-mermaid-12-default-elk-products.md) for `0.8.0-alpha.7`;
 math remains opt-in and the explicit aggregates retain their membership.

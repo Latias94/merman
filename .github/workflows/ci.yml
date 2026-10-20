@@ -582,6 +582,13 @@ jobs:
             --features svg,diagram-flowchart --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --features math --test regressions \
+            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --features math --test complete_svg_e2e --cargo-quiet
+          cargo nextest run --locked -p merman-cli --features math --test ratex_math --cargo-quiet
+          cargo nextest run --locked -p merman-cli --features math --bin merman-cli \
+            -E 'test(rustdoc::document::tests::explicit_math_capability_renders_in_rustdoc_mode)' --cargo-quiet
+          cargo nextest run --locked -p merman --features math --test layout_work_calibration_contract --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
           cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
@@ -594,6 +601,11 @@ jobs:
             --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
             --lib --cargo-quiet \
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
+          cargo nextest run --locked -p merman-bindings-core -p merman-cli \
+            --no-default-features \
+            --features "$ambient_render_features,merman-cli/all-diagrams,merman-cli/svg" \
+            --test svg_smoke --cargo-quiet \
+            -E 'test(math_labels_require_the_cli_owned_capability)'
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity

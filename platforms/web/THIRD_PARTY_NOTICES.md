@@ -19,9 +19,9 @@ Components: `beautiful-mermaid`, `mermaid`, `mermaid-ascii`, `mermaid-rs-rendere
 
 ### `cli-default`
 
-The default CLI feature closure including ELK and RaTeX math/font support.
+The source-default CLI feature closure including ELK without RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `cli-release`
 
@@ -57,7 +57,7 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
@@ -91,15 +91,15 @@ Components: `dompurify`, `mermaid`, `sanitize-url`, `zenuml-core`.
 
 ### `web-full`
 
-The published complete browser SVG renderer, including Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload.
+Browser SDK including ASCII, Cytoscape and ELK without RaTeX math/font support.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `web-render`
 
-Published complete browser SVG renderer with Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload, but without analysis, ASCII, or editor APIs.
+Browser SVG renderer with Cytoscape and ELK, without math, analysis, ASCII, or editor APIs.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ## Components
 
@@ -323,7 +323,7 @@ The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are l
 - Source path: `crates/ratex-katex-fonts/fonts`
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
-- Artifact scopes: `cli-default`, `cli-release`, `ratex-render`, `source-archive`, `web-full`, `web-render`
+- Artifact scopes: `cli-release`, `ratex-render`
 - Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt`](THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt) (notice, SHA-256 `752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e`)
@@ -468,7 +468,7 @@ Optional math rendering links the RaTeX 0.1.14 crate family; its separately lice
 - Source path: `crates`
 - Relationship: `linked`
 - License expression: `MIT`
-- Artifact scopes: `cli-default`, `cli-release`, `ratex-render`, `source-archive`, `web-full`, `web-render`
+- Artifact scopes: `cli-release`, `ratex-render`
 - Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/ratex/LICENSE`](THIRD_PARTY_LICENSES/ratex/LICENSE) (license, SHA-256 `f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0`)

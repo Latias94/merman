@@ -435,6 +435,10 @@ fn renderer_from_config(
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
         ));
+    #[cfg(not(feature = "math"))]
+    {
+        environment = environment.without_math_renderer();
+    }
     if let Some(kind) = render.math_renderer {
         environment = match kind {
             MathRendererKind::None => environment.without_math_renderer(),

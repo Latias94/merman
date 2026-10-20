@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.9.1` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Current development source defaults omit math; use `cargo install merman-cli --locked --features math` to include it. The `0.9.1` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
 Installation examples target `0.9.1`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
 
@@ -493,7 +493,7 @@ explicitly:
 | `--no-default-features --features all-diagrams,native-fonts` | SVG with explicit-font measurement controls, no output codecs |
 | `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |
 | `--no-default-features --features all-diagrams,markdown` | Sequential native Markdown batch and SVG |
-| `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
+| `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG and Cytoscape layout; add `math` for mathematical labels |
 | `--no-default-features --features all-diagrams,icons` | SVG plus bounded local Iconify packs |
 | `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
 | `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |

@@ -92,8 +92,6 @@ diagram-wardley = ["merman?/diagram-wardley"]
 diagram-xychart = ["merman?/diagram-xychart"]
 diagram-zenuml = ["merman?/diagram-zenuml"]
 default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
-complete-svg = ["svg", "layout-cytoscape", "math"]
-complete-svg-elk = ["complete-svg", "layout-elk"]
 svg = [
     "dep:merman",
     "dep:proc-macro2",

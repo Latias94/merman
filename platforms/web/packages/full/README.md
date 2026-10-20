@@ -4,7 +4,9 @@ The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-b
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
-Pin an exact package version when reproducible installs matter.
+Pin an exact package version when reproducible installs matter. Current development builds omit
+math; custom WASM source builds can enable `math` explicitly. Published `0.9.1` retains its
+original capability set.
 
 ## Quick start
 

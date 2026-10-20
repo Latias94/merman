@@ -126,7 +126,7 @@ fn render_mermaid_svg(
                 RenderError::Svg(error)
                     if error.missing_capability() == Some(RenderCapability::Math) =>
                 {
-                    "; enable the `math` or `complete-svg` feature on the `merman-rustdoc` dependency"
+                    "; enable the `math` feature on the `merman-rustdoc` dependency"
                 }
                 _ => "",
             };

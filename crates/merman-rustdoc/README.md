@@ -133,16 +133,15 @@ inclusion, Git rollback, and migration from this attribute form.
 
 The `0.9.1` release defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
 `layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
-Math is opt-in; add `math` when diagrams contain mathematical labels, or select `complete-svg-elk`
-for SVG, both layouts, and math together. Users of alpha.6's math-enabled default must enable
+Math is opt-in; add `math` when diagrams contain mathematical labels. The current development
+branch retires `complete-svg` and `complete-svg-elk`; select their output/layout leaves directly. Users of alpha.6's math-enabled default must enable
 math explicitly when upgrading.
 
 The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
 corresponding notices and source provenance. It does not enable host clock, time-zone, random,
-or timing adapters. The separate `merman` facade defaults to `all-diagrams + complete-svg-elk`,
-including math. To omit ELK, disable default features and select the required diagram families
-plus `complete-svg` for SVG, Cytoscape, and math, or choose narrower capability leaves. Selecting
-`complete-svg` without disabling defaults still includes ELK because Cargo features are additive.
+or timing adapters. The separate `merman` facade now defaults to the same direct family/SVG/layout
+leaves, with math explicit. To omit ELK, disable default features and select the required diagram
+families plus `svg` and `layout-cytoscape`. Add `math` independently. Cargo features are additive.
 See the repository's
 [third-party notices](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for the
 source provenance and artifact obligations.
@@ -156,8 +155,6 @@ merman-rustdoc = { version = "0.9.1", default-features = false, features = ["dia
 
 | Feature | Adds |
 | --- | --- |
-| `complete-svg` | `svg`, Cytoscape layout, and math |
-| `complete-svg-elk` | `complete-svg` plus the ELK layout implementation and its EPL-2.0 closure |
 | `svg` | Base deterministic SVG renderer |
 | `layout-cytoscape` | Architecture and other Cytoscape-backed layouts; implies `svg` |
 | `layout-elk` | ELK-backed layouts; implies `svg` |
@@ -169,8 +166,8 @@ For the current checkout, disable defaults and select both families and outputs 
 merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
 ```
 
-Use `all-diagrams` to retain the complete parser surface. `complete-svg` and `complete-svg-elk`
-select output/engine closures; neither enables a family when defaults are disabled. See the
+Use `all-diagrams` to retain the complete parser surface. Output and layout leaves do not
+enable a diagram family when defaults are disabled. See the
 [migration guide](../../docs/FEATURES.md#select-diagram-families).
 
 ## Include Mermaid Files
@@ -481,7 +478,7 @@ cargo doc --features doc-diagrams
 
 **A build reports a missing capability.** Math is opt-in in this checkout; add `math` to the
 dependency's features for math labels. Add `layout-cytoscape` when using a base-SVG-only recipe,
-select `complete-svg` for SVG with Cytoscape and math, or select `complete-svg-elk` for ELK too.
+and add `layout-elk` when the selected layout requires ELK.
 
 **A re-export has no rendered diagram.** The upstream item's macro must expand while the upstream docs are built; a downstream re-export cannot render source that was never expanded.
 
@@ -489,8 +486,7 @@ select `complete-svg` for SVG with Cytoscape and math, or select `complete-svg-e
 
 Merman's own code is licensed under either Apache-2.0 or MIT at your option. This checkout's
 default includes `layout-elk` and carries the EPL-2.0 ELK source closure. Disable default features
-and select the required diagram families plus `complete-svg` or narrower capability leaves to omit
-it. Distribute the matching notices and
+and select the required diagram families plus `svg` and `layout-cytoscape` to omit it. Distribute the matching notices and
 source provenance from [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
 with that artifact. Math-enabled builds may also include the OFL-1.1 RaTeX font closure.
 

@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94"
+    "digest": "sha256:9bc6f8c58dd8e104bd1e61e059a3472f33a5fac947382efcce7f4a6c7c12b2ec"
   },
   "profiles": [
     {
@@ -741,14 +741,14 @@
     },
     {
       "id": "rust-native-svg",
-      "description": "Normal native SVG facade build with explicit system adapters.",
+      "description": "Normal native SVG facade build with explicit system adapters; math is opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman",
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -760,11 +760,11 @@
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "outputs": ["svg"]
@@ -772,14 +772,14 @@
     },
     {
       "id": "rust-render-native-svg",
-      "description": "Native SVG renderer build with explicit layout, math, and system adapters.",
+      "description": "Native SVG renderer build with explicit layout and system adapters; math is opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-render",
         "manifest": "crates/merman-render/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "system-clock", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman_render",
           "kinds": ["lib"],
@@ -791,11 +791,11 @@
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "outputs": ["svg"]
@@ -803,14 +803,14 @@
     },
     {
       "id": "rust-static-svg",
-      "description": "Static SVG facade build with explicit Cytoscape, ELK, and math/font closures; without compiled system adapters.",
+      "description": "Static SVG facade build with explicit Cytoscape and ELK closures; without math or compiled system adapters.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman",
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -821,8 +821,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -853,14 +853,14 @@
     },
     {
       "id": "rustdoc-static-svg",
-      "description": "Deterministic static-SVG rustdoc proc-macro build with explicit Cytoscape, ELK, and math/font closures.",
+      "description": "Deterministic static-SVG rustdoc proc-macro build with explicit Cytoscape and ELK closures; math is opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-rustdoc",
         "manifest": "crates/merman-rustdoc/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_rustdoc",
           "kinds": ["proc-macro"],
@@ -871,8 +871,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -992,14 +992,14 @@
     },
     {
       "id": "web-full",
-      "description": "Complete browser SDK with analysis, ASCII, editor, Cytoscape, ELK, and math backends.",
+      "description": "Browser SDK with analysis, ASCII, editor, Cytoscape and ELK backends; math is opt-in for custom source builds.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -1018,7 +1018,6 @@
           "ascii", "editor",
           "layout-cytoscape",
           "layout-elk",
-          "math",
           "svg"
         ],
         "runtime_ids": [
@@ -1026,7 +1025,6 @@
           "ascii", "editor",
           "layout-cytoscape",
           "layout-elk",
-          "math",
           "svg"
         ],
         "outputs": ["ascii", "svg"]
@@ -1034,14 +1032,14 @@
     },
     {
       "id": "web-render",
-      "description": "Public complete browser SVG renderer with Cytoscape, ELK, and math backends but no analysis, ASCII, or editor APIs.",
+      "description": "Browser SVG renderer with Cytoscape and ELK backends; no analysis, ASCII, editor or math.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -1055,8 +1053,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["svg"]
       }
     }

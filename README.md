@@ -136,8 +136,9 @@ silently choosing a different result.
 
 ## Cargo features
 
-The current-source `merman` dependency defaults to `all-diagrams` and `complete-svg-elk`: all
-built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Distributed artifacts
+The current-source `merman` dependency defaults to `all-diagrams`, `svg`, `layout-cytoscape` and
+`layout-elk`: all built-in families and SVG rendering with both layouts. Math labels require the
+explicit `math` feature. The former `complete-svg` and `complete-svg-elk` features are retired. Distributed artifacts
 include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
 terminal output, binary export, and ambient system adapters remain opt-in.
 
@@ -145,11 +146,11 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.1", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { version = "0.9.1", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
-Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts,
-and math labels. Other outputs and analysis/editor APIs are opt-in. See the [capability guide]
+Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts.
+Math labels require `math`. Other outputs and analysis/editor APIs are opt-in. See the [capability guide]
 for smaller builds, including how to omit ELK, and the [Rust examples] for renderer reuse,
 cancellation, and host integration.
 
@@ -168,8 +169,8 @@ feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
-| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
+| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]` |
+| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"]` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |

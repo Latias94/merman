@@ -16,7 +16,7 @@ import {
 } from "./web-surface-descriptor.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 
-test("checked-in Web descriptor owns one capability-complete default package graph", () => {
+test("checked-in Web descriptor owns one math-free default package graph", () => {
   assert.equal(webSurfaceDescriptor.schema_version, WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION);
   assert.equal(webSurfaceDescriptor.default_package, "full");
   assert.deepEqual(
@@ -31,28 +31,28 @@ test("checked-in Web descriptor owns one capability-complete default package gra
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
+    runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
     outputs: ["ascii", "svg"],
   });
   assertPackageContract("render", {
     runtimeProfile: "render",
-    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
+    runtimeIds: ["layout-cytoscape", "layout-elk", "svg"],
     outputs: ["svg"],
   });
 });
 
-test("complete SDK preserves workflows while the complete SVG renderer stays isolated", () => {
-  const complete = webPackages.find((item) => item.id === "full");
+test("full SDK preserves workflows while the SVG renderer stays isolated", () => {
+  const full = webPackages.find((item) => item.id === "full");
   const renderer = webPackages.find((item) => item.id === "render");
-  assert.ok(complete);
+  assert.ok(full);
   assert.ok(renderer);
   for (const required of ["renderSvg", "analyze", "renderAscii", "createEditorSession"]) {
     assert.equal(
-      complete.runtimeExportNames.includes(required),
+      full.runtimeExportNames.includes(required),
       true,
       `full must expose ${required}`,
     );
@@ -257,10 +257,11 @@ function escapeRegExp(value) {
 }
 
 
-test("prepared parsing stays in the full and rendering artifact closure", () => {
+test("prepared parsing and mounting stay in the full and rendering artifact closure", () => {
   for (const descriptor of webPackages) {
     const rendering = descriptor.id === "full" || descriptor.id === "render";
     assert.equal(descriptor.runtimeExportNames.includes("prepareSource"), rendering, descriptor.id);
     assert.equal(descriptor.wasmExportNames.includes("PreparedSource"), rendering, descriptor.id);
+    assert.equal(descriptor.runtimeExportNames.includes("mountDiagram"), rendering, descriptor.id);
   }
 });
