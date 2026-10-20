@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 post-initialization full confirmation](theme_v090_post_initialization_confirmation_macos_2026-10-20.md)
+compares clean `a6742779c` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
+and 304 fixed balanced A/B observations establish 15 within the joint budget, three regressions
+and one inconclusive scene, with zero evidence-contract failures. ZenUML remains +17.18% /
++3.443 us, Packet +27.18% / +2.203 us and Kanban +18.09% / +8.198 us. Class tiny now qualifies
+both A/A metrics but its relative bounds cross 10%, so it remains inconclusive. Six unqualified
+absolute certificates retain their precision failures and uncapped requirements; all 19 preselect
+the qualified relative certificate. Both actual sampled executables were archived before later
+native work. Earlier results retain their original heads and classifications. This release-range
+observation does not attribute latency changes to an individual repair or cover the typed request
+API. Continue independently registered ownership/query reductions; the all-family goal is incomplete.
+
 The [October 20 prepared compiled-theme initialization checkpoint](compiled_theme_initialization_macos_2026-10-20.md)
 reuses one lazily prepared initialization per compiled plan only when host overrides are exactly
 pristine. Host authority, deferred errors and per-installation detector journals retain their
@@ -1174,9 +1186,11 @@ cancellation and measurement callbacks. Engine borrowing, root style borrowing a
 root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
 in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
 compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
-fresh 19-scene same-SVG diagnostic still flags eight rows; attribute actual consumers before
-selecting the next repair. Keep configured duplicate CSS normalization as a separate policy/order
-candidate. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
+three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
+actual consumers before selecting further repairs. Keep empty explicit-owner queries, absent
+scoped appearance paths, frozen path storage and duplicate normalized CSS-ID owners as separate
+candidates. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
