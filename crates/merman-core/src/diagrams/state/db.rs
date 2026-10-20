@@ -435,102 +435,117 @@ impl StateDb {
                 )));
             }
         };
+        let Self {
+            document,
+            states: mut state_records,
+            state_order,
+            relations: relation_records,
+            style_classes: class_records,
+            direction,
+            acc_title,
+            acc_descr,
+            links: link_records,
+            ..
+        } = self;
+        let compact = |values: Vec<String>| values.into_boxed_slice().into_vec();
         let mut doc_by_state_id = HashMap::new();
-        for (index, stmt) in self.document.root_statements().iter().enumerate() {
+        for (index, stmt) in document.root_statements().iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
             if let StateStatement::State(state) = stmt
                 && let Some(doc) = state.doc
             {
-                doc_by_state_id.entry(state.id.clone()).or_insert(doc);
+                doc_by_state_id.entry(state.id.as_str()).or_insert(doc);
             }
         }
-        let mut states = HashMap::with_capacity(self.states.len());
-        for (index, id) in self.state_order.iter().enumerate() {
+        let mut states = HashMap::with_capacity(state_records.len());
+        for (index, key) in state_order.into_iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let Some(s) = self.states.get(id) else {
+            let Some(state) = state_records.remove(&key) else {
                 continue;
             };
-            let note = s.note.as_ref().map(|n| StateDiagramRenderNote {
-                position: n.position.clone(),
-                text: n.text.clone(),
+            let doc = doc_by_state_id.remove(state.id.as_str());
+            let note = state.note.map(|note| StateDiagramRenderNote {
+                position: note.position,
+                text: note.text,
             });
             states.insert(
-                s.id.clone(),
+                key,
                 StateDiagramRenderState {
-                    id: s.id.clone(),
-                    state_type: s.ty.clone(),
-                    descriptions: s.descriptions.clone(),
-                    doc: doc_by_state_id.remove(&s.id),
+                    id: state.id,
+                    state_type: state.ty,
+                    descriptions: compact(state.descriptions),
+                    doc,
                     note,
-                    classes: s.classes.clone(),
-                    styles: s.styles.clone(),
-                    text_styles: s.text_styles.clone(),
-                    start: s.start,
+                    classes: compact(state.classes),
+                    styles: compact(state.styles),
+                    text_styles: compact(state.text_styles),
+                    start: state.start,
                 },
             );
         }
-        let mut relations = Vec::with_capacity(self.relations.len());
-        for (index, relation) in self.relations.iter().enumerate() {
+        drop(doc_by_state_id);
+        let mut relations = Vec::with_capacity(relation_records.len());
+        for (index, relation) in relation_records.into_iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
             relations.push(StateDiagramRenderRelation {
-                id1: relation.id1.clone(),
-                id2: relation.id2.clone(),
-                relation_title: relation.relation_title.clone(),
+                id1: relation.id1,
+                id2: relation.id2,
+                relation_title: relation.relation_title,
             });
         }
-        let mut style_classes = IndexMap::with_capacity(self.style_classes.len());
-        for (index, (key, class)) in self.style_classes.iter().enumerate() {
+        let mut style_classes = IndexMap::with_capacity(class_records.len());
+        for (index, (key, class)) in class_records.into_iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
             style_classes.insert(
-                key.clone(),
+                key,
                 StateDiagramRenderStyleClass {
-                    id: class.id.clone(),
-                    styles: class.styles.clone(),
-                    text_styles: class.text_styles.clone(),
+                    id: class.id,
+                    styles: compact(class.styles),
+                    text_styles: compact(class.text_styles),
                 },
             );
         }
-        let mut links = HashMap::with_capacity(self.links.len());
-        for (index, (key, declarations)) in self.links.iter().enumerate() {
+        let mut links = HashMap::with_capacity(link_records.len());
+        for (index, (key, declarations)) in link_records.into_iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let declarations = if declarations.len() == 1 {
-                let link = &declarations[0];
-                StateDiagramRenderLinks::One(StateDiagramRenderLink {
-                    url: link.url.clone(),
-                    tooltip: link.tooltip.clone(),
-                })
-            } else {
-                let mut out = Vec::with_capacity(declarations.len());
-                for (index, link) in declarations.iter().enumerate() {
-                    if index.is_multiple_of(128) {
-                        control.checkpoint()?;
+            let declarations = match <[Link; 1]>::try_from(declarations) {
+                Ok([link]) => StateDiagramRenderLinks::One(StateDiagramRenderLink {
+                    url: link.url,
+                    tooltip: link.tooltip,
+                }),
+                Err(declarations) => {
+                    let mut out = Vec::with_capacity(declarations.len());
+                    for (index, link) in declarations.into_iter().enumerate() {
+                        if index.is_multiple_of(128) {
+                            control.checkpoint()?;
+                        }
+                        out.push(StateDiagramRenderLink {
+                            url: link.url,
+                            tooltip: link.tooltip,
+                        });
                     }
-                    out.push(StateDiagramRenderLink {
-                        url: link.url.clone(),
-                        tooltip: link.tooltip.clone(),
-                    });
+                    StateDiagramRenderLinks::Many(out)
                 }
-                StateDiagramRenderLinks::Many(out)
             };
-            links.insert(key.clone(), declarations);
+            links.insert(key, declarations);
         }
 
         control.checkpoint()?;
         Ok(Ok(StateDiagramRenderModel {
-            document: self.document,
-            direction: self.direction.clone().unwrap_or_else(|| "TB".to_string()),
-            acc_title: self.acc_title.clone(),
-            acc_descr: self.acc_descr.clone(),
+            document,
+            direction: direction.unwrap_or_else(|| "TB".to_string()),
+            acc_title,
+            acc_descr,
             nodes,
             edges,
             relations,
@@ -1309,6 +1324,375 @@ mod tests {
     }
 
     #[test]
+    fn state_consuming_projection_moves_owned_payloads_without_copying() {
+        use super::*;
+        use crate::diagrams::state::{Lexer, render_model, state_grammar};
+
+        let source = concat!(
+            "stateDiagram-v2\ndirection LR\naccTitle: Owned title\naccDescr: Owned description\n",
+            "state \"Ready label\" as Ready\nReady: Owned detail\n",
+            "note right of Ready : Owned note\n",
+            "classDef active fill:red,color:blue\nclassDef other stroke:black\n",
+            "class Ready active\nstyle Ready fill:green,font-weight:bold\n",
+            "Ready --> Done: Owned transition\n[*] --> Ready: Entry\n",
+            "click Ready \"https://example.com/first\" \"First tip\"\n",
+            "click Ready \"https://example.com/second\" \"Second tip\"\n",
+            "click Done \"https://example.com/only\" \"Only tip\"\n",
+        );
+        let control = OperationControl::new();
+        let mut document = StateDocument::default();
+        let root = state_grammar::RootParser::new()
+            .parse(&mut document, Lexer::new(source))
+            .expect("real State grammar accepts the ownership fixture");
+        document.root = Some(root);
+        let mut db = StateDb::new();
+        db.set_root_doc(document, &control).unwrap();
+        // This legacy AST slot has no authored grammar production; populate its actual DB owner.
+        db.set_text_style("Ready", "font-size:17px");
+
+        // This proof exercises no-slack Vec storage transfer, including buffer identity.
+        // Compact before pointer capture; the separate slack test covers retained capacity.
+        let compact = |values: Vec<String>| values.into_boxed_slice().into_vec();
+        for state in db.states.values_mut() {
+            for values in [
+                &mut state.descriptions,
+                &mut state.classes,
+                &mut state.styles,
+                &mut state.text_styles,
+            ] {
+                *values = compact(std::mem::take(values));
+                assert_eq!(values.capacity(), values.len());
+            }
+        }
+        for class in db.style_classes.values_mut() {
+            for values in [&mut class.styles, &mut class.text_styles] {
+                *values = compact(std::mem::take(values));
+                assert_eq!(values.capacity(), values.len());
+            }
+        }
+
+        let document_storage = db.document.documents.as_ptr();
+        let common = (
+            db.direction.as_ref().unwrap().as_ptr(),
+            db.acc_title.as_ref().unwrap().as_ptr(),
+            db.acc_descr.as_ref().unwrap().as_ptr(),
+        );
+        let state_keys = db
+            .state_order
+            .iter()
+            .map(|key| (key.clone(), key.as_ptr()))
+            .collect::<Vec<_>>();
+        assert_eq!(db.state_order, ["Ready", "Done", "root_start"]);
+        let ready = &db.states["Ready"];
+        assert!(ready.descriptions.iter().all(|value| !value.is_empty()));
+        let record = (
+            ready.id.as_ptr(),
+            ready.ty.as_ptr(),
+            ready.descriptions.as_ptr(),
+            ready.classes.as_ptr(),
+            ready.styles.as_ptr(),
+            ready.text_styles.as_ptr(),
+        );
+        let payloads = ready
+            .descriptions
+            .iter()
+            .chain(&ready.classes)
+            .chain(&ready.styles)
+            .chain(&ready.text_styles)
+            .map(|value| value.as_ptr())
+            .collect::<Vec<_>>();
+        let note = ready.note.as_ref().unwrap();
+        let note_payloads = (note.position.as_ref().unwrap().as_ptr(), note.text.as_ptr());
+        let relation = &db.relations[0];
+        let relation_payloads = (
+            relation.id1.as_ptr(),
+            relation.id2.as_ptr(),
+            relation.relation_title.as_ref().unwrap().as_ptr(),
+        );
+        let class_payloads = db
+            .style_classes
+            .iter()
+            .map(|(key, class)| {
+                (
+                    key.clone(),
+                    key.as_ptr(),
+                    class.id.as_ptr(),
+                    class.styles.as_ptr(),
+                    class.text_styles.as_ptr(),
+                    class
+                        .styles
+                        .iter()
+                        .chain(&class.text_styles)
+                        .map(|value| value.as_ptr())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let link_payloads = db
+            .links
+            .iter()
+            .map(|(key, declarations)| {
+                (
+                    key.clone(),
+                    key.as_ptr(),
+                    declarations
+                        .iter()
+                        .map(|link| (link.url.as_ptr(), link.tooltip.as_ptr()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        render_model::reset_projected_document_count();
+
+        let model = db
+            .into_model_controlled(&meta(json!({})), &control)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(render_model::projected_document_count(), 0);
+        assert_eq!(model.document.documents.as_ptr(), document_storage);
+        assert_eq!(
+            (
+                model.direction.as_ptr(),
+                model.acc_title.as_ref().unwrap().as_ptr(),
+                model.acc_descr.as_ref().unwrap().as_ptr()
+            ),
+            common
+        );
+        assert_eq!(model.direction, "LR");
+        assert_eq!(model.acc_title.as_deref(), Some("Owned title"));
+        assert_eq!(model.acc_descr.as_deref(), Some("Owned description"));
+        for (id, pointer) in state_keys {
+            assert_eq!(model.states.get_key_value(&id).unwrap().0.as_ptr(), pointer);
+        }
+        let ready = &model.states["Ready"];
+        assert_eq!(
+            (
+                ready.id.as_ptr(),
+                ready.state_type.as_ptr(),
+                ready.descriptions.as_ptr(),
+                ready.classes.as_ptr(),
+                ready.styles.as_ptr(),
+                ready.text_styles.as_ptr()
+            ),
+            record
+        );
+        assert_eq!(
+            ready
+                .descriptions
+                .iter()
+                .chain(&ready.classes)
+                .chain(&ready.styles)
+                .chain(&ready.text_styles)
+                .map(|value| value.as_ptr())
+                .collect::<Vec<_>>(),
+            payloads
+        );
+        assert_eq!(ready.state_type, "default");
+        assert_eq!(model.states["root_start"].start, Some(true));
+        assert!(ready.doc.is_none());
+        assert_eq!(ready.descriptions, ["Ready label", "Owned detail"]);
+        assert_eq!(ready.classes, ["active"]);
+        assert_eq!(ready.styles, ["fill:green", "font-weight:bold"]);
+        assert_eq!(ready.text_styles, ["font-size:17px"]);
+        let note = ready.note.as_ref().unwrap();
+        assert_eq!(
+            (note.position.as_ref().unwrap().as_ptr(), note.text.as_ptr()),
+            note_payloads
+        );
+        assert_eq!(note.position.as_deref(), Some("right of"));
+        assert_eq!(note.text, "Owned note");
+        let relation = &model.relations[0];
+        assert_eq!(
+            (
+                relation.id1.as_ptr(),
+                relation.id2.as_ptr(),
+                relation.relation_title.as_ref().unwrap().as_ptr()
+            ),
+            relation_payloads
+        );
+        assert_eq!(relation.id1, "Ready");
+        assert_eq!(relation.id2, "Done");
+        assert_eq!(relation.relation_title.as_deref(), Some("Owned transition"));
+        assert_eq!(
+            model
+                .relations
+                .iter()
+                .map(|relation| (
+                    relation.id1.as_str(),
+                    relation.id2.as_str(),
+                    relation.relation_title.as_deref()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("Ready", "Done", Some("Owned transition")),
+                ("root_start", "Ready", Some("Entry"))
+            ]
+        );
+        assert_eq!(
+            model
+                .style_classes
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["active", "other"]
+        );
+        for (id, key_pointer, id_pointer, styles_pointer, text_styles_pointer, payloads) in
+            class_payloads
+        {
+            let (key, class) = model.style_classes.get_key_value(&id).unwrap();
+            assert_eq!(
+                (
+                    key.as_ptr(),
+                    class.id.as_ptr(),
+                    class.styles.as_ptr(),
+                    class.text_styles.as_ptr()
+                ),
+                (key_pointer, id_pointer, styles_pointer, text_styles_pointer)
+            );
+            assert_eq!(
+                class
+                    .styles
+                    .iter()
+                    .chain(&class.text_styles)
+                    .map(|value| value.as_ptr())
+                    .collect::<Vec<_>>(),
+                payloads
+            );
+        }
+        assert_eq!(
+            model.style_classes["active"].styles,
+            ["fill:red", "color:blue"]
+        );
+        assert_eq!(model.style_classes["active"].text_styles, ["fill:blue"]);
+        assert_eq!(model.style_classes["other"].styles, ["stroke:black"]);
+        assert!(model.style_classes["other"].text_styles.is_empty());
+        for (id, key_pointer, pointers) in link_payloads {
+            let (key, links) = model.links.get_key_value(&id).unwrap();
+            assert_eq!(key.as_ptr(), key_pointer);
+            let links = match links {
+                StateDiagramRenderLinks::One(link) => {
+                    assert_eq!(id, "Done");
+                    std::slice::from_ref(link)
+                }
+                StateDiagramRenderLinks::Many(links) => {
+                    assert_eq!(id, "Ready");
+                    links.as_slice()
+                }
+            };
+            assert_eq!(
+                links
+                    .iter()
+                    .map(|link| (link.url.as_ptr(), link.tooltip.as_ptr()))
+                    .collect::<Vec<_>>(),
+                pointers
+            );
+        }
+        let StateDiagramRenderLinks::One(link) = &model.links["Done"] else {
+            panic!("one link retains the historical One representation");
+        };
+        assert_eq!(link.url, "https://example.com/only");
+        assert_eq!(link.tooltip, "Only tip");
+        let StateDiagramRenderLinks::Many(links) = &model.links["Ready"] else {
+            panic!("repeated links retain their source order");
+        };
+        assert_eq!(
+            links
+                .iter()
+                .map(|link| (link.url.as_str(), link.tooltip.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("https://example.com/first", "First tip"),
+                ("https://example.com/second", "Second tip")
+            ]
+        );
+    }
+
+    #[test]
+    fn state_consuming_projection_compacts_vec_slack_without_copying_strings() {
+        use super::*;
+        use crate::diagrams::state::{Lexer, state_grammar};
+
+        let source = concat!(
+            "stateDiagram-v2\nstate \"Ready label\" as Ready\nReady: Owned detail\n",
+            "classDef active fill:red,color:blue\nclass Ready active\n",
+            "style Ready fill:green,font-weight:bold\nReady --> Done\n",
+        );
+        let control = OperationControl::new();
+        let mut document = StateDocument::default();
+        let root = state_grammar::RootParser::new()
+            .parse(&mut document, Lexer::new(source))
+            .expect("real State grammar accepts the slack fixture");
+        document.root = Some(root);
+        let mut db = StateDb::new();
+        db.set_root_doc(document, &control).unwrap();
+        // This legacy AST slot has no authored grammar production; populate its actual DB owner.
+        db.set_text_style("Ready", "font-size:17px");
+
+        // Keep expected contents independent of both DB and projected model allocations.
+        let expected: [&[&str]; 6] = [
+            &["Ready label", "Owned detail"],
+            &["active"],
+            &["fill:green", "font-weight:bold"],
+            &["font-size:17px"],
+            &["fill:red", "color:blue"],
+            &["fill:blue"],
+        ];
+        let ready = db.states.get_mut("Ready").unwrap();
+        let active = db.style_classes.get_mut("active").unwrap();
+        let fields = [
+            &mut ready.descriptions,
+            &mut ready.classes,
+            &mut ready.styles,
+            &mut ready.text_styles,
+            &mut active.styles,
+            &mut active.text_styles,
+        ];
+        let payloads = fields
+            .into_iter()
+            .zip(expected)
+            .map(|(values, expected)| {
+                assert_eq!(values.as_slice(), expected);
+                assert!(!values.is_empty());
+                assert!(values.iter().all(|value| !value.is_empty()));
+                values.reserve(17);
+                assert!(values.capacity() > values.len());
+                values
+                    .iter()
+                    .map(|value| value.as_ptr())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let model = db
+            .into_model_controlled(&meta(json!({})), &control)
+            .unwrap()
+            .unwrap();
+
+        let ready = &model.states["Ready"];
+        let active = &model.style_classes["active"];
+        let fields = [
+            &ready.descriptions,
+            &ready.classes,
+            &ready.styles,
+            &ready.text_styles,
+            &active.styles,
+            &active.text_styles,
+        ];
+        for ((values, expected), pointers) in fields.into_iter().zip(expected).zip(payloads) {
+            assert_eq!(values.capacity(), values.len());
+            assert_eq!(values.as_slice(), expected);
+            assert_eq!(
+                values
+                    .iter()
+                    .map(|value| value.as_ptr())
+                    .collect::<Vec<_>>(),
+                pointers
+            );
+        }
+    }
+
+    #[test]
     fn state_render_nodes_carry_mermaid12_width_fields() {
         let metadata = meta(json!({
             "state": { "wrappingWidth": 144, "minNodeWidth": 132 }
@@ -1391,5 +1775,90 @@ mod tests {
                 "unexpected collision error: {message}"
             );
         }
+    }
+
+    #[test]
+    fn state_consuming_projection_preserves_programmatic_hidden_note_inputs() {
+        use super::*;
+        use crate::diagrams::state::{Lexer, state_grammar};
+
+        let control = OperationControl::new();
+        let mut document = StateDocument::default();
+        let root = state_grammar::RootParser::new()
+            .parse(
+                &mut document,
+                Lexer::new("stateDiagram-v2\nnote right of Legacy : Hidden legacy text\n"),
+            )
+            .unwrap();
+        document.root = Some(root);
+        // The legacy hidden-note representation is programmatic, not authored grammar syntax.
+        let [StateStatement::State(state)] = document.documents[root.0].as_mut_slice() else {
+            panic!("real grammar produces the positioned-note owner");
+        };
+        state.note.as_mut().unwrap().position = None;
+        let mut db = StateDb::new();
+        db.set_root_doc(document, &control).unwrap();
+        let metadata = meta(json!({}));
+        let model = db
+            .into_model_controlled(&metadata, &control)
+            .unwrap()
+            .unwrap();
+
+        let note = model.states["Legacy"].note.as_ref().unwrap();
+        assert_eq!(note.text, "Hidden legacy text");
+        assert_eq!(note.position, None);
+        assert_eq!(
+            model
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            ["Legacy----parent", "Legacy----note-0", "Legacy"]
+        );
+        let group = &model.nodes[0];
+        let note_node = &model.nodes[1];
+        assert_eq!(
+            (
+                group.shape.as_str(),
+                group.is_group,
+                group.position.as_deref()
+            ),
+            ("noteGroup", true, None)
+        );
+        assert_eq!(note_node.shape, "note");
+        assert_eq!(
+            note_node.label.as_ref().and_then(Value::as_str),
+            Some("Hidden legacy text")
+        );
+        assert_eq!(note_node.position, None);
+        assert_eq!(note_node.parent_id.as_deref(), Some("Legacy----parent"));
+        assert_eq!(group.label, note_node.label);
+        assert_eq!(model.edges.len(), 1);
+        let edge = &model.edges[0];
+        assert_eq!(
+            (
+                edge.start.as_str(),
+                edge.end.as_str(),
+                edge.classes.as_str()
+            ),
+            ("Legacy", "Legacy----note-0", "transition note-edge")
+        );
+        assert!(edge.arrow_type_end.is_empty());
+
+        let wire = super::super::render_model_to_compat_json(&model, &metadata).unwrap();
+        assert_eq!(
+            wire["states"]["Legacy"]["note"],
+            json!({
+                "position": null, "text": "Hidden legacy text",
+            })
+        );
+        assert_eq!(wire["nodes"][0]["shape"], "noteGroup");
+        assert_eq!(wire["nodes"][0].get("position"), Some(&Value::Null));
+        assert_eq!(wire["nodes"][1]["label"], "Hidden legacy text");
+        assert_eq!(wire["nodes"][1].get("position"), Some(&Value::Null));
+        assert_eq!(wire["nodes"][1]["parentId"], "Legacy----parent");
+        assert_eq!(wire["edges"][0]["start"], "Legacy");
+        assert_eq!(wire["edges"][0]["end"], "Legacy----note-0");
+        assert_eq!(wire["edges"][0]["arrowhead"], "none");
     }
 }

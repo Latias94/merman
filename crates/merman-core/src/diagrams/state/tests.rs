@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions, RenderSemanticModel,
 };
+use serde_json::{Value, json};
 
 fn model(source: &str) -> StateDiagramRenderModel {
     let parsed = Engine::new()
@@ -102,6 +103,108 @@ fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
             .filter(|node| node.shape == "note")
             .count(),
         1
+    );
+    let note = model
+        .nodes
+        .iter()
+        .find(|node| node.shape == "note")
+        .unwrap();
+    assert_eq!(note.id, "C----note-2");
+    assert_eq!(note.dom_id, "state-C----note-2");
+    assert_eq!(note.label.as_ref().and_then(Value::as_str), Some("note"));
+    assert_eq!(note.position.as_deref(), Some("right of"));
+    assert_eq!(note.parent_id.as_deref(), Some("C----parent"));
+    assert_eq!(note.node_type.as_deref(), Some("node"));
+    assert!(!note.is_group);
+    let group = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "C----parent")
+        .unwrap();
+    assert!(group.is_group);
+    assert_eq!(group.shape, "noteGroup");
+    assert_eq!(group.position.as_deref(), Some("right of"));
+    assert_eq!(group.label, note.label);
+    let edge = model
+        .edges
+        .iter()
+        .find(|edge| edge.classes == "transition note-edge")
+        .unwrap();
+    assert_eq!(
+        (
+            edge.start.as_str(),
+            edge.end.as_str(),
+            edge.arrow_type_end.as_str()
+        ),
+        ("C", "C----note-2", "")
+    );
+    let wire_note = json["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "C----note-2")
+        .unwrap();
+    assert_eq!(wire_note["label"], "note");
+    assert_eq!(wire_note["position"], "right of");
+    assert_eq!(wire_note["parentId"], "C----parent");
+    assert_eq!(wire_note["isGroup"], false);
+    let wire_edge = json["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|edge| edge["classes"] == "transition note-edge")
+        .unwrap();
+    assert_eq!(wire_edge["start"], "C");
+    assert_eq!(wire_edge["end"], "C----note-2");
+    assert_eq!(wire_edge["arrowhead"], "none");
+}
+
+#[test]
+fn state_root_document_lookup_preserves_first_root_composite() {
+    let model = model(concat!(
+        "stateDiagram-v2\nstate Container {\nstate Shared {\nNested\n}\n}\n",
+        "state Shared {\nFirst\n}\nstate Shared {\nLater\n}\n",
+    ));
+    let root = model.document.get(model.document.root().unwrap()).unwrap();
+    let [
+        StateStatement::State(container),
+        StateStatement::State(first),
+        StateStatement::State(last),
+    ] = root
+    else {
+        panic!("three root composites retain source order");
+    };
+    assert_eq!(
+        (container.id.as_str(), first.id.as_str(), last.id.as_str()),
+        ("Container", "Shared", "Shared")
+    );
+    let [StateStatement::State(nested)] = model.document.get(container.doc.unwrap()).unwrap()
+    else {
+        panic!("the nested same-id composite precedes both root definitions");
+    };
+    assert_eq!(nested.id, "Shared");
+    let selected = model.states["Shared"].doc.unwrap();
+    assert_eq!(selected, first.doc.unwrap());
+    assert_ne!(selected, last.doc.unwrap());
+    assert_ne!(selected, nested.doc.unwrap());
+    let [StateStatement::State(child)] = model.document.get(selected).unwrap() else {
+        panic!("the first root document remains the typed owner");
+    };
+    assert_eq!(child.id, "First");
+    assert_eq!(
+        model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>(),
+        ["Container", "Shared", "Nested", "First", "Later"]
+    );
+    assert_eq!(
+        compatibility(&model)["states"]["Shared"]["doc"],
+        json!([{
+            "stmt": "state", "id": "First", "type": "default",
+            "description": null, "doc": null, "classes": [],
+        }])
     );
 }
 
