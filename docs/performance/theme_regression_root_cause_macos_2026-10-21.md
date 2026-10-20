@@ -300,6 +300,24 @@ retains the registration and compact stock report. The next investigation should
 remaining ZenUML completion/layout cost rather than adding another selector cache or generalized
 normalization layer.
 
+## ZenUML default CSS: retain the static fast path
+
+The exact default source style has no configured colors, font family or font size, yet it previously
+went through the full dynamic stylesheet template. The renderer now reuses the source-backed
+v0.9.0 default CSS template when the source style and title fill are both default. Configured
+`themeVariables.zenuml` values and non-default title fills continue through the dynamic path, so
+custom CSS encoding, byte admission, cancellation and terminal evidence remain unchanged.
+
+A fresh diagnostic compared `ff4c78c3` with `ef0b8a85` over the same four fixtures and 32 timed
+calls. ZenUML moved from 23.13 us to 22.33 us, with paired bounds of -2.11% to -4.75% and
+-0.486 to -1.111 us. Packet, Kanban and Flowchart stayed within noise; all SVG byte hashes,
+element counts and input hashes matched. The frozen benchmark executable grew by 128 bytes. This
+is a low-risk default-path cleanup below the 10% formal screen, retained without changing the
+v0.9.0 classification.
+
+The [default CSS fast-path archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json)
+retains the registration, stock report, identity checks and size comparison.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the

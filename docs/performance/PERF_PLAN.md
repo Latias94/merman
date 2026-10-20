@@ -1349,6 +1349,13 @@ occurrences. Four balanced public E2E controls preserve exact SVG identities and
 safe local cleanup below the 10% formal latency gate; it does not change the v0.9.0 classification.
 See the [compact evidence archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json).
 
+The follow-up default CSS fast path reuses the exact source-backed default stylesheet whenever
+ZenUML has no configured source colors or typography and the title fill is the default. Four
+balanced E2E controls preserve exact SVG identities and show a further 2.11% to 4.75% ZenUML
+reduction, about 0.49 to 1.11 us, for a 128-byte executable increase. Configured theme values
+remain on the dynamic path. This is retained below the formal latency gate; see the
+[compact evidence archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json).
+
 ### Active: alpha.7 default SVG regression
 
 The September 16 release-range audit confirms regressions in unthemed complete SVG operations
