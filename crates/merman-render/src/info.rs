@@ -7,10 +7,11 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
-    InheritedTextViewportFacts, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    InheritedTextRunFacts, InheritedTextRunSpec, InheritedTextViewportFacts,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -118,7 +119,7 @@ pub(crate) struct InfoTypographyThemePlan {
     css_binding: crate::svg::PreparedCommonCss,
     inherited_font_stack: InheritedFontStackPlan,
     terminal_geometry: InheritedTextViewportFacts,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[InfoUnsupportedRoute]>,
     text_fill: Option<DirectStaticPaint>,
     direct_text_fill_routes: Box<[InfoDirectTextFillRoute]>,
@@ -181,14 +182,14 @@ impl InfoTypographyThemePlan {
                 "themeVariables.textColor",
             );
         let routes = info_theme_routes(theme, config_owns_text_fill, work_meter)?;
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        let mut evidence = FamilyThemeOutcomes::default();
         if let Some(theme) = theme
             && theme.ordinal_palette_disposition(ThemeTarget::Text)
                 == Some(FamilyThemeDisposition::Unsupported)
         {
             // The version is one shared text-fill terminal. Keep unsupported rule and
             // effect accounting local while reconciling the palette's fallback winner.
-            let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+            let mut fallbacks = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 theme,
                 &mut fallbacks,
@@ -260,8 +261,8 @@ impl InfoTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let mut unsupported = BTreeMap::new();
         for route in &self.unsupported_routes {
             let reason = unsupported.entry(route.key.clone()).or_insert(None);
@@ -282,10 +283,10 @@ impl InfoTypographyThemePlan {
             }
         }
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.version_text_count != 0);
+            .record_unsupported_typography_evidence(evidence, receipt.version_text_count != 0);
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if self.inherited_font_stack.typed_font_stack_active() {
             if receipt.proves_font_stack() {
@@ -331,7 +332,6 @@ impl InfoTypographyThemePlan {
                 );
             }
         }
-        evidence
     }
 }
 

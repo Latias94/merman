@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -20,7 +20,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 pub(crate) struct C4TextPaintPlan {
     fill: Option<DirectStaticPaint>,
     title: Option<Box<str>>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: Vec<C4PendingTextMechanism>,
     terminal: OnceLock<C4TextPaintTerminalSeal>,
     source_paint: OnceLock<C4SourceTerminalPaint>,
@@ -85,7 +85,7 @@ impl C4TextPaintPlan {
         let mut plan = Self {
             fill: None,
             title,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
             source_paint: OnceLock::new(),
@@ -167,7 +167,7 @@ impl C4TextPaintPlan {
                 plan.evidence.mark_not_applicable(key);
             }
         }
-        let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut fallbacks = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut fallbacks,
@@ -327,8 +327,8 @@ impl C4TextPaintPlan {
                 .is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for pending in &self.pending {
             let key = &pending.key;
             let residual = pending.residual;
@@ -359,7 +359,6 @@ impl C4TextPaintPlan {
                 }
             }
         }
-        evidence
     }
 }
 
@@ -492,7 +491,7 @@ mod tests {
         let plan = C4TextPaintPlan {
             fill: None,
             title: Some("Title".into()),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
             source_paint: OnceLock::new(),

@@ -214,6 +214,46 @@ plans and owner-maintained exact coverage. It is registered for public warm allo
 behavior controls, with bounded cold-cache retention explicit. It is not an explanation of the
 remaining None Packet/ZenUML gap or an admitted latency improvement.
 
+## All-family ledger ownership refactor: kept for memory and work
+
+The registered ownership refactor is complete across the renderer theme families. The immutable
+compiled family program now owns the ordered unique request keys and membership index. Each render
+operation owns one checked ledger; local family plans record outcomes only. Prepared plans merge
+borrowed outcomes into that ledger, and State, Sequence, Flowchart and Swimlane replacement paths
+clear actual outcomes while retaining the request owner. Frozen reports retain only an independent
+ordered key slice. Coverage uses the ledger's unique accounted domain instead of rebuilding five
+sets at every observer. Unknown keys remain rejected, first classification and capabilities win,
+postprocessing invalidation remains fail-closed, and the report Debug shape stays compatible.
+
+All 78 changed renderer source files pass the final source review. The full release graph passes
+8107 tests with 7 skipped, strict production Clippy, three DOM modes, optimized full WASM, 34
+internal theme acceptance tests, 459 pipeline benchmarks across 7 groups, formatting, path and
+diff checks, and the native memory protocol smoke. Exact SVG/report identities, ordered callback
+traces and 26 public error controls match. The first two compile attempts failed only in migration
+adapters; their logs are preserved, and the third attempt passed after using existing accessors
+and checked-ledger test sinks.
+
+The full catalog control has 418 stable cells: 416 improve and 2 are unchanged across allocation
+count, allocated bytes, peak growth and retained growth; none regresses. All 380 non-empty themed
+cells strictly reduce allocation count and allocated bytes. The 645-site control has 505 jointly
+stable sites: 482 improve, 23 are unchanged and none regresses; 140 variable sites remain outside
+admission. Representative editor-light deltas are Kanban -64 allocations/-15,064 bytes, Journey
+-43/-7,861, C4 -34/-6,906 and Block -76/-18,632. Retained growth stays unchanged. The cached
+request space has a transparent O(R+B) byte bound where R is unique keys and B is the UTF-8 bytes
+of unique effect IDs; the ordered list and membership index temporarily own two copies, while a
+frozen report keeps only one ordered slice and never keeps the program or index alive.
+
+This is an accepted warm allocation/work and ownership improvement. It has not been admitted as a
+latency improvement, a None-path fix, or a v0.9.0 convergence result. The absolute process-live
+probe changes (None +9 bytes; themed +529 to +2,401 bytes) include argv, paths and other owners and
+must not be described as cache-only memory. A fresh balanced public timing confirmation is the next
+step before changing any v0.9.0 latency classification.
+
+The [compact ledger evidence archive](evidence/theme-ledger-ownership-2026-10-21/manifest.json)
+contains the source identity, design and correctness reviews, memory/control summaries, terminal
+receipts and failed-attempt records. Full per-site and catalog raw rows remain in the ignored
+experiment directory.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the

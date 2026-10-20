@@ -10,10 +10,10 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -150,7 +150,7 @@ pub(crate) struct KanbanTaskTheme {
     item_count: usize,
     items: Option<Box<[KanbanTaskResolvedItem]>>,
     typography: KanbanTypographyPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
     pending_fill_keys: BTreeSet<FamilyThemeMechanismKey>,
     pending_stroke_keys: BTreeSet<FamilyThemeMechanismKey>,
@@ -411,7 +411,7 @@ impl KanbanTaskTheme {
             });
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<(usize, ThemeTarget), KanbanTaskRuleObservation>::new();
         let mut palette_key = None;
         let mut pending_fill_keys = BTreeSet::new();
@@ -616,7 +616,7 @@ impl KanbanTaskTheme {
             item_count,
             items: None,
             typography,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending_radius_key: None,
             pending_fill_keys: BTreeSet::new(),
             pending_stroke_keys: BTreeSet::new(),
@@ -731,12 +731,12 @@ impl KanbanTaskTheme {
         let _ = self.terminal_outcome.set(outcome);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         self.typography
             .inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
+            .record_unsupported_typography_evidence(
+                evidence,
                 self.terminal_outcome.get().is_none_or(
                     KanbanTaskThemeOutcome::typography_has_visible_or_unverified_terminals,
                 ),
@@ -869,7 +869,6 @@ impl KanbanTaskTheme {
                 KanbanFontSizeOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 
@@ -1105,6 +1104,15 @@ struct KanbanTaskRuleObservation {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::{
         KanbanTaskOccurrence, KanbanTaskTheme, KanbanTypographyPlan, MERMAID_TASK_RADIUS_PX,
     };
@@ -1199,7 +1207,7 @@ mod tests {
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve Kanban task effect evidence fixture");
-        let evidence = task_theme.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| task_theme.record_evidence(evidence));
 
         assert_eq!(
             evidence.not_applicable_mechanisms(),

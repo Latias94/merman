@@ -41,6 +41,16 @@ type/macro or lower the gate. Next implement the independently registered all-fa
 ownership repair for warm memory/work, retaining all source, terminal and error semantics and
 explicit bounded cold-cache state. It does not close the None release regressions.
 
+The registered all-family ledger ownership refactor is now kept for warm allocation/work: the
+compiled family program owns one immutable request domain, local plans hold outcomes only, terminal
+paths merge into one checked ledger, and coverage no longer reconstructs five sets. Across 418
+stable theme cells, 416 improve all four allocation metrics and 2 are unchanged; all 380 non-empty
+themed cells reduce allocation count and bytes. Across 645 site controls, 482 of 505 jointly stable
+sites improve and none regresses; 140 variable sites remain inconclusive. SVG, report, callback and
+error contracts match, and the full release/DOM/WASM/theme acceptance checks pass. This remains a
+memory/work ownership result with an explicit O(R+B) retained-key bound, not a latency or v0.9.0
+convergence claim. Run a fresh balanced timing confirmation before reclassifying release regressions.
+
 The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
 scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
 On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;

@@ -12,9 +12,9 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
@@ -76,7 +76,7 @@ pub(crate) struct RequirementPaintThemePlan {
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title_present: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
     terminal_receipt: OnceLock<Option<RequirementPaintThemeReceipt>>,
 }
@@ -114,7 +114,7 @@ impl RequirementPaintThemePlan {
                 typed_font_size_requested: false,
                 typed_font_size_active: false,
                 title_present,
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             }
@@ -197,7 +197,7 @@ impl RequirementPaintThemePlan {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let relation_paint = super::RequirementRelationPaintPlan::resolve(
             theme,
             effective_config,
@@ -398,16 +398,16 @@ impl RequirementPaintThemePlan {
         complete && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(plan) = self.relation_paint.as_ref() {
-            plan.finish_evidence(&mut evidence);
+            plan.record_evidence(evidence);
         }
-        self.text_paint.finish_evidence(&mut evidence);
+        self.text_paint.record_evidence(evidence);
         let Some(Some(receipt)) = self.terminal_receipt.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(
-                    &mut evidence,
+                .record_unsupported_typography_evidence(
+                    evidence,
                     self.title_present || !self.node_indices.is_empty(),
                 );
             for (property, requested, active) in [
@@ -432,7 +432,7 @@ impl RequirementPaintThemePlan {
                     evidence.mark_not_applicable(key);
                 }
             }
-            return evidence;
+            return;
         };
         for (key, properties) in &self.pending {
             let rule_index = match key {
@@ -454,7 +454,7 @@ impl RequirementPaintThemePlan {
         }
         if self.typography_requested() {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+                .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
             for (property, requested, active, inherited_terminal, unverified_source) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -492,7 +492,6 @@ impl RequirementPaintThemePlan {
                 }
             }
         }
-        evidence
     }
 }
 
@@ -852,6 +851,15 @@ fn important_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> 
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::ThemeCapability;
 
@@ -960,9 +968,13 @@ mod tests {
         let duplicate = receipt.clone();
         assert!(plan.record_terminal(Some(receipt)));
         assert!(!plan.record_terminal(Some(duplicate)));
-        assert!(plan.finish_evidence().not_applicable_mechanisms().contains(
-            &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize)
-        ));
+        assert!(
+            collect_evidence(&resolved, |evidence| plan.record_evidence(evidence))
+                .not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontSize
+                ))
+        );
     }
 
     fn stroke_receipt() -> RequirementPaintThemeReceipt {

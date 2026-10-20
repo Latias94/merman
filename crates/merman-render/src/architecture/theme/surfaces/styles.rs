@@ -6,7 +6,7 @@ use crate::diagram_theme::{
     ResolvedThemeEffect, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeOutcomes, FamilyThemeResidualReason,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -501,7 +501,7 @@ impl ArchitectureSurfaceRenderState {
         }
     }
 
-    pub(super) fn apply_to_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(super) fn apply_to_evidence(&self, evidence: &mut FamilyThemeOutcomes) {
         for (key, outcome) in &self.mechanism_outcomes {
             match outcome {
                 ArchitectureMechanismOutcome::AppliedCandidate(capabilities)

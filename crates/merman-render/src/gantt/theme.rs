@@ -10,9 +10,10 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -173,7 +174,7 @@ pub(crate) struct GanttTaskTheme {
     typed_font_stack_requested: bool,
     typed_font_stack_active: bool,
     unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, GanttTaskPendingEvidence>,
     layout_occurrences: OnceLock<Box<[usize]>>,
     terminal_receipt: OnceLock<GanttTaskThemeReceipt>,
@@ -345,7 +346,7 @@ impl GanttTaskTheme {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<(usize, ThemeTarget), GanttTaskRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -624,7 +625,7 @@ impl GanttTaskTheme {
             typed_font_stack_requested: false,
             typed_font_stack_active: false,
             unsupported_typography_properties: BTreeSet::new(),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             layout_occurrences: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
@@ -729,8 +730,8 @@ impl GanttTaskTheme {
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for (key, pending) in &self.pending {
             let Some(receipt) = self.terminal_receipt.get() else {
                 break;
@@ -796,7 +797,6 @@ impl GanttTaskTheme {
                 );
             }
         }
-        evidence
     }
 
     fn layout_task(&self, layout_index: usize) -> Option<&GanttTaskTerminalExpectation> {
@@ -1620,6 +1620,15 @@ impl GanttTaskThemeReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FamilyThemeMechanismKey, FontStack,
@@ -1781,7 +1790,11 @@ mod tests {
         receipt.record_checkpointed_task(0, "", "", "", "0", "task task0", 3.0, 3.0, None, None);
         assert!(receipt.proves_typography());
         assert!(task_theme.record_terminal(receipt));
-        assert!(task_theme.finish_evidence().residuals().is_empty());
+        assert!(
+            collect_evidence(&theme, |evidence| task_theme.record_evidence(evidence))
+                .residuals()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1823,7 +1836,7 @@ mod tests {
         receipt.record_checkpointed_task(0, "", "", "", "0", "task task0", 3.0, 3.0, None, None);
         assert!(task_theme.record_terminal(receipt));
 
-        let evidence = task_theme.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| task_theme.record_evidence(evidence));
         assert!(
             evidence
                 .applied()
@@ -2134,7 +2147,7 @@ mod tests {
         .expect("resolve Gantt multi-state theme");
         assert_eq!(task_theme.radius_px(0), Some(MERMAID_TASK_RADIUS_PX));
 
-        let evidence = task_theme.finish_evidence();
+        let evidence = collect_evidence(&resolved, |evidence| task_theme.record_evidence(evidence));
         let unqualified = FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::Task,

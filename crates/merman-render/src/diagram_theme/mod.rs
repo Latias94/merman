@@ -90,6 +90,7 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape,
 };
+pub(crate) use family_program::FamilyThemeProgram;
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };

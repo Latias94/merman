@@ -5,7 +5,7 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, InheritedFontStackPlan};
+use crate::family::{FamilyThemeOutcomes, InheritedFontStackPlan};
 
 /// Resolves Architecture's inherited SVG typography without taking ownership of Cytoscape text.
 ///
@@ -20,7 +20,7 @@ pub(crate) struct ArchitectureTypographyThemePlan {
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
 }
 
 /// Visibility observed by successful SVG text and icon-text writers.
@@ -78,7 +78,7 @@ impl ArchitectureTypographyThemePlan {
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
         }
     }
 
@@ -106,7 +106,7 @@ impl ArchitectureTypographyThemePlan {
     pub(crate) fn finish_evidence(
         &self,
         emission: Option<ArchitectureTypographyEmission>,
-    ) -> FamilyThemeEvidence {
+    ) -> FamilyThemeOutcomes {
         let mut evidence = self.evidence.clone();
         let has_visible_terminals = emission.is_some_and(|emission| emission.visible);
         self.inherited_font_stack
@@ -131,7 +131,7 @@ impl ArchitectureTypographyThemePlan {
 
     fn mark_typed_property_evidence(
         &self,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
         property: ThemeTypographyProperty,
         requested: bool,
         active: bool,

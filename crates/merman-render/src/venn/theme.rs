@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, SingleTitleFillPlan,
-    resolve_direct_static_fill,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    SingleTitleFillPlan, resolve_direct_static_fill,
 };
 use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
@@ -24,7 +24,7 @@ pub(crate) use css_binding::{VennAreaPaintBinding, VennCssBinding};
 pub(crate) struct VennTypographyThemePlan {
     css_binding: VennCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     text_fill: Option<crate::family::DirectStaticPaint>,
     text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
     config_owns_text_fill: bool,
@@ -100,9 +100,7 @@ impl VennTypographyThemePlan {
                 theme,
                 effective_config,
             ),
-            evidence: theme.map_or_else(FamilyThemeEvidence::default, |theme| {
-                FamilyThemeEvidence::from_theme(Some(theme))
-            }),
+            evidence: FamilyThemeOutcomes::default(),
             text_fill,
             text_fill_routes,
             config_owns_text_fill,
@@ -153,12 +151,12 @@ impl VennTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         let Some(receipt) = self.terminal_receipt.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             if self.inherited_font_stack.typed_font_stack_requested() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
@@ -170,16 +168,16 @@ impl VennTypographyThemePlan {
                         .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.visible_text);
+            .record_unsupported_typography_evidence(evidence, receipt.visible_text);
         if !receipt.visible_text {
             evidence.mark_not_applicable(key);
             for (key, _) in &self.text_fill_routes {
                 evidence.mark_not_applicable(key.clone());
             }
-            return evidence;
+            return;
         }
         if self.inherited_font_stack.typed_font_stack_active() {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -207,7 +205,6 @@ impl VennTypographyThemePlan {
                 evidence.mark_not_applicable(key.clone());
             }
         }
-        evidence
     }
 }
 
@@ -283,7 +280,7 @@ impl VennTitleThemePlan {
             theme,
             title_present,
             config_owns_fill,
-            FamilyThemeEvidence::from_theme(Some(theme)),
+            FamilyThemeOutcomes::default(),
             work_meter,
         )?;
         Ok(Self { fill })
@@ -299,13 +296,22 @@ impl VennTitleThemePlan {
         }
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.fill.finish_evidence()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.fill.record_evidence(evidence);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::VennTitleThemePlan;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -345,7 +351,7 @@ mod tests {
             .expect("resolve Venn title theme");
         plan.record_title();
 
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
         assert_eq!(evidence.required_mechanisms().len(), 2);
         assert_eq!(evidence.applied().len(), 1);
         assert_eq!(evidence.not_applicable_mechanisms().len(), 1);

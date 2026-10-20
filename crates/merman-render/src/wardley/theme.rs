@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTypographyProperty,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan, unsupported_residual_for_facet,
 };
 
@@ -124,7 +124,7 @@ pub(crate) struct WardleyTypographyThemePlan {
     paint_binding: WardleyPaintBinding,
     source_font_family_css: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[WardleyUnsupportedRoute]>,
     terminal_receipt: OnceLock<WardleySurfaceReceipt>,
 }
@@ -153,7 +153,7 @@ impl WardleyTypographyThemePlan {
                 theme,
                 effective_config,
             ),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             unsupported_routes: wardley_unsupported_routes(theme),
             terminal_receipt: OnceLock::new(),
         }
@@ -201,26 +201,26 @@ impl WardleyTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for route in &self.unsupported_routes {
             evidence.mark_residual(route.key.clone(), route.reason);
         }
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+            .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_text() {
             evidence.mark_not_applicable(key);
-            return evidence;
+            return;
         }
         if self.source_font_family_css.is_some()
             && self.inherited_font_stack.typed_font_stack_requested()
         {
             evidence.mark_not_applicable(key);
-            return evidence;
+            return;
         }
         if self.inherited_font_stack.typed_font_stack_active() {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -235,7 +235,6 @@ impl WardleyTypographyThemePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 
