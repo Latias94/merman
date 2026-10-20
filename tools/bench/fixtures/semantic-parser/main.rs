@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use std::collections::BTreeSet;
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -6,10 +7,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .ok_or("expected a Mermaid source path or --families")?;
     if input == "--families" {
-        for family in merman_core::diagram_family_capabilities() {
-            if family.has_semantic_parser && family.logical_family_kind != "error" {
-                println!("{}", family.logical_family_kind);
-            }
+        let families: BTreeSet<_> = merman_core::diagram_family_capabilities()
+            .iter()
+            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+            .map(|family| family.logical_family_kind)
+            .collect();
+        for family in families {
+            println!("{family}");
         }
         return Ok(());
     }
