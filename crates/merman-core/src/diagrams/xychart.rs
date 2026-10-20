@@ -6,7 +6,7 @@ use crate::{
     family::CombinedSemanticFailure,
 };
 use serde::{Deserialize, Serialize, Serializer};
-use serde_json::{Map, Number, Value, json};
+use serde_json::{Map, Number, Value};
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -329,7 +329,7 @@ struct ParsedDataPoint {
 }
 
 struct XyChartSemanticSource {
-    model: Option<XyChartDiagramRenderModel>,
+    model: XyChartDiagramRenderModel,
     editor_facts: EditorSemanticFacts,
 }
 
@@ -781,7 +781,7 @@ fn construct_xychart_semantic_source_controlled(
     let Some(header) = statements.next() else {
         return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
-                model: None,
+                model: XyChartState::new(meta).into_render_model(None, None, None, meta),
                 editor_facts: EditorSemanticFacts::new(),
             },
             first_error: None,
@@ -913,7 +913,7 @@ fn construct_xychart_semantic_source_controlled(
     control.checkpoint()?;
     Ok(XyChartParseOutcome {
         source: XyChartSemanticSource {
-            model: Some(state.into_render_model(title, acc_title, acc_descr, meta)),
+            model: state.into_render_model(title, acc_title, acc_descr, meta),
             editor_facts,
         },
         first_error,
@@ -924,10 +924,7 @@ pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_xychart_semantic_source(code, meta)
         .into_strict_result()
         .map_err(CombinedSemanticFailure::into_error)?;
-    let Some(model) = source.model else {
-        return Ok(json!({}));
-    };
-    render_model_to_compat_json(&model, meta)
+    render_model_to_compat_json(&source.model, meta)
 }
 
 pub(crate) fn parse_xychart_json_and_editor_facts(
@@ -941,10 +938,7 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
              model,
              editor_facts,
          }| {
-            let model = match model {
-                Some(model) => render_model_to_compat_json(&model, meta),
-                None => Ok(json!({})),
-            };
+            let model = render_model_to_compat_json(&model, meta);
             (model, editor_facts)
         },
         CombinedSemanticFailure::into_parts,
@@ -960,7 +954,7 @@ pub(crate) fn parse_xychart_model_for_render(
 ) -> Result<XyChartDiagramRenderModel> {
     construct_xychart_semantic_source(code, meta)
         .into_strict_result()
-        .map(|source| source.model.unwrap_or_else(empty_render_model))
+        .map(|source| source.model)
         .map_err(CombinedSemanticFailure::into_error)
 }
 
@@ -975,7 +969,7 @@ pub(crate) fn parse_xychart_model_for_render_controlled(
         Err(failure) => return Ok(Err(failure.into_error())),
     };
     control.checkpoint()?;
-    Ok(Ok(source.model.unwrap_or_else(empty_render_model)))
+    Ok(Ok(source.model))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -988,26 +982,6 @@ pub(crate) fn render_model_to_compat_json(
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
     let title = sanitize_text(title.trim(), &meta.effective_config);
     (!title.is_empty()).then_some(title)
-}
-
-fn empty_render_model() -> XyChartDiagramRenderModel {
-    XyChartDiagramRenderModel {
-        orientation: "vertical".to_string(),
-        title: None,
-        acc_title: None,
-        acc_descr: None,
-        x_axis: XyChartAxisRenderModel::Band {
-            title: String::new(),
-            categories: Vec::new(),
-        },
-        y_axis: XyChartAxisRenderModel::Linear {
-            title: String::new(),
-            min: None,
-            max: None,
-        },
-        plots: Vec::new(),
-        display: XyChartDisplayPolicy::default(),
-    }
 }
 
 fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisRenderModel {
@@ -2057,6 +2031,39 @@ mod tests {
     fn xychart_header_only_is_accepted() {
         let model = parse("xychart");
         assert_eq!(model["plots"], json!([]));
+    }
+
+    #[test]
+    fn xychart_empty_sources_share_the_configured_default_model_and_editor_facts() {
+        let engine = Engine::new();
+        let configured = concat!(
+            "%%{init: {\"xyChart\": {\"chartOrientation\": \"horizontal\", ",
+            "\"showTitle\": false, \"xAxis\": {\"showLabel\": false}}}}%%\nxychart",
+        );
+        let parsed = engine
+            .parse_diagram_sync(configured, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        for source in ["", " \t\r\n", "%% no statements\n", ";\n"] {
+            let typed = parse_xychart_model_for_render(source, &parsed.meta).unwrap();
+            assert_eq!(typed.orientation, "horizontal");
+            assert!(!typed.display.show_title);
+            assert!(!typed.display.x_axis.show_label);
+            assert!(typed.plots.is_empty());
+            let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+            assert_eq!(projection, parsed.model);
+            assert_eq!(parse_xychart(source, &parsed.meta).unwrap(), projection);
+            let (combined, facts) =
+                crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
+                    source,
+                    &parsed.meta,
+                    &crate::OperationControl::new(),
+                ))
+                .unwrap();
+            assert_eq!(combined, projection);
+            assert!(facts.symbols.is_empty());
+            assert!(facts.diagnostics.is_empty());
+        }
     }
 
     #[test]

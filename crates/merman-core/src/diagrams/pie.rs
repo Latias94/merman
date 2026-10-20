@@ -52,19 +52,13 @@ pub struct PieRenderSection {
     pub value: f64,
 }
 
-enum PieParseOutput {
-    Empty,
-    ExpectedPie,
-    Model(PieDiagramRenderModel),
-}
-
 struct PieSemanticSource {
-    output: PieParseOutput,
+    model: PieDiagramRenderModel,
     editor_facts: EditorSemanticFacts,
 }
 
 pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    pie_output_to_json(parse_pie_semantic_source(code, meta)?.output, meta)
+    render_model_to_compat_json(&parse_pie_semantic_source(code, meta)?.model, meta)
 }
 
 pub(crate) fn parse_pie_json_and_editor_facts(
@@ -75,19 +69,16 @@ pub(crate) fn parse_pie_json_and_editor_facts(
     let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
-        |source| (pie_output_to_json(source.output, meta), source.editor_facts),
+        |source| {
+            (
+                render_model_to_compat_json(&source.model, meta),
+                source.editor_facts,
+            )
+        },
         family::CombinedSemanticFailure::into_parts,
     );
     control.checkpoint()?;
     Ok(parsed)
-}
-
-fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Result<Value> {
-    match output {
-        PieParseOutput::Empty => Ok(json!({})),
-        PieParseOutput::ExpectedPie => Ok(json!({ "error": "expected pie" })),
-        PieParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
-    }
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -112,14 +103,7 @@ pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PieDiagramRenderModel> {
-    match parse_pie_semantic_source(code, meta)?.output {
-        PieParseOutput::Empty => Ok(PieDiagramRenderModel::empty_compatibility_output()),
-        PieParseOutput::ExpectedPie => Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected pie".to_string(),
-        )),
-        PieParseOutput::Model(model) => Ok(model),
-    }
+    Ok(parse_pie_semantic_source(code, meta)?.model)
 }
 
 pub(crate) fn parse_pie_model_for_render_controlled(
@@ -132,17 +116,7 @@ pub(crate) fn parse_pie_model_for_render_controlled(
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
     };
-    let model = match source.output {
-        PieParseOutput::Empty => PieDiagramRenderModel::empty_compatibility_output(),
-        PieParseOutput::ExpectedPie => {
-            return Ok(Err(Error::diagram_parse_fallback(
-                meta.diagram_type.clone(),
-                "expected pie".to_string(),
-            )));
-        }
-        PieParseOutput::Model(model) => model,
-    };
-    Ok(Ok(model))
+    Ok(Ok(source.model))
 }
 
 fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
@@ -171,15 +145,16 @@ fn construct_pie_semantic_source_controlled(
     let body = match pie_body_start_controlled(code, control)? {
         PieHeader::Empty => {
             return Ok(Ok(PieSemanticSource {
-                output: PieParseOutput::Empty,
+                model: PieDiagramRenderModel::empty_compatibility_output(),
                 editor_facts: EditorSemanticFacts::new(),
             }));
         }
-        PieHeader::ExpectedPie => {
-            return Ok(Ok(PieSemanticSource {
-                output: PieParseOutput::ExpectedPie,
-                editor_facts: EditorSemanticFacts::new(),
-            }));
+        PieHeader::ExpectedPie(span) => {
+            return Ok(Err(family::CombinedSemanticFailure::parser_recovery(
+                "pie",
+                Error::diagram_parse_exact(meta.diagram_type.clone(), "expected pie", span),
+                EditorSemanticFacts::new(),
+            )));
         }
         PieHeader::Body(body) => body,
     };
@@ -273,14 +248,14 @@ fn construct_pie_semantic_source_controlled(
 
     control.checkpoint()?;
     Ok(Ok(PieSemanticSource {
-        output: PieParseOutput::Model(PieDiagramRenderModel {
+        model: PieDiagramRenderModel {
             show_data: body.show_data_span.is_some(),
             title: common.title,
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
             sections,
             compatibility_output: CompatibilityOutputState::Model,
-        }),
+        },
         editor_facts,
     }))
 }
@@ -428,7 +403,7 @@ fn push_pie_section_editor_fact(facts: &mut EditorSemanticFacts, section: &PiePa
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PieHeader {
     Empty,
-    ExpectedPie,
+    ExpectedPie(SourceSpan),
     Body(PieBodyStart),
 }
 
@@ -453,7 +428,15 @@ fn pie_body_start_controlled(
             continue;
         }
         let Some(header_len) = keyword_token_len(trimmed, "pie") else {
-            return Ok(PieHeader::ExpectedPie);
+            let start = offset + visible.len() - trimmed.len();
+            let token_length = trimmed
+                .char_indices()
+                .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
+                .unwrap_or(trimmed.len());
+            return Ok(PieHeader::ExpectedPie(SourceSpan::new(
+                start,
+                start + token_length,
+            )));
         };
         let leading = visible.len() - trimmed.len();
         let header_start = offset + leading;
@@ -557,6 +540,35 @@ mod tests {
                 compat,
                 "projection drift for {source:?}"
             );
+        }
+    }
+
+    #[test]
+    fn pie_invalid_header_is_a_failure_with_recovered_editor_facts() {
+        let meta = metadata();
+        for source in ["piep", "  piep\n\"A\": 1\n", "packet"] {
+            let start = source.find(|ch: char| !ch.is_whitespace()).unwrap();
+            let token = source[start..].split_whitespace().next().unwrap();
+            let span = SourceSpan::new(start, start + token.len());
+            let semantic = parse_pie(source, &meta).expect_err("invalid pie header");
+            let typed = parse_pie_model_for_render(source, &meta).expect_err("invalid pie header");
+            for error in [semantic, typed] {
+                let Error::DiagramParse { diagnostic, .. } = error else {
+                    panic!("expected diagram parse failure");
+                };
+                assert_eq!(diagnostic.message(), "expected pie");
+                assert_eq!(diagnostic.span(), Some(span));
+            }
+            let (model, facts, _) =
+                parse_pie_json_and_editor_facts(source, &meta, &crate::OperationControl::new())
+                    .unwrap()
+                    .into_parts();
+            assert!(model.is_err());
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(span)
+            }));
         }
     }
 

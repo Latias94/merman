@@ -19,25 +19,18 @@ pub struct InfoDiagramRenderModel {
 #[derive(Debug, Clone, Default)]
 enum InfoCompatOutput {
     Empty,
-    ExpectedInfoError,
     #[default]
     Model,
 }
 
-enum InfoParseOutput {
-    Empty,
-    ExpectedInfoError,
-    Model(InfoDiagramRenderModel),
-}
-
 struct InfoSemanticSource {
-    output: InfoParseOutput,
+    model: InfoDiagramRenderModel,
     editor_facts: EditorSemanticFacts,
 }
 
 pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = info_output_into_render_model(parse_info_semantic_source(code, meta)?.output);
-    render_model_to_compat_json(&model, meta)
+    let source = parse_info_semantic_source(code, meta)?;
+    render_model_to_compat_json(&source.model, meta)
 }
 
 pub(crate) fn parse_info_json_and_editor_facts(
@@ -49,9 +42,8 @@ pub(crate) fn parse_info_json_and_editor_facts(
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
         |source| {
-            let model = info_output_into_render_model(source.output);
             (
-                render_model_to_compat_json(&model, meta),
+                render_model_to_compat_json(&source.model, meta),
                 source.editor_facts,
             )
         },
@@ -61,27 +53,12 @@ pub(crate) fn parse_info_json_and_editor_facts(
     Ok(parsed)
 }
 
-fn info_output_into_render_model(output: InfoParseOutput) -> InfoDiagramRenderModel {
-    match output {
-        InfoParseOutput::Empty => InfoDiagramRenderModel {
-            show_info: false,
-            compat_output: InfoCompatOutput::Empty,
-        },
-        InfoParseOutput::ExpectedInfoError => InfoDiagramRenderModel {
-            show_info: false,
-            compat_output: InfoCompatOutput::ExpectedInfoError,
-        },
-        InfoParseOutput::Model(model) => model,
-    }
-}
-
 pub(crate) fn render_model_to_compat_json(
     model: &InfoDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     Ok(match &model.compat_output {
         InfoCompatOutput::Empty => json!({}),
-        InfoCompatOutput::ExpectedInfoError => json!({ "error": "expected info" }),
         InfoCompatOutput::Model => json!({
             "type": meta.diagram_type,
             "showInfo": model.show_info,
@@ -94,9 +71,7 @@ pub(crate) fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<InfoDiagramRenderModel> {
-    Ok(info_output_into_render_model(
-        parse_info_semantic_source(code, meta)?.output,
-    ))
+    Ok(parse_info_semantic_source(code, meta)?.model)
 }
 
 pub(crate) fn parse_info_model_for_render_controlled(
@@ -106,7 +81,7 @@ pub(crate) fn parse_info_model_for_render_controlled(
 ) -> crate::OperationControlResult<Result<InfoDiagramRenderModel>> {
     let construction = construct_info_semantic_source_controlled(code, meta, control)?;
     match construction {
-        Ok(source) => Ok(Ok(info_output_into_render_model(source.output))),
+        Ok(source) => Ok(Ok(source.model)),
         Err(failure) => Ok(Err(failure.into_error())),
     }
 }
@@ -137,15 +112,19 @@ fn construct_info_semantic_source_controlled(
     let body = match info_body_start_controlled(code, control)? {
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
-                output: InfoParseOutput::Empty,
+                model: InfoDiagramRenderModel {
+                    show_info: false,
+                    compat_output: InfoCompatOutput::Empty,
+                },
                 editor_facts: EditorSemanticFacts::new(),
             }));
         }
-        InfoHeader::ExpectedInfo => {
-            return Ok(Ok(InfoSemanticSource {
-                output: InfoParseOutput::ExpectedInfoError,
-                editor_facts: EditorSemanticFacts::new(),
-            }));
+        InfoHeader::ExpectedInfo(span) => {
+            return Ok(Err(family::CombinedSemanticFailure::parser_recovery(
+                "info",
+                Error::diagram_parse_exact(meta.diagram_type.clone(), "expected info", span),
+                EditorSemanticFacts::new(),
+            )));
         }
         InfoHeader::Body(body) => body,
     };
@@ -210,10 +189,10 @@ fn construct_info_semantic_source_controlled(
 
     control.checkpoint()?;
     Ok(Ok(InfoSemanticSource {
-        output: InfoParseOutput::Model(InfoDiagramRenderModel {
+        model: InfoDiagramRenderModel {
             show_info,
             compat_output: InfoCompatOutput::Model,
-        }),
+        },
         editor_facts,
     }))
 }
@@ -286,7 +265,7 @@ fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InfoHeader {
     Empty,
-    ExpectedInfo,
+    ExpectedInfo(SourceSpan),
     Body(InfoBodyStart),
 }
 
@@ -309,11 +288,15 @@ fn info_body_start_controlled(
             offset = next_offset;
             continue;
         }
-        let Some(header_len) = keyword_token_len(trimmed, "info") else {
-            return Ok(InfoHeader::ExpectedInfo);
-        };
         let leading = visible.len() - trimmed.len();
         let header_start = offset + leading;
+        let Some(header_len) = keyword_token_len(trimmed, "info") else {
+            let token_len = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+            return Ok(InfoHeader::ExpectedInfo(SourceSpan::new(
+                header_start,
+                header_start + token_len,
+            )));
+        };
         return Ok(InfoHeader::Body(InfoBodyStart {
             offset: header_start + header_len,
         }));
@@ -351,7 +334,10 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig};
+    use crate::{
+        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, Engine, MermaidConfig,
+        ParseDiagnosticSpanKind, ParseOptions,
+    };
 
     fn test_meta() -> ParseMetadata {
         ParseMetadata {
@@ -464,9 +450,126 @@ mod tests {
     }
 
     #[test]
-    fn info_typed_projection_preserves_empty_error_and_model_outputs() {
+    fn info_invalid_headers_fail_all_family_parsers_with_exact_recovery_facts() {
         let meta = test_meta();
-        for source in ["", "flowchart A", "info\n", "info showInfo\n"] {
+        for (source, expected_span) in [
+            ("infox", SourceSpan::new(0, 5)),
+            ("  infox\nshowInfo\n", SourceSpan::new(2, 7)),
+            (
+                "\r\n%% skipped\r\n \tinfox%% comment\r\n",
+                SourceSpan::new(16, 21),
+            ),
+            ("packet", SourceSpan::new(0, 6)),
+            ("flowchart A", SourceSpan::new(0, 9)),
+            ("信息x%% comment\n", SourceSpan::new(0, 7)),
+        ] {
+            let semantic = parse_info(source, &meta).expect_err("invalid info header must fail");
+            let typed = parse_info_model_for_render(source, &meta)
+                .expect_err("invalid info header must fail typed parsing");
+            let controlled = parse_info_model_for_render_controlled(
+                source,
+                &meta,
+                &crate::OperationControl::new(),
+            )
+            .expect("parsing must not be cancelled")
+            .expect_err("invalid info header must fail controlled typed parsing");
+            let (model, facts, warnings) =
+                parse_info_json_and_editor_facts(source, &meta, &crate::OperationControl::new())
+                    .expect("parsing must not be cancelled")
+                    .into_parts();
+            let combined = model.expect_err("invalid info header must fail combined parsing");
+
+            for error in [semantic, typed, controlled, combined] {
+                let Error::DiagramParse {
+                    diagram_type,
+                    diagnostic,
+                } = error
+                else {
+                    panic!("expected diagram parse failure for {source:?}");
+                };
+                assert_eq!(diagram_type, "info");
+                assert_eq!(diagnostic.message(), "expected info");
+                assert_eq!(diagnostic.span(), Some(expected_span), "{source:?}");
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+            }
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(
+                facts.diagnostics[0].kind,
+                EditorSemanticDiagnosticKind::ParserRecovery
+            );
+            assert_eq!(facts.diagnostics[0].span, Some(expected_span));
+            assert_eq!(
+                facts.diagnostics[0].message,
+                "info parser recovered after parse error: expected info"
+            );
+            assert!(facts.symbols.is_empty());
+            assert!(warnings.is_empty());
+        }
+    }
+
+    #[test]
+    fn info_invalid_headers_fail_strict_and_use_lenient_error_diagrams() {
+        let engine = Engine::new();
+        for source in ["infox", "packet"] {
+            assert!(
+                engine
+                    .parse_diagram_with_type_sync("info", source, ParseOptions::strict())
+                    .is_err()
+            );
+            assert!(
+                engine
+                    .parse_diagram_for_render_model_with_type_sync(
+                        "info",
+                        source,
+                        ParseOptions::strict(),
+                    )
+                    .is_err()
+            );
+
+            let semantic = engine
+                .parse_diagram_with_type_sync("info", source, ParseOptions::lenient())
+                .unwrap()
+                .expect("lenient parsing must produce an error diagram");
+            assert_eq!(semantic.meta.diagram_type, "error");
+            assert_eq!(semantic.model["type"], "error");
+            assert!(
+                semantic.model["errorMessage"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("expected info"))
+            );
+            let typed = engine
+                .parse_diagram_for_render_model_with_type_sync(
+                    "info",
+                    source,
+                    ParseOptions::lenient(),
+                )
+                .unwrap()
+                .expect("lenient typed parsing must produce an error diagram");
+            assert_eq!(typed.metadata().diagram_type, "error");
+            let crate::RenderSemanticModel::Error(model) = typed.model() else {
+                panic!("lenient typed parsing must use the error model");
+            };
+            assert!(
+                model
+                    .error_message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("expected info"))
+            );
+        }
+    }
+
+    #[test]
+    fn info_typed_projection_preserves_empty_and_model_outputs() {
+        let meta = test_meta();
+        for source in [
+            "",
+            " \t\r\n%% comment\n",
+            "info",
+            "info\n",
+            "info%% comment\n",
+            "info showInfo\n",
+        ] {
             let compat = parse_info(source, &meta).unwrap();
             let typed = parse_info_model_for_render(source, &meta).unwrap();
             assert_eq!(
@@ -477,10 +580,7 @@ mod tests {
         }
 
         assert_eq!(parse_info("", &meta).unwrap(), json!({}));
-        assert_eq!(
-            parse_info("flowchart A", &meta).unwrap(),
-            json!({ "error": "expected info" })
-        );
+        assert_eq!(parse_info(" \t\r\n%% comment\n", &meta).unwrap(), json!({}));
         assert_eq!(
             parse_info("info\n", &meta).unwrap(),
             json!({ "type": "info", "showInfo": false })
