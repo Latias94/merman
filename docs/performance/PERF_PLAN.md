@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 main-integration checkpoint](theme_main_integration_macos_2026-10-20.md)
+validates clean merge `9b4ff208f` of upstream `d249bb2dc`: 7651 release tests pass (seven skipped),
+strict Clippy and 37 DOM entries pass, optimized full WASM completes, 245 Python performance
+contracts pass, and 34 release theme acceptance tests pass. The independent public API boundary
+and complete-feature compiled pipeline discovery also pass (459 benchmarks, 459 receipts, seven
+lane groups). All 14 command stages reach successful terminal states. These are integration
+correctness checks; historical allocation and release-timing evidence retain their own revisions.
+The early review draft does not close the all-family goal or cross-platform qualification.
+Before another adjacent experiment, migrate the private harness's retired authoring API and
+specific input controls to the current theme design contract, preserving a retired/replacement
+mapping and obtaining new exact error oracles. The scoped-appearance repair remains unapplied.
+
 The [October 20 empty explicit-owner query checkpoint](empty_explicit_owner_query_macos_2026-10-20.md)
 skips temporary path construction when the explicit owner set is empty, while preserving outer
 Tracking/Frozen compatibility checks and the complete nonempty-set query. The preselected
