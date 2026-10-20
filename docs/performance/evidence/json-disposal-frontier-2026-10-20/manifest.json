@@ -1,0 +1,494 @@
+{
+  "schema_version": 1,
+  "purpose": "Decision-bearing registered independent memory optimization evidence; no timing claim. Full raw individual SVGs/reports, actual probes and LLDB watchpoints remain at ignored source paths. Original rejected metadata evidence is preserved separately.",
+  "files": [
+    {
+      "path": "candidate-experiment.yaml.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/experiment.yaml",
+      "uncompressed_bytes": 6984,
+      "uncompressed_sha256": "6855f1cc64b971fe71b03669766c661814df2d521283b73bc7a18f067e70764c",
+      "compressed_bytes": 3236,
+      "compressed_sha256": "9869ee3ef150c523c816278e715a53098b8b56e3c0e2fc9583a32634a79e7523"
+    },
+    {
+      "path": "candidate-manifest.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/manifest.json",
+      "uncompressed_bytes": 1281,
+      "uncompressed_sha256": "714389ca8058380d15e177d280226bebc29fce79309cbb33d2baa74214b985be",
+      "compressed_bytes": 838,
+      "compressed_sha256": "3665b0485f35e5b46bf6627a3bda4a940b6c21ec888be37d8e0955cc1b759680"
+    },
+    {
+      "path": "candidate-core-source.patch.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/core-source.patch",
+      "uncompressed_bytes": 2451,
+      "uncompressed_sha256": "cab460a0fbef6dd61476331c2599ab1a4afe6112a16d048c042b30f66d623609",
+      "compressed_bytes": 872,
+      "compressed_sha256": "d470b1ab05a56d400ec227ec6968b4ce4f71ec63ee2db7f1a2b2ce25425f7e05"
+    },
+    {
+      "path": "candidate-source-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/source-review.json",
+      "uncompressed_bytes": 6227,
+      "uncompressed_sha256": "c6b80a508603641c91ada1a76c1ac1d48d4aa7beb9c5c035cf8ee2ac862e2521",
+      "compressed_bytes": 2817,
+      "compressed_sha256": "a123b4c34bc1c91bce039671f3ab8b35db0e2704bc8b08eec257d611e921a577"
+    },
+    {
+      "path": "candidate-baseline-reference.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/baseline-reference.json",
+      "uncompressed_bytes": 5820,
+      "uncompressed_sha256": "ee5aaddeba521491d859be40e5ef147e256dd099fd08714c8619afe3454d1296",
+      "compressed_bytes": 1786,
+      "compressed_sha256": "2ab9eb3a02786ecbcb70c4a719294c1ea4c3f909bf954d85f68249386f06dddd"
+    },
+    {
+      "path": "candidate-baseline-reuse-verification.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/baseline-reuse-verification.json",
+      "uncompressed_bytes": 383,
+      "uncompressed_sha256": "46e2f6b8d4fde33e55237802a5c37c15a872040bfa92aa07d646dfbfe4a23b32",
+      "compressed_bytes": 280,
+      "compressed_sha256": "2c3a6f046f67d61621f55e1ccebd26f2c034d1332066736ee6a5ce069a0043a0"
+    },
+    {
+      "path": "candidate-registration-preflight-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/registration-preflight-review.json",
+      "uncompressed_bytes": 6086,
+      "uncompressed_sha256": "a00196f213d2de762499690e1d89bac8384393f6e6ad18ff4eb6f745b02e6a54",
+      "compressed_bytes": 2616,
+      "compressed_sha256": "8a4e8219ec1e8218eb5a508164e63237b8e01461f8479b2e9f9a28f9fbba3f12"
+    },
+    {
+      "path": "candidate-frozen-inputs.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/frozen-inputs.json",
+      "uncompressed_bytes": 235796,
+      "uncompressed_sha256": "b66f3e728c1f90f06d68c353ee34c519b52c530ade3cc68e64b4f11ded74330e",
+      "compressed_bytes": 23042,
+      "compressed_sha256": "95df0df8a6ead503040996a22c69862a078e752708b8b9bec9e2c1d2e9b6c045"
+    },
+    {
+      "path": "candidate-candidate-application.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate-application.json",
+      "uncompressed_bytes": 598,
+      "uncompressed_sha256": "b8ff1376a0e4b383475210fcbeb4585e75532e2e0e1307219a91f2e17106a5b6",
+      "compressed_bytes": 397,
+      "compressed_sha256": "c1d93436ecb6fdee76ba199390b0d1e285939e59cfe6aa42eec5e2b957dab857"
+    },
+    {
+      "path": "candidate-baseline-test-application.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/baseline-test-application.json",
+      "uncompressed_bytes": 343,
+      "uncompressed_sha256": "9db7ff6982db254e1f0dbe8e2f978487ba64eecb91c60e3bc8c4a2b19da34e46",
+      "compressed_bytes": 278,
+      "compressed_sha256": "2d5ac5dc9ad7ff37ad8c0db2014f6392771f037ee01981df7f4acf42ece64536"
+    },
+    {
+      "path": "candidate-baseline-test-terminal-receipt.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/baseline-test-terminal-receipt.json",
+      "uncompressed_bytes": 211,
+      "uncompressed_sha256": "5fa0485e4bfe2ebdc97b5790a5f4910654cbdbc90eae063cad5ddf6b7861cc57",
+      "compressed_bytes": 173,
+      "compressed_sha256": "7120a4e4587cde19562f160cea0308aaf8e6ffe92c04f0d5724a5c7dbc7ad2b7"
+    },
+    {
+      "path": "candidate-baseline-test.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/baseline-test.log",
+      "uncompressed_bytes": 394,
+      "uncompressed_sha256": "5751cb4e2f5ca9ac34cc1b8a497bdf7842d9943acedd1acfc9ab1a2eaad19e90",
+      "compressed_bytes": 265,
+      "compressed_sha256": "8797f7686d62befda560c0ab20abda0c77c272c3a32f940f420d64f1d7cee2c2"
+    },
+    {
+      "path": "candidate-candidate1-execution.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-execution.json",
+      "uncompressed_bytes": 5512,
+      "uncompressed_sha256": "a16329830f8a77c60ea93ff1e6e4b57d7757abebf8443c55590eb7176909cec4",
+      "compressed_bytes": 1013,
+      "compressed_sha256": "602ec10f25bba4d903737e092bd21b8caa04b6359da5387fc74572ca9fdbb602"
+    },
+    {
+      "path": "candidate-candidate1-terminal-receipt.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-terminal-receipt.json",
+      "uncompressed_bytes": 284,
+      "uncompressed_sha256": "72d0d361362e3b88a08eca322a79fc7522ce5c9ec1045628510cbfe3480ffb6f",
+      "compressed_bytes": 220,
+      "compressed_sha256": "4d4b57591ba651a4f3e639d41716142715766e360902c94da40c73d7291d9d6a"
+    },
+    {
+      "path": "candidate-candidate1-cross-crate-identity.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-cross-crate-identity.json",
+      "uncompressed_bytes": 1412,
+      "uncompressed_sha256": "f15a89660e83bb10f847d2b36d64c004861aa011d58ffd2aee4d489f07877e7c",
+      "compressed_bytes": 521,
+      "compressed_sha256": "2bb706950d1f0757d2803b38cc771dc191e367cec4c62a77330adb4acfda6573"
+    },
+    {
+      "path": "candidate-candidate1-frozen-probes.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-frozen-probes.json",
+      "uncompressed_bytes": 895,
+      "uncompressed_sha256": "74615eb114bf58117e6a319a20963e23ab8734b7d69e3fd5f4ff5373e07a140a",
+      "compressed_bytes": 365,
+      "compressed_sha256": "6bf94755a6b25c6059e54cf40668726636ff8534c9489559fe28fa8fb2156a59"
+    },
+    {
+      "path": "candidate-candidate1-controls-comparison.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-controls-comparison.json",
+      "uncompressed_bytes": 120795,
+      "uncompressed_sha256": "0877260abd867a78b683e77b2e4ba88b365d6172dbbdf4bfaae5329d303819e9",
+      "compressed_bytes": 13562,
+      "compressed_sha256": "ed63f9350e5aca16cdba408ff18a836f575010fae4dcc3aef7e0f52338c2784a"
+    },
+    {
+      "path": "candidate-candidate1-catalog-comparison.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-catalog-comparison.json",
+      "uncompressed_bytes": 173903,
+      "uncompressed_sha256": "483171d02478054c28c44ef1b24cdce90a29c632d5c841eded0919d8a37bdd45",
+      "compressed_bytes": 8392,
+      "compressed_sha256": "1b8dbae24c63cd761e9cfb26bf88c1217474e7b4f85d5bd30a7aa60e168b069e"
+    },
+    {
+      "path": "candidate-candidate1-errors-comparison.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-errors-comparison.json",
+      "uncompressed_bytes": 11474,
+      "uncompressed_sha256": "c222c308228eee6a3efdc63c5451362c078600df659418863a293f2ad7f54ab7",
+      "compressed_bytes": 618,
+      "compressed_sha256": "fc852de75cd1de9b60eb932fe80b65e9dbfa13f594f0d6544e8d5696ea01477c"
+    },
+    {
+      "path": "candidate-candidate1-allocation-evidence-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-allocation-evidence-review.json",
+      "uncompressed_bytes": 31398,
+      "uncompressed_sha256": "9bd240b706d62934b964ca3a3684eba442474a45c70cf48953521cce233c9039",
+      "compressed_bytes": 5526,
+      "compressed_sha256": "d7ed9fe4a6982ec977f5b60fa227b12a40d01a4fb9f9728fbd6e0812c2d05296"
+    },
+    {
+      "path": "candidate-candidate1-focused-tests.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-focused-tests.log",
+      "uncompressed_bytes": 191469,
+      "uncompressed_sha256": "27a41469b4694cfb62b9d9b7a0b86998e0426b635317a13e75e738ff54ef0ee3",
+      "compressed_bytes": 34778,
+      "compressed_sha256": "ccb8a65ad93712528074d001e929c7c176de52bca0b23fb65ea9f476e962c271"
+    },
+    {
+      "path": "candidate-candidate1-renderer-tests.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-renderer-tests.log",
+      "uncompressed_bytes": 1088929,
+      "uncompressed_sha256": "022d6e54946b0ad6a5bc8979f0e745ae934d6fd006fc8c007edeb69d7c55f70e",
+      "compressed_bytes": 185279,
+      "compressed_sha256": "6cac86fef482f021803daf740c2811f96cb32945a20d773707bfe4b07e1381b6"
+    },
+    {
+      "path": "candidate-candidate1-clippy.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-clippy.log",
+      "uncompressed_bytes": 1255,
+      "uncompressed_sha256": "a57083c6ac4c0764aa8acd08ea710e7e7f196ec78fee2580a8fda7b5b6a39230",
+      "compressed_bytes": 259,
+      "compressed_sha256": "e15eec3036f900fd971c421c705839bea5f172f772650ce402de7899e6e0cda0"
+    },
+    {
+      "path": "candidate-candidate1-dom.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-dom.log",
+      "uncompressed_bytes": 4910,
+      "uncompressed_sha256": "f2bae22e289981d8fa6edb144c338ec141445584efd2644b6d968b5181243d7e",
+      "compressed_bytes": 853,
+      "compressed_sha256": "ca9771d44218a8dccaf5485fe93bfb2f71d4f53315e7c1e55e9d6092bacd780b"
+    },
+    {
+      "path": "candidate-candidate1-wasm-build.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-wasm-build.log",
+      "uncompressed_bytes": 1967,
+      "uncompressed_sha256": "217b34f97d58273df461a87d55d82d46bb0a58d50805b87bd1ed1337ccc8a9bc",
+      "compressed_bytes": 636,
+      "compressed_sha256": "a721a23146c9d63b14d4446ade7779384850720b2bbe71709f83d63dc2eec1b2"
+    },
+    {
+      "path": "candidate-candidate1-theme-acceptance.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-theme-acceptance.log",
+      "uncompressed_bytes": 11533,
+      "uncompressed_sha256": "ebb54094537535a06b0a05d881f168d3e34994742cdff60f2b561f991159a60b",
+      "compressed_bytes": 2620,
+      "compressed_sha256": "5ff67180a04e4067ef40c090633560fdb5006f66a703aafe0402b30211b8af6b"
+    },
+    {
+      "path": "candidate-candidate1-fmt.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-fmt.log",
+      "uncompressed_bytes": 0,
+      "uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressed_bytes": 20,
+      "compressed_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "candidate-candidate1-diff.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-diff.log",
+      "uncompressed_bytes": 0,
+      "uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressed_bytes": 20,
+      "compressed_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "candidate-candidate1-paths.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-paths.log",
+      "uncompressed_bytes": 50,
+      "uncompressed_sha256": "b30041f360347d0259332c4246d7d30afff8679d178898a1b4c2522bc08e6ae0",
+      "compressed_bytes": 68,
+      "compressed_sha256": "28bedc75609d87267fc2868cdda1cfe733e375e9656512b15c9ee22b2a25ac1e"
+    },
+    {
+      "path": "candidate-controls--candidate1-site-probes.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/controls/candidate1-site-probes.json",
+      "uncompressed_bytes": 1968,
+      "uncompressed_sha256": "250398ff31012c29ea2e58d3c28ee1b812b0d3d2d8046eebdb685a83870b1ec3",
+      "compressed_bytes": 628,
+      "compressed_sha256": "5c5cc43548037874e998ea7e8fc12e29bd7c1c81d55e368e8b580fa80d1cccff"
+    },
+    {
+      "path": "candidate-controls--candidate1-site-allocations.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/controls/candidate1-site-allocations.json",
+      "uncompressed_bytes": 1168454,
+      "uncompressed_sha256": "cc0ef84f2473951d711c5663ba4afafb950be9260b5c5881fac312843a5ff20d",
+      "compressed_bytes": 65709,
+      "compressed_sha256": "9d578b5abe0b8d9d2ff7dfed13904a1932c830f79386e52e27a43c80c71779d8"
+    },
+    {
+      "path": "candidate-controls--candidate1-site-measurement-traces.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/controls/candidate1-site-measurement-traces.json",
+      "uncompressed_bytes": 167892,
+      "uncompressed_sha256": "ea1f3a2e47b0c2eeb28fe821ef3073740ee1467c08291c5298bb1962af4acf77",
+      "compressed_bytes": 31622,
+      "compressed_sha256": "1a0e6f2ac7c032639de7b8f7732ba238c1b1878c4c641abb122c012d731fd199"
+    },
+    {
+      "path": "candidate-candidate1--results.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1/results.json",
+      "uncompressed_bytes": 4610347,
+      "uncompressed_sha256": "e2e11612998643c9223bd24cde950da88e151bd592f8f0093f4ec494940a646a",
+      "compressed_bytes": 130879,
+      "compressed_sha256": "3778eb169343e5bbc3fc597012bf7117cb5b22b8cf0b6af16a436c79cf926330"
+    },
+    {
+      "path": "candidate-candidate1--catalog.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1/catalog.json",
+      "uncompressed_bytes": 8085,
+      "uncompressed_sha256": "d3b4c2c094cf301f37ed9405e30852fae65b52f0751ff69447142d661db7f367",
+      "compressed_bytes": 732,
+      "compressed_sha256": "fbc3c4c867e67a7639498e967f35e413b3645b315ce0aae1e9238dd396c49712"
+    },
+    {
+      "path": "candidate-wasm-input-manifest.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/wasm-input-manifest.json",
+      "uncompressed_bytes": 198755,
+      "uncompressed_sha256": "bcd65c02794a63cafb2ef608f7a14e277181357fedf32157e68721575ca3a711",
+      "compressed_bytes": 59315,
+      "compressed_sha256": "3c912ee0d15263b9b1013e108785fedfa4b6ae50fd6d5689a4fae0953d80deaa"
+    },
+    {
+      "path": "candidate-wasm-identity-verification.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/wasm-identity-verification.json",
+      "uncompressed_bytes": 1363,
+      "uncompressed_sha256": "b8b74f3013d4b74432a2c91bc77a008c915563bf043786032ba89bcc117b5146",
+      "compressed_bytes": 646,
+      "compressed_sha256": "ceaa1f051879484a571cfe6ecf3ef3804ec06c9f3fa58e28a29206f2b4772720"
+    },
+    {
+      "path": "candidate-dom-report-archive.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/dom-report-archive.json",
+      "uncompressed_bytes": 6320,
+      "uncompressed_sha256": "d19e1039407eecf602437d369a6fd639ab2909901dcd3ae2fa3c52d268281b99",
+      "compressed_bytes": 2143,
+      "compressed_sha256": "f7ca09cf6f0aa9e0c3e86dd9deedf793d39d1aa42a60080365f4a7c5cfc85a18"
+    },
+    {
+      "path": "candidate-supplemental-execution.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/supplemental-execution.json",
+      "uncompressed_bytes": 1283,
+      "uncompressed_sha256": "84ebef7287b99ebdc18182fe399b8d0d0eafde5ff70a9fe089cbb76a18ba0fde",
+      "compressed_bytes": 423,
+      "compressed_sha256": "064b1ba17852d3656e1b64abf48f0e8a7ebd51bdd5a9b83079e9170ca4a3ef87"
+    },
+    {
+      "path": "candidate-supplemental-terminal-receipt.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/supplemental-terminal-receipt.json",
+      "uncompressed_bytes": 170,
+      "uncompressed_sha256": "98fee40a872b1b0d9db205fc393ab0b5acc7293710d23033180a98c6858334fb",
+      "compressed_bytes": 147,
+      "compressed_sha256": "91ccbb1271b02a86638d19cd1876cd83034c93a0c1c832145d2afc17f635a7ac"
+    },
+    {
+      "path": "candidate-pipeline-discovery.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/pipeline-discovery.log",
+      "uncompressed_bytes": 82,
+      "uncompressed_sha256": "eeb91236acbe04f8a1fe38a5b4a67980f7dd7ce043faecf0e7cc6b7c2f290232",
+      "compressed_bytes": 95,
+      "compressed_sha256": "542ed4626de4ff26d743fd4c22fec2027107d5d026c3d054c59923595516c326"
+    },
+    {
+      "path": "candidate-native-memory-smoke.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/native-memory-smoke.json",
+      "uncompressed_bytes": 13527,
+      "uncompressed_sha256": "2c03a832aa0315d0447b79d220ac50164f123f51d3d872c25b95444b881a11d4",
+      "compressed_bytes": 3292,
+      "compressed_sha256": "b397f5a4e946b779a2d92b6db76a5bb49b6b42f4a585efbbdb759c224bd86b5e"
+    },
+    {
+      "path": "candidate-native-memory-smoke.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/native-memory-smoke.log",
+      "uncompressed_bytes": 180,
+      "uncompressed_sha256": "790eddb80f2d4fd11f3e543ff8f40ce6f87ba6bf600e1bc71264ea9891997930",
+      "compressed_bytes": 162,
+      "compressed_sha256": "5651466f5c10ec1ff7e63ef6b26e678da17ce6d181d5b13fef4ab1524ad03fd2"
+    },
+    {
+      "path": "candidate-native-memory-smoke-contract.log.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/native-memory-smoke-contract.log",
+      "uncompressed_bytes": 54,
+      "uncompressed_sha256": "965baa4128f4853ebbe23a43b7b28340c5964d9e7e24c7850578039db094386f",
+      "compressed_bytes": 74,
+      "compressed_sha256": "a7732518119f10d66c337bd09c689fb5c4c168a7b046701c0ff80330d94e1a68"
+    },
+    {
+      "path": "candidate-final-source-identity.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/final-source-identity.json",
+      "uncompressed_bytes": 852,
+      "uncompressed_sha256": "17fa2d2653f83991c8048161bbdde6d0b664ee5179ee633c1e67c20c8f41cf55",
+      "compressed_bytes": 512,
+      "compressed_sha256": "410eab19281b2e721f28592c6460bf2966c58b2dca85af84b5ad7d42f8d7f0c6"
+    },
+    {
+      "path": "candidate-execute_candidate1.py.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/execute_candidate1.py",
+      "uncompressed_bytes": 5359,
+      "uncompressed_sha256": "5b45bf678637a5b4ef5e161f4af98d9430ae7607fa168bea5243c9ebe9109a43",
+      "compressed_bytes": 1926,
+      "compressed_sha256": "3963ba62b7a939738f18a71b888298b4aeab791a0debd3781503d5f8af295b7d"
+    },
+    {
+      "path": "candidate-execute_supplemental.py.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/execute_supplemental.py",
+      "uncompressed_bytes": 1467,
+      "uncompressed_sha256": "1089fc13813340bd3001f5908baae238bd0f16ed28fdc6078e52702f417ffac7",
+      "compressed_bytes": 737,
+      "compressed_sha256": "0e260be7c3c14c138473cb8a1dc74de53c1a777a034d3e3e8e3fd78993b56ca5"
+    },
+    {
+      "path": "candidate-compare_candidate1.py.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/compare_candidate1.py",
+      "uncompressed_bytes": 3346,
+      "uncompressed_sha256": "d1c7adf4e2ebde8171f9eab635dd44d5e4b6ef04c9f14f5083f9ee434d53777b",
+      "compressed_bytes": 1134,
+      "compressed_sha256": "b507da3167373320ca7c4515630f411d72052380dd4f1976bc09b9a1cd69243d"
+    },
+    {
+      "path": "original-base--results.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/base/results.json",
+      "uncompressed_bytes": 4601635,
+      "uncompressed_sha256": "db5e408e85be14a56b9e9874d48a7ea6a6af425956f19ac36e5812308391c700",
+      "compressed_bytes": 130887,
+      "compressed_sha256": "286577debf2789c9b8df185146e6504f35989822d10334f22e05f8ebce2da8a8"
+    },
+    {
+      "path": "original-base--catalog.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/base/catalog.json",
+      "uncompressed_bytes": 8085,
+      "uncompressed_sha256": "d3b4c2c094cf301f37ed9405e30852fae65b52f0751ff69447142d661db7f367",
+      "compressed_bytes": 732,
+      "compressed_sha256": "fbc3c4c867e67a7639498e967f35e413b3645b315ce0aae1e9238dd396c49712"
+    },
+    {
+      "path": "original-controls--base-site-allocations.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/controls/base-site-allocations.json",
+      "uncompressed_bytes": 1156077,
+      "uncompressed_sha256": "0590def2bacd10f235372d269459902cebc33fc0d619200ef32160a4fafe3595",
+      "compressed_bytes": 65737,
+      "compressed_sha256": "ae4ba67a1a23b6b402c8d187672b84afceade1249bbbeabbaf683636e4f655f3"
+    },
+    {
+      "path": "original-controls--base-site-measurement-traces.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/controls/base-site-measurement-traces.json",
+      "uncompressed_bytes": 167880,
+      "uncompressed_sha256": "cf25271d0b07e9fb7e9918933c0d7eefe6b2b792b6b89b08a275ccfe5710008c",
+      "compressed_bytes": 31617,
+      "compressed_sha256": "2d05e5586a888e649d0b1537635db47dac533aaea7572df47f732aa7e92cbfd4"
+    },
+    {
+      "path": "original-base-errors-comparison.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/base-errors-comparison.json",
+      "uncompressed_bytes": 11474,
+      "uncompressed_sha256": "c222c308228eee6a3efdc63c5451362c078600df659418863a293f2ad7f54ab7",
+      "compressed_bytes": 618,
+      "compressed_sha256": "fc852de75cd1de9b60eb932fe80b65e9dbfa13f594f0d6544e8d5696ea01477c"
+    },
+    {
+      "path": "original-base-frozen-probes.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/base-frozen-probes.json",
+      "uncompressed_bytes": 859,
+      "uncompressed_sha256": "689569fa56613c8940aa70f7f282d77ba6a37e522f56042c26559d8a59ad4565",
+      "compressed_bytes": 360,
+      "compressed_sha256": "284503cd1c7ac5491506bb6ce4d4d8f50abbc8c4ca93c7311d47e80ea908321c"
+    },
+    {
+      "path": "original-baseline-evidence-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/baseline-evidence-review.json",
+      "uncompressed_bytes": 12749,
+      "uncompressed_sha256": "99f37ced0eff1b0bb9ee2749bb027cd0e1b0b4da2d50a9e58611512668a0c816",
+      "compressed_bytes": 3108,
+      "compressed_sha256": "b0cd1e50b99311c04fdf05033113ff24c1c466377a779322f98ed5c1c6c1b792"
+    },
+    {
+      "path": "original-base-terminal-receipt.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/base-terminal-receipt.json",
+      "uncompressed_bytes": 214,
+      "uncompressed_sha256": "c11c0407896ca7f1006ce05e32ff9345dfce381c05953d67ef9858179ae83056",
+      "compressed_bytes": 180,
+      "compressed_sha256": "6fc38c42c0d70872f7cf770a26ce9325b92b2584241bc15bcce81e58782264d1"
+    },
+    {
+      "path": "original-candidate1-rejection.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/candidate1-rejection.json",
+      "uncompressed_bytes": 650,
+      "uncompressed_sha256": "912be342c4d5d7cd8f8d8871b9da890550d33d2132783c3d853c689f897b84ce",
+      "compressed_bytes": 433,
+      "compressed_sha256": "add3bc67fd04cf53fbbccd8c488f7bcf425804e7234b8982e61a2b9ffdb61e13"
+    },
+    {
+      "path": "original-candidate1-failed-allocation-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/candidate1-failed-allocation-review.json",
+      "uncompressed_bytes": 19129,
+      "uncompressed_sha256": "3340d371673371855a986d5e8ff0734088c4f7a5f2b022d9f18b8d1b0090c0f9",
+      "compressed_bytes": 4300,
+      "compressed_sha256": "14996b0975aa133005776ad3d9b252fd017e80eb235f092538cca810833dad3a"
+    },
+    {
+      "path": "original-candidate1-code-retirement.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/candidate1-code-retirement.json",
+      "uncompressed_bytes": 1808,
+      "uncompressed_sha256": "dbc405928c70365bc0ab829122926ca03d78a24f5f30e4c8637f9d01aa9bf168",
+      "compressed_bytes": 915,
+      "compressed_sha256": "3cce59f5ca769937def32f6ad00b6c38f72b3226dadce648498df776fd95868e"
+    },
+    {
+      "path": "original-candidate1-peak-source-diagnosis.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/candidate1-peak-source-diagnosis.json",
+      "uncompressed_bytes": 17065,
+      "uncompressed_sha256": "4ec2f28aa6094962a493090424783a82be1d9467027c61e1c5f3fb8914497602",
+      "compressed_bytes": 5906,
+      "compressed_sha256": "e540a58aef46e435a5c58744d6800d5d68501b78e33e8de99d74291585cfc221"
+    },
+    {
+      "path": "original-candidate1-venn-peak-watch--terminal-receipt.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/facade-svg-metadata-owner-20261020/candidate1-venn-peak-watch/terminal-receipt.json",
+      "uncompressed_bytes": 409,
+      "uncompressed_sha256": "fd38c1615246c8306c8b2b7a6d9ba8cbba29eac4e84e505b41c318c87c6292de",
+      "compressed_bytes": 262,
+      "compressed_sha256": "9b28ffcb6d6abcf2a05b6871061e5cfe5366679728edcfa927379f673444d398"
+    },
+    {
+      "path": "candidate-candidate1-applied-source-final-review.json.gz",
+      "source": "/Users/frankorz/Documents/projects/rust/merman/target/bench/experiments/json-drop-container-frontier-20261020/candidate1-applied-source-final-review.json",
+      "uncompressed_bytes": 9151,
+      "uncompressed_sha256": "0404a454b6c2cfb07b08dc3d99735a5971471e58093a58a75e1d2a26be544ba4",
+      "compressed_bytes": 3819,
+      "compressed_sha256": "9f940fffaa3447e1d058be1ec9ed96092444c98a895d994314550bad353ab42a"
+    }
+  ]
+}

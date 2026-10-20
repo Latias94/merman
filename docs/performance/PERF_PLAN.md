@@ -17,6 +17,20 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
+scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
+On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;
+all 505 jointly stable site controls improve without a four-metric regression, while 140 variable
+controls remain inconclusive. Venn/None catalog peak falls 183387 to 180461 B, with 64152 fewer
+allocated bytes; Packet/None saves four allocations and 288 B. All output/report/callback/error
+controls match. Release tests pass 8101 (seven skipped), with Clippy, 37 DOM entries, optimized
+full WASM, 34 theme acceptance tests, compiled pipeline discovery and native-memory smoke.
+The helper also exists unchanged in v0.9.0: this is shared memory/work removal, without a latency
+or theme-regression attribution. The earlier metadata-owner candidate remains rejected for its
+stable Venn peak regressions; its code is absent from this checkpoint. Reevaluate it independently
+against this new disposal baseline, then examine unused ZenUML editor facts and fresh-source
+ownership. All-family release convergence remains incomplete.
+
 The [October 20 appearance/CSS release checkpoint](theme_v090_appearance_css_macos_2026-10-20.md)
 compares production `b9a58731c` with v0.9.0 using fresh 608 A/A and 304 fixed balanced A/B
 observations: 14 within the joint budget, two confirmed regressions and three inconclusive scenes,
@@ -30,8 +44,9 @@ none of its observations is reused. Bounded rebuild and independent physical exe
 precede this accepted run, and both actual no-hook binaries are archived before later native work.
 PR #226 is merged as `a933b02c1`, whose complete source tree equals tested `b9a58731c`; the tested
 revision remains explicit. These release-range observations do not attribute latency to an
-individual repair. Next separately admit the unused facade SVG metadata owner, then audit the
-fresh-render prepared-source Arc. The all-family convergence goal remains incomplete.
+individual repair. The later JSON disposal checkpoint and rejected metadata candidate retain
+their own admission boundaries; neither reclassifies this release comparison. The all-family
+convergence goal remains incomplete.
 
 The [October 20 CSS identifier checkpoint](css_identifier_borrow_macos_2026-10-20.md) borrows
 unchanged identifiers inside the existing serializer. On the fresh `7e0582307` base, Packet medium /
@@ -1271,9 +1286,12 @@ the accepted identity repair uses entirely fresh observations and physical no-ho
 Attribute actual consumers before selecting further repairs. Empty explicit-owner queries,
 absent scoped appearance paths and borrowed unchanged CSS identifiers now have independent
 admitted allocation checkpoints. Frozen path storage remains separate. The intermediate metadata
-clone has a reviewed source draft and one public ownership/pipeline regression test, but no
-measured benefit. Register it independently with the full adjacent catalog and behavior controls.
-The fresh-render prepared-source Arc is a later independent ownership candidate. Use calibrated
+clone was independently measured and rejected: its Packet allocation win accompanies stable
+Venn peak regressions. Its patch and failed records are preserved and its code is absent. The
+separate JSON disposal repair passes all 418 catalog/645 site behavior controls and its original
+stable-memory gate; reevaluate metadata ownership against that new baseline before integrating it.
+Unused ZenUML editor facts and the fresh-render prepared-source Arc remain separately reviewed,
+unmeasured candidates. Use calibrated
 confirmation for subsequent latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
