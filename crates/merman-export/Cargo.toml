@@ -24,6 +24,7 @@ native-fonts = [
     "dep:rustybuzz",
     "dep:sha2",
     "dep:thiserror",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -40,6 +41,7 @@ png = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -55,6 +57,7 @@ jpeg = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -67,6 +70,7 @@ pdf = [
     "dep:merman-render",
     "dep:quick-xml",
     "dep:thiserror",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -87,6 +91,7 @@ sha2 = { workspace = true, optional = true }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
+ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
 unicode-script = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["text"] }

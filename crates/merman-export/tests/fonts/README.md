@@ -28,3 +28,29 @@ Subset commands use `--layout-features=* --name-IDs=* --name-languages=*`.
 Variable-font instances use `python -m fontTools.varLib.instancer`; subsets use
 `pyftsubset`. Collection construction uses `TTCollection.fonts = [TTFont(regular),
 TTFont(italic)]` followed by `save`. No font-building code is part of the runtime.
+
+## Symbol Classification Regressions
+
+`MermanSymbolicTest.ttf` and `MermanPictorialTest.ttf` are renamed, ASCII-only
+derivatives of the pinned Cousine Regular fixture under `OFL.txt`. They retain
+Unicode cmaps covering U+0020-U+007E but map `a`, `m`, and `A` to Cousine's Greek
+`alpha`, `mu`, and `Alpha` glyphs. Character coverage therefore cannot establish
+that an implicit face is suitable for ordinary text.
+
+The Symbolic fixture sets OS/2 `sFamilyClass=0x0C03` and keeps PANOSE family type
+2. The Pictorial fixture keeps `sFamilyClass=0` and sets PANOSE family type 5.
+Testing each signal separately prevents one classification check from masking
+the absence of the other. All family, full, unique, and PostScript names are
+changed to Merman test names; original copyright/license records are retained.
+They were generated with fontTools 4.61.1 by updating Unicode cmap records,
+subsetting U+0020-U+007E with all naming/layout records, renaming, and setting the
+two OS/2 classification fields. They are never included in production binaries.
+
+`DejaVuSerif-NativeFilter.ttf` is the unchanged DejaVu Serif test subset from
+Merman render fixtures, licensed under the accompanying `DejaVu-LICENSE.txt`.
+It supplies deterministic serif classification and glyph coverage without host fonts.
+
+The DejaVu subset comes from DejaVu Serif 2.37 in Debian
+`fonts-dejavu-core_2.37-8_all.deb`, retaining `Request VolumeDocumentation`.
+SHA-256: `108e66f8d1c7d2580dc8245286bd6290b815d0a002a74322322b542a832ccb7c`.
+It was generated with fontTools `pyftsubset`, all name IDs and languages.

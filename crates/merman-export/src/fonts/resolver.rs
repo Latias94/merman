@@ -50,11 +50,16 @@ impl DiscoveryProvider {
         &self,
         font: &usvg::Font,
         control: &OperationControl,
-    ) -> Result<Option<FontCandidate>, NativeFontError> {
+        accept: &mut dyn FnMut(FontCandidate, bool) -> Result<Option<ID>, NativeFontError>,
+    ) -> Result<Option<ID>, NativeFontError> {
         match self {
-            Self::Bounded(catalog) => catalog.select(font, control),
+            Self::Bounded(catalog) => match catalog.select(font, control)? {
+                // Retained catalog classification already gates implicit families.
+                Some(candidate) => accept(candidate, false),
+                None => Ok(None),
+            },
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform { catalog, explicit } => catalog.select(font, explicit, control),
+            Self::Platform { catalog, explicit } => catalog.select(font, explicit, control, accept),
         }
     }
 
@@ -115,17 +120,22 @@ pub(super) fn resolver(
                     .discovery
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
-                provider
-                    .select(font, &select_control)?
-                    .map(|candidate| {
-                        select_context.0.sources.materialize(
-                            candidate,
-                            database,
-                            &select_context.0.limits,
-                            &select_control,
-                        )
-                    })
-                    .transpose()
+                provider.select(font, &select_control, &mut |candidate, check_implicit| {
+                    let id = select_context.0.sources.materialize(
+                        candidate,
+                        database,
+                        &select_context.0.limits,
+                        &select_control,
+                    )?;
+                    if check_implicit
+                        && !database
+                            .face(id)
+                            .is_some_and(super::super::font_selection::allows_implicit_binary_face)
+                    {
+                        return Ok(None);
+                    }
+                    Ok(Some(id))
+                })
             })();
             resolve_or_record(&select_context, result)
         }),

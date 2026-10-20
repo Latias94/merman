@@ -2600,6 +2600,7 @@ dependencies = [
  "svgtypes 0.16.1",
  "thiserror 2.0.21",
  "tiny-skia",
+ "ttf-parser",
  "unicase",
  "unicode-script",
  "usvg",

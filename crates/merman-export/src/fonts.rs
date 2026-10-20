@@ -1,5 +1,6 @@
 //! Closed, bounded font acquisition and shared native text measurement.
 
+use super::font_selection::FontSelectionPolicy;
 use merman_core::{
     OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
     OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
@@ -142,7 +143,7 @@ impl NativeFontOptions {
         #[cfg(feature = "experimental-system-font-query")]
         let platform = if self.system_fonts && platform_requested {
             let mut explicit = loader.database.clone();
-            super::configure_fontdb_generic_families(&mut explicit);
+            loader.selection.configure_generics(&mut explicit);
             let catalog = platform::PlatformCatalog::new(control)?;
             if loader.database.faces().next().is_none() {
                 loader.file(&catalog.default_path(control)?)?;
@@ -153,7 +154,7 @@ impl NativeFontOptions {
         };
         #[cfg(not(feature = "experimental-system-font-query"))]
         let _ = platform_requested;
-        super::configure_fontdb_generic_families(&mut loader.database);
+        loader.selection.configure_generics(&mut loader.database);
         #[cfg(feature = "system-fonts")]
         let system = if self.system_fonts && !platform_requested {
             Some(system::SystemCatalog::discover(&loader, control)?)
@@ -169,16 +170,22 @@ impl NativeFontOptions {
         if metadata.faces().next().is_none() {
             return Err(NativeFontError::EmptyFontSet);
         }
-        let default_family =
-            super::raster_default_font_family(metadata).ok_or(NativeFontError::EmptyFontSet)?;
+        #[cfg(feature = "system-fonts")]
+        let selection = system
+            .as_ref()
+            .map_or(&loader.selection, |catalog| &catalog.selection);
+        #[cfg(not(feature = "system-fonts"))]
+        let selection = &loader.selection;
+        // Explicit symbolic families remain usable when no implicit text face is available.
+        let default_family = selection.default_family(metadata).unwrap_or_default();
         loader
             .hash
-            .update(b"merman-native-text-v3/usvg-0.47/resolver-v1");
+            .update(b"merman-native-text-v3/usvg-0.47/resolver-v2");
         #[cfg(feature = "experimental-system-font-query")]
         if platform.is_some() {
             // Platform identities describe policy and admitted initial bytes,
             // not a content digest of every installed system font.
-            loader.hash.update(b"platform-query/fontique-0.12.0/v1");
+            loader.hash.update(b"platform-query/fontique-0.12.0/v2");
         }
         #[cfg(feature = "system-fonts")]
         if let Some(catalog) = &system {
@@ -207,6 +214,7 @@ impl NativeFontOptions {
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
+            selection: Arc::new(loader.selection),
             #[cfg(feature = "system-fonts")]
             discovery,
             #[cfg(feature = "system-fonts")]
@@ -266,6 +274,7 @@ impl fmt::Debug for NativeFontContext {
 
 struct FontContextInner {
     database: Arc<usvg::fontdb::Database>,
+    selection: Arc<FontSelectionPolicy>,
     #[cfg(feature = "system-fonts")]
     discovery: Option<resolver::DiscoveryProvider>,
     #[cfg(feature = "system-fonts")]
@@ -346,7 +355,7 @@ impl NativeFontContext {
     ) {
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
-        options.font_resolver = super::browser_like_font_resolver();
+        options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
         #[cfg(feature = "system-fonts")]
         if self.0.discovery.is_some() {
             options.font_resolver = resolver::resolver(self.clone(), control.clone());
@@ -359,6 +368,7 @@ impl NativeFontContext {
     pub fn for_operation(&self, control: &OperationControl) -> Self {
         Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
+            selection: Arc::clone(&self.0.selection),
             #[cfg(feature = "system-fonts")]
             discovery: self.0.discovery.clone(),
             #[cfg(feature = "system-fonts")]
@@ -410,6 +420,7 @@ impl NativeFontContext {
 
 struct FontLoader {
     database: usvg::fontdb::Database,
+    selection: FontSelectionPolicy,
     limits: NativeFontLimits,
     control: OperationControl,
     files: usize,
@@ -428,6 +439,7 @@ impl FontLoader {
     fn new(limits: NativeFontLimits, control: OperationControl) -> Self {
         Self {
             database: usvg::fontdb::Database::new(),
+            selection: FontSelectionPolicy::default(),
             limits,
             control,
             files: 0,
@@ -549,7 +561,8 @@ impl FontLoader {
             if self.descriptors.insert(face_descriptor(face)) {
                 self.hash.update(&digest);
                 self.hash.update(face.index.to_be_bytes());
-                self.database.push_face_info(face.clone());
+                let id = self.database.push_face_info(face.clone());
+                self.selection.admit(id, &candidate, face.id);
             }
         }
         Ok(())
@@ -1115,6 +1128,7 @@ mod tests {
         };
         let context = NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(usvg::fontdb::Database::new()),
+            selection: Arc::new(FontSelectionPolicy::default()),
             #[cfg(feature = "system-fonts")]
             discovery: None,
             #[cfg(feature = "system-fonts")]
