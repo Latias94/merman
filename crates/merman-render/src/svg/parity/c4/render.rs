@@ -439,12 +439,17 @@ fn c4_write_unified_shape(
 pub(crate) fn render_c4_diagram_svg_typed(
     layout: &crate::model::C4DiagramLayout,
     model: &C4DiagramRenderModel,
-    effective_config: &serde_json::Value,
+    config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
+    let effective_config = config.as_value();
+    // Source and site colors preserve Mermaid's shared markers. Only an active host
+    // relationship line default pairs the final line color with colored markers.
+    let themed_markers = merman_core::presentation_defaults_active_internal(config)
+        && config.get_str("c4.relationship_line_color").is_some();
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let diagram_margin_x = c4_cfg.diagram_margin_x();
@@ -847,9 +852,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let stroke_color = meta
             .and_then(|m| m.line_color.clone())
             .unwrap_or_else(|| c4_cfg.color("relationship_line_color", "#444444"));
-        let themed_markers = meta.is_some_and(|m| m.line_color.is_some())
-            || crate::config::config_string(effective_config, &["c4", "relationship_line_color"])
-                .is_some();
         let arrowhead = if themed_markers {
             format!("arrowhead-{idx}")
         } else {

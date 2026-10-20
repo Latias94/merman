@@ -1433,7 +1433,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::C4(pair) => c4::render_c4_diagram_svg_typed(
             pair.layout(),
             pair.semantic(),
-            effective_config_value,
+            effective_config,
             title,
             measurer,
             options,
