@@ -39,8 +39,6 @@ impl<'input> Iterator for Lexer<'input> {
             let value_len = rest
                 .find(|ch| ch == ';' || super::is_ecmascript_trim_char(ch))
                 .unwrap_or(rest.len());
-            // Keep the complete direction candidate available to editor replacements, but do
-            // not reinterpret any rejected header tail as body nodes during recovery.
             self.pos += rest.find(['\n', ';']).unwrap_or(rest.len());
             self.allow_header_direction = false;
             let span = crate::SourceSpan::new(start, start + value_len);

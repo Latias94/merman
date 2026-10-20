@@ -430,6 +430,123 @@ fn flowchart_percent_directive_prefixes_remain_identifiers() {
 }
 
 #[test]
+fn flowchart_class_names_preserve_reserved_keyword_prefixes_and_source_spans() {
+    let engine = Engine::new();
+    let fixture = include_str!(
+        "../../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_65_3_bigger_font_from_classes_026.mmd"
+    );
+    let parsed = engine
+        .parse_diagram_sync(fixture, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 4);
+    assert_eq!(nodes[0]["classes"], json!(["class1", "class1"]));
+    assert_eq!(nodes[1]["classes"], json!(["class2"]));
+    assert_eq!(nodes[2]["classes"], json!(["class2"]));
+    assert_eq!(nodes[3]["classes"], json!(["larger"]));
+    assert_eq!(
+        parsed.model["classDefs"]["larger"],
+        json!(["font-size:30px", "fill:yellow"])
+    );
+    assert_eq!(parsed.model["edges"].as_array().unwrap().len(), 3);
+
+    for class_name in ["class1", "class_1", "classDefinition", "_blank1"] {
+        let source = format!(
+            "%% deleted 中文😀\r\nflowchart TD\r\nclassDef {class_name} fill:red\r\nA:::{class_name} --> {class_name}\r\nclass A {class_name}\r\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["nodes"][0]["id"], "A");
+        assert_eq!(
+            parsed.model["nodes"][0]["classes"],
+            json!([class_name, class_name])
+        );
+        assert_eq!(parsed.model["classDefs"][class_name], json!(["fill:red"]));
+        assert_eq!(parsed.model["edges"][0]["to"], class_name);
+
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("a class name with a non-boundary suffix must parse: {class_name}");
+        };
+        assert_eq!(
+            model["nodes"][0]["classes"],
+            json!([class_name, class_name])
+        );
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("class declarations and assignments must retain source spans");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (start, role) in [
+            (
+                source.find(class_name).unwrap(),
+                EditorSemanticRole::ClassDefinition,
+            ),
+            (
+                source.rfind(class_name).unwrap(),
+                EditorSemanticRole::Payload,
+            ),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == class_name
+                    && symbol.role == role
+                    && symbol.selection == SourceSpan::new(start, start + class_name.len())
+            }));
+        }
+    }
+}
+
+#[test]
+fn flowchart_class_shorthand_keeps_reserved_keyword_boundaries_rejected() {
+    let engine = Engine::new();
+    for (class_name, keyword) in [
+        ("class%", "class"),
+        ("class-tail", "class"),
+        ("style%", "style"),
+        ("interpolate", "interpolate"),
+        ("_blank", "_blank"),
+    ] {
+        for shorthand in [false, true] {
+            let source = if shorthand {
+                format!("flowchart TD\nA:::{class_name}-->B\n")
+            } else {
+                format!("flowchart TD\n{class_name}-->B\n")
+            };
+            let error = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap_err();
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("a reserved keyword must remain a parse error: {source}");
+            };
+            let start = source.find(keyword).unwrap();
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + keyword.len()))
+            );
+            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+            let snapshot = engine
+                .parse_diagram_snapshot_sync(&source)
+                .unwrap()
+                .unwrap();
+            let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                snapshot.outcome()
+            else {
+                panic!("editor capture must retain the same reserved keyword failure");
+            };
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + keyword.len()))
+            );
+        }
+    }
+}
+
+#[test]
 fn flowchart_percent_identifiers_preserve_reserved_token_rejections() {
     let engine = Engine::new();
     for keyword in [

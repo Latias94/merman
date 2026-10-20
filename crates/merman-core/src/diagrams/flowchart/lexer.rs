@@ -231,8 +231,9 @@ impl<'input> Lexer<'input> {
 
     pub(super) fn lex_reserved_token_error(&mut self) -> Option<LexError> {
         let rest = &self.input[self.pos..];
-        // These INITIAL rules precede NODE_STRING in flow.jison. Presentation statements are
-        // scanned as a whole below, but their keyword still requires a SPACE token before args.
+        // Jison compiles these INITIAL keyword rules with an ASCII word boundary before
+        // NODE_STRING. Presentation statements are scanned as a whole below, but their keyword
+        // still requires a SPACE token before args.
         // INTERPOLATE and LINK_TARGET have no standalone identifier use; their valid argument
         // positions are consumed inside the click/linkStyle scanners instead.
         let keyword = [
@@ -248,7 +249,14 @@ impl<'input> Lexer<'input> {
             "_top",
         ]
         .into_iter()
-        .find(|keyword| rest.starts_with(*keyword))?;
+        .find(|keyword| {
+            rest.strip_prefix(*keyword).is_some_and(|suffix| {
+                !suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            })
+        })?;
         if matches!(
             keyword,
             "style" | "linkStyle" | "classDef" | "class" | "subgraph"
