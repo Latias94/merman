@@ -412,3 +412,133 @@ fn oversized_labels_fail_before_svg_parsing_and_latch_the_operation_ledger() {
         Err(OperationLedgerError::ResourceLimitExceeded(error)) if error.id == "native_font_label_bytes")
     );
 }
+
+#[test]
+fn symbolic_unicode_fixture_covers_ascii_without_using_latin_glyphs() {
+    for (fixture, symbolic, pictorial) in [
+        ("MermanSymbolicTest.ttf", true, false),
+        ("MermanPictorialTest.ttf", false, true),
+    ] {
+        let bytes = std::fs::read(font(fixture)).unwrap();
+        let face = rustybuzz::ttf_parser::Face::parse(&bytes, 0).unwrap();
+        assert!((b'a'..=b'z').all(|c| face.glyph_index(char::from(c)).is_some()));
+        assert_eq!(
+            face.glyph_name(face.glyph_index('a').unwrap()),
+            Some("alpha")
+        );
+        assert_eq!(face.glyph_name(face.glyph_index('m').unwrap()), Some("mu"));
+        assert_eq!(
+            face.glyph_name(face.glyph_index('A').unwrap()),
+            Some("Alpha")
+        );
+        let os2 = face
+            .raw_face()
+            .table(rustybuzz::ttf_parser::Tag::from_bytes(b"OS/2"))
+            .unwrap();
+        assert_eq!(os2[30] == 12, symbolic);
+        assert_eq!(os2[32] == 5, pictorial);
+    }
+}
+
+fn painted_families(context: &NativeFontContext, family: &str, label: &str) -> BTreeSet<String> {
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let source = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text x="0" y="40" font-family="{family}">{label}</text></svg>"#,
+    );
+    let tree = usvg::Tree::from_str(&source, &options).unwrap();
+    text(tree.root())
+        .into_iter()
+        .flat_map(|text| text.layouted())
+        .flat_map(|span| &span.positioned_glyphs)
+        .map(|glyph| {
+            tree.fontdb()
+                .face(glyph.font)
+                .unwrap()
+                .post_script_name
+                .clone()
+        })
+        .collect()
+}
+
+#[test]
+fn implicit_fonts_reject_symbolic_and_pictorial_faces_in_either_source_order() {
+    for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+        for symbol_first in [false, true] {
+            let paths = if symbol_first {
+                [font(fixture), font("Cousine-Regular.ttf")]
+            } else {
+                [font("Cousine-Regular.ttf"), font(fixture)]
+            };
+            let context = NativeFontOptions::default()
+                .with_font_file(&paths[0])
+                .with_font_file(&paths[1])
+                .load(&OperationControl::new())
+                .unwrap();
+            for family in ["serif", "sans-serif", "monospace", "__missing__"] {
+                assert_eq!(
+                    painted_families(&context, family, "amA"),
+                    BTreeSet::from(["Cousine-Regular".to_owned()]),
+                    "{fixture}, symbol_first={symbol_first}, family={family}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn named_symbolic_fonts_remain_available_without_an_implicit_text_face() {
+    for (fixture, family) in [
+        ("MermanSymbolicTest.ttf", "Merman Symbolic Test"),
+        ("MermanPictorialTest.ttf", "Merman Pictorial Test"),
+    ] {
+        let context = NativeFontOptions::default()
+            .with_font_file(font(fixture))
+            .load(&OperationControl::new())
+            .unwrap();
+        assert_eq!(
+            painted_families(&context, family, "amA"),
+            BTreeSet::from([family.replace(' ', "")])
+        );
+        for implicit in ["serif", "sans-serif", "__missing__"] {
+            assert!(
+                painted_families(&context, implicit, "amA").is_empty(),
+                "{family} must remain unresolved for {implicit}"
+            );
+        }
+    }
+}
+
+#[test]
+fn implicit_fonts_prefer_compatible_serif_sans_and_monospace_faces() {
+    let serif = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../merman-render/tests/fixtures/fonts/DejaVuSerif-NativeFilter.ttf");
+    for serif_first in [false, true] {
+        let sans = font("NotoSans-Latin-subset.ttf");
+        let ordered = if serif_first {
+            [serif.clone(), sans]
+        } else {
+            [sans, serif.clone()]
+        };
+        let context = NativeFontOptions::default()
+            .with_font_file(font("MermanSymbolicTest.ttf"))
+            .with_font_file(&ordered[0])
+            .with_font_file(font("Cousine-Regular.ttf"))
+            .with_font_file(&ordered[1])
+            .load(&OperationControl::new())
+            .unwrap();
+        // V is genuinely covered by all three text fixtures, so this checks painting
+        // without invoking the independent glyph-level fallback policy.
+        for (family, expected) in [
+            ("serif", "DejaVuSerif"),
+            ("sans-serif", "NotoSans-Regular"),
+            ("monospace", "Cousine-Regular"),
+        ] {
+            assert_eq!(
+                painted_families(&context, family, "V"),
+                BTreeSet::from([expected.to_owned()]),
+                "{family}, serif_first={serif_first}"
+            );
+        }
+    }
+}

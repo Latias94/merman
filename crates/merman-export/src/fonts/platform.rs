@@ -80,6 +80,9 @@ impl PlatformCatalog {
         control: &OperationControl,
     ) -> Result<Vec<PlatformCandidate>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        if name == Some("") {
+            return Ok(Vec::new());
+        }
         let mut collection = self.collection.lock().map_err(|_| {
             NativeFontError::Measurement("platform font collection is poisoned".to_owned())
         })?;
@@ -330,7 +333,11 @@ impl PlatformCatalog {
         font: &usvg::Font,
         explicit: &Database,
         control: &OperationControl,
-    ) -> Result<Option<super::resolver::FontSelection>, NativeFontError> {
+        accept: &mut dyn FnMut(
+            super::resolver::FontSelection,
+            bool,
+        ) -> Result<Option<usvg::fontdb::ID>, NativeFontError>,
+    ) -> Result<Option<usvg::fontdb::ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let weight = Weight(font.weight());
         let stretch = font.stretch().into();
@@ -342,34 +349,40 @@ impl PlatformCatalog {
             .enumerate()
         {
             let family_fallback_used = index == font.families().len();
-            if let Some(face) = explicit_face(explicit, family, weight, stretch, style) {
-                return Ok(Some(super::resolver::FontSelection {
-                    candidate: FontCandidate::Loaded(face),
-                    family_fallback_used,
-                }));
+            let implicit = !matches!(family, usvg::FontFamily::Named(_));
+            if let Some(face) = explicit_face(explicit, family, weight, stretch, style)
+                && let Some(id) = accept(
+                    super::resolver::FontSelection {
+                        candidate: FontCandidate::Loaded(face),
+                        family_fallback_used,
+                    },
+                    implicit,
+                )?
+            {
+                return Ok(Some(id));
             }
             let name = match family {
                 usvg::FontFamily::Named(name) => Some(name.as_str()),
                 _ => None,
             };
-            if let Some(selected) = self
-                .candidates(
-                    name,
-                    generic_family(family),
-                    weight,
-                    stretch,
-                    style,
-                    control,
-                )?
-                .into_iter()
-                .next()
-            {
-                return candidate(selected).map(|candidate| {
-                    Some(super::resolver::FontSelection {
-                        candidate,
+            for selected in self.candidates(
+                name,
+                generic_family(family),
+                weight,
+                stretch,
+                style,
+                control,
+            )? {
+                control.terminal_checkpoint_at(OperationPhase::Layout)?;
+                if let Some(id) = accept(
+                    super::resolver::FontSelection {
+                        candidate: candidate(selected)?,
                         family_fallback_used,
-                    })
-                });
+                    },
+                    implicit,
+                )? {
+                    return Ok(Some(id));
+                }
             }
         }
         Ok(None)
@@ -493,6 +506,160 @@ mod tests {
             validate_candidate(&face, &candidate, Path::new("unused-font-path"))
                 .expect("family aliases come from the same immutable binary");
         }
+    }
+
+    fn poisoned_platform_context(
+        symbol_fixture: &str,
+        include_text: bool,
+        limits: NativeFontLimits,
+    ) -> NativeFontContext {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let mut collection = Collection::new(CollectionOptions {
+            system_fonts: false,
+            ..Default::default()
+        });
+        collection.load_fonts_from_paths([root.join(symbol_fixture)]);
+        if include_text {
+            collection.load_fonts_from_paths([root.join("Cousine-Regular.ttf")]);
+        }
+        let family = if symbol_fixture.contains("Symbolic") {
+            "Merman Symbolic Test"
+        } else {
+            "Merman Pictorial Test"
+        };
+        let symbol = collection.family_by_name(family).unwrap().id();
+        let mut preferred = vec![symbol];
+        if include_text {
+            preferred.push(collection.family_by_name("Cousine").unwrap().id());
+        }
+        for generic in [
+            GenericFamily::Serif,
+            GenericFamily::SansSerif,
+            GenericFamily::Monospace,
+            GenericFamily::Cursive,
+            GenericFamily::Fantasy,
+        ] {
+            collection.set_generic_families(generic, preferred.iter().copied());
+        }
+        NativeFontContext(Arc::new(FontContextInner {
+            database: Arc::new(Database::new()),
+            selection: Arc::new(FontSelectionPolicy::default()),
+            initial_system_faces: BTreeSet::new(),
+            discovery: Some(super::super::resolver::DiscoveryProvider::Platform {
+                catalog: Arc::new(PlatformCatalog {
+                    collection: Mutex::new(collection),
+                    invalid: AtomicBool::new(false),
+                }),
+                explicit: Arc::new(Database::new()),
+            }),
+            sources: super::super::registry::FontSourceRegistry::new(
+                BTreeMap::new(),
+                BTreeMap::new(),
+                0,
+                0,
+            ),
+            default_family: String::new(),
+            identity: "poisoned-platform-fixture".to_owned(),
+            limits,
+            control: OperationControl::new(),
+            state: Mutex::new(MeasurementState::default()),
+            fatal: OnceLock::new(),
+        }))
+    }
+
+    fn platform_painted_families(
+        context: &NativeFontContext,
+        family: Option<&str>,
+    ) -> BTreeSet<String> {
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let family =
+            family.map_or_else(String::new, |family| format!(r#" font-family="{family}""#));
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40"{family}>amA</text></svg>"#
+        );
+        let tree = usvg::Tree::from_str(&source, &options).unwrap();
+        let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+            return BTreeSet::new();
+        };
+        text.layouted()
+            .iter()
+            .flat_map(|span| &span.positioned_glyphs)
+            .map(|glyph| {
+                tree.fontdb()
+                    .face(glyph.font)
+                    .unwrap()
+                    .post_script_name
+                    .clone()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn platform_family_selection_rejects_symbolic_generics_after_binary_admission() {
+        for (fixture, named) in [
+            ("MermanSymbolicTest.ttf", "Merman Symbolic Test"),
+            ("MermanPictorialTest.ttf", "Merman Pictorial Test"),
+        ] {
+            let context = poisoned_platform_context(fixture, true, NativeFontLimits::default());
+            for family in [
+                Some("serif"),
+                Some("sans-serif"),
+                Some("monospace"),
+                Some("__missing__"),
+                None,
+            ] {
+                assert_eq!(
+                    platform_painted_families(&context, family),
+                    BTreeSet::from(["Cousine-Regular".to_owned()]),
+                    "{fixture}, {family:?}"
+                );
+                context.check().unwrap();
+            }
+            assert_eq!(
+                platform_painted_families(&context, Some(named)),
+                BTreeSet::from([named.replace(' ', "")])
+            );
+            assert_eq!(context.0.sources.snapshots.lock().unwrap().files.len(), 2);
+        }
+    }
+
+    #[test]
+    fn platform_symbol_only_generics_remain_unresolved_without_blocking_named_symbol() {
+        let context =
+            poisoned_platform_context("MermanSymbolicTest.ttf", false, NativeFontLimits::default());
+        for family in [Some("serif"), Some("__missing__"), None] {
+            assert!(
+                platform_painted_families(&context, family).is_empty(),
+                "{family:?}"
+            );
+            context.check().unwrap();
+        }
+        assert_eq!(
+            platform_painted_families(&context, Some("Merman Symbolic Test")),
+            BTreeSet::from(["MermanSymbolicTest".to_owned()])
+        );
+    }
+
+    #[test]
+    fn platform_symbol_rejection_cannot_bypass_snapshot_admission_limits() {
+        let context = poisoned_platform_context(
+            "MermanSymbolicTest.ttf",
+            true,
+            NativeFontLimits {
+                max_files: 1,
+                ..Default::default()
+            },
+        );
+        assert!(platform_painted_families(&context, Some("serif")).is_empty());
+        assert!(matches!(
+            context.check(),
+            Err(NativeFontError::Limit {
+                resource: "system-snapshot-files",
+                actual: 2,
+                limit: 1
+            })
+        ));
     }
 
     #[test]
