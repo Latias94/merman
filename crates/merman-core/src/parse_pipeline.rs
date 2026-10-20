@@ -1225,6 +1225,11 @@ impl<'a> ParsePipeline<'a> {
                 .presentation_defaults
                 .presentation_font_defaults_active(),
         );
+        effective_config.set_presentation_c4_line_default_active(
+            self.engine
+                .presentation_defaults
+                .presentation_c4_line_default_active(),
+        );
         let axis_text_path = "themeVariables.wardley.axisTextColor";
         effective_config.set_wardley_axis_text_authored(
             self.engine

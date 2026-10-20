@@ -63,6 +63,11 @@ pub fn presentation_font_defaults_active_internal(config: &MermaidConfig) -> boo
 }
 
 #[doc(hidden)]
+pub fn presentation_c4_line_default_active_internal(config: &MermaidConfig) -> bool {
+    config.presentation_c4_line_default_active()
+}
+
+#[doc(hidden)]
 pub fn wardley_axis_text_authored_internal(config: &MermaidConfig) -> bool {
     config.wardley_axis_text_authored()
 }
@@ -361,6 +366,10 @@ impl Engine {
         paint_defaults_active: bool,
     ) -> Self {
         defaults.set_presentation_defaults_active(paint_defaults_active);
+        // Capture the materialized host default before authored site/source values merge.
+        defaults.set_presentation_c4_line_default_active(
+            defaults.get_str("c4.relationship_line_color").is_some(),
+        );
         defaults.set_presentation_font_defaults_active(
             non_paint_defaults.get_str("fontFamily").is_some()
                 || non_paint_defaults
@@ -408,6 +417,10 @@ impl Engine {
             config.set_presentation_font_defaults_active(
                 self.presentation_defaults
                     .presentation_font_defaults_active(),
+            );
+            config.set_presentation_c4_line_default_active(
+                self.presentation_defaults
+                    .presentation_c4_line_default_active(),
             );
             config.set_wardley_axis_text_authored(
                 self.site_config_delta

@@ -46,6 +46,7 @@ struct ConfigState {
     detector_mutations: Option<Vec<String>>,
     presentation_paint: bool,
     presentation_font: bool,
+    presentation_c4_line: bool,
     wardley_axis_text_authored: bool,
 }
 
@@ -100,6 +101,14 @@ impl MermaidConfig {
 
     pub(crate) fn presentation_font_defaults_active(&self) -> bool {
         self.state.presentation_font
+    }
+
+    pub(crate) fn set_presentation_c4_line_default_active(&mut self, active: bool) {
+        self.state.presentation_c4_line = active;
+    }
+
+    pub(crate) fn presentation_c4_line_default_active(&self) -> bool {
+        self.state.presentation_c4_line
     }
 
     pub(crate) fn set_wardley_axis_text_authored(&mut self, authored: bool) {

@@ -448,8 +448,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let effective_config = config.as_value();
     // Source and site colors preserve Mermaid's shared markers. Only an active host
     // relationship line default pairs the final line color with colored markers.
-    let themed_markers = merman_core::presentation_defaults_active_internal(config)
-        && config.get_str("c4.relationship_line_color").is_some();
+    let themed_markers = merman_core::presentation_c4_line_default_active_internal(config);
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let diagram_margin_x = c4_cfg.diagram_margin_x();

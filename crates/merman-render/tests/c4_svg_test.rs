@@ -224,6 +224,144 @@ fn c4_empty_and_typography_themes_keep_source_relationship_markers_shared() {
 }
 
 #[test]
+fn c4_text_only_host_keeps_site_relationship_markers_shared() {
+    use merman_render::presentation::{HostTheme, Presentation, ThemeRole};
+    let body = "C4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\nBiRel(a, b, \"Calls\", \"HTTPS\")\n";
+    for prefix in ["", "---\nconfig: {theme: base}\n---\n"] {
+        for source_owned in [false, true] {
+            let source = if source_owned {
+                format!(
+                    "{prefix}{body}UpdateRelStyle(a, b, $textColor=\"red\", $lineColor=\"green\")\n"
+                )
+            } else {
+                format!("{prefix}{body}")
+            };
+            let theme = HostTheme::new()
+                .try_with_role(ThemeRole::Text, "#123456")
+                .unwrap();
+            let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+                serde_json::json!({"c4": {"relationship_line_color": "blue"}}),
+            ));
+            let parsed = Presentation::new()
+                .with_theme(theme)
+                .resolve()
+                .materialize_engine(engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let rendered =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_c4_shared_relationship_markers(&document);
+            let line = document
+                .descendants()
+                .find(|node| node.has_tag_name("line"))
+                .unwrap();
+            assert_eq!(
+                line.attribute("stroke"),
+                Some(if source_owned { "green" } else { "blue" })
+            );
+            for label in ["Calls", "[HTTPS]"] {
+                let text = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && svg_text_content(*node) == label)
+                    .unwrap();
+                assert_eq!(
+                    text.attribute("fill"),
+                    Some(if source_owned { "red" } else { "#123456" })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn c4_host_line_provenance_follows_engine_materialization_lifecycle() {
+    use merman_render::presentation::{HostTheme, Presentation, ThemeRole};
+    let line_presentation = Presentation::new()
+        .with_theme(
+            HostTheme::new()
+                .try_with_role(ThemeRole::Border, "#123456")
+                .unwrap(),
+        )
+        .resolve();
+    let text_presentation = Presentation::new()
+        .with_theme(
+            HostTheme::new()
+                .try_with_role(ThemeRole::Text, "#654321")
+                .unwrap(),
+        )
+        .resolve();
+    let site = merman_core::MermaidConfig::from_value(
+        serde_json::json!({"c4": {"relationship_line_color": "blue"}}),
+    );
+    let engine = Engine::new().with_site_config(site.clone());
+    for (engine, host_line, expected_line) in [
+        (
+            text_presentation
+                .materialize_engine(line_presentation.materialize_engine(engine.clone())),
+            false,
+            "blue",
+        ),
+        (
+            line_presentation
+                .materialize_engine(text_presentation.materialize_engine(engine.clone())),
+            true,
+            "blue",
+        ),
+        (
+            line_presentation
+                .materialize_engine(engine.clone())
+                .with_exact_site_config(Some(site)),
+            false,
+            "blue",
+        ),
+        (
+            line_presentation
+                .materialize_engine(engine)
+                .with_exact_site_config(None),
+            false,
+            "#444444",
+        ),
+    ] {
+        for prefix in ["", "---\nconfig: {theme: base}\n---\n"] {
+            let source = format!(
+                "{prefix}C4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\nBiRel(a, b, \"Calls\")\n"
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let rendered =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let line = document
+                .descendants()
+                .find(|node| node.has_tag_name("line"))
+                .unwrap();
+            assert_eq!(line.attribute("stroke"), Some(expected_line));
+            if host_line {
+                assert!(
+                    line.attribute("marker-end")
+                        .unwrap()
+                        .ends_with("-arrowhead-0)")
+                );
+            } else {
+                assert_c4_shared_relationship_markers(&document);
+            }
+        }
+    }
+}
+
+#[test]
 fn c4_requested_host_line_paint_keeps_source_color_precedence() {
     use merman_render::presentation::{HostTheme, Presentation, ThemeRole};
     let source = "C4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\nBiRel(a, b, \"Calls\", \"HTTPS\")\nUpdateRelStyle(a, b, $textColor=\"red\", $lineColor=\"blue\")\n";
