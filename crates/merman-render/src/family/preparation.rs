@@ -543,7 +543,7 @@ fn prepare_c4_family(
         meta.title.as_deref().or(model.title.as_deref()),
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::c4::C4TypographyThemePlan::resolve(
+    let mut typography_theme = crate::c4::C4TypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         meta.title.as_deref().or(model.title.as_deref()),
@@ -564,7 +564,12 @@ fn prepare_c4_family(
         execution.container_height,
         execution.screen_available_width,
     )?;
-    text_paint.bind_source_terminal_paint(&model, &layout, &typography_theme)?;
+    text_paint.bind_source_terminal_paint(
+        &model,
+        &layout,
+        &mut typography_theme,
+        &meta.effective_config,
+    )?;
     Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
         pair: FamilyPair::new(model, layout),
         cluster_theme,

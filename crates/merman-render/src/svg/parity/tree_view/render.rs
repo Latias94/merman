@@ -87,21 +87,20 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         out.checkpoint()?;
     }
     out.push_str("<style>");
-    let icon_count = layout
-        .nodes
-        .iter()
-        .filter(|node| node.resolved_icon.is_some())
-        .count();
     // Icons are emitted inline for each resolved node, matching Mermaid's
     // node-local DOM and keeping custom icon rendering scoped to that node.
-    let emitted_icon_count = icon_count;
-    let mut tree_view_receipt =
-        theme.begin_terminal_receipt(layout.nodes.len(), emitted_icon_count);
+    let mut tree_view_receipt = theme.begin_terminal_receipt(layout.nodes.len(), || {
+        layout
+            .nodes
+            .iter()
+            .filter(|node| node.resolved_icon.is_some())
+            .count()
+    });
     push_tree_view_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
         theme,
-        &mut tree_view_receipt,
+        tree_view_receipt.as_mut(),
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
@@ -134,7 +133,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
                 &node_context,
                 &mut width_before_highlight,
                 theme,
-                &mut tree_view_receipt,
+                tree_view_receipt.as_mut(),
             )?;
             next_node += 1;
         }
@@ -161,7 +160,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             );
         }
         out.checkpoint()?;
-        tree_view_receipt.record_line(theme.line_color_css(), emitted_stroke_width_token);
+        if let Some(receipt) = &mut tree_view_receipt {
+            receipt.record_line(theme.line_color_css(), emitted_stroke_width_token);
+        }
     }
     for node in layout.nodes.iter().skip(next_node) {
         push_tree_view_node(
@@ -170,13 +171,15 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             &node_context,
             &mut width_before_highlight,
             theme,
-            &mut tree_view_receipt,
+            tree_view_receipt.as_mut(),
         )?;
     }
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
     let rooted = root_document.complete(out.finish()?)?;
-    let _ = theme.record_terminal(tree_view_receipt);
+    if let Some(receipt) = tree_view_receipt {
+        let _ = theme.record_terminal(receipt);
+    }
     Ok(rooted)
 }
 
@@ -186,7 +189,7 @@ fn push_tree_view_node(
     context: &TreeViewNodeRenderContext<'_, '_>,
     width_before_highlight: &mut f64,
     theme: &TreeViewThemePlan,
-    tree_view_receipt: &mut TreeViewThemeReceipt,
+    mut tree_view_receipt: Option<&mut TreeViewThemeReceipt>,
 ) -> Result<()> {
     out.push_str("<g>");
     let label_classes = tree_view_label_classes(node);
@@ -221,7 +224,9 @@ fn push_tree_view_node(
             fmt(node.y + context.layout.padding_y),
             icon_svg
         );
-        tree_view_receipt.record_icon(theme.icon_color_css(), current_color_use);
+        if let Some(receipt) = tree_view_receipt.as_deref_mut() {
+            receipt.record_icon(theme.icon_color_css(), current_color_use);
+        }
     }
     let _ = write!(
         out,
@@ -231,7 +236,9 @@ fn push_tree_view_node(
         fmt(node.label_y),
         escape_xml_display(&node.name)
     );
-    tree_view_receipt.record_label(theme.label_color_css());
+    if let Some(receipt) = tree_view_receipt {
+        receipt.record_label(theme.label_color_css());
+    }
     if let (Some(description), Some(description_x)) =
         (node.description.as_deref(), node.description_x)
     {
@@ -251,7 +258,7 @@ fn push_tree_view_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
     theme_plan: &TreeViewThemePlan,
-    receipt: &mut TreeViewThemeReceipt,
+    receipt: Option<&mut TreeViewThemeReceipt>,
 ) -> Result<()> {
     let theme = theme_plan.css();
     let font_family = &theme.font_family;
@@ -275,7 +282,9 @@ fn push_tree_view_css(
         theme.highlight_bg,
         theme.highlight_stroke
     );
-    receipt.record_css(font_family, label_color, line_color, icon_color);
+    if let Some(receipt) = receipt {
+        receipt.record_css(font_family, label_color, line_color, icon_color);
+    }
     out.checkpoint()
 }
 

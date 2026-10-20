@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
 use merman_core::diagrams::tree_view::{
@@ -29,7 +30,7 @@ pub(crate) use css_binding::TreeViewCssBinding;
 pub(crate) struct TreeViewThemePlan {
     css: TreeViewCssBinding,
     line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
-    expected_line_count: usize,
+    expected_line_count: Option<NonZeroUsize>,
     has_visible_typography: bool,
     label_color: Option<TreeViewPaintAssignment>,
     line_color: Option<TreeViewPaintAssignment>,
@@ -187,7 +188,6 @@ impl TreeViewThemePlan {
         model: &TreeViewDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let mut css = TreeViewCssBinding::with_font_family(
@@ -196,12 +196,13 @@ impl TreeViewThemePlan {
         );
         let Some(theme) = theme else {
             return Ok(Self::baseline_with_css(
-                expected_line_count,
+                None,
                 css,
                 inherited_font_stack,
-                node_count != 0,
+                false,
             ));
         };
+        let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -492,7 +493,7 @@ impl TreeViewThemePlan {
         Ok(Self {
             css,
             line_thickness_override,
-            expected_line_count,
+            expected_line_count: NonZeroUsize::new(expected_line_count),
             has_visible_typography: node_count != 0,
             label_color,
             line_color,
@@ -508,7 +509,7 @@ impl TreeViewThemePlan {
     #[cfg(test)]
     pub(crate) fn baseline(expected_line_count: usize) -> Self {
         Self::baseline_with_css(
-            expected_line_count,
+            NonZeroUsize::new(expected_line_count),
             TreeViewCssBinding::from_config(&serde_json::Value::Null),
             InheritedFontStackPlan::resolve_property_local(
                 None,
@@ -519,7 +520,7 @@ impl TreeViewThemePlan {
     }
 
     fn baseline_with_css(
-        expected_line_count: usize,
+        expected_line_count: Option<NonZeroUsize>,
         css: TreeViewCssBinding,
         inherited_font_stack: InheritedFontStackPlan,
         has_visible_typography: bool,
@@ -648,9 +649,10 @@ impl TreeViewThemePlan {
     pub(crate) fn begin_terminal_receipt(
         &self,
         label_count: usize,
-        icon_count: usize,
-    ) -> TreeViewThemeReceipt {
-        TreeViewThemeReceipt::new(
+        count_icons: impl FnOnce() -> usize,
+    ) -> Option<TreeViewThemeReceipt> {
+        let expected_line_count = self.expected_line_count?;
+        Some(TreeViewThemeReceipt::new(
             self.label_color
                 .as_ref()
                 .map(|assignment| assignment.paint.css()),
@@ -660,12 +662,12 @@ impl TreeViewThemePlan {
             self.typed_icon_color_css(),
             self.inherited_font_stack.font_family_css(),
             label_count,
-            icon_count,
-            self.expected_line_count,
+            count_icons(),
+            expected_line_count.get(),
             self.line_thickness_override
                 .as_ref()
                 .map(|width| width.token.as_ref()),
-        )
+        ))
     }
 }
 
@@ -855,7 +857,7 @@ impl TreeViewThemeReceipt {
             && self.icons_seen == self.expected_icon_count
             && self.lines_seen == self.expected_line_count
             && self.terminal_matches
-            && plan.expected_line_count == self.expected_line_count
+            && plan.expected_line_count.map(NonZeroUsize::get) == Some(self.expected_line_count)
     }
 
     fn label_color_matches(&self, expected: &str) -> bool {
@@ -923,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn no_recipe_binds_config_before_layout_and_receipt() {
+    fn no_recipe_binds_config_without_requesting_terminal_proof() {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "treeView": {"lineThickness": 3},
             "themeVariables": {
@@ -938,14 +940,29 @@ mod tests {
         assert_eq!(plan.css().label_font_size, 22.0);
         assert_eq!(plan.css().line_thickness, 3.0);
         assert_eq!(plan.line_color_css(), "var(--line)");
-        let mut receipt = plan.begin_terminal_receipt(1, 0);
-        receipt.record_css(
-            &plan.css().font_family,
-            plan.label_color_css(),
-            plan.line_color_css(),
-            plan.icon_color_css(),
+        assert!(
+            plan.begin_terminal_receipt(1, || panic!("unrequested icon count"))
+                .is_none()
         );
-        assert!(receipt.css_matches);
+    }
+
+    #[test]
+    fn requested_recipes_keep_terminal_proof_without_a_typed_override() {
+        let empty = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile empty TreeView recipe")
+            .resolve(DiagramFamilyId::TREE_VIEW);
+        let unsupported = resolved_fill(ThemeTarget::Node);
+        for theme in [&empty, &unsupported] {
+            let plan = TreeViewThemePlan::resolve(
+                Some(theme),
+                &merman_core::MermaidConfig::empty_object(),
+                &TreeViewDiagramRenderModel::default(),
+                &work_meter(),
+            )
+            .expect("bind requested TreeView recipe");
+            assert!(plan.begin_terminal_receipt(1, || 0).is_some());
+        }
     }
 
     #[test]

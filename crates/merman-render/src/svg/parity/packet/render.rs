@@ -14,10 +14,10 @@ fn write_packet_css(
     let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
     let label_role = crate::packet::PacketTextRole::Label;
     let title_role = crate::packet::PacketTextRole::Title;
-    let start_byte_fill = style.start_byte_color.as_str();
-    let end_byte_fill = style.end_byte_color.as_str();
-    let label_fill = style.label_color.as_str();
-    let title_fill = style.title_color.as_str();
+    let start_byte_fill = style.start_byte_color.as_ref();
+    let end_byte_fill = style.end_byte_color.as_ref();
+    let label_fill = style.label_color.as_ref();
+    let title_fill = style.title_color.as_ref();
     write_mermaid_default_base_css_prefix(out, &id, font)?;
     let _ = write!(
         out,
