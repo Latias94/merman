@@ -20,7 +20,7 @@ from native_memory import MEMORY_SCALES, MemoryContractError, validate_response
 from run_native_memory import load_owner_contract, memory_recipe
 
 
-CORPUS_PATH = ROOT / "tools/bench/parse_memory_corpus.json"
+CORPUS_PATH = ROOT / "tools/bench/corpus.json"
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
@@ -79,22 +79,28 @@ class ParseMemoryContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.corpus = load_corpus(CORPUS_PATH)
+        cls.parser_lanes = tuple(
+            lane for lane in cls.corpus.lanes if lane.id.startswith("parser-")
+        )
         cls.contracts = {
             lane.id: load_owner_contract(ROOT / lane.evidence_contract, lane=lane)
-            for lane in cls.corpus.lanes
+            for lane in cls.parser_lanes
         }
 
-    def test_nine_generated_routes_use_the_existing_allocator_driver(self):
+    def test_main_corpus_registers_all_nine_generated_allocator_routes(self):
         self.assertEqual(
-            {lane.id for lane in self.corpus.lanes},
+            {lane.id for lane in self.parser_lanes},
             {
                 f"parser-{family}-{route}-memory"
                 for family in ("flowchart", "sequence", "state")
                 for route in ("typed", "json", "snapshot")
             },
         )
-        self.assertFalse(self.corpus.fixtures)
-        for lane in self.corpus.lanes:
+        self.assertTrue(self.corpus.fixtures)
+        self.assertTrue(
+            any(lane.transport == "native-criterion" for lane in self.corpus.lanes)
+        )
+        for lane in self.parser_lanes:
             with self.subTest(lane=lane.id):
                 contract = self.contracts[lane.id]
                 recipe = memory_recipe(ROOT, target_dir=ROOT / "target", toolchain=None, corpus=CORPUS_PATH, contract=contract)
@@ -110,7 +116,7 @@ class ParseMemoryContractTests(unittest.TestCase):
                 self.assertIs(contract["candidate_admission"], False)
 
     def test_probe_inputs_and_verified_projection_digests_match(self):
-        for lane in self.corpus.lanes:
+        for lane in self.parser_lanes:
             with self.subTest(lane=lane.id):
                 contract = self.contracts[lane.id]
                 for item in contract["probe"]["inputs"]:
@@ -121,7 +127,7 @@ class ParseMemoryContractTests(unittest.TestCase):
                 self.assertEqual(semantic["zero_output_sha256"], EMPTY_SHA256)
 
     def test_operation_and_zero_accept_all_registered_family_routes(self):
-        for lane in self.corpus.lanes:
+        for lane in self.parser_lanes:
             contract = self.contracts[lane.id]
             for mode in ("operation", "zero"):
                 with self.subTest(lane=lane.id, mode=mode):
@@ -134,7 +140,7 @@ class ParseMemoryContractTests(unittest.TestCase):
             "editor_facts_complete", "editor_symbols_match", "editor_spans_match_source",
             "result_alive_at_checkpoint", "recovery_characterized",
         )
-        for lane in self.corpus.lanes:
+        for lane in self.parser_lanes:
             if not lane.id.endswith("-snapshot-memory"):
                 continue
             contract = self.contracts[lane.id]

@@ -51,8 +51,8 @@ that claim.
 
 ### Parser allocation and embedding observations
 
-`parse_memory` reuses the native system-allocator probe protocol and driver. Its independent
-`tools/bench/parse_memory_corpus.json` registers typed, known-type JSON and requested snapshot
+`parse_memory` reuses the native system-allocator probe protocol and driver. The shared
+`tools/bench/corpus.json` registers typed, known-type JSON and requested snapshot
 routes for generated Flowchart, Sequence and State chains at scales 1, 2, 4, 10, 32 and 100.
 Input/engine setup and warmup precede measurement; each measured result stays alive through the
 allocation, retained and peak checkpoints, then drops before the final live-byte checkpoint.
@@ -61,7 +61,7 @@ mode enters no parser. These infrastructure contracts do not admit a performance
 
 ```console
 cargo bench --locked -p merman --no-default-features --features all-diagrams --bench parse_memory --no-run -j 1
-python tools/bench/run_native_memory.py --corpus tools/bench/parse_memory_corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
+python tools/bench/run_native_memory.py --corpus tools/bench/corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
 ```
 
 Use the same committed probe and generated input policy on adjacent revisions for removed-work
