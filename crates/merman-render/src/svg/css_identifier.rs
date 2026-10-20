@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Write;
 
 /// Escapes one identifier for use in a CSS selector embedded in SVG XML text.
@@ -6,61 +7,105 @@ use std::fmt::Write;
 /// text metacharacters. The latter keeps the serialized stylesheet well-formed without changing
 /// the identifier CSS resolves after parsing. This boundary is only for CSS identifiers; XML
 /// attributes and CSS `url(#fragment)` values use their own escaping paths.
-pub(crate) fn escape_css_identifier(identifier: &str) -> String {
+///
+/// Borrows the identifier when serialization preserves its spelling.
+pub(crate) fn escape_css_identifier(identifier: &str) -> Cow<'_, str> {
     let first = identifier.chars().next();
-    let mut escaped = String::with_capacity(identifier.len());
+    let mut escaped: Option<String> = None;
 
-    for (index, character) in identifier.chars().enumerate() {
-        if character == '\0' {
-            escaped.push('\u{fffd}');
-            continue;
-        }
-
+    for (index, (byte_index, character)) in identifier.char_indices().enumerate() {
         let code_point = character as u32;
+        let is_null = character == '\0';
         let is_control = code_point <= 0x1f || code_point == 0x7f;
         let is_leading_digit =
             character.is_ascii_digit() && (index == 0 || (index == 1 && first == Some('-')));
         let is_xml_text_metacharacter = matches!(character, '&' | '<' | '>');
-        if is_control || is_leading_digit || is_xml_text_metacharacter {
-            write!(&mut escaped, "\\{code_point:x} ")
-                .expect("writing a CSS identifier escape to String cannot fail");
+        let is_hex_escape = is_control || is_leading_digit || is_xml_text_metacharacter;
+        let is_single_hyphen = index == 0 && character == '-' && identifier == "-";
+        let is_literal = character.is_ascii_alphanumeric()
+            || character == '-'
+            || character == '_'
+            || !character.is_ascii();
+
+        if !is_null && !is_hex_escape && !is_single_hyphen && is_literal {
+            if let Some(escaped) = &mut escaped {
+                escaped.push(character);
+            }
             continue;
         }
 
-        if index == 0 && character == '-' && identifier == "-" {
+        let escaped = escaped.get_or_insert_with(|| {
+            let mut escaped = String::with_capacity(identifier.len());
+            escaped.push_str(&identifier[..byte_index]);
+            escaped
+        });
+        if is_null {
+            escaped.push('\u{fffd}');
+        } else if is_hex_escape {
+            write!(escaped, "\\{code_point:x} ")
+                .expect("writing a CSS identifier escape to String cannot fail");
+        } else if is_single_hyphen {
             escaped.push_str("\\-");
-        } else if character.is_ascii_alphanumeric()
-            || character == '-'
-            || character == '_'
-            || !character.is_ascii()
-        {
-            escaped.push(character);
         } else {
             escaped.push('\\');
             escaped.push(character);
         }
     }
 
-    escaped
+    match escaped {
+        Some(escaped) => Cow::Owned(escaped),
+        None => Cow::Borrowed(identifier),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::escape_css_identifier;
+    use std::borrow::Cow;
 
     #[test]
     fn css_identifier_escape_handles_selector_and_xml_boundaries() {
-        assert_eq!(escape_css_identifier("seq:prod"), r"seq\:prod");
-        assert_eq!(escape_css_identifier("1diagram"), r"\31 diagram");
-        assert_eq!(escape_css_identifier("-1diagram"), r"-\31 diagram");
-        assert_eq!(escape_css_identifier("-"), r"\-");
-        assert_eq!(escape_css_identifier("a<b&c>d"), r"a\3c b\26 c\3e d");
-        assert_eq!(escape_css_identifier("diagram\0id"), "diagram\u{fffd}id");
-        assert_eq!(escape_css_identifier("主题"), "主题");
+        for (identifier, expected) in [
+            ("seq:prod", r"seq\:prod"),
+            ("1diagram", r"\31 diagram"),
+            ("-1diagram", r"-\31 diagram"),
+            ("-", r"\-"),
+            ("a<b&c>d", r"a\3c b\26 c\3e d"),
+            ("diagram\0id", "diagram\u{fffd}id"),
+            ("主题:prod", r"主题\:prod"),
+            (
+                "a\0\u{1}\u{1f}\u{7f}<&>",
+                "a\u{fffd}\\1 \\1f \\7f \\3c \\26 \\3e ",
+            ),
+            ("a b\\c", r"a\ b\\c"),
+        ] {
+            let escaped = escape_css_identifier(identifier);
+            assert_eq!(escaped, expected, "identifier: {identifier:?}");
+            assert!(
+                matches!(escaped, Cow::Owned(_)),
+                "identifier: {identifier:?}"
+            );
+        }
     }
 
     #[test]
     fn css_identifier_escape_preserves_the_existing_safe_id_spelling() {
-        assert_eq!(escape_css_identifier("diagram-1_name"), "diagram-1_name");
+        for identifier in [
+            "diagram-1_name",
+            "",
+            "_1--主题",
+            "--1",
+            "é1",
+            "\u{85}",
+            "主题",
+            "e\u{301}_💡\u{200f}",
+        ] {
+            let escaped = escape_css_identifier(identifier);
+            assert_eq!(escaped, identifier);
+            assert!(
+                matches!(escaped, Cow::Borrowed(_)),
+                "identifier: {identifier:?}"
+            );
+        }
     }
 }

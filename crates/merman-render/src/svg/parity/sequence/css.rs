@@ -376,7 +376,7 @@ mod tests {
         let mut out = String::new();
         write_sequence_css(
             &mut out,
-            crate::svg::escape_css_identifier(id).as_str(),
+            crate::svg::escape_css_identifier(id).as_ref(),
             &binding,
         )
         .unwrap();
@@ -722,7 +722,7 @@ mod tests {
         );
         write_sequence_css(
             &mut css,
-            crate::svg::escape_css_identifier("seq:prod").as_str(),
+            crate::svg::escape_css_identifier("seq:prod").as_ref(),
             &binding,
         )
         .expect("write Sequence number CSS");
