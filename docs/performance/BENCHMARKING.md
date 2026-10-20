@@ -654,6 +654,16 @@ launches one fresh process for every operation or matched zero-work sample. The 
 before the allocator snapshot, so `fresh-process` describes sample isolation while `reused-engine`
 describes the measured public operation. This executable is never used for latency evidence.
 
+For lanes with identical Cargo recipes, preflight them together and build once; each still receives
+its own full report and fresh subprocess schedule, and must be frozen separately:
+
+```console
+python tools/bench/run_native_memory.py --lanes parser-sequence-typed-memory parser-state-typed-memory --json-out-dir target/bench/parser-memory
+```
+
+Batch execution retains the actual shared Cargo build receipt and rejects source, build-environment,
+tool-version, recipe, or executable changes before reuse. It cannot use `--contract` or `--executable`.
+
 The registered contract fixes six scales (`1, 2, 4, 10, 32, 100`), one seed across the matrix, at
 least five repeats, and alternating operation/zero order. Strict one-line JSON records executable and
 invocation identity, generated node/edge counts, deterministic SVG identity and dimensions,

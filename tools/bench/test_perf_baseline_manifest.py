@@ -604,17 +604,6 @@ class PerfBaselineManifestTest(unittest.TestCase):
             smoke=False, dry_run=False,
         )
 
-        def probe(_executable, request, *, executable_sha256, **_kwargs):
-            response = self._response(
-                scale=request["scale"], repeat=request["repeat"],
-                mode=request["mode"],
-                pair_index=(MEMORY_SCALES.index(request["scale"]) * 5
-                            + request["repeat"]),
-                executable_sha256=executable_sha256,
-            )
-            response.update({field: request[field] for field in ("invocation_id", "nonce")})
-            return response
-
         with (
             mock.patch.object(run_native_memory, "_git_provenance", return_value=source),
             mock.patch.object(
@@ -625,7 +614,7 @@ class PerfBaselineManifestTest(unittest.TestCase):
                 run_native_memory, "discover_executable",
                 return_value=(executable, provenance),
             ),
-            mock.patch.object(run_native_memory, "run_probe", side_effect=probe) as run_probe,
+            mock.patch.object(run_native_memory, "run_probe", side_effect=self._current_driver_probe) as run_probe,
         ):
             report, exit_code = run_native_memory.execute(args)
         self.assertEqual(exit_code, 0, report["contract_errors"])
@@ -636,6 +625,65 @@ class PerfBaselineManifestTest(unittest.TestCase):
             architecture=environment["machine"],
         )
         self._write_json(self.report_path, report)
+
+    def _current_driver_probe(self, _executable, request, *, executable_sha256, **_kwargs):
+        response = self._response(
+            scale=request["scale"], repeat=request["repeat"], mode=request["mode"],
+            pair_index=(MEMORY_SCALES.index(request["scale"]) * 5 + request["repeat"]),
+            executable_sha256=executable_sha256,
+        )
+        response.update({field: request[field] for field in ("lane_id", "invocation_id", "nonce")})
+        return response
+
+    def test_freeze_and_verify_accept_each_report_from_one_actual_batch_build(self) -> None:
+        self._configure_schema_v2_memory_fixture()
+        self._use_current_driver_report()
+        original = baseline.load_strict_json(self.report_path)
+        second_lane = copy.deepcopy(self._memory_lane())
+        second_lane["id"] = "second-memory-lane"
+        second_lane["selector"] = "memory/second/{fixture}"
+        second_lane["evidence_contract"] = "contracts/second.json"
+        second_contract = {**self.owner_contract, "lane_id": second_lane["id"]}
+        self._write_json(self.root / "contracts" / "second.json", second_contract)
+        self.corpus["lanes"].append(second_lane)
+        self._write_json(self.corpus_path, self.corpus)
+        artifact = json.dumps({
+            "reason": "compiler-artifact",
+            "target": {"name": "schema_v2", "kind": ["bench"]},
+            "executable": str(self.executable),
+        })
+        output = self.root / "target" / "batch"
+        with (
+            mock.patch.object(run_native_memory, "_git_provenance", return_value=original["source"]),
+            mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value=self.host["cpu"]),
+            mock.patch.object(
+                run_native_memory, "_tool_output",
+                side_effect=lambda command, **_kwargs: self.host[command[-2]],
+            ),
+            mock.patch.object(
+                run_native_memory.subprocess, "run", side_effect=[
+                    subprocess.CompletedProcess([], 0, stdout="removed", stderr=""),
+                    subprocess.CompletedProcess([], 0, stdout=artifact, stderr=""),
+                ],
+            ) as cargo,
+            mock.patch.object(run_native_memory, "run_probe", side_effect=self._current_driver_probe) as probe,
+        ):
+            result = run_native_memory.main([
+                "--repo-root", str(self.root), "--lanes", self._memory_lane()["id"],
+                second_lane["id"], "--json-out-dir", str(output), "--seed", "101",
+            ])
+        self.assertEqual(result, 0)
+        self.assertEqual(cargo.call_count, 2)
+        self.assertEqual(probe.call_count, 120)
+        built = []
+        for lane_id in (self._memory_lane()["id"], second_lane["id"]):
+            self.report_path = output / f"{lane_id}.json"
+            report = baseline.load_strict_json(self.report_path)
+            built.append(report["executable"]["build"])
+            manifest = self.freeze()
+            baseline.verify_baseline(self.root, self.write_manifest(manifest), git_probe=self.git)
+        self.assertEqual(built[0], built[1])
+        self.assertNotIn("skipped", built[0])
 
     def test_freeze_and_verify_accept_current_driver_report(self) -> None:
         for schema_version in (1, 2):
