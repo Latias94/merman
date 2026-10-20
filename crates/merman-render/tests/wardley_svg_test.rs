@@ -280,3 +280,134 @@ component API [0.6, 0.7]
     assert!(svg.contains(">Frontmatter map</text>"));
     assert!(svg.contains(r#"class="wardley-title""#));
 }
+
+fn render_presented_wardley(
+    source: &str,
+    theme: merman_render::presentation::HostTheme,
+    site: Value,
+) -> String {
+    let presentation = merman_render::presentation::Presentation::new()
+        .with_theme(theme)
+        .resolve();
+    let engine = presentation
+        .materialize_engine(Engine::new().with_site_config(MermaidConfig::from_value(site)));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+#[test]
+fn wardley_host_presets_reach_anchors_and_independent_annotation_pairs() {
+    use merman_render::presentation::{HostTheme, HostThemePreset, ThemeRole};
+    let source = "wardley-beta\ntitle Map\nanchor Customer [0.9, 0.8]\ncomponent API [0.6, 0.5]\nCustomer -> API; calls\nevolve API 0.8\nannotations [0.1, 0.2]\nannotation 1,[0.6, 0.5] \"User touchpoint\"\n";
+    for preset in HostThemePreset::ALL {
+        let theme = HostTheme::from_preset(preset);
+        let text = theme.role(ThemeRole::Text).unwrap().to_owned();
+        let canvas = theme.role(ThemeRole::Canvas).unwrap().to_owned();
+        let source = format!(
+            "{source}accelerator \"Cloud Native\" [0.2, 0.85]\ndeaccelerator \"Legacy Data\" [0.45, 0.35]\n"
+        );
+        let svg = render_presented_wardley(&source, theme, serde_json::json!({}));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for class in [
+            "wardley-title",
+            "wardley-axis-label",
+            "wardley-stage-label",
+            "wardley-link-label",
+            "wardley-node-label",
+        ] {
+            for node in document
+                .descendants()
+                .filter(|node| node.has_tag_name("text") && has_class(*node, class))
+            {
+                assert_eq!(
+                    node.attribute("fill"),
+                    Some(text.as_str()),
+                    "{} {class}",
+                    preset.id()
+                );
+            }
+        }
+        for class in ["wardley-accelerators", "wardley-deaccelerators"] {
+            let arrow = element_with_class(&document, "g", class);
+            assert_eq!(
+                arrow
+                    .children()
+                    .find(|node| node.has_tag_name("path"))
+                    .unwrap()
+                    .attribute("fill"),
+                Some(canvas.as_str())
+            );
+            assert_eq!(
+                arrow
+                    .children()
+                    .find(|node| node.has_tag_name("text"))
+                    .unwrap()
+                    .attribute("fill"),
+                Some(text.as_str())
+            );
+        }
+        let annotation = element_with_class(&document, "g", "wardley-annotation");
+        assert_eq!(
+            annotation
+                .children()
+                .find(|node| node.has_tag_name("circle"))
+                .unwrap()
+                .attribute("fill"),
+            Some("white")
+        );
+        assert_eq!(
+            annotation
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("fill"),
+            Some("#222")
+        );
+    }
+}
+
+#[test]
+fn wardley_host_preserves_explicit_anchor_annotation_and_evolution_colors() {
+    use merman_render::presentation::{HostTheme, HostThemePreset};
+    let svg = render_presented_wardley(
+        "wardley-beta\nanchor Customer [0.9, 0.8]\ncomponent API [0.6, 0.5]\nevolve API 0.8\nannotations [0.1, 0.2]\nannotation 1,[0.6, 0.5] \"User touchpoint\"\n",
+        HostTheme::from_preset(HostThemePreset::EditorDark),
+        serde_json::json!({"themeVariables":{"wardley":{"anchorLabelColor":"#123456", "axisTextColor":"#234567", "evolutionStroke":"#345678"}}}),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let anchor = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Customer"))
+        .unwrap();
+    assert_eq!(anchor.attribute("fill"), Some("#123456"));
+    assert_eq!(
+        element_with_class(&document, "line", "wardley-trend").attribute("stroke"),
+        Some("#345678")
+    );
+    let annotation = element_with_class(&document, "g", "wardley-annotation");
+    assert_eq!(
+        annotation
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap()
+            .attribute("fill"),
+        Some("white")
+    );
+    assert_eq!(
+        annotation
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("fill"),
+        Some("#234567")
+    );
+}

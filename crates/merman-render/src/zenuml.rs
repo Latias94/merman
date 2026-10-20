@@ -1,5 +1,7 @@
 //! Headless ZenUML geometry derived from the selected ZenUML Core SVG pipeline.
 
+mod theme;
+
 use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
@@ -8,7 +10,12 @@ use merman_core::diagrams::zenuml::{
     ZenumlStatementKind,
 };
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+pub(crate) use theme::ZenumlSourceStyle;
+
+pub(crate) const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";
 
 const MARGIN: f64 = 20.0;
 const MIN_PARTICIPANT_WIDTH: f64 = 80.0;
@@ -46,6 +53,118 @@ const SVG_CONTENT_BOTTOM_SPACE: f64 = 13.0;
 const RETURN_BOTTOM_SPACE: f64 = 46.0;
 const MESSAGE_LABEL_PADDING: f64 = 10.0;
 const DEFAULT_STARTER: &str = "_STARTER_";
+
+pub(crate) fn resolve_zenuml_title<'a>(
+    model: &'a ZenumlDiagramRenderModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .filter(|title| !title.is_empty())
+        .or_else(|| diagram_title.filter(|title| !title.is_empty()))
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ZenumlTypography {
+    font_family: Option<String>,
+    font_size: Option<f64>,
+}
+
+impl ZenumlTypography {
+    pub(crate) fn from_config(config: &merman_core::MermaidConfig) -> Self {
+        let namespace = crate::config::value_at(config.as_value(), &["themeVariables", "zenuml"]);
+        let host = merman_core::presentation_font_defaults_active_internal(config);
+        let property = |key| {
+            namespace.and_then(|value| value.get(key)).or_else(|| {
+                host.then(|| {
+                    config
+                        .as_value()
+                        .get("themeVariables")
+                        .and_then(|value| value.get(key))
+                })
+                .flatten()
+            })
+        };
+        Self {
+            font_family: property("fontFamily")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            font_size: property("fontSize")
+                .and_then(crate::config::json_f64_css_px)
+                .filter(|size| *size > 0.0),
+        }
+    }
+
+    pub(crate) fn vertical_scale(&self) -> f64 {
+        self.font_size.map_or(1.0, |size| size / 16.0)
+    }
+
+    pub(crate) fn size(&self, source_size: f64) -> f64 {
+        source_size * self.vertical_scale()
+    }
+
+    pub(crate) fn css_family(&self) -> Cow<'_, str> {
+        self.font_family.as_deref().map_or_else(
+            || Cow::Borrowed("Helvetica,Verdana,serif"),
+            |font_family| Cow::Owned(crate::config::normalize_css_font_family(font_family)),
+        )
+    }
+
+    fn style(&self, source_size: f64) -> TextStyle {
+        TextStyle {
+            font_family: Some(
+                self.font_family
+                    .clone()
+                    .unwrap_or_else(|| "Helvetica, Verdana, serif".to_string()),
+            ),
+            font_size: self.size(source_size),
+            font_weight: None,
+            font_style: None,
+        }
+    }
+
+    fn message_style(&self) -> TextStyle {
+        // Preserve the companion's 16px geometry/14px paint default. An authored
+        // presentation font instead measures the exact size used by the writer.
+        self.style(if self.font_family.is_some() || self.font_size.is_some() {
+            14.0
+        } else {
+            16.0
+        })
+    }
+
+    fn styled_message<'a>(
+        &self,
+        base: &'a TextStyle,
+        authored: &BTreeMap<String, String>,
+    ) -> Cow<'a, TextStyle> {
+        if (self.font_family.is_some() || self.font_size.is_some())
+            && (authored.contains_key("font-weight") || authored.contains_key("font-style"))
+        {
+            let mut style = base.clone();
+            style.font_weight = authored.get("font-weight").cloned();
+            style.font_style = authored.get("font-style").cloned();
+            Cow::Owned(style)
+        } else {
+            Cow::Borrowed(base)
+        }
+    }
+
+    fn statement_message_style<'a>(
+        &self,
+        base: &'a TextStyle,
+        comment: Option<&str>,
+    ) -> Cow<'a, TextStyle> {
+        if (self.font_family.is_some() || self.font_size.is_some())
+            && let Some(comment) = comment
+        {
+            self.styled_message(base, &parse_comment(comment).message_style)
+        } else {
+            Cow::Borrowed(base)
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,30 +388,13 @@ pub struct ZenumlGroupLayout {
 
 pub(crate) fn layout_zenuml_diagram_typed(
     model: &ZenumlDiagramRenderModel,
+    typography: &ZenumlTypography,
     measurer: &dyn TextMeasurer,
 ) -> Result<ZenumlDiagramLayout> {
-    let participant_style = TextStyle {
-        font_family: Some("Helvetica, Verdana, serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let stereotype_style = TextStyle {
-        font_size: 16.0,
-        ..participant_style.clone()
-    };
-    let message_geometry_style = TextStyle {
-        font_family: participant_style.font_family.clone(),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let fragment_label_style = TextStyle {
-        font_family: participant_style.font_family.clone(),
-        font_size: 14.0,
-        font_weight: None,
-        font_style: None,
-    };
+    let participant_style = typography.style(16.0);
+    let stereotype_style = typography.style(16.0);
+    let message_geometry_style = typography.message_style();
+    let fragment_label_style = typography.style(14.0);
 
     let mut participants = Vec::with_capacity(model.participants.len());
     let mut internal_widths = Vec::with_capacity(model.participants.len());
@@ -307,11 +409,12 @@ pub(crate) fn layout_zenuml_diagram_typed(
             .participant_type
             .as_ref()
             .and_then(|kind| zenuml_participant_icon_key(kind))
-            .map_or(0.0, |_| PARTICIPANT_ICON_ROW_WIDTH);
-        let emoji_width = participant
-            .emoji
-            .as_ref()
-            .map_or(0.0, |_| PARTICIPANT_EMOJI_WIDTH);
+            .map_or(0.0, |_| {
+                PARTICIPANT_ICON_ROW_WIDTH * typography.vertical_scale()
+            });
+        let emoji_width = participant.emoji.as_ref().map_or(0.0, |_| {
+            PARTICIPANT_EMOJI_WIDTH * typography.vertical_scale()
+        });
         let stereotype_width = participant.stereotype.as_ref().map(|stereotype| {
             measurer
                 .measure(&format!("«{stereotype}»"), &stereotype_style)
@@ -325,8 +428,11 @@ pub(crate) fn layout_zenuml_diagram_typed(
                 .participant_type
                 .as_ref()
                 .and_then(|kind| zenuml_participant_icon_key(kind))
-                .map_or(0.0, |_| 40.0)
-            + participant.emoji.as_ref().map_or(0.0, |_| 24.0))
+                .map_or(0.0, |_| 40.0 * typography.vertical_scale())
+            + participant
+                .emoji
+                .as_ref()
+                .map_or(0.0, |_| 24.0 * typography.vertical_scale()))
         .max(MIN_PARTICIPANT_WIDTH)
             + MARGIN;
         internal_widths.push(internal_width);
@@ -355,7 +461,13 @@ pub(crate) fn layout_zenuml_diagram_typed(
         }
         participant.x = x;
     }
-    apply_message_width_constraints(model, &mut participants, measurer, &message_geometry_style);
+    apply_message_width_constraints(
+        model,
+        &mut participants,
+        measurer,
+        typography,
+        &message_geometry_style,
+    );
     let positions: HashMap<String, f64> = participants
         .iter()
         .map(|participant| (participant.name.clone(), participant.x))
@@ -418,20 +530,32 @@ pub(crate) fn layout_zenuml_diagram_typed(
             &positions,
             &participant_half_widths,
             measurer,
+            typography,
             &message_geometry_style,
         ))
     .max(FRAGMENT_MIN_WIDTH);
     for message in &builder.messages {
         let label_width = measurer
-            .measure(&message.label, &message_geometry_style)
+            .measure(
+                &message.label,
+                &typography.styled_message(&message_geometry_style, &message.style),
+            )
             .width;
         content_width = content_width
             .max((message.from_x + message.to_x) / 2.0 + label_width / 2.0 + MESSAGE_LABEL_PADDING);
     }
+    if typography.vertical_scale() != 1.0 {
+        for call in &builder.self_calls {
+            content_width = content_width.max(call.x + 1.0 + 30.0 * typography.vertical_scale());
+        }
+    }
     for creation in &builder.creations {
         let message = &creation.message;
         let label_width = measurer
-            .measure(&message.label, &message_geometry_style)
+            .measure(
+                &message.label,
+                &typography.styled_message(&message_geometry_style, &message.style),
+            )
             .width;
         content_width = content_width
             .max((message.from_x + message.to_x) / 2.0 + label_width / 2.0 + MESSAGE_LABEL_PADDING);
@@ -536,7 +660,7 @@ pub(crate) fn layout_zenuml_diagram_typed(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(ZenumlDiagramLayout {
+    let mut layout = ZenumlDiagramLayout {
         width: content_width,
         height,
         frame_border_left,
@@ -553,14 +677,166 @@ pub(crate) fn layout_zenuml_diagram_typed(
         comments: builder.comments,
         groups,
         bounds,
-    })
+    };
+    // ZenUML's source row and header geometry is proportional to its 16px base
+    // font. Keep horizontal distances measured in the selected font and scale
+    // the vertical reservations together with the writer's text offsets.
+    let scale = typography.vertical_scale();
+    if scale != 1.0 {
+        layout.height *= scale;
+        layout.bounds.min_y *= scale;
+        layout.bounds.max_y *= scale;
+        for participant in &mut layout.participants {
+            participant.y *= scale;
+            participant.height *= scale;
+        }
+        for lifeline in &mut layout.lifelines {
+            lifeline.top_y *= scale;
+            lifeline.bottom_y *= scale;
+        }
+        for message in &mut layout.messages {
+            message.y *= scale;
+        }
+        for call in &mut layout.self_calls {
+            call.y *= scale;
+            call.width *= scale;
+            call.height *= scale;
+        }
+        for creation in &mut layout.creations {
+            creation.message.y *= scale;
+            creation.participant.y *= scale;
+            creation.participant.height *= scale;
+        }
+        for returned in &mut layout.returns {
+            returned.y *= scale;
+        }
+        for occurrence in &mut layout.occurrences {
+            occurrence.y *= scale;
+            occurrence.height *= scale;
+        }
+        for fragment in &mut layout.fragments {
+            fragment.y *= scale;
+            fragment.height *= scale;
+            fragment.header_y *= scale;
+            for section in &mut fragment.sections {
+                section.y *= scale;
+                section.height *= scale;
+            }
+        }
+        for divider in &mut layout.dividers {
+            divider.y *= scale;
+        }
+        for comment in &mut layout.comments {
+            comment.y *= scale;
+        }
+        for group in &mut layout.groups {
+            group.y *= scale;
+            group.height *= scale;
+        }
+    }
+    if !finite_layout_geometry(&layout) {
+        return Err(crate::Error::InvalidModel {
+            message: "zenuml: the selected font produces non-finite layout geometry".to_string(),
+        });
+    }
+    Ok(layout)
+}
+
+fn finite_layout_geometry(layout: &ZenumlDiagramLayout) -> bool {
+    let finite = |values: &[f64]| values.iter().all(|value| value.is_finite());
+    finite(&[
+        layout.width,
+        layout.height,
+        layout.frame_border_left,
+        layout.frame_border_right,
+        layout.bounds.min_x,
+        layout.bounds.min_y,
+        layout.bounds.max_x,
+        layout.bounds.max_y,
+    ]) && layout
+        .participants
+        .iter()
+        .chain(
+            layout
+                .creations
+                .iter()
+                .map(|creation| &creation.participant),
+        )
+        .all(|participant| {
+            finite(&[
+                participant.x,
+                participant.y,
+                participant.width,
+                participant.height,
+                participant.label_width,
+            ]) && participant.stereotype_width.is_none_or(f64::is_finite)
+        })
+        && layout
+            .lifelines
+            .iter()
+            .all(|line| finite(&[line.x, line.top_y, line.bottom_y]))
+        && layout
+            .messages
+            .iter()
+            .chain(layout.creations.iter().map(|creation| &creation.message))
+            .all(|message| finite(&[message.from_x, message.to_x, message.y]))
+        && layout
+            .self_calls
+            .iter()
+            .all(|call| finite(&[call.x, call.y, call.width, call.height]))
+        && layout
+            .returns
+            .iter()
+            .all(|returned| finite(&[returned.from_x, returned.to_x, returned.y]))
+        && layout.occurrences.iter().all(|occurrence| {
+            finite(&[
+                occurrence.x,
+                occurrence.y,
+                occurrence.width,
+                occurrence.height,
+            ])
+        })
+        && layout.fragments.iter().all(|fragment| {
+            finite(&[
+                fragment.x,
+                fragment.y,
+                fragment.width,
+                fragment.height,
+                fragment.header_y,
+            ]) && fragment.label_width.is_none_or(f64::is_finite)
+                && fragment.sections.iter().all(|section| {
+                    finite(&[section.y, section.height])
+                        && [
+                            section.label_width,
+                            section.inner_label_width,
+                            section.keyword_width,
+                            section.detail_width,
+                            section.content_inset_left,
+                        ]
+                        .into_iter()
+                        .all(|value| value.is_none_or(f64::is_finite))
+                })
+        })
+        && layout
+            .dividers
+            .iter()
+            .all(|divider| finite(&[divider.y, divider.width, divider.label_width]))
+        && layout
+            .comments
+            .iter()
+            .all(|comment| finite(&[comment.x, comment.y]))
+        && layout
+            .groups
+            .iter()
+            .all(|group| finite(&[group.x, group.y, group.width, group.height]))
 }
 
 fn apply_message_width_constraints(
     model: &ZenumlDiagramRenderModel,
     participants: &mut [ZenumlParticipantLayout],
     measurer: &dyn TextMeasurer,
-    style: &TextStyle,
+    typography: &ZenumlTypography,
+    message_geometry_style: &TextStyle,
 ) {
     let index: HashMap<String, usize> = participants
         .iter()
@@ -569,7 +845,13 @@ fn apply_message_width_constraints(
         .collect();
     let mut constraints = Vec::new();
     collect_message_constraints(&model.statements, &mut constraints);
-    for (from, to, label) in constraints {
+    for MessageConstraint {
+        from,
+        to,
+        label,
+        comment,
+    } in constraints
+    {
         let (Some(&from_index), Some(&to_index)) = (index.get(from), index.get(to)) else {
             continue;
         };
@@ -581,7 +863,14 @@ fn apply_message_width_constraints(
         } else {
             (to_index, from_index)
         };
-        let required = measurer.measure(label, style).width + ARROW_HEAD_WIDTH + OCCURRENCE_WIDTH;
+        let required = measurer
+            .measure(
+                label,
+                &typography.statement_message_style(message_geometry_style, comment),
+            )
+            .width
+            + ARROW_HEAD_WIDTH
+            + OCCURRENCE_WIDTH;
         let actual = participants[right].x - participants[left].x;
         if required > actual {
             let delta = required - actual;
@@ -592,9 +881,16 @@ fn apply_message_width_constraints(
     }
 }
 
+struct MessageConstraint<'a> {
+    from: &'a str,
+    to: &'a str,
+    label: &'a str,
+    comment: Option<&'a str>,
+}
+
 fn collect_message_constraints<'a>(
     statements: &'a [ZenumlStatement],
-    out: &mut Vec<(&'a str, &'a str, &'a str)>,
+    out: &mut Vec<MessageConstraint<'a>>,
 ) {
     for statement in statements {
         match &statement.kind {
@@ -611,7 +907,12 @@ fn collect_message_constraints<'a>(
                     resolved_from.as_deref(),
                     resolved_to.as_deref(),
                 );
-                out.push((from, to, label));
+                out.push(MessageConstraint {
+                    from,
+                    to,
+                    label,
+                    comment: statement.comment.as_deref(),
+                });
                 collect_message_constraints(body, out);
             }
             ZenumlStatementKind::Creation {
@@ -622,7 +923,12 @@ fn collect_message_constraints<'a>(
                 ..
             } => {
                 let from = resolved_from.as_deref().unwrap_or(DEFAULT_STARTER);
-                out.push((from, resolved_to, label));
+                out.push(MessageConstraint {
+                    from,
+                    to: resolved_to,
+                    label,
+                    comment: statement.comment.as_deref(),
+                });
                 collect_message_constraints(body, out);
             }
             ZenumlStatementKind::Return {
@@ -630,11 +936,12 @@ fn collect_message_constraints<'a>(
                 resolved_to,
                 label,
                 ..
-            } => out.push((
-                resolved_from.as_deref().unwrap_or(DEFAULT_STARTER),
-                resolved_to.as_deref().unwrap_or(DEFAULT_STARTER),
+            } => out.push(MessageConstraint {
+                from: resolved_from.as_deref().unwrap_or(DEFAULT_STARTER),
+                to: resolved_to.as_deref().unwrap_or(DEFAULT_STARTER),
                 label,
-            )),
+                comment: None,
+            }),
             ZenumlStatementKind::Fragment { sections, .. } => {
                 for section in sections {
                     collect_message_constraints(&section.statements, out);
@@ -774,7 +1081,8 @@ fn self_message_extra_width(
     positions: &HashMap<String, f64>,
     half_widths: &HashMap<String, f64>,
     measurer: &dyn TextMeasurer,
-    style: &TextStyle,
+    typography: &ZenumlTypography,
+    message_geometry_style: &TextStyle,
 ) -> f64 {
     let Some((right_name, right_position)) = positions
         .iter()
@@ -787,12 +1095,26 @@ fn self_message_extra_width(
     collect_message_constraints(&model.statements, &mut constraints);
     constraints
         .into_iter()
-        .filter(|(from, to, _)| from == to)
-        .filter_map(|(from, _, label)| {
-            positions.get(from).map(|from_position| {
-                measurer.measure(label, style).width - (right_position - from_position) - right_half
-            })
-        })
+        .filter(|constraint| constraint.from == constraint.to)
+        .filter_map(
+            |MessageConstraint {
+                 from,
+                 label,
+                 comment,
+                 ..
+             }| {
+                positions.get(from).map(|from_position| {
+                    measurer
+                        .measure(
+                            label,
+                            &typography.statement_message_style(message_geometry_style, comment),
+                        )
+                        .width
+                        - (right_position - from_position)
+                        - right_half
+                })
+            },
+        )
         .fold(0.0, f64::max)
 }
 
@@ -2089,6 +2411,88 @@ mod tests {
     use crate::text::DeterministicTextMeasurer;
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
+    #[test]
+    fn presentation_typography_measures_selected_fonts_and_preserves_vertical_clearance() {
+        struct RecordingMeasurer(std::sync::Mutex<Vec<(String, TextStyle)>>);
+
+        impl TextMeasurer for RecordingMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((text.to_string(), style.clone()));
+                DeterministicTextMeasurer::default().measure(text, style)
+            }
+        }
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\n@Actor <<Client>> Alice\nBob\n// First line\n// (bold, italic) Second line\nAlice->Bob: A message wide enough to separate participants\nif(ready) {\n Alice->Bob: Continue\n}\n== Divider ==\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let RenderSemanticModel::Zenuml(model) = parsed.model() else {
+            panic!("expected ZenUML");
+        };
+        for size in [14.0, 18.0, 24.0] {
+            let config = serde_json::json!({"themeVariables": {"zenuml": {"fontFamily": "Inter, sans-serif", "fontSize": format!("{size}px")}}});
+            let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
+            let layout = layout_zenuml_diagram_typed(
+                model,
+                &ZenumlSourceStyle::new(&merman_core::MermaidConfig::from_value(config.clone()))
+                    .typography,
+                &measurer,
+            )
+            .unwrap();
+            let typography =
+                ZenumlSourceStyle::new(&merman_core::MermaidConfig::from_value(config.clone()))
+                    .typography;
+            let measurements = measurer.0.lock().unwrap();
+            assert!(
+                measurements
+                    .iter()
+                    .all(|(_, style)| style.font_family.as_deref() == Some("Inter, sans-serif"))
+            );
+            assert!(
+                measurements
+                    .iter()
+                    .any(|(text, style)| text == "Alice" && style.font_size == size)
+            );
+            assert!(
+                measurements
+                    .iter()
+                    .any(|(text, style)| text == "«Client»" && style.font_size == size),
+                "stereotype measurement must preserve the full Unicode label"
+            );
+            assert!(
+                measurements
+                    .iter()
+                    .any(|(text, style)| text.starts_with("A message wide")
+                        && style.font_size == typography.size(14.0)
+                        && style.font_weight.as_deref() == Some("bold")
+                        && style.font_style.as_deref() == Some("italic"))
+            );
+            assert!(
+                measurements.iter().any(
+                    |(text, style)| text == "ready" && style.font_size == typography.size(14.0)
+                )
+            );
+            let message = &layout.messages[0];
+            let label = DeterministicTextMeasurer::default().measure(
+                &message.label,
+                &typography.styled_message(&typography.message_style(), &message.style),
+            );
+            assert!(
+                message.to_x - message.from_x >= label.width + ARROW_HEAD_WIDTH + OCCURRENCE_WIDTH
+            );
+            assert_eq!(
+                layout.participants[0].height,
+                PARTICIPANT_VISUAL_HEIGHT * size / 16.0
+            );
+            assert!(layout.messages[1].y - message.y > 2.0 * typography.size(14.0));
+            assert!(layout.fragments[0].height > FRAGMENT_HEADER_HEIGHT * size / 16.0);
+        }
+    }
+
     fn layout(source: &str) -> ZenumlDiagramLayout {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -2097,7 +2501,12 @@ mod tests {
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
-        layout_zenuml_diagram_typed(model, &DeterministicTextMeasurer::default()).unwrap()
+        layout_zenuml_diagram_typed(
+            model,
+            &ZenumlTypography::default(),
+            &DeterministicTextMeasurer::default(),
+        )
+        .unwrap()
     }
 
     #[test]
