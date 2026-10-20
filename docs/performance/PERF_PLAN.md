@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 post-ownership full confirmation](theme_v090_post_ownership_confirmation_macos_2026-10-20.md)
+compares clean `9f8143a06` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
+and 304 fixed balanced A/B observations establish 12 within the joint budget, three regressions
+and four inconclusive scenes, with zero evidence-contract failures. ZenUML remains +17.95% /
++3.584 us, Packet +28.66% / +2.310 us and Kanban +26.02% / +11.737 us. Class tiny cannot establish
+joint regression despite its displayed lower bounds: its absolute A/A certificate is unqualified.
+Eight failed absolute certificates retain their precision failures and uncapped sample requirements;
+all 19 preselect the qualified relative certificate. Earlier receipts remain unchanged, and this
+release-range observation does not attribute movement to an intermediate allocation patch. The
+full report, frozen plan, registration, reviews and execution identities have verified lossless
+archives. Next inspect the bounded stages and CPU samples from the same archived executables,
+then remove concrete redundant work without summing stage deltas or assigning the default gaps
+to compiled-theme initialization. Keep all 35 theme families in the independent catalog controls;
+the all-family goal remains active.
+
 The [October 20 Kanban bound-owner checkpoint](kanban_bound_paint_owner_macos_2026-10-20.md)
 removes the second task-decision array and copied typed strings, binding palette values in the
 existing owner at the original phase. Ten themed catalog cells each save five allocations and
