@@ -105,9 +105,30 @@ fn repeating_and_tiled_root_canvas_is_portable_and_deterministic() {
         ("y", "0"),
         ("width", "20"),
         ("height", "20"),
-        ("patternTransform", "translate(4 4)"),
     ] {
         assert_eq!(pattern.attribute(attribute), Some(expected), "{attribute}");
+    }
+    let origin = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_ascii_whitespace()
+        .take(2)
+        .map(|value| value.parse::<f64>().unwrap())
+        .collect::<Vec<_>>();
+    if origin == [0.0, 0.0] {
+        assert_eq!(pattern.attribute("patternTransform"), None);
+    } else {
+        let transform = pattern.attribute("patternTransform").unwrap();
+        let coordinates = transform
+            .strip_prefix("translate(")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap()
+            .split_ascii_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(coordinates, origin);
     }
     assert!(
         first.contains(r#"fill="url(#root-canvas-theme-merman-theme-canvas-layer-0-pattern)""#),
