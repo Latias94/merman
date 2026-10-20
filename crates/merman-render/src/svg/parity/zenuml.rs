@@ -47,7 +47,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     out.push_str("<defs><style>");
     write_zenuml_css(
         &mut super::output::XmlTextOutput::new(&mut out),
-        super::util::css_selector_diagram_id(diagram_id),
+        diagram_id,
         title_theme
             .fill_css()
             .unwrap_or_else(|| theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL)),
