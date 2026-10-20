@@ -89,8 +89,9 @@ fn requirement_safe_styles_preserve_order_overrides_and_quoted_values() {
         .collect::<Vec<_>>();
 
     assert!(
-        styles.iter().any(|style| *style
-            == "fill:#778899 !important;stroke:#445566 !important;stroke-width:3px !important"),
+        styles.contains(
+            &"fill:#778899 !important;stroke:#445566 !important;stroke-width:3px !important"
+        ),
         "{styles:?}"
     );
     assert!(

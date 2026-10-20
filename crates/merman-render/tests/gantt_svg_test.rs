@@ -171,6 +171,261 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .to_owned()
 }
 
+const GANTT_HOST_STATE_SOURCE: &str = r#"gantt
+dateFormat YYYY-MM-DD
+todayMarker off
+section Delivery
+Default: default-task, 2024-01-01, 100d
+Active: active, active-task, 2024-01-01, 100d
+Done: done, done-task, 2024-01-01, 100d
+Critical: crit, crit-task, 2024-01-01, 100d
+Active critical: active, crit, active-crit-task, 2024-01-01, 100d
+Done critical: done, crit, done-crit-task, 2024-01-01, 100d
+A long outside done label: done, outside-done-task, 2024-01-01, 1d
+A long outside done critical label: done, crit, outside-done-crit-task, 2024-01-01, 1d
+Vertical: vert, vertical-task, 2024-02-01, 0d
+click default-task href "https://example.com"
+"#;
+
+fn render_gantt_host_preset(
+    source: &str,
+    preset: merman_render::presentation::HostThemePreset,
+    engine: Engine,
+) -> String {
+    use merman_render::presentation::{HostTheme, Presentation};
+    let engine = Presentation::new()
+        .with_theme(HostTheme::from_preset(preset))
+        .resolve()
+        .materialize_engine(engine);
+    render_gantt_svg_from_text_with_engine(engine, source)
+}
+
+fn gantt_rule_property<'a>(css: &'a str, selector: &str, property: &str) -> &'a str {
+    css.split('}')
+        .filter_map(|rule| rule.split_once('{'))
+        .filter(|(selectors, _)| selectors.split(',').any(|value| value.trim() == selector))
+        .flat_map(|(_, declarations)| declarations.split(';'))
+        .filter_map(|declaration| declaration.split_once(':'))
+        .filter(|(name, _)| name.trim() == property)
+        .map(|(_, value)| value.trim())
+        .next_back()
+        .unwrap_or_else(|| panic!("missing {property} on {selector}"))
+}
+
+fn gantt_terminal_class<'a>(document: &'a roxmltree::Document<'_>, id: &str) -> &'a str {
+    document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(id))
+        .and_then(|node| node.attribute("class"))
+        .unwrap_or_else(|| panic!("missing terminal {id}"))
+}
+
+#[test]
+fn gantt_host_presets_preserve_native_task_state_palette() {
+    use merman_render::presentation::HostThemePreset;
+    for (preset, default, active, done, critical_border, text) in [
+        (
+            HostThemePreset::EditorLight,
+            "#f8fafc",
+            "#f1f5f9",
+            "#e2e8f0",
+            "#dc2626",
+            "#0f172a",
+        ),
+        (
+            HostThemePreset::EditorDark,
+            "#111827",
+            "#334155",
+            "#1f2937",
+            "#f87171",
+            "#e5e7eb",
+        ),
+    ] {
+        let svg = render_gantt_host_preset(GANTT_HOST_STATE_SOURCE, preset, Engine::new());
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for (id, state, fill, label_state) in [
+            ("default-task", "task0", default, "taskText0"),
+            ("active-task", "active0", active, "activeText0"),
+            ("done-task", "done0", done, "doneText0"),
+            ("crit-task", "crit0", done, "critText0"),
+            ("active-crit-task", "activeCrit0", active, "activeCritText0"),
+            ("done-crit-task", "doneCrit0", done, "doneCritText0"),
+        ] {
+            assert!(
+                gantt_terminal_class(&document, &format!("gantt-config-{id}"))
+                    .split_ascii_whitespace()
+                    .any(|class| class == state),
+                "{preset:?} {id}"
+            );
+            assert_eq!(
+                gantt_rule_property(css, &format!("#gantt-config .{state}"), "fill"),
+                fill,
+                "{preset:?} {id}"
+            );
+            assert!(
+                gantt_terminal_class(&document, &format!("gantt-config-{id}-text"))
+                    .split_ascii_whitespace()
+                    .any(|class| class == label_state),
+                "{preset:?} {id} label"
+            );
+        }
+        for state in ["crit0", "activeCrit0", "doneCrit0"] {
+            assert_eq!(
+                gantt_rule_property(css, &format!("#gantt-config .{state}"), "stroke"),
+                critical_border
+            );
+        }
+        assert_eq!(
+            gantt_rule_property(css, "#gantt-config .taskText0", "fill"),
+            text
+        );
+        for label in [
+            "activeText0",
+            "doneText0",
+            "activeCritText0",
+            "doneCritText0",
+        ] {
+            assert_eq!(
+                gantt_rule_property(css, &format!("#gantt-config .{label}"), "fill"),
+                format!("{text}!important")
+            );
+        }
+    }
+}
+
+#[test]
+fn gantt_host_outside_clickable_and_vertical_text_keep_native_css_precedence() {
+    use merman_render::presentation::HostThemePreset;
+    let svg = render_gantt_host_preset(
+        GANTT_HOST_STATE_SOURCE,
+        HostThemePreset::EditorDark,
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    for (id, state) in [
+        ("outside-done-task", "doneText0"),
+        ("outside-done-crit-task", "doneCritText0"),
+    ] {
+        let class = gantt_terminal_class(&document, &format!("gantt-config-{id}-text"));
+        assert!(class.split_ascii_whitespace().any(|class| class == state));
+        assert!(
+            class
+                .split_ascii_whitespace()
+                .any(|class| class == "taskTextOutsideRight")
+        );
+        assert_eq!(
+            gantt_rule_property(
+                css,
+                &format!("#gantt-config .{state}.taskTextOutsideRight"),
+                "fill"
+            ),
+            "#cbd5e1!important"
+        );
+    }
+    assert!(
+        gantt_terminal_class(&document, "gantt-config-default-task-text")
+            .split_ascii_whitespace()
+            .any(|class| class == "clickable")
+    );
+    assert_eq!(
+        gantt_rule_property(css, "#gantt-config .taskText.clickable", "fill"),
+        "#94a3b8!important"
+    );
+    assert!(
+        gantt_terminal_class(&document, "gantt-config-vertical-task-text")
+            .split_ascii_whitespace()
+            .any(|class| class == "vertText")
+    );
+    assert_eq!(
+        gantt_rule_property(css, "#gantt-config .vertText", "fill"),
+        "#fbbf24!important"
+    );
+}
+
+#[test]
+fn gantt_host_preserves_explicit_task_and_foreground_variables() {
+    use merman_render::presentation::HostThemePreset;
+    let variables = serde_json::json!({
+        "taskBkgColor": "#111111", "activeTaskBkgColor": "#222222",
+        "doneTaskBkgColor": "#333333", "critBkgColor": "#444444",
+        "critBorderColor": "#555555", "taskTextColor": "#aaaaaa",
+        "taskTextDarkColor": "#bbbbbb", "taskTextOutsideColor": "#cccccc",
+        "taskTextClickableColor": "#dddddd", "vertLineColor": "#eeeeee",
+    });
+    for site_owned in [false, true] {
+        let (source, engine) = if site_owned {
+            (
+                GANTT_HOST_STATE_SOURCE.to_string(),
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"themeVariables": variables}),
+                )),
+            )
+        } else {
+            (
+                format!(
+                    "---\nconfig: {}\n---\n{GANTT_HOST_STATE_SOURCE}",
+                    serde_json::json!({"themeVariables": variables})
+                ),
+                Engine::new(),
+            )
+        };
+        let svg = render_gantt_host_preset(&source, HostThemePreset::EditorDark, engine);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for (selector, property, expected) in [
+            ("task0", "fill", "#111111"),
+            ("active0", "fill", "#222222"),
+            ("activeCrit0", "fill", "#222222"),
+            ("done0", "fill", "#333333"),
+            ("doneCrit0", "fill", "#333333"),
+            ("crit0", "fill", "#444444"),
+            ("crit0", "stroke", "#555555"),
+            ("activeCrit0", "stroke", "#555555"),
+            ("doneCrit0", "stroke", "#555555"),
+            ("taskText0", "fill", "#aaaaaa"),
+            ("activeText0", "fill", "#bbbbbb!important"),
+            ("doneText0", "fill", "#bbbbbb!important"),
+            ("activeCritText0", "fill", "#bbbbbb!important"),
+            ("doneCritText0", "fill", "#bbbbbb!important"),
+            (
+                "doneText0.taskTextOutsideRight",
+                "fill",
+                "#cccccc!important",
+            ),
+            (
+                "doneCritText0.taskTextOutsideRight",
+                "fill",
+                "#cccccc!important",
+            ),
+            ("taskText.clickable", "fill", "#dddddd!important"),
+            ("vertText", "fill", "#eeeeee!important"),
+        ] {
+            assert_eq!(
+                gantt_rule_property(css, &format!("#gantt-config .{selector}"), property),
+                expected,
+                "site_owned={site_owned} {selector}"
+            );
+        }
+    }
+}
+
 #[test]
 fn gantt_section_titles_share_mermaid_break_rows_and_vertical_alignment() {
     let source = include_str!("../../../fixtures/gantt/multiline_section_title_br_tags.mmd");
