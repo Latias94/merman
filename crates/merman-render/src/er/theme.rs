@@ -1301,7 +1301,7 @@ fn table_occurrence_count(
 }
 
 fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
         || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
@@ -1311,17 +1311,19 @@ fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || (matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || mermaid_owns_entity_palette(config, "borderColorArray")))
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    ) || (matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
+        || mermaid_owns_entity_palette(config, "borderColorArray")))
 }
 
 fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -> bool {
     entity_palette_has_colors(config, key)
-        && merman_core::__private::config_path_overrides_typed_default(
+        && merman_core::__private::config_paint_overrides_typed_default(
             config,
             &format!("themeVariables.{key}"),
         )

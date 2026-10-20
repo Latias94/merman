@@ -8,7 +8,7 @@ use super::{
 };
 
 impl MermaidConfig {
-    /// Freezes surviving raw paint authority independently of derived theme variable ownership.
+    /// Freezes surviving raw inputs and externally selected palette authority for final paint.
     pub(crate) fn freeze_family_paint_inputs(
         &mut self,
         family: &str,
@@ -44,12 +44,15 @@ impl MermaidConfig {
         let mut owned = 0;
         for (index, path) in paths.iter().enumerate() {
             control.checkpoint()?;
-            if detector_changes.is_some_and(|changes| {
-                changes
-                    .claimed_paths()
-                    .any(|claimed| claimed.is_empty() || dotted_paths_overlap(claimed, path))
-                    || changes.value_changed_at(path)
-            }) || owns_path(explicit_site_config, self, path)
+            if (self.external_theme_palette
+                && super::config_value_at(self.as_value(), path).is_some())
+                || detector_changes.is_some_and(|changes| {
+                    changes
+                        .claimed_paths()
+                        .any(|claimed| claimed.is_empty() || dotted_paths_overlap(claimed, path))
+                        || changes.value_changed_at(path)
+                })
+                || owns_path(explicit_site_config, self, path)
                 || owns_path(explicit_source_config, self, path)
             {
                 owned |= 1 << index;
@@ -194,5 +197,24 @@ mod tests {
             config.gitgraph_paint_inputs().map(|inputs| inputs.0),
             Some(0)
         );
+    }
+
+    #[test]
+    fn selected_palette_claims_only_present_family_paints() {
+        let binding =
+            super::super::ThemeParseBinding::try_new([0x6a; 32], MermaidConfig::empty_object())
+                .unwrap();
+        let empty = MermaidConfig::empty_object();
+        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        config.set_value_preserving_theme_compatibility(
+            "themeVariables.textColor",
+            serde_json::json!("#123456"),
+        );
+        config.set_external_theme_palette(true);
+        config
+            .freeze_family_paint_inputs("er", &empty, &empty, None, &OperationControl::new())
+            .unwrap();
+        config.freeze_theme_compatibility();
+        assert_eq!(config.er_paint_inputs().map(|inputs| inputs.0), Some(1));
     }
 }

@@ -146,7 +146,7 @@ impl QuadrantChartPointThemePlan {
             effective_config,
             "quadrantChart.pointRadius",
         );
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.quadrantPointFill",
         );
