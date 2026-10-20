@@ -57,7 +57,10 @@ routes for generated Flowchart, Sequence and State chains at scales 1, 2, 4, 10,
 Input/engine setup and warmup precede measurement; each measured result stays alive through the
 allocation, retained and peak checkpoints, then drops before the final live-byte checkpoint.
 Semantic validation and requested recovery characterization run outside those windows. Zero
-mode enters no parser. These infrastructure contracts do not admit a performance candidate.
+mode enters no parser. Seven contracts preregister U3 bounds for Sequence/State typed, JSON and
+snapshot requests plus a Flowchart typed control. The remaining Flowchart JSON/snapshot contracts
+are infrastructure observations. Candidate admission also requires exact removed-work proof,
+semantic parity and the registered latency controls; a memory report alone is insufficient.
 
 ```console
 cargo bench --locked -p merman --no-default-features --features all-diagrams --bench parse_memory --no-run -j 1

@@ -2,8 +2,8 @@
   "schema_version": 2,
   "lane_id": "parser-sequence-snapshot-memory",
   "workload": "parse-sequence-snapshot-generated-chain-v1",
-  "evidence_class": "infrastructure-smoke",
-  "candidate_admission": false,
+  "evidence_class": "candidate-bound",
+  "candidate_admission": true,
   "probe": {
     "protocol_schema_version": 3,
     "package": "merman",
@@ -60,21 +60,21 @@
     }
   },
   "metrics": {
-    "allocation_count": {
-      "slope_cap": 2.0,
-      "max_scale_cap": 10000000
-    },
     "allocated_bytes": {
-      "slope_cap": 2.0,
-      "max_scale_cap": 8589934592
+      "slope_cap": 1.0,
+      "max_scale_cap": 864555
+    },
+    "allocation_count": {
+      "slope_cap": 1.0,
+      "max_scale_cap": 4887
     },
     "peak_growth_bytes": {
-      "slope_cap": 2.0,
-      "max_scale_cap": 2147483648
+      "slope_cap": 1.0,
+      "max_scale_cap": 358587
     },
     "retained_growth_bytes": {
-      "slope_cap": 2.0,
-      "max_scale_cap": 2147483648
+      "slope_cap": 1.0,
+      "max_scale_cap": 308279
     }
   }
 }

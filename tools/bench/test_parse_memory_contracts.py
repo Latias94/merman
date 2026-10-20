@@ -112,8 +112,18 @@ class ParseMemoryContractTests(unittest.TestCase):
                 self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
                 self.assertEqual(recipe.features, lane.required_features)
                 self.assertIn("retained_growth_bytes", lane.measurement_metrics)
-                self.assertEqual(contract["evidence_class"], "infrastructure-smoke")
-                self.assertIs(contract["candidate_admission"], False)
+                candidate_bound = lane.id in {
+                    "parser-flowchart-typed-memory",
+                    "parser-sequence-typed-memory",
+                    "parser-sequence-json-memory",
+                    "parser-sequence-snapshot-memory",
+                    "parser-state-typed-memory",
+                    "parser-state-json-memory",
+                    "parser-state-snapshot-memory",
+                }
+                expected_class = "candidate-bound" if candidate_bound else "infrastructure-smoke"
+                self.assertEqual(contract["evidence_class"], expected_class)
+                self.assertIs(contract["candidate_admission"], candidate_bound)
 
     def test_probe_inputs_and_verified_projection_digests_match(self):
         for lane in self.parser_lanes:
