@@ -217,16 +217,15 @@ impl<'input> Lexer<'input> {
     }
 
     pub(super) fn starts_with_kw(&self, kw: &str) -> bool {
-        let rest = &self.input[self.pos..];
-        if !rest.starts_with(kw) {
-            return false;
-        }
-        let after = self.pos + kw.len();
-        if after >= self.input.len() {
-            return true;
-        }
-        let b = self.input.as_bytes()[after];
-        !b.is_ascii_alphanumeric() && b != b'_' && b != b'-'
+        // Jison compiles literal keywords with JavaScript's ASCII word boundary.
+        self.input[self.pos..]
+            .strip_prefix(kw)
+            .is_some_and(|suffix| {
+                !suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            })
     }
 
     pub(super) fn lex_reserved_token_error(&mut self) -> Option<LexError> {
@@ -249,14 +248,7 @@ impl<'input> Lexer<'input> {
             "_top",
         ]
         .into_iter()
-        .find(|keyword| {
-            rest.strip_prefix(*keyword).is_some_and(|suffix| {
-                !suffix
-                    .as_bytes()
-                    .first()
-                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
-            })
-        })?;
+        .find(|keyword| self.starts_with_kw(keyword))?;
         if matches!(
             keyword,
             "style" | "linkStyle" | "classDef" | "class" | "subgraph"

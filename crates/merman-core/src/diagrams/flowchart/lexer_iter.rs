@@ -76,22 +76,22 @@ impl<'input> Iterator for Lexer<'input> {
         if let Some(res) = self.lex_shape_data() {
             return Some(res);
         }
-        if self.input[self.pos..].starts_with("flowchart-elk") {
+        if self.starts_with_kw("flowchart-elk") {
             self.pos += "flowchart-elk".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwFlowchartElk, self.pos)));
         }
-        if self.input[self.pos..].starts_with("swimlane-beta") {
+        if self.starts_with_kw("swimlane-beta") {
             self.pos += "swimlane-beta".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwSwimlane, self.pos)));
         }
-        if self.input[self.pos..].starts_with("flowchart") {
+        if self.starts_with_kw("flowchart") {
             self.pos += "flowchart".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwFlowchart, self.pos)));
         }
-        if self.input[self.pos..].starts_with("graph") {
+        if self.starts_with_kw("graph") {
             self.pos += "graph".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwGraph, self.pos)));
@@ -104,16 +104,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
             return Some(Ok((start, Tok::KwSubgraph, keyword_end)));
         }
-        // Mermaid's `end` rule alone has an ASCII word boundary; `endless` remains an id.
-        if self.input[self.pos..]
-            .strip_prefix("end")
-            .is_some_and(|rest| {
-                !rest
-                    .as_bytes()
-                    .first()
-                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
-            })
-        {
+        if self.starts_with_kw("end") {
             self.pos += "end".len();
             return Some(Ok((start, Tok::KwEnd, self.pos)));
         }

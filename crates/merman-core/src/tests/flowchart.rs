@@ -547,6 +547,105 @@ fn flowchart_class_shorthand_keeps_reserved_keyword_boundaries_rejected() {
 }
 
 #[test]
+fn flowchart_literal_keyword_boundaries_preserve_ids_classes_and_source_spans() {
+    let engine = Engine::new();
+    for keyword in [
+        "graph",
+        "flowchart",
+        "flowchart-elk",
+        "swimlane-beta",
+        "end",
+        "style",
+        "linkStyle",
+        "classDef",
+        "class",
+        "subgraph",
+        "interpolate",
+        "_self",
+        "_blank",
+        "_parent",
+        "_top",
+    ] {
+        for suffix in ["1", "_1", "word", "%", "-tail", "雪"] {
+            let id = format!("{keyword}{suffix}");
+            let accepted = matches!(suffix, "1" | "_1" | "word") && keyword != "flowchart-elk";
+            for shorthand in [false, true] {
+                let body = if shorthand {
+                    format!("A:::{id}-->B")
+                } else {
+                    format!("{id}-->B")
+                };
+                let source = format!("%% deleted 中文😀\r\nflowchart TD\r\n{body}\r\n");
+                let parsed = engine.parse_diagram_sync(&source, ParseOptions::strict());
+                if accepted {
+                    let parsed = parsed.unwrap().unwrap();
+                    if shorthand {
+                        assert_eq!(parsed.model["nodes"][0]["id"], "A");
+                        assert_eq!(parsed.model["nodes"][0]["classes"], json!([id]));
+                    } else {
+                        assert_eq!(parsed.model["nodes"][0]["id"], id);
+                        assert_eq!(parsed.model["edges"][0]["from"], id);
+                    }
+                    continue;
+                }
+
+                let matched_keyword =
+                    if keyword == "flowchart-elk" && matches!(suffix, "1" | "_1" | "word") {
+                        "flowchart"
+                    } else {
+                        keyword
+                    };
+                let start = source.rfind(&id).unwrap();
+                let expected = SourceSpan::new(start, start + matched_keyword.len());
+                let Error::DiagramParse { diagnostic, .. } = parsed.unwrap_err() else {
+                    panic!("a keyword boundary must remain a parse error: {source}");
+                };
+                assert_eq!(diagnostic.span(), Some(expected), "{source}");
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+                let snapshot = engine
+                    .parse_diagram_snapshot_sync(&source)
+                    .unwrap()
+                    .unwrap();
+                let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                    snapshot.outcome()
+                else {
+                    panic!("editor capture must retain the keyword boundary failure: {source}");
+                };
+                assert_eq!(diagnostic.span(), Some(expected), "{source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_literal_header_keywords_keep_header_admission() {
+    let engine = Engine::new();
+    for header in ["graph", "flowchart", "flowchart-elk", "swimlane-beta"] {
+        let source = format!("{header} TD\nA-->B\n");
+        let parsed = engine
+            .parse_diagram_with_type_sync("flowchart-v2", &source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["edges"][0]["from"], "A");
+        for suffix in ["1", "_1", "word", "%", "-tail", "雪"] {
+            let invalid = format!("{header}{suffix} TD\nA-->B\n");
+            assert!(
+                engine
+                    .parse_diagram_sync(&invalid, ParseOptions::strict())
+                    .is_err(),
+                "{invalid}"
+            );
+            assert!(
+                engine
+                    .parse_diagram_with_type_sync("flowchart-v2", &invalid, ParseOptions::strict())
+                    .is_err(),
+                "{invalid}"
+            );
+        }
+    }
+}
+
+#[test]
 fn flowchart_percent_identifiers_preserve_reserved_token_rejections() {
     let engine = Engine::new();
     for keyword in [
