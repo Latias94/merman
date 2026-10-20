@@ -34,6 +34,7 @@ fn output_identity(
     OutputIdentity {
         output_kind: match output_kind {
             "typed_render_model" => "typed_render_model",
+            "editor_snapshot" => "editor_snapshot",
             "compatibility_json" => "compatibility_json",
             "preprocessed_diagram" => "preprocessed_diagram",
             "prepared_layout" => "prepared_layout",
@@ -537,6 +538,65 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_editor_snapshot(c: &mut Criterion) {
+    let engine = Engine::new();
+    let mut group = c.benchmark_group("editor_snapshot");
+    for (name, input) in fixtures() {
+        if !benchmark_selected("editor_snapshot", name) {
+            continue;
+        }
+        let output_identity = || {
+            let snapshot = engine
+                .parse_diagram_snapshot_sync(input)
+                .unwrap_or_else(|error| panic!("editor_snapshot/{name} failed: {error}"))
+                .unwrap_or_else(|| panic!("editor_snapshot/{name} returned no snapshot"));
+            let model = snapshot
+                .outcome()
+                .parsed_model()
+                .unwrap_or_else(|| panic!("editor_snapshot/{name} retained a failed parse"));
+            let mut model_bytes = Vec::new();
+            model.write_json(&mut model_bytes).expect("snapshot JSON");
+            let mut canonical_model: serde_json::Value =
+                serde_json::from_slice(&model_bytes).expect("snapshot model JSON");
+            // Object member order is not meaning (State stores records in a HashMap).
+            // Preserve every array order and value while stabilizing this identity only.
+            canonical_model.sort_all_objects();
+            let merman_core::DiagramParseOutcome::Parsed { warning_facts, .. } = snapshot.outcome()
+            else {
+                unreachable!("successful snapshot checked above")
+            };
+            // Facts have no wire serializer. Debug captures all their typed fields for this
+            // harness-only identity; neither formatting nor JSON export enters the timed call.
+            let mut projection = json!({
+                "diagram_type": snapshot.metadata().diagram_type,
+                "config": snapshot.metadata().config.as_value(),
+                "effective_config": snapshot.metadata().effective_config.as_value(),
+                "model": canonical_model,
+                "warnings": format!("{warning_facts:?}"),
+                "facts": format!("{:?}", snapshot.editor_facts()),
+                "source_config": format!("{:?}", snapshot.source_config()),
+                "recovered_directive": snapshot.recovered_incomplete_directive(),
+            });
+            projection.sort_all_objects();
+            json_output_identity("editor_snapshot", &projection.into())
+        };
+        let preflight = output_identity();
+        emit_preflight("editor_snapshot", name, &preflight);
+        group.bench_with_input(BenchmarkId::from_parameter(name), &input, |b, data| {
+            b.iter(|| {
+                black_box(
+                    engine
+                        .parse_diagram_snapshot_sync(black_box(data))
+                        .expect("editor snapshot benchmark")
+                        .expect("editor snapshot benchmark result"),
+                );
+            });
+        });
+        verify_postflight("editor_snapshot", name, &preflight, output_identity);
+    }
+    group.finish();
+}
+
 fn bench_frontmatter_preprocess(c: &mut Criterion) {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
 
@@ -758,6 +818,7 @@ criterion_group!(
     bench_parse,
     bench_compatibility_json_parse,
     bench_parse_cold_engine,
+    bench_editor_snapshot,
     bench_frontmatter_preprocess,
     bench_layout,
     bench_render,

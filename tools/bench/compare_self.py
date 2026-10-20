@@ -466,6 +466,7 @@ _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "parse": "typed_render_model",
     "compatibility_json_parse": "compatibility_json",
     "parse_cold_engine": "typed_render_model",
+    "editor_snapshot": "editor_snapshot",
     "frontmatter_preprocess": "preprocessed_diagram",
     "layout": "prepared_layout",
     "render": "svg",

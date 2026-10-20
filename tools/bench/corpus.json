@@ -74,6 +74,26 @@
       "semantic_output_dimensions": ["typed_render_model_sha256", "typed_render_model_bytes"]
     },
     {
+      "id": "editor-snapshot-parse",
+      "kind": "public",
+      "owner": "merman-core",
+      "public_operation": "editor-snapshot-parse",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-criterion",
+      "required_features": ["all-diagrams", "svg"],
+      "selector": "editor_snapshot/{fixture}",
+      "history_aliases": [],
+      "size_vector": [],
+      "workload": "corpus-fixture",
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
+      "measurement_metrics": ["latency_ns"],
+      "semantic_output_dimensions": ["editor_snapshot_sha256", "editor_snapshot_bytes"]
+    },
+    {
       "id": "frontmatter-preprocess-known-type",
       "kind": "public",
       "owner": "merman-core",

@@ -424,6 +424,11 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "parse_memory"
+harness = false
+required-features = ["all-diagrams"]
+
+[[bench]]
 name = "flowchart_svg_label_memory"
 harness = false
 required-features = ["svg"]

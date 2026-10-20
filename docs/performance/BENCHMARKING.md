@@ -37,6 +37,9 @@ It measures:
 - `parse_cold_engine/*`: request-style parsing with a fresh `Engine` per iteration.
 - `compatibility_json_parse/*`: compatibility JSON parsing when the diagram type is already known.
   Historical reports may use its registered `parse_known_type/*` alias.
+- `editor_snapshot/*`: requested editor snapshot capture, retaining outcome, warnings, source
+  configuration and parser-owned facts. Identity projection is outside timing; object keys are
+  sorted only in this lane's identity while all array order and values are preserved.
 - `layout/*`: geometry and route computation from a parsed diagram.
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
@@ -45,6 +48,28 @@ Bench fixtures live under `crates/merman/benches/fixtures/`. A direct Criterion 
 for exploration, but its internal samples are not independent base/head observations and cannot by
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
+
+### Parser allocation and embedding observations
+
+`parse_memory` reuses the native system-allocator probe protocol and driver. Its independent
+`tools/bench/parse_memory_corpus.json` registers typed, known-type JSON and requested snapshot
+routes for generated Flowchart, Sequence and State chains at scales 1, 2, 4, 10, 32 and 100.
+Input/engine setup and warmup precede measurement; each measured result stays alive through the
+allocation, retained and peak checkpoints, then drops before the final live-byte checkpoint.
+Semantic validation and requested recovery characterization run outside those windows. Zero
+mode enters no parser. These infrastructure contracts do not admit a performance candidate.
+
+```console
+cargo bench --locked -p merman --no-default-features --features all-diagrams --bench parse_memory --no-run -j 1
+python tools/bench/run_native_memory.py --corpus tools/bench/parse_memory_corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
+```
+
+Use the same committed probe and generated input policy on adjacent revisions for removed-work
+evidence, retaining raw samples and preregistering bounds before candidate confirmation. These
+lanes do not establish latency. Full parser output identities remain separate from their fixed
+verified semantic projection. The [three-family embedding recipe](../../tools/bench/fixtures/semantic-parser/README.md)
+uses the existing isolated artifact driver to retain raw/stripped executables and consumed
+meaning without a renderer or compatibility projection in its call path.
 
 The `profile_render` example's `--stage render` loop includes artifact preparation in whole-process
 samples and elapsed time. Only its `profile_render::emit_prepared_svg` subtree matches the emission
