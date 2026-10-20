@@ -12,6 +12,7 @@ type C4SvgModelRel = C4RelRenderModel;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum C4PaintItem {
     Shape(usize),
+    BoundaryBackground(usize),
     Boundary(usize),
 }
 
@@ -75,6 +76,7 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
 
                 let boundary = &layout.boundaries[index];
                 if boundary.alias != "global" {
+                    order.push(C4PaintItem::BoundaryBackground(index));
                     stack.push(C4PaintVisit::PaintBoundary(index));
                 }
                 if let Some(children) = boundaries_by_parent.get(boundary.alias.as_str()) {
@@ -112,6 +114,10 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
     }
 
     Ok(order)
+}
+
+fn c4_boundary_fill_is_visible(fill: &str) -> bool {
+    !fill.eq_ignore_ascii_case("none") && !fill.eq_ignore_ascii_case("transparent")
 }
 
 fn c4_css(
@@ -222,7 +228,7 @@ fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
             fmt(y)
         );
         for (k, v) in attrs {
-            let _ = write!(out, r#" {k}="{v}""#);
+            let _ = write!(out, r#" {k}="{}""#, escape_attr(v));
         }
         let _ = write!(
             out,
@@ -591,9 +597,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             default_border_color,
                         )
                     });
-                let font_color = meta
-                    .and_then(|m| m.font_color.clone())
-                    .unwrap_or_else(|| "#FFFFFF".to_string());
+                let font_color = meta.and_then(|m| m.font_color.clone()).unwrap_or_else(|| {
+                    c4_cfg.color(&format!("{}_font_color", s.type_c4_shape), "#FFFFFF")
+                });
                 let Some(meta) = meta else {
                     return Err(crate::Error::InvalidModel {
                         message: format!("c4: missing model shape {}", s.alias),
@@ -681,15 +687,42 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 }
                 out.push_str("</g></g></g>");
             }
+            C4PaintItem::BoundaryBackground(index) => {
+                let b = &layout.boundaries[index];
+                let meta = boundary_meta.get(b.alias.as_str()).copied();
+                let fill_color = meta
+                    .and_then(|m| m.bg_color.clone())
+                    .unwrap_or_else(|| c4_cfg.color("boundary_bg_color", "none"));
+                if !c4_boundary_fill_is_visible(&fill_color) {
+                    continue;
+                }
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="c4-boundary-background" x="{}" y="{}" fill="{}" stroke="none" width="{}" height="{}" rx="2.5" ry="2.5"/>"#,
+                    fmt(b.x),
+                    fmt(b.y),
+                    escape_attr(&fill_color),
+                    fmt(b.width),
+                    fmt(b.height)
+                );
+            }
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
                 let fill_color = meta
                     .and_then(|m| m.bg_color.clone())
-                    .unwrap_or_else(|| "none".to_string());
+                    .unwrap_or_else(|| c4_cfg.color("boundary_bg_color", "none"));
                 let stroke_color = meta
                     .and_then(|m| m.border_color.clone())
-                    .unwrap_or_else(|| "#444444".to_string());
+                    .unwrap_or_else(|| c4_cfg.color("boundary_border_color", "#444444"));
+                let font_color = meta
+                    .and_then(|m| m.font_color.clone())
+                    .unwrap_or_else(|| c4_cfg.color("boundary_font_color", "#444444"));
+                let terminal_fill = if c4_boundary_fill_is_visible(&fill_color) {
+                    "none"
+                } else {
+                    &fill_color
+                };
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
 
                 out.push_str("<g>");
@@ -699,7 +732,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(&fill_color),
+                        escape_attr(terminal_fill),
                         escape_attr(&stroke_color),
                         fmt(b.width),
                         fmt(b.height)
@@ -710,7 +743,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(&fill_color),
+                        escape_attr(terminal_fill),
                         escape_attr(&stroke_color),
                         fmt(b.width),
                         fmt(b.height)
@@ -734,7 +767,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         font_family: boundary_family,
                         font_size: boundary_size,
                         font_weight: boundary_weight,
-                        attrs: &[("fill", "#444444")],
+                        attrs: &[("fill", &font_color)],
                     },
                 );
                 if let Some(ty) = &b.ty
@@ -753,7 +786,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: boundary_type_size,
                             font_weight: boundary_type_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", &font_color)],
                         },
                     );
                 }
@@ -772,7 +805,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: descr_size,
                             font_weight: descr_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", &font_color)],
                         },
                     );
                 }
@@ -810,10 +843,36 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let meta = rel_meta.get(&(rel.from.as_str(), rel.to.as_str())).copied();
         let text_color = meta
             .and_then(|m| m.text_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
+            .unwrap_or_else(|| c4_cfg.color("relationship_text_color", "#444444"));
         let stroke_color = meta
             .and_then(|m| m.line_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
+            .unwrap_or_else(|| c4_cfg.color("relationship_line_color", "#444444"));
+        let themed_markers = meta.is_some_and(|m| m.line_color.is_some())
+            || crate::config::config_string(effective_config, &["c4", "relationship_line_color"])
+                .is_some();
+        let arrowhead = if themed_markers {
+            format!("arrowhead-{idx}")
+        } else {
+            "arrowhead".to_string()
+        };
+        let arrowend = if themed_markers {
+            format!("arrowend-{idx}")
+        } else {
+            "arrowend".to_string()
+        };
+        if themed_markers {
+            let _ = write!(
+                &mut out,
+                r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"/></marker><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"/></marker></defs>"#,
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
+                escape_attr(&stroke_color),
+                escape_attr(&stroke_color),
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
+                escape_attr(&stroke_color),
+                escape_attr(&stroke_color)
+            );
+            options.checkpoint_emit()?;
+        }
         let offset_x = rel.offset_x.unwrap_or(0) as f64;
         let offset_y = rel.offset_y.unwrap_or(0) as f64;
 
@@ -831,14 +890,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let _ = write!(
                     &mut out,
                     r#" marker-end="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowhead))
                 );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowend))
                 );
             }
             out.push_str(r#" style="fill: none;"/>"#);
@@ -865,14 +924,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let _ = write!(
                     &mut out,
                     r#" marker-end="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowhead))
                 );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowend))
                 );
             }
             out.push_str("/>");
