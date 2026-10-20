@@ -3529,6 +3529,98 @@ fn parse_diagram_flowchart_classdef_supports_multiple_classes() {
 }
 
 #[test]
+fn parse_diagram_flowchart_classdef_repeated_declarations_preserve_duplicates() {
+    let engine = Engine::new();
+    let text = "graph TD\nclassDef c fill:red\nclassDef c fill:red\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["classDefs"],
+        json!({ "c": ["fill:red", "fill:red"] })
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_classdef_declarations_accumulate_distinct_properties() {
+    let engine = Engine::new();
+    let text = "graph TD\nclassDef c fill:red\nclassDef c stroke:blue,color:black\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["classDefs"]["c"],
+        json!(["fill:red", "stroke:blue", "color:black"])
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_classdef_declarations_preserve_property_order() {
+    let engine = Engine::new();
+    let text = "graph TD\nclassDef c fill:red,stroke:black\nclassDef c fill:blue\nclassDef c fill:red,stroke:green\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["classDefs"]["c"],
+        json!([
+            "fill:red",
+            "stroke:black",
+            "fill:blue",
+            "fill:red",
+            "stroke:green"
+        ])
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_classdef_partial_redefinitions_preserve_class_order() {
+    let engine = Engine::new();
+    let text = "graph TD\nclassDef zebra,alpha fill:red\nclassDef beta stroke:gray\nclassDef alpha,delta stroke:blue\nclassDef zebra color:green\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["classDefs"],
+        json!({
+            "zebra": ["fill:red", "color:green"],
+            "alpha": ["fill:red", "stroke:blue"],
+            "beta": ["stroke:gray"],
+            "delta": ["stroke:blue"]
+        })
+    );
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
+        .expect("flowchart typed model");
+    assert_eq!(
+        typed
+            .class_defs
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec!["zebra", "alpha", "beta", "delta"]
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_classdef_repeated_class_names_preserve_style_items() {
+    let engine = Engine::new();
+    let text = "graph TD\nclassDef c,c fill:red,stroke:blue\nclassDef c stroke:green\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["classDefs"]["c"],
+        json!([
+            "fill:red",
+            "stroke:blue",
+            "fill:red",
+            "stroke:blue",
+            "stroke:green"
+        ])
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_inline_vertex_class_in_groups_matches_mermaid_style_spec() {
     let engine = Engine::new();
     let text = r#"

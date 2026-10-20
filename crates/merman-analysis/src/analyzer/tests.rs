@@ -2259,3 +2259,47 @@ fn analysis_rule_registry_gap_surfaces_as_internal_error() {
             .contains("unknown analysis rule id `merman.unknown.rule`")
     );
 }
+
+#[cfg(feature = "diagram-pie")]
+#[test]
+fn pie_failures_preserve_diagnostics_and_rich_editor_facts() {
+    let analyzer = Analyzer::new();
+    let invalid_header = "piep\n\"valid\": 2\n";
+    let payload = analyzer.analyze(invalid_header);
+    assert!(!payload.valid);
+    assert!(payload.diagnostics.iter().any(|diagnostic| {
+        diagnostic.id == "merman.parse.diagram_parse"
+            && diagnostic.diagram_type.as_deref() == Some("pie")
+    }));
+    let captured =
+        capture_document_diagram_for_test(&analyzer, invalid_header, super::CaptureMode::RichFacts);
+    assert_eq!(
+        captured.parse_disposition,
+        crate::DiagramParseDisposition::Recovered
+    );
+    assert_eq!(
+        captured.syntax.unwrap().source(),
+        FenceTextIndexSource::ParserRecovered
+    );
+
+    let source = "pie showData\n\"negative\": -1\n\"valid\": 2\n";
+    let captured =
+        capture_document_diagram_for_test(&analyzer, source, super::CaptureMode::RichFacts);
+    assert_eq!(
+        captured.parse_disposition,
+        crate::DiagramParseDisposition::Recovered
+    );
+    let syntax = captured.syntax.expect("failed parse retains syntax facts");
+    assert_eq!(syntax.source(), FenceTextIndexSource::ParserRecovered);
+    for name in ["negative", "valid"] {
+        assert!(
+            syntax
+                .text_index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == name)
+        );
+    }
+    assert!(syntax.text_index.has_directive_prefix("showData"));
+    assert!(!syntax.text_index.expected_syntax().is_empty());
+}
