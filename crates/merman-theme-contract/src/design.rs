@@ -217,10 +217,6 @@ pub struct ThemeDesignTokenV1 {
 
 /// The finite vocabulary of reusable theme values.
 #[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Keep the finite authoring payloads inline; references and aliases remain allocation-free beyond their identifiers"
-)]
 pub enum ThemeDesignTokenValueV1 {
     /// A color string.
     Color(ThemeValueV1<String>),
@@ -298,10 +294,6 @@ impl Serialize for ThemeDesignTokenV1 {
 // flattening and deny_unknown_fields attributes.
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "This private decode bridge mirrors the inline public typed payloads"
-)]
 enum ThemeDesignTokenDecodeV1 {
     Color(ThemeDesignTokenFieldsV1<String>),
     Number(ThemeDesignTokenFieldsV1<f32>),

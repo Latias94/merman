@@ -315,7 +315,8 @@ fn propagate_alias_domains(design: &ThemeDesignV1, references: &mut [ThemeDesign
         .enumerate()
         .map(|(index, entry)| (entry.path.clone(), index))
         .collect::<BTreeMap<_, _>>();
-    for consumer in references.to_vec() {
+    let consumers = references.to_vec();
+    for consumer in consumers {
         let mut id = consumer.token.as_str();
         // Cached resolution can admit chains deeper than the active recursion limit.
         // Missing values and cycles are already rejected; token count bounds this traversal.
@@ -593,12 +594,12 @@ impl Resolver<'_> {
         insets_literal
     );
 
-    fn color_literal(&mut self, value: &String, path: &str) -> Result<String> {
+    fn color_literal(&mut self, value: &str, path: &str) -> Result<String> {
         if value.len() > 4096 {
             return Err(failure(path, "bounded-color", "color value is too long"));
         }
         ThemeColorValue::parse(value).map_err(|error| failure(path, "color", error.to_string()))?;
-        Ok(value.clone())
+        Ok(value.to_owned())
     }
     fn number_literal(&mut self, value: &f32, path: &str) -> Result<f32> {
         if !value.is_finite() {
@@ -606,8 +607,8 @@ impl Resolver<'_> {
         }
         Ok(*value)
     }
-    fn string_literal(&mut self, value: &String, _: &str) -> Result<String> {
-        Ok(value.clone())
+    fn string_literal(&mut self, value: &str, _: &str) -> Result<String> {
+        Ok(value.to_owned())
     }
     fn length_literal(
         &mut self,
@@ -622,14 +623,14 @@ impl Resolver<'_> {
         self.number_literal(number, path)?;
         Ok(value.clone())
     }
-    fn font_stack_literal(&mut self, value: &Vec<String>, path: &str) -> Result<Vec<String>> {
+    fn font_stack_literal(&mut self, value: &[String], path: &str) -> Result<Vec<String>> {
         super::FontStack::new(value.iter().cloned())
             .map_err(|error| failure(path, "font-stack", error.to_string()))?;
-        Ok(value.clone())
+        Ok(value.to_owned())
     }
     fn palette_literal(
         &mut self,
-        value: &Vec<ThemeValueV1<String>>,
+        value: &[ThemeValueV1<String>],
         path: &str,
     ) -> Result<Vec<String>> {
         if value.is_empty() || value.len() > 256 {

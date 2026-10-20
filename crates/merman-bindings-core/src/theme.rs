@@ -8,6 +8,10 @@ use serde_json::{Value, value::RawValue};
 use crate::common::{BindingError, BindingStatus};
 
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "A theme selection is one decoded options value; retain its by-value payload"
+)]
 pub(crate) enum BindingThemeOptionsJson {
     Selection(ThemeSelectionJson),
     Recipe(ThemeRecipeV1),

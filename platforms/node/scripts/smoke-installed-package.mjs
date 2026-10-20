@@ -156,7 +156,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
           assert.deepEqual(evidence.diagnostics, [{
             code: "unsupported-paint", subject: "rule", target: "node",
             source_document: "design",
-            source_paths: [`/rules/${recipe.design.rules.length - 1}`], generated: false,
+            source_paths: [`/rules/${recipe.design.rules.length - 1}/style`], generated: false,
           }]);
         } else {
           assert.equal(evidence.theme_status, "verified");

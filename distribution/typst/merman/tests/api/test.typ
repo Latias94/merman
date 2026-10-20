@@ -259,9 +259,8 @@
 )
 
 #let theme-definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
-  tokens: (text: "#123456", accent: "#abcdef"),
+  tokens: (text: (type: "color", value: "#123456")),
+  styles: (text: (fill: (kind: "solid", color: (ref: "text")))),
 )
 #let materialized-theme = materialize-theme(theme-definition)
 #assert.eq(materialized-theme.schema_version, 1)
@@ -295,23 +294,28 @@
 #assert.eq(theme-support.query.family, "sequence")
 
 #let preset-export = export-theme-preset("editor-light")
-#assert.eq(preset-export.kind, "complete_spec")
-#assert(type(preset-export.complete_spec) == dictionary)
+#assert.eq(preset-export.kind, "design")
+#assert(type(preset-export.design) == dictionary)
 
 #let light-definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
   tokens: (
-    canvas: "#f8fafc",
-    surface: "#ffffff",
-    text: "#0f172a",
-    border: "#cbd5e1",
-    line: "#64748b",
-    accent: "#2563eb",
+    canvas: (type: "color", value: "#f8fafc"),
+    surface: (type: "color", value: "#ffffff"),
+    text: (type: "color", value: "#0f172a"),
+    border: (type: "color", value: "#cbd5e1"),
+    line: (type: "color", value: "#64748b"),
   ),
+  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
   styles: (
+    text: (fill: (kind: "solid", color: (ref: "text"))),
+    node: (
+      fill: (kind: "solid", color: (ref: "surface")),
+      stroke: (paint: (kind: "solid", color: (ref: "border"))),
+    ),
+    edge: (stroke: (paint: (kind: "solid", color: (ref: "line")))),
+  ),
+  rules: (
     (
-      kind: "rule",
       family: "flowchart",
       target: "node",
       style: (fill: "#dbeafe"),
@@ -319,19 +323,24 @@
   ),
 )
 #let dark-definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
   tokens: (
-    canvas: "#0f172a",
-    surface: "#1e293b",
-    text: "#e2e8f0",
-    border: "#475569",
-    line: "#94a3b8",
-    accent: "#38bdf8",
+    canvas: (type: "color", value: "#0f172a"),
+    surface: (type: "color", value: "#1e293b"),
+    text: (type: "color", value: "#e2e8f0"),
+    border: (type: "color", value: "#475569"),
+    line: (type: "color", value: "#94a3b8"),
   ),
+  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
   styles: (
+    text: (fill: (kind: "solid", color: (ref: "text"))),
+    node: (
+      fill: (kind: "solid", color: (ref: "surface")),
+      stroke: (paint: (kind: "solid", color: (ref: "border"))),
+    ),
+    edge: (stroke: (paint: (kind: "solid", color: (ref: "line")))),
+  ),
+  rules: (
     (
-      kind: "rule",
       family: "flowchart",
       target: "node",
       style: (fill: "#1e3a8a"),
@@ -380,13 +389,13 @@
 )
 #mermaid-theme-definition(
   "flowchart LR\nA[Invalid] --> B[Theme]",
-  (:),
+  (styles: (text: (fill: (ref: "missing")))),
   document-context: true,
   error-mode: "text",
 )
 #mermaid-theme-definition(
   "flowchart LR\nA[Invalid] --> B[Theme]",
-  (:),
+  (styles: (text: (fill: (ref: "missing")))),
   document-context: true,
   error-mode: "placeholder",
   width: 80%,
@@ -442,4 +451,4 @@ API fixture passed.
 #assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))
 #let catalog-preset = export-theme-preset(catalog.presets.at(0).id)
 #assert.eq(catalog-preset.kind, catalog.presets.at(0).export_kind)
-#assert(type(catalog-preset.complete_spec) == dictionary)
+#assert(type(catalog-preset.design) == dictionary)

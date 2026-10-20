@@ -733,6 +733,51 @@ mod tests {
             let round_tripped = compiler
                 .compile_recipe(decoded)
                 .expect("imported design compiles");
+            let palette = preset_palette(descriptor.preset());
+            for (family, target, expected) in [
+                (
+                    DiagramFamilyId::SEQUENCE,
+                    ThemeTarget::ActorLabel,
+                    palette.actor_text,
+                ),
+                (
+                    DiagramFamilyId::SEQUENCE,
+                    ThemeTarget::NoteLabel,
+                    palette.note_text,
+                ),
+                (
+                    DiagramFamilyId::STATE,
+                    ThemeTarget::NoteLabel,
+                    palette.note_text,
+                ),
+                (
+                    DiagramFamilyId::SEQUENCE,
+                    ThemeTarget::SequenceNumberLabel,
+                    palette.sequence_number_text,
+                ),
+                (
+                    DiagramFamilyId::PACKET,
+                    ThemeTarget::PacketFieldLabel,
+                    palette.packet_field_label_text,
+                ),
+                (
+                    DiagramFamilyId::XY_CHART,
+                    ThemeTarget::Legend,
+                    palette.subtle_text,
+                ),
+            ] {
+                assert_eq!(
+                    round_tripped
+                        .resolve(family)
+                        .text_style(target, ThemeVariant::Default, None)
+                        .fill()
+                        .and_then(solid_color)
+                        .as_deref(),
+                    Some(expected),
+                    "{} {family} {target:?} must override generic Text after JSON round-trip",
+                    descriptor.id(),
+                );
+            }
             assert_eq!(
                 round_tripped.recipe_fingerprint(),
                 compiler

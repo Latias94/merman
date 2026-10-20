@@ -234,7 +234,7 @@ func verifyThemePresetRecipes(client: Merman) throws {
                         $0["code"] as? String == "unsupported-geometry"
                             && $0["target"] as? String == "node"
                             && $0["source_document"] as? String == "design"
-                            && $0["source_paths"] as? [String] == ["/rules/\(styles.count - 1)"]
+                            && $0["source_paths"] as? [String] == ["/rules/\(styles.count - 1)/style"]
                     }, "unsupported width lost its source-addressed diagnostic")
                 }
             }

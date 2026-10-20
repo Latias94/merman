@@ -106,9 +106,8 @@
 )
 
 #let facade-definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
-  tokens: (text: "#123456", accent: "#abcdef"),
+  tokens: (text: (type: "color", value: "#123456")),
+  styles: (text: (fill: (kind: "solid", color: (ref: "text")))),
 )
 
 #context {

@@ -39,25 +39,25 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "64857e0bc9e0261ec77c43f27f87ff8476525edd4e098bd45a18934eeb554194";
+    "a0d7c70d54b5b7f78969a7a62b4451bc888fab6324482e12ea191b3659d14c76";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "50dfa8f0f8591d7c10262fd7e9b910cb6bf4de7f2718d35ca9e983b9a2c8e46b";
+    "24650e89413642257c9b8ad55fac0b0994bb7f3f1e4064cbcf3dc827b3f5a736";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "0cc8079ac6ecc52d42e068ccd8975a88cc6bd53fd57ba7f293ab415868a11893";
+    "5f7ae0d0ad0ff070c3b8f4a59874ef6401b41059b912c2e17d30e8b134e78d67";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "3d9f5b7beeb08cfedb09ed4da2403cf2c8d8e567efd15d39a8449c353887eda5";
+    "812b100a7f48144dc2a41de2dc5be8ab56e9c5e581a79bae1e20db6235e3d000";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "8692870ebe2064dbe5962cb39d739745867f5b1bbcbae6ff6a2fa0bb6180af28";
+    "a4ecc001e83001dcbbcafbe8e217c41ed80c3f80e74060c3e8b1fdb7415595dc";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "8d2ecf76de5637a8af8aba90664f2c46eda2746424a9e9e418652845b5abcad0";
+    "f9be8a2a8c4d62e81d6efecdbe869cb2c35488d695b6b108375e2fab292f21bc";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "1656f86620cfa3b45effdfeaa01a987f7fd866b0bf2f5cc447b1eccb12f14fb8";
+    "090e67986ecc7cce9a87ae17f346b60d434411e10754a007913a049b3408001f";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "efef84f97d685e700291dac98f4672ccf70cd03ac8601ffd5c338ec8744e7dd8";
+    "c94a44d9ec2e0c3250a665816c1cdb870388c510546ee733e5866e5a5fb5e374";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "e83365e3b165b4640d6311ab8389cf6b813e02d0335ab5a7aee89ccff5670396";
+    "50582371e4c781931eaa756ed3db71846c23a70ccbcc90b9613afeaba7210183";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "4482d7e323c6f0b2b1faa7f6fb2ded404052b593e4a51e6a9d5ea8e411b3df56";
+    "72afab2339c1829b33e158a6e6da471c5b536a8e2ff18d3297e02d0cd9430e4f";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
@@ -925,7 +925,6 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
     // tokens are deliberately absent: every displayed reusable value must have an actual use.
     for (target, fill, stroke) in [
         (ThemeTarget::Text, Some("text"), None),
-        (ThemeTarget::Title, Some("text"), None),
         (ThemeTarget::Node, None, Some("border")),
         (ThemeTarget::Edge, None, Some("line")),
         (
@@ -938,7 +937,6 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             Some("actor-background"),
             Some("actor-border"),
         ),
-        (ThemeTarget::ActorLabel, Some("actor-text"), None),
         (
             ThemeTarget::Lifeline,
             Some("actor-border"),
@@ -946,10 +944,8 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         ),
         (ThemeTarget::Message, None, Some("line")),
         (ThemeTarget::State, Some("surface"), Some("border")),
-        (ThemeTarget::StateLabel, Some("text"), None),
         (ThemeTarget::Transition, None, Some("line")),
         (ThemeTarget::TransitionMarker, Some("line"), Some("line")),
-        (ThemeTarget::TransitionLabel, Some("text"), None),
         (
             ThemeTarget::TransitionLabelBackground,
             Some("edge-label-background"),
@@ -961,13 +957,11 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             Some("surface-alt"),
             Some("border"),
         ),
-        (ThemeTarget::CompositeLabel, Some("text"), None),
         (
             ThemeTarget::Note,
             Some("note-background"),
             Some("note-border"),
         ),
-        (ThemeTarget::NoteLabel, Some("note-text"), None),
         (
             ThemeTarget::Activation,
             Some("activation-background"),
@@ -980,16 +974,30 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             None,
         ),
         (
+            ThemeTarget::LoopLabelBackground,
+            Some("surface-alt"),
+            Some("border"),
+        ),
+    ] {
+        design
+            .styles
+            .insert(target.id().to_owned(), style(fill, stroke));
+    }
+    // Text is a fallback for every label. Role paints must follow it in authored order,
+    // independent of the target-name ordering used by the defaults map.
+    for (target, fill, stroke) in [
+        (ThemeTarget::Title, Some("text"), None),
+        (ThemeTarget::ActorLabel, Some("actor-text"), None),
+        (ThemeTarget::StateLabel, Some("text"), None),
+        (ThemeTarget::TransitionLabel, Some("text"), None),
+        (ThemeTarget::CompositeLabel, Some("text"), None),
+        (ThemeTarget::NoteLabel, Some("note-text"), None),
+        (
             ThemeTarget::SequenceNumberLabel,
             Some("sequence-number-text"),
             None,
         ),
         (ThemeTarget::MessageLabel, Some("text"), None),
-        (
-            ThemeTarget::LoopLabelBackground,
-            Some("surface-alt"),
-            Some("border"),
-        ),
         (ThemeTarget::LoopLabel, Some("text"), None),
         (ThemeTarget::PacketByteLabel, Some("text"), None),
         (
@@ -1001,8 +1009,8 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         (ThemeTarget::Legend, Some("subtle-text"), None),
     ] {
         design
-            .styles
-            .insert(target.id().to_owned(), style(fill, stroke));
+            .rules
+            .push(rule(None, target, None, style(fill, stroke)));
     }
     design.rules.extend([
         rule(
