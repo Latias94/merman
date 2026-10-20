@@ -1,0 +1,110 @@
+# Prepared rendering and host integration migration
+
+This guide describes the current development branch, after published Merman `0.9.1`.
+It does not change the contracts of installed `0.9.1` artifacts. Build Rust crates and generated
+wrappers from the same revision; Web source builds require transport API `8`.
+See the [release index](../release/README.md) for published-version migrations.
+
+## Reuse parsed source in Rust
+
+Use `Renderer::prepare_source(PrepareSourceRequest::new(source, control))` to create a
+`PreparedSource`, then `Renderer::render_prepared(&prepared, target, fresh_control)` for each
+output. The [redraw example](../../crates/merman/examples/redraw_prepared.rs) contains the complete
+request wiring. `SemanticArtifact::into_prepared_source()` transfers an already parsed semantic
+artifact into the same reusable owner and releases its original operation control.
+
+The snapshot freezes canonical semantics, effective configuration, parse options, the existing
+compiled theme binding, source size/model complexity, and the actual parse-time runtime context.
+Implicit Gantt dates and generated GitGraph IDs therefore remain fixed across redraws. Prepare
+again when source, parse settings, site configuration or parse-time dates/IDs must change.
+Exported semantic JSON cannot reconstruct a snapshot.
+
+Each output reads its own layout options and text services and receives fresh cancellation,
+deadline, input admission, work accounting and output runtime state. An output-owned Gantt today
+marker can change without changing parsed task dates. Reuse does not cache a completed layout or
+grant a source/model quota exemption. `render_prepared_with_resource_policy` supplies an explicit
+input override; otherwise current renderer input policy takes precedence over target defaults.
+Completed SVG, layout, geometry and document results own their public data and remain usable
+after dropping the snapshot. Existing `RenderedDocument` exports continue to reuse a completed
+SVG when no relayout is needed.
+
+Low-level `merman-render::family::prepare` now borrows `&ParsedDiagramRender`. Keep that parse
+owner alive for the lifetime of `FamilyRenderArtifact<'_>`; family preparation owns its new
+layout/session while borrowing canonical model and render context. Update by-value calls to
+`prepare(&parsed, ...)`, and add artifact lifetimes where a type is named explicitly.
+`layout_json_with_compatibility_json` was removed: request `artifact.layout_json()` so semantics
+are projected from the exact artifact that owns the layout, under its active control.
+
+## Migrate edge geometry budgets
+
+`edge-geometry-json` retains payload schema `1`, source occurrence order, duplicate edge IDs,
+the emitted `data-points` coordinates and painted label centers. Flowchart, Swimlane and Agentflow
+share their actual family route/label decisions with SVG. The query no longer emits or discards an
+SVG; `layout-json` still exposes the earlier layout coordinates.
+
+Replace geometry-specific `max_svg_bytes` overrides with `max_geometry_json_bytes`. The binding
+operation accepts source/model limits, `max_layout_work_units`, `max_prepared_text_retained_bytes`
+and the new encoded-output ceiling. Explicit SVG, raster or other unrelated limits on this
+operation are rejected. SVG and native export operations likewise reject an explicit
+`max_geometry_json_bytes` override. Constructor options can still describe the union of limits
+used by their compiled operations; each output enforces its applicable dimensions.
+
+Rust's typed geometry result uses construction/work limits. Encode it with
+`EdgePaintGeometryOutput::write_json_controlled` to enforce exact JSON bytes and cancellation;
+raw serde serialization does not supply that operation contract. Binding and CLI encoded geometry
+use the maintained writer. Geometry resource failures report phase `geometry_output` for the
+encoded ceiling. Ordinary SVG retains its SVG budgets.
+
+Successful built-in families without geometry return empty edges after input/option admission,
+without starting unused layout, font or SVG services. A custom JSON model remains non-renderable.
+`RequirePortable` reports that portability is unavailable for this target rather than certifying
+a hidden SVG. These are intentional changes to incidental errors from the former SVG path.
+Native ABI `3` operation ordinals and the geometry payload shape remain unchanged. See
+[resource options](../bindings/OPTIONS_JSON.md#resource-options).
+
+## Reuse and publish in a browser
+
+Rendering-capable full/render packages expose `prepareSource()` and `mountDiagram()`; analysis,
+editor and ASCII packages retain their existing surfaces. A prepared wrapper is bound to the WASM
+runtime that created it. Its output methods accept output-only options; changing parse/config/time
+settings or the existing theme binding requires another preparation. Call `dispose()` when done.
+Disposal is idempotent, calls after disposal fail, and disposal inside a host measurement callback
+defers freeing active Rust data until that call returns.
+
+`mountDiagram` owns candidate publication, snapshot retention, document-local resize/font resources
+and generated SVG IDs. Failed updates retain the last successful diagram. `update(source)` retains
+options; supplying options replaces them. `refresh()` handles external typography changes and
+explicit adoption into another Document. Hidden, disconnected or zero-width targets defer work.
+`destroy()` releases resources while leaving the last published DOM in place. The same source,
+actual-root and navigation admission used by one-shot DOM helpers runs before publication.
+See the [Web lifecycle guide](../../platforms/web/README.md#maintain-a-mounted-diagram) for code.
+
+Measurement remains deterministic by default. Actual browser glyph widths can exceed those
+headless estimates even when a font is installed; fit-width placement does not remove that
+measurement boundary. Select `textMeasurement: "browser"` on a mount, or supply a host measurer,
+when layout must use the final browser font metrics. Reuse the prepared source when fonts change;
+do not compensate with arbitrary padding or smaller text.
+
+## Request width adaptation explicitly
+
+`LayoutAdaptation::FitWidth` / `layout.adaptation: "fit-width"` currently applies to Kanban.
+It packs complete columns in source order, preserving labels, font sizes, tasks, IDs and links.
+The default `None` / `"none"` retains Mermaid placement. Other families reject explicit
+fit-width. A column wider than the container retains its natural width and reports overflow.
+
+Read `layout_adaptation` on result metadata, or `meta.layout_adaptation` in layout JSON, for
+`mode`, `requested_width`, `actual_width` and `overflowed`. A mount supplies its measured content
+width for fit-width requests. This is family placement, independent of SVG viewport scaling.
+See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation).
+
+## Validation boundaries
+
+Internal strict and paired lenient parse paths compare complete managed compatibility projections
+and result categories. Generated layout checks use bounded, supported Dagre/Swimlane subsets.
+The independent [selected Mermaid differential](../security/FUZZING.md#selected-mermaid-parser-differential)
+observes real Flowchart/Sequence parser and database behavior, retaining exact replay inputs and
+separating tooling failures from grammar rejection. These checks supplement SVG/browser evidence;
+they do not establish complete grammar coverage or a performance improvement.
+
+Existing theme behavior remains regression coverage. This migration adds no dynamic recoloring,
+CSS-variable theme inheritance or new theme-authoring contract.

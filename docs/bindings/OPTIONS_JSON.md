@@ -159,7 +159,7 @@ Every field is optional.
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
 | `layout` | object | defaults | Per-request layout container dimensions. |
 | `environment` | object | defaults | Public selection of operation-owned text measurement and optional math rendering. |
-| `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
+| `resources` | object | `interactive` | Operation-specific source, model, layout, text, SVG, geometry and native-export budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
 | `raster` | object | defaults | Shared PNG/JPEG scale, matte, and fit-box behavior. Requires a compiled PNG or JPEG output. |
@@ -192,6 +192,13 @@ The Node wire request's optional `include_metadata: false` selects a success res
 `executeOperation` result. Both routes share option admission, strict errors, cancellation and
 timeout handling. There is no metadata fallback on the string route, so SDK and runtime artifacts
 must match.
+
+Explicit fit-width Kanban results also include `layout_adaptation` metadata with `mode`,
+`requested_width`, `actual_width`, and `overflowed`. Layout JSON places this observation under
+`meta.layout_adaptation`. The fields describe actual family bounds before SVG viewport scaling;
+they do not change the independent terminal `output_plan` or theme evidence. Absent/default
+adaptation omits the observation. Native wrappers retain it in their existing complete metadata
+JSON. See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation).
 
 PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
 dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
@@ -567,6 +574,7 @@ The terminal-grid budget is resource policy, not an ASCII presentation option. S
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
+| `layout.adaptation` | `"none"` or `"fit-width"` | `"none"` | Explicit whole-column Kanban packing. Other families reject `"fit-width"`; query the SVG plan's `supported_layout_adaptation_ids`. |
 | `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
 | `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
 | `layout.screen_available_width` | positive finite number | `layout.container_width` | Browser `screen.availWidth` in CSS pixels. This is distinct because Mermaid's C4 renderer uses the available screen width rather than the owning container width. |
@@ -617,6 +625,8 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
 | `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
+| `resources.limits.max_prepared_text_retained_bytes` | positive integer | profile value | Text retained by prepared graphical labels during the operation. |
+| `resources.limits.max_geometry_json_bytes` | positive integer | profile value | Exact encoded edge-geometry JSON bytes; valid only for `edge-geometry-json`. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | Admitted SVG cardinality and reference-expanded work at SVG input, postprocessing and native-conversion boundaries; not ordinary producer output cardinality. |
 | `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Checked logical extent for grid-backed terminal renderers. |
@@ -634,7 +644,7 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_total_embedded_image_pixels` | positive integer | profile value | Maximum aggregate intrinsic pixels across embedded raster images. |
 | `resources.limits.max_pdf_filter_image_pixels` | positive integer | profile value | Maximum retained pixel area for PDF filter-image rasterization after deterministic downsampling. |
 
-The seven render/model limits are intentionally family-neutral. Each family performs source-backed,
+The render/model limits are intentionally family-neutral. Each family performs source-backed,
 deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
 candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
 choose a workload profile instead of maintaining diagram-specific threshold tables.
@@ -647,11 +657,18 @@ The six `max_ascii_*` limits belong to ASCII rendering. `max_ascii_grid_cells` r
 
 The runtime catalog also reports fixed backend hard caps. SVG rendering owns `svg_backend_tree_nodes` and `svg_backend_tree_depth` in the `svg_postprocess` phase, so they apply to SVG output and to every native export derived from that SVG. Native export additionally owns `max_svg_conversion_isolation_depth`, `max_svg_conversion_filter_primitives_per_filter`, `max_total_svg_conversion_filter_primitives`, `max_svg_conversion_subroots`, and `max_nested_svg_images` in the `svg_conversion` phase. All seven remain finite under `unbounded-for-trusted-input` and cannot be supplied in `resources.limits`; generated builders reject attempts to override them.
 
-A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts all six terminal resource budgets; layout JSON additionally accepts layout work; SVG accepts the render budget; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
+A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts all six terminal resource budgets; layout JSON additionally accepts layout work; edge geometry additionally accepts layout work, prepared-text retention and geometry JSON bytes; SVG accepts the render budget except geometry JSON bytes; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
 select a stricter effective profile or lower a limit, but it cannot raise a constructor limit,
 replace a finite ceiling with an unbounded value, clear `resources`, or set an unrelated limit.
 One-shot operations may choose any valid profile, but their explicit limits follow the same
 operation ownership.
+
+Geometry queries do not emit SVG. Replace a geometry request's `max_svg_bytes` override with
+`max_geometry_json_bytes`; unrelated SVG/backend overrides now fail option admission. The payload
+retains schema `1`, ordered edge occurrences, clipped `data-points` and painted label positions.
+Typed Rust geometry construction has no encoded-byte charge; the maintained controlled writer
+enforces the exact ceiling during encoding. See the
+[development migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets).
 
 `interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
 the Typst plugin for every call; caller-provided `resources.limits` may tighten that transport

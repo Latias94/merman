@@ -42,6 +42,18 @@ fixed default URI and treats the remaining bytes as Mermaid source.
 
 ## Local Smoke
 
+`parse_mermaid` compares the semantic-JSON and typed-render parse paths using the same fixed
+runtime/configuration, in both strict and paired lenient modes. It checks result categories,
+diagram identity, title, authored/effective configuration and the complete lossless managed
+semantic projection. Acceptance disagreement fails even when one side returns no diagram.
+Catalog-derived family/alias checks and extension, recovery and cancellation boundaries live in
+`crates/merman-core/tests/parse_projection_contract.rs` and related core parse tests; custom
+registry contracts are not inferred from built-in model kinds.
+
+Generated layout assertions in `flowchart_layout_test` and `swimlane_layout_test` use fixed seeds
+and their explicitly supported Dagre/Swimlane graph subsets. They exclude self/ancestor edges from
+generic separation assertions; they are not universal geometric invariants for every backend.
+
 Run a fast smoke before changing fuzz harnesses:
 
 ```sh
@@ -107,3 +119,47 @@ cargo +nightly-2026-07-01 fuzz tmin --fuzz-dir fuzz <target> fuzz/artifacts/<tar
 
 If the minimized input exposes a public API bug, add a focused stable test under the affected crate.
 Keep the fuzz corpus for exploration, not as the only regression proof.
+
+## Selected Mermaid Parser Differential
+
+The independent `xtask parser-differential` command runs the selected real Mermaid runtime in one
+serial Chromium realm. Its Flowchart and Sequence adapters observe actual parser/database records;
+they do not simulate Jison callbacks or compare generated DOM IDs. The family lane accepts no
+frontmatter or init directives and supplies identical explicit site settings. A separate public
+`mermaid.parse` lane checks whole-source acceptance and returned configuration. Flowchart labels use
+the selected package's actual entity decoders at Merman's public semantic observation stage.
+
+Provision `repo-ref/mermaid` at the commit recorded in `tools/upstreams/REPOS.lock.json`, install the
+locked `tools/mermaid-cli` dependencies, and install that Puppeteer's selected headless shell:
+
+```sh
+npm ci --prefix tools/mermaid-cli
+node tools/mermaid-cli/node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell
+cargo run --locked -p xtask -- parser-differential --cases 256
+cargo run --locked -p xtask -- parser-differential --replay target/parser-differential/mismatch-<digest>.json
+cargo run --locked -p xtask -- parser-differential --minimize target/parser-differential/mismatch-<digest>.json --max-attempts 128 --timeout-seconds 900
+```
+
+`CARGO_TARGET_DIR` also controls this command's evidence directory. Each failure retains exact UTF-8
+source bytes, site settings, family/lane, corpus identity, seed and ordered mutation operations,
+local/upstream observations, selected source/package/runtime identities, and harness/decoder digests.
+Replay reads those retained bytes instead of rerunning a potentially changed generator. Explicit
+minimization tries bounded line/chunk deletion and then Unicode-safe smaller fragments, accepting only
+the same mismatch class. A missing/stale runtime, unexpected local engine error, invalid protocol,
+process/browser failure or timeout fails tooling; none counts as an ordinary parse rejection.
+
+The SVG parity job replays the fixed corpus before the 256 deterministic mutations per family in
+the same serial batch.
+The separate scheduled/manual discovery job admits at most 5,000 mutations per family and a 15-minute
+command deadline. Mutated inputs are bounded to 4 KiB; these are campaign limits, not library limits.
+The in-process libFuzzer jobs remain separate and never start a browser for each input. Promote a
+reviewed minimized failure into its family regression tests and `fuzz/seeds/mermaid`; do not add
+comparator exceptions or regenerate rendering baselines to conceal it.
+
+This observes bounded parser/DB semantics, not complete grammar coverage, browser layout or SVG
+parity. Nonsecure theme presentation metadata can deliberately differ because Merman's existing
+source-value admission and historical metadata projection have distinct responsibilities; that
+pre-existing theme scope is outside this campaign's fixed public-config cases. Its actual observed
+mismatch can still be replayed and minimized without a comparator allowance. Source-secure keys in
+public metadata follow the explicit initialized `secure` list or the selected upstream default list;
+rendering retains Merman's separate hardened admission.

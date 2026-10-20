@@ -76,6 +76,13 @@ is not an ASCII budget. See the [host examples](../../crates/merman/examples/REA
 
 ## SVG work has separate owners
 
+Prepared-source outputs repeat source-size/model admission against the current policy and use
+fresh work ledgers, cancellation, deadlines and output runtime state. Their immutable parse facts
+do not exempt later outputs from stricter limits. Use
+`render_prepared_with_resource_policy` for an explicit input override; otherwise the current
+renderer input override precedes the graphical target's input policy. See the
+[snapshot migration](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
 | Boundary | Resource responsibility |
 | --- | --- |
 | Mermaid input and family generation | Source/model/layout budgets, bounded retained text, finite coordinates and output bytes |
@@ -90,6 +97,26 @@ to ordinary generation. This is an intentional acceptance-envelope change; hosts
 old element-limit error must request the appropriate consumer admission or bound source work.
 Native tree hard caps do not become universal producer or browser limits. Current browser DOM
 admission is not a general bound on SVG reference expansion.
+
+## Edge geometry budgets
+
+`edge-geometry-json` computes the family's actual route/label geometry without generating an SVG.
+Its binding resource scope accepts source/model limits, `max_layout_work_units`,
+`max_prepared_text_retained_bytes` and `max_geometry_json_bytes`. The last limit bounds exact
+encoded JSON bytes and reports phase `geometry_output`. It replaces this operation's former
+incidental SVG-byte admission; explicit SVG or native-backend overrides are rejected rather than
+ignored. Ordinary SVG and native export reject explicit geometry-only output overrides.
+
+Rust typed geometry consumes model/layout/prepared-text work, not JSON bytes that have not been
+encoded. Use `EdgePaintGeometryOutput::write_json_controlled` when writing JSON so the encoded
+ceiling and cooperative cancellation remain active. Bindings and CLI use that writer. Querying a
+built-in family without geometry returns empty edges after semantic/input and option admission,
+without acquiring unused layout or font services. Custom JSON remains non-renderable.
+`RequirePortable` is explicitly unavailable for geometry output.
+
+The payload remains schema `1`, including source occurrence order and duplicate IDs. Read the
+[current migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets)
+when updating an integration that relied on the old SVG-limit error.
 
 ## Native font measurement budget
 
