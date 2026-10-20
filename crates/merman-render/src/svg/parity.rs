@@ -1379,7 +1379,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             effective_config_value,
             title,
-            artifact.title_theme(),
+            artifact.theme_plan(),
             options,
         ),
         #[cfg(feature = "diagram-kanban")]

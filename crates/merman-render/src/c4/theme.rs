@@ -425,6 +425,12 @@ impl C4ClusterThemePlan {
         ))
     }
 
+    pub(crate) fn has_separate_background(&self, alias: &str) -> bool {
+        self.boundaries
+            .get(alias)
+            .is_some_and(|boundary| boundary_fill_is_visible(&boundary.fill.token))
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<C4ClusterThemeReceipt> {
         (!self.pending.is_empty()).then(|| {
             C4ClusterThemeReceipt::new(self.explicit_boundary_count, self.boundaries.clone())
@@ -459,6 +465,10 @@ impl C4ClusterThemePlan {
 
 fn baseline_radius_token() -> Box<str> {
     MERMAID_BOUNDARY_RADIUS_PX.to_string().into_boxed_str()
+}
+
+fn boundary_fill_is_visible(fill: &str) -> bool {
+    !fill.eq_ignore_ascii_case("none") && !fill.eq_ignore_ascii_case("transparent")
 }
 
 fn typed_radius_token(
@@ -586,6 +596,7 @@ pub(crate) struct C4ClusterThemeReceipt {
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
     stroke_rules: BTreeSet<usize>,
+    backgrounds: BTreeSet<Box<str>>,
 }
 
 impl C4ClusterThemeReceipt {
@@ -602,7 +613,16 @@ impl C4ClusterThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            backgrounds: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn record_checkpointed_background(&mut self, alias: &str, fill: &str, radius: &str) {
+        self.terminals_match &= self.expectations.get(alias).is_some_and(|expected| {
+            boundary_fill_is_visible(&expected.fill.token)
+                && expected.fill.token.as_ref() == fill
+                && expected.radius_token.as_ref() == radius
+        }) && self.backgrounds.insert(alias.into());
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -626,7 +646,11 @@ impl C4ClusterThemeReceipt {
             return;
         };
         let terminal_matches = expectation.alias.as_ref() == boundary_alias
-            && expectation.fill.token.as_ref() == emitted_fill_token
+            && if boundary_fill_is_visible(&expectation.fill.token) {
+                emitted_fill_token == "none" && self.backgrounds.contains(boundary_alias)
+            } else {
+                expectation.fill.token.as_ref() == emitted_fill_token
+            }
             && expectation.stroke.token.as_ref() == emitted_stroke_token
             && expectation.radius_token.as_ref() == emitted_rx_token
             && expectation.radius_token.as_ref() == emitted_ry_token

@@ -661,7 +661,13 @@ pub(crate) fn layout_wardley_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
     let config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    let typography_theme = WardleyTypographyThemePlan::resolve(None, &config);
+    let typography_theme = WardleyTypographyThemePlan::resolve(
+        None,
+        &config,
+        &crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ),
+    )?;
     layout_wardley_diagram_typed_with_theme(
         model,
         diagram_title,

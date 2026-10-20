@@ -20,7 +20,9 @@ use crate::resources::OperationWorkMeter;
 use super::task_bar::GanttTaskBarState;
 
 mod css_binding;
+mod label;
 pub(crate) use css_binding::GanttCssBinding;
+use label::GanttTaskLabelPlan;
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
@@ -144,6 +146,7 @@ struct GanttTaskTerminalExpectation {
     radius_rule_index: Option<usize>,
     fill: Option<GanttTaskFillExpectation>,
     stroke: Option<GanttTaskStrokeExpectation>,
+    label: GanttTaskLabelPlan,
     vert: bool,
 }
 
@@ -156,6 +159,7 @@ impl GanttTaskTerminalExpectation {
             radius_rule_index: None,
             fill: None,
             stroke: None,
+            label: GanttTaskLabelPlan::default(),
             vert: task.vert,
         }
     }
@@ -209,6 +213,7 @@ impl GanttTaskTheme {
         let mut source_owned_fill_rules = BTreeSet::new();
         let mut typed_stroke_capabilities = BTreeMap::<usize, ThemeCapability>::new();
         let mut source_owned_stroke_rules = BTreeSet::new();
+        let mut label_fill_capabilities = BTreeMap::new();
 
         for (task_index, expectation) in task_expectations.iter_mut().enumerate() {
             let style = theme.style_with_work_meter(
@@ -239,17 +244,61 @@ impl GanttTaskTheme {
                     source_owned_fill_rules.insert(origin.rule_index());
                 }
             }
-            expectation.stroke =
-                typed_stroke_expectation(theme, effective_config, expectation.state, &style)?;
+            let critical_border_style = matches!(
+                expectation.state,
+                GanttTaskBarState::ActiveCrit | GanttTaskBarState::DoneCrit
+            )
+            .then(|| {
+                theme.style_with_work_meter(
+                    ThemeTarget::Task,
+                    ThemeVariant::Error,
+                    Some(task_index + 1),
+                    work_meter,
+                )
+            })
+            .transpose()?;
+            let ordered_stroke_style = critical_border_style
+                .as_ref()
+                .filter(|critical| {
+                    critical.stroke_resolution().winner().is_some_and(|origin| {
+                        origin.variant() == Some(ThemeVariant::Error)
+                            && style
+                                .stroke_resolution()
+                                .winner()
+                                .is_none_or(|current| origin.rule_index() >= current.rule_index())
+                    })
+                })
+                .unwrap_or(&style);
+            if let Some(origin) = ordered_stroke_style.stroke_resolution().winner() {
+                winner_properties.insert((origin.rule_index(), ResolvedStyleProperty::Stroke));
+            }
+            expectation.stroke = typed_stroke_expectation(
+                theme,
+                effective_config,
+                expectation.state,
+                ordered_stroke_style,
+            )?;
+            expectation.label = GanttTaskLabelPlan::resolve(
+                theme,
+                effective_config,
+                expectation.state,
+                task_index + 1,
+                work_meter,
+            )?;
+            winner_properties.extend(expectation.label.winners());
+            for paint in expectation.label.typed_candidates() {
+                winner_properties.insert((paint.rule_index(), ResolvedStyleProperty::Fill));
+                label_fill_capabilities.insert(paint.rule_index(), paint.capability());
+            }
             if expectation.stroke.as_ref().is_some_and(|stroke| {
                 stroke.typed_rule_index().is_none() && stroke.typed_capability().is_none()
-            }) && let Some(origin) = style.stroke_resolution().winner()
+            }) && let Some(origin) = ordered_stroke_style.stroke_resolution().winner()
             {
                 source_owned_stroke_rules.insert(origin.rule_index());
             }
         }
 
-        let title_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let title_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.titleColor",
         );
@@ -298,7 +347,7 @@ impl GanttTaskTheme {
             resolve_gantt_warning_stroke(theme, effective_config, work_meter)?;
         let warning_stroke = warning_stroke_resolution.expectation;
         let warning_stroke_source_owned = warning_stroke_resolution.source_owned;
-        let vertical_source_owned = merman_core::__private::config_path_overrides_typed_default(
+        let vertical_source_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.vertLineColor",
         );
@@ -500,8 +549,14 @@ impl GanttTaskTheme {
                                     .pending
                                     .capabilities
                                     .insert(expectation.capability);
-                            } else if !text_fill_source_owned {
+                            } else if !text_fill_source_owned
+                                && !label_fill_capabilities.contains_key(&rule_index)
+                            {
                                 observation.incomplete = true;
+                            }
+                            if let Some(capability) = label_fill_capabilities.get(&rule_index) {
+                                observation.pending.label_fill = true;
+                                observation.pending.capabilities.insert(*capability);
                             }
                         }
                         FamilyThemeDisposition::Unsupported => {
@@ -509,6 +564,36 @@ impl GanttTaskTheme {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
+                    }
+                }
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::TaskLabel,
+                    facet,
+                    ..
+                } => {
+                    let observation = observations
+                        .entry((rule_index, ThemeTarget::TaskLabel))
+                        .or_default();
+                    if !winner_properties
+                        .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                    {
+                        continue;
+                    }
+                    observation.applicable = true;
+                    match (route.disposition(), facet) {
+                        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_)) => {
+                            if let Some(capability) = label_fill_capabilities.get(&rule_index) {
+                                observation.pending.label_fill = true;
+                                observation.pending.capabilities.insert(*capability);
+                            }
+                        }
+                        (FamilyThemeDisposition::Unsupported, facet) => {
+                            observation
+                                .residual
+                                .get_or_insert(unsupported_residual_for_facet(facet));
+                        }
+                        _ => observation.incomplete = true,
                     }
                 }
                 FamilyThemeMechanism::OrdinalPalette {
@@ -542,7 +627,7 @@ impl GanttTaskTheme {
         let source_owned_fills = tasks
             .iter()
             .map(|task| {
-                merman_core::__private::config_path_overrides_typed_default(
+                merman_core::__private::config_paint_overrides_typed_default(
                     effective_config,
                     GanttTaskBarState::from_task(task).final_fill_path(),
                 )
@@ -682,6 +767,20 @@ impl GanttTaskTheme {
             .map(|fill| fill.css.as_ref())
     }
 
+    pub(crate) fn terminal_label_fill_for_layout_task(
+        &self,
+        layout_index: usize,
+        class: &str,
+    ) -> Option<&str> {
+        self.layout_task(layout_index)
+            .and_then(|task| task.label.paint(class))
+            .map(|paint| paint.css())
+    }
+
+    pub(crate) fn task_label_state_classes(task: &GanttRenderTask, suffix: &str) -> String {
+        super::task_bar::label_state_classes(task, suffix)
+    }
+
     pub(crate) fn terminal_stroke_for_layout_task(&self, layout_index: usize) -> Option<&str> {
         self.layout_task(layout_index)
             .and_then(|task| task.stroke.as_ref())
@@ -694,6 +793,10 @@ impl GanttTaskTheme {
                 .tasks
                 .iter()
                 .any(|task| task.fill.is_some() || task.stroke.is_some())
+            || self
+                .tasks
+                .iter()
+                .any(|task| task.label.typed_candidates().next().is_some())
             || self.typed_font_stack_active
             || !self.unsupported_typography_properties.is_empty()
             || self.title_fill.is_some()
@@ -759,6 +862,9 @@ impl GanttTaskTheme {
                 );
             } else if (pending.title_fill && !receipt.has_visible_title_fill_terminal())
                 || (pending.text_fill && !receipt.has_visible_text_fill_terminal())
+                || (pending.label_fill
+                    && !receipt.label_fill_rules.contains(&rule_index)
+                    && !(pending.text_fill && receipt.has_visible_text_fill_terminal()))
             {
                 evidence.mark_not_applicable(key.clone());
             }
@@ -827,11 +933,11 @@ fn resolve_gantt_warning_stroke(
         return Ok(GanttWarningStrokeResolution::default());
     };
     let (typed_css, rule_index, capability) = typed.into_parts();
-    let today_source_owned = merman_core::__private::config_path_overrides_typed_default(
+    let today_source_owned = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.todayLineColor",
     );
-    let vert_source_owned = merman_core::__private::config_path_overrides_typed_default(
+    let vert_source_owned = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.vertLineColor",
     );
@@ -980,7 +1086,7 @@ fn typed_fill_expectation(
     let (typed_css, rule_index, capability) = typed_fill.into_parts();
 
     let final_fill_path = state.final_fill_path();
-    let owner = if merman_core::__private::config_path_overrides_typed_default(
+    let owner = if merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         final_fill_path,
     ) {
@@ -1016,14 +1122,25 @@ fn typed_stroke_expectation(
         theme,
         style,
         &[ThemeTarget::Task],
-        DirectStaticSelectorDomain::State(state.theme_variant()),
+        DirectStaticSelectorDomain::State(
+            if state.is_critical()
+                && style
+                    .stroke_resolution()
+                    .winner()
+                    .is_some_and(|origin| origin.variant() == Some(ThemeVariant::Error))
+            {
+                ThemeVariant::Error
+            } else {
+                state.theme_variant()
+            },
+        ),
     ) else {
         return Ok(None);
     };
     let (typed_css, rule_index, capability) = typed_stroke.into_parts();
 
     let final_stroke_path = state.final_stroke_path();
-    let owner = if merman_core::__private::config_path_overrides_typed_default(
+    let owner = if merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         final_stroke_path,
     ) {
@@ -1075,11 +1192,11 @@ fn resolve_gantt_text_fill(
         return Ok(GanttTextFillResolution::default());
     };
     let (typed_css, rule_index, capability) = typed_fill.into_parts();
-    let grid_source_owned = merman_core::__private::config_path_overrides_typed_default(
+    let grid_source_owned = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.textColor",
     );
-    let task_source_owned = merman_core::__private::config_path_overrides_typed_default(
+    let task_source_owned = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.taskTextColor",
     );
@@ -1130,6 +1247,7 @@ struct GanttTaskPendingEvidence {
     stroke: bool,
     title_fill: bool,
     text_fill: bool,
+    label_fill: bool,
     warning_stroke: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
@@ -1141,6 +1259,7 @@ impl GanttTaskPendingEvidence {
             || self.stroke
             || self.title_fill
             || self.text_fill
+            || self.label_fill
             || self.warning_stroke
     }
 }
@@ -1150,6 +1269,7 @@ impl GanttTaskPendingEvidence {
 pub(crate) struct GanttTaskThemeReceipt {
     expectations: Box<[GanttTaskTerminalExpectation]>,
     checkpointed_tasks: Vec<bool>,
+    checkpointed_labels: Vec<bool>,
     terminals_match: bool,
     expected_font_family_css: Option<Box<str>>,
     typography_required: bool,
@@ -1160,6 +1280,7 @@ pub(crate) struct GanttTaskThemeReceipt {
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
     stroke_rules: BTreeSet<usize>,
+    label_fill_rules: BTreeSet<usize>,
     expected_title_fill_css: Option<Box<str>>,
     title_css_recorded: bool,
     title_css_matches: bool,
@@ -1206,6 +1327,7 @@ impl GanttTaskThemeReceipt {
     ) -> Self {
         Self {
             checkpointed_tasks: vec![false; expectations.len()],
+            checkpointed_labels: vec![false; expectations.len()],
             expectations: expectations.into_boxed_slice(),
             terminals_match: true,
             expected_font_family_css: typography_required.then(|| expected_font_family_css.into()),
@@ -1217,6 +1339,7 @@ impl GanttTaskThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            label_fill_rules: BTreeSet::new(),
             expected_title_fill_css: title_fill.map(|fill| fill.css.clone()),
             expected_title_fill_rule: title_fill.map(|fill| fill.rule_index),
             title_css_recorded: false,
@@ -1260,6 +1383,7 @@ impl GanttTaskThemeReceipt {
         Self {
             expectations: Vec::new().into_boxed_slice(),
             checkpointed_tasks: vec![false; expected_task_count],
+            checkpointed_labels: vec![false; expected_task_count],
             terminals_match: false,
             expected_font_family_css: None,
             typography_required: false,
@@ -1270,6 +1394,7 @@ impl GanttTaskThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            label_fill_rules: BTreeSet::new(),
             expected_title_fill_css: None,
             expected_title_fill_rule: None,
             title_css_recorded: false,
@@ -1371,6 +1496,37 @@ impl GanttTaskThemeReceipt {
             {
                 self.stroke_rules.insert(rule_index);
             }
+        }
+    }
+
+    pub(crate) fn record_label_fill(
+        &mut self,
+        layout_index: usize,
+        class: &str,
+        emitted_fill: Option<&str>,
+        visible: bool,
+    ) {
+        let Some(checkpointed) = self.checkpointed_labels.get_mut(layout_index) else {
+            self.terminals_match = false;
+            return;
+        };
+        if *checkpointed {
+            self.terminals_match = false;
+            return;
+        }
+        *checkpointed = true;
+        let Some(expected) = self.expectations.get(layout_index) else {
+            self.terminals_match = false;
+            return;
+        };
+        let paint = expected.label.paint(class);
+        let matches = paint.map(|paint| paint.css()) == emitted_fill;
+        self.terminals_match &= matches;
+        if matches
+            && visible
+            && let Some(paint) = paint
+        {
+            self.label_fill_rules.insert(paint.rule_index());
         }
     }
 
@@ -1539,7 +1695,13 @@ impl GanttTaskThemeReceipt {
     }
 
     fn proves_complete(&self) -> bool {
+        let labels_complete = self.expectations.iter().zip(&self.checkpointed_labels).all(
+            |(expected, checkpointed)| {
+                expected.label.typed_candidates().next().is_none() || *checkpointed
+            },
+        );
         self.terminals_match
+            && labels_complete
             && self.expectations.len() == self.checkpointed_tasks.len()
             && self.terminal_ids.len() == self.expectations.len()
             && self
@@ -1568,9 +1730,11 @@ impl GanttTaskThemeReceipt {
                     && self.title_css_recorded
                     && self.title_css_matches
                     && self.has_visible_title_fill_terminal()))
-            && (!pending.text_fill
-                || (self.expected_text_fill_rule == Some(rule_index)
-                    && self.has_visible_text_fill_terminal()))
+            && ((!pending.text_fill && !pending.label_fill)
+                || (pending.text_fill
+                    && self.expected_text_fill_rule == Some(rule_index)
+                    && self.has_visible_text_fill_terminal())
+                || (pending.label_fill && self.label_fill_rules.contains(&rule_index)))
             && (!pending.warning_stroke || self.proves_warning_stroke())
             && (!pending.warning_stroke || self.expected_warning_rule == Some(rule_index))
     }
@@ -1933,6 +2097,7 @@ mod tests {
                     capability: ThemeCapability::SolidPaint,
                 },
             }),
+            label: GanttTaskLabelPlan::default(),
             vert: false,
         };
         let missing = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
@@ -1988,6 +2153,77 @@ mod tests {
         }
         assert!(!duplicate.proves_complete());
         assert!(!GanttTaskTheme::baseline(&[]).record_terminal(duplicate));
+    }
+
+    #[test]
+    fn label_receipt_rejects_missing_duplicate_and_overridden_terminals() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::TaskLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::GANTT);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::default());
+        let task = GanttRenderTask {
+            id: "task-a".to_owned(),
+            ..GanttRenderTask::default()
+        };
+        let plan = GanttTaskTheme::resolve(
+            Some(&resolved),
+            &MermaidConfig::empty_object(),
+            &[task],
+            &meter,
+        )
+        .unwrap();
+        let mut receipt = GanttTaskThemeReceipt::new(plan.tasks.to_vec());
+        receipt.record_checkpointed_task(
+            0,
+            "g",
+            "task-a",
+            "g-task-a",
+            "0",
+            "task task0",
+            3.0,
+            3.0,
+            None,
+            None,
+        );
+        assert!(
+            !receipt.proves_complete(),
+            "a task bar does not prove the label was written"
+        );
+        receipt.record_label_fill(0, "taskText taskText0", Some("#123456"), true);
+        assert!(receipt.proves_complete());
+        receipt.record_label_fill(0, "taskText taskText0", Some("#123456"), true);
+        assert!(
+            !receipt.proves_complete(),
+            "duplicate labels cannot reuse a terminal checkpoint"
+        );
+
+        let mut overridden = GanttTaskThemeReceipt::new(plan.tasks.to_vec());
+        overridden.record_checkpointed_task(
+            0,
+            "g",
+            "task-a",
+            "g-task-a",
+            "0",
+            "task task0",
+            3.0,
+            3.0,
+            None,
+            None,
+        );
+        overridden.record_label_fill(0, "taskText taskText0", Some("#654321"), true);
+        assert!(
+            !overridden.proves_complete(),
+            "the receipt must match the actual visible fill"
+        );
     }
 
     #[test]

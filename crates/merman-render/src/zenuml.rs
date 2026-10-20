@@ -13,10 +13,9 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub(crate) use theme::{ZenumlSourceStyle, ZenumlTitleThemePlan};
+pub(crate) use theme::{ZenumlSourceStyle, ZenumlThemePlan};
 
 pub(crate) const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";
-pub(crate) const ZENUML_FRAME_TITLE_SELECTOR: &str = ".frame-title";
 
 const MARGIN: f64 = 20.0;
 const MIN_PARTICIPANT_WIDTH: f64 = 80.0;
@@ -2477,6 +2476,90 @@ mod tests {
             );
             assert!(layout.messages[1].y - message.y > 2.0 * typography.size(14.0));
             assert!(layout.fragments[0].height > FRAGMENT_HEADER_HEIGHT * size / 16.0);
+        }
+    }
+
+    #[test]
+    fn typed_family_typography_is_resolved_before_text_measurement() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+        };
+        struct RecordingMeasurer(std::sync::Mutex<Vec<(String, TextStyle)>>);
+        impl TextMeasurer for RecordingMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((text.to_owned(), style.clone()));
+                DeterministicTextMeasurer::default().measure(text, style)
+            }
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_family_style(
+                        crate::DiagramFamilyId::ZENUML,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("HostFamily").unwrap())
+                            .with_font_size_px(24.0)
+                            .unwrap(),
+                    ),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::ZENUML);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\nAlice->Bob: request\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Zenuml(model) = parsed.model() else {
+            panic!("expected ZenUML");
+        };
+        for (config, family, participant_size, message_size) in [
+            (serde_json::json!({}), "HostFamily", 24.0, 21.0),
+            (
+                serde_json::json!({"themeVariables":{"zenuml":{"fontFamily":"SourceFamily"}}}),
+                "SourceFamily",
+                24.0,
+                21.0,
+            ),
+            (
+                serde_json::json!({"themeVariables":{"zenuml":{"fontSize":18}}}),
+                "HostFamily",
+                18.0,
+                15.75,
+            ),
+        ] {
+            let style = ZenumlSourceStyle::resolve(
+                Some(&resolved),
+                &merman_core::MermaidConfig::from_value(config),
+                &meter,
+                false,
+            )
+            .unwrap();
+            let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
+            layout_zenuml_diagram_typed(model, &style.typography, &measurer).unwrap();
+            let measurements = measurer.0.lock().unwrap();
+            assert!(
+                measurements
+                    .iter()
+                    .all(|(_, measured)| measured.font_family.as_deref() == Some(family))
+            );
+            assert!(
+                measurements
+                    .iter()
+                    .any(|(text, measured)| text == "Alice"
+                        && measured.font_size == participant_size)
+            );
+            assert!(measurements.iter().any(|(text, measured)| text == "request" && measured.font_size == message_size));
+            assert_eq!(style.typography.size(16.0), participant_size);
+            assert_eq!(style.typography.size(14.0), message_size);
         }
     }
 

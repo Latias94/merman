@@ -1935,7 +1935,7 @@ pub(crate) struct ZenumlFamilyArtifact<'parsed> {
         &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
         crate::zenuml::ZenumlDiagramLayout,
     >,
-    title_theme: crate::zenuml::ZenumlTitleThemePlan,
+    theme_plan: crate::zenuml::ZenumlThemePlan,
 }
 
 #[cfg(feature = "diagram-zenuml")]
@@ -1949,8 +1949,8 @@ impl<'parsed> ZenumlFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn title_theme(&self) -> &crate::zenuml::ZenumlTitleThemePlan {
-        &self.title_theme
+    pub(crate) const fn theme_plan(&self) -> &crate::zenuml::ZenumlThemePlan {
+        &self.theme_plan
     }
 }
 
@@ -2982,7 +2982,7 @@ impl BuiltinFamilyArtifact<'_> {
             #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(artifact) => (
                 DiagramFamilyId::ZENUML,
-                artifact.title_theme().finish_evidence(),
+                artifact.theme_plan().finish_evidence(),
             ),
             #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(artifact) => (

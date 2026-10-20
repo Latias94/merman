@@ -2,9 +2,10 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalSelector,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
+    LinearGradient, OrdinalSelector, Specified, ThemeColorValue, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -71,6 +72,14 @@ fn render_zenuml_with_theme(
     theme: &DiagramTheme,
     require_portable: bool,
 ) -> family::RenderedFamilySvg {
+    try_render_zenuml_with_theme(source, theme, require_portable).expect("render themed ZenUML")
+}
+
+fn try_render_zenuml_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+    require_portable: bool,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed ZenUML")
@@ -85,16 +94,13 @@ fn render_zenuml_with_theme(
         .begin_session_with_theme(theme)
         .expect("begin themed ZenUML session");
 
-    family::prepare(&parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed ZenUML")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("zenuml-theme".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render themed ZenUML")
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("zenuml-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
 }
 
 fn try_render_zenuml_with_resource_policy(
@@ -239,7 +245,25 @@ fn zenuml_title_fill_is_not_applicable_without_frame_title_text() {
 }
 
 #[test]
-fn zenuml_generic_text_and_typography_do_not_claim_frame_title() {
+fn zenuml_default_variant_title_fill_reaches_the_static_title() {
+    let theme = zenuml_title_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        )
+        .with_variant(ThemeVariant::Default),
+    );
+    let rendered =
+        render_zenuml_with_theme("zenuml\ntitle Static title\nA->B: request\n", &theme, true);
+    assert!(themed_zenuml_css_rule(rendered.svg(), "frame-title").contains("fill:#abcdef"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn zenuml_generic_text_and_typography_reach_body_and_shared_title_font() {
     let theme = zenuml_non_title_text_theme();
     let rendered = render_zenuml_with_theme(
         "zenuml\ntitle Fixed ZenUML title\nClient->Service: request\n",
@@ -254,33 +278,31 @@ fn zenuml_generic_text_and_typography_do_not_claim_frame_title() {
         .expect("ZenUML stylesheet");
     assert!(!stylesheet.contains(".frame-title{fill:#654321;}"));
     assert!(stylesheet.contains(
-        ".frame-title{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}"
+        ".frame-title{font-family:\"ZenUML Generic Text\";font-size:16px;font-weight:600;fill:#222}"
+    ));
+    assert!(stylesheet.contains(
+        ".message-label{font-family:\"ZenUML Generic Text\";font-size:14px;fill:#654321}"
     ));
 
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
-fn zenuml_qualified_and_ordinal_title_fill_do_not_claim_frame_title() {
+fn zenuml_ordinal_title_fill_does_not_claim_a_static_frame_title() {
     let style = || {
         ThemeStylePatch::default()
             .with_fill(CanvasPaint::solid("#abcdef").expect("valid non-static ZenUML title fill"))
     };
-    let themes = [
-        zenuml_title_rule_theme(
-            ThemeRule::new(ThemeTarget::Title, style()).with_variant(ThemeVariant::Default),
-        ),
-        zenuml_title_rule_theme(
-            ThemeRule::new(ThemeTarget::Title, style())
-                .with_ordinal(OrdinalSelector::exact(1).expect("valid ZenUML title ordinal")),
-        ),
-    ];
+    let themes = [zenuml_title_rule_theme(
+        ThemeRule::new(ThemeTarget::Title, style())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid ZenUML title ordinal")),
+    )];
 
     for theme in themes {
         let rendered = render_zenuml_with_theme(
@@ -505,6 +527,288 @@ fn source_css_rule<'a>(svg: &'a str, class: &str) -> &'a str {
         .split_once('}')
         .unwrap()
         .0
+}
+
+fn themed_zenuml_css_rule<'a>(svg: &'a str, class: &str) -> &'a str {
+    let prefix = format!("#zenuml-theme .{class}");
+    svg.split_once(&prefix)
+        .unwrap_or_else(|| panic!("missing {class} rule"))
+        .1
+        .split_once('{')
+        .unwrap()
+        .1
+        .split_once('}')
+        .unwrap()
+        .0
+}
+
+#[test]
+fn zenuml_pure_dark_preset_styles_all_visible_family_surfaces() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman_render::diagram_theme::ThemePreset::EditorDark)
+        .unwrap();
+    let rendered = render_zenuml_with_theme(ZENUML_PAINT, &theme, false);
+    let svg = rendered.svg();
+    let document = roxmltree::Document::parse(svg).unwrap();
+    for class in [
+        "frame-border-inner",
+        "frame-title",
+        "participant-label",
+        "message-label",
+        "lifeline",
+        "occurrence",
+        "fragment-header",
+        "fragment-condition",
+        "divider-bg",
+        "divider-label",
+        "group-title-bg",
+        "group-title-text",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some(class)),
+            "fixture must reach the actual {class} terminal"
+        );
+    }
+    for (class, paint) in [
+        ("frame-border-inner", "fill:transparent"),
+        ("frame-title", "fill:#e5e7eb"),
+        ("participant-box", "fill:#1f2937"),
+        ("participant-label", "fill:#e5e7eb"),
+        ("message-label", "fill:#e5e7eb"),
+        ("seq-number", "fill:#cbd5e1"),
+        ("message-line", "stroke:#94a3b8"),
+        ("lifeline", "stroke:#475569"),
+        ("occurrence", "fill:#334155"),
+        ("group-title-bg", "fill:#1e293b"),
+        ("divider-bg", "fill:#422006"),
+        ("divider-label", "fill:#fef3c7"),
+    ] {
+        assert!(
+            themed_zenuml_css_rule(svg, class).contains(paint),
+            "{class} must receive {paint}: {}",
+            themed_zenuml_css_rule(svg, class)
+        );
+    }
+}
+
+#[test]
+fn zenuml_pure_light_preset_preserves_family_surface_foregrounds() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman_render::diagram_theme::ThemePreset::EditorLight)
+        .unwrap();
+    let rendered = render_zenuml_with_theme(ZENUML_PAINT, &theme, false);
+    for (class, paint) in [
+        ("frame-border-inner", "fill:transparent"),
+        ("participant-box", "fill:#f8fafc"),
+        ("participant-label", "fill:#0f172a"),
+        ("message-label", "fill:#0f172a"),
+        ("seq-number", "fill:#475569"),
+        ("occurrence", "fill:#e2e8f0"),
+        ("fragment-header", "fill:#e2e8f0"),
+        ("fragment-condition", "fill:#0f172a"),
+        ("group-title-bg", "fill:#f1f5f9"),
+        ("group-title-text", "fill:#0f172a"),
+        ("divider-bg", "fill:#fff7ed"),
+        ("divider-label", "fill:#7c2d12"),
+    ] {
+        assert!(
+            themed_zenuml_css_rule(rendered.svg(), class).contains(paint),
+            "{class}: {paint}"
+        );
+    }
+}
+
+#[test]
+fn zenuml_empty_and_title_only_inputs_report_only_visible_typography() {
+    let theme = zenuml_non_title_text_theme();
+    for (source, applied, absent) in [("zenuml\n", 0, 2), ("zenuml\ntitle Only a title\n", 1, 1)] {
+        let rendered = render_zenuml_with_theme(source, &theme, true);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), absent);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn zenuml_namespace_source_paint_preserves_property_local_ownership_under_preset() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman_render::diagram_theme::ThemePreset::EditorDark)
+        .unwrap();
+    let source = format!(
+        "---\nconfig:\n  themeVariables:\n    zenuml:\n      textColor: '#123456'\n      actorBackgroundColor: '#abcdef'\n      backgroundColor: '#f0f1f2'\n      noteBackgroundColor: '#fefefe'\n      noteBorderColor: '#456789'\n      noteTextColor: '#234567'\n---\n{ZENUML_PAINT}"
+    );
+    let rendered = render_zenuml_with_theme(&source, &theme, false);
+    assert!(themed_zenuml_css_rule(rendered.svg(), "frame-title").contains("fill:#123456"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "participant-box").contains("fill:#abcdef"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "participant-box").contains("stroke:#475569"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "message-label").contains("fill:#123456"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "frame-border-inner").contains("fill:#f0f1f2"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "divider-bg").contains("fill:#fefefe"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "divider-bg").contains("stroke:#456789"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "divider-label").contains("fill:#234567"));
+}
+
+#[test]
+fn zenuml_fragment_only_sequence_numbers_apply_static_fill_and_reject_unsupported_rules() {
+    let source = "zenuml\nwhile(active) {}\nif(ready) {}\n";
+    let theme = zenuml_title_rule_theme(ThemeRule::new(
+        ThemeTarget::SequenceNumberLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    ));
+    let rendered = render_zenuml_with_theme(source, &theme, true);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let numbers = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("seq-number"))
+        .collect::<Vec<_>>();
+    assert_eq!(numbers.len(), 2);
+    assert!(
+        numbers
+            .iter()
+            .all(|node| node.text().is_some_and(|text| !text.is_empty()))
+    );
+    assert!(themed_zenuml_css_rule(rendered.svg(), "seq-number").contains("fill:#123456"));
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let mut opacity = ThemeStylePatch::default();
+    opacity.paint.opacity = Specified::Value(0.5);
+    for rule in [
+        ThemeRule::new(ThemeTarget::SequenceNumberLabel, opacity),
+        ThemeRule::new(
+            ThemeTarget::SequenceNumberLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+    ] {
+        let theme = zenuml_title_rule_theme(rule);
+        let result = try_render_zenuml_with_theme(source, &theme, true);
+        let error = result
+            .err()
+            .expect("visible fragment numbers must reject unsupported rules");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ZENUML, 1))
+        );
+        let rendered = render_zenuml_with_theme(source, &theme, false);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 1);
+    }
+}
+
+#[test]
+fn zenuml_source_owned_paint_suppresses_only_the_overridden_unsupported_properties() {
+    let gradient = CanvasPaint::LinearGradient(
+        LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    for (key, target, class, stroke) in [
+        (
+            "actorTextColor",
+            ThemeTarget::ActorLabel,
+            "participant-label",
+            false,
+        ),
+        (
+            "textColor",
+            ThemeTarget::ActorLabel,
+            "participant-label",
+            false,
+        ),
+        (
+            "actorBorderColor",
+            ThemeTarget::Actor,
+            "participant-box",
+            true,
+        ),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  themeVariables:\n    zenuml:\n      {key}: '#654321'\n---\nzenuml\nA->B: request\n"
+        );
+        let patch = if stroke {
+            ThemeStylePatch::default().with_stroke(gradient.clone())
+        } else {
+            ThemeStylePatch::default().with_fill(gradient.clone())
+        };
+        let theme = zenuml_title_rule_theme(ThemeRule::new(target, patch.clone()));
+        let rendered = render_zenuml_with_theme(&source, &theme, true);
+        assert!(
+            themed_zenuml_css_rule(rendered.svg(), class).contains(&format!(
+                "{}:#654321",
+                if stroke { "stroke" } else { "fill" }
+            ))
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+
+        let mut mixed = patch;
+        mixed.paint.opacity = Specified::Value(0.5);
+        let mixed_theme = zenuml_title_rule_theme(ThemeRule::new(target, mixed));
+        let result = try_render_zenuml_with_theme(&source, &mixed_theme, true);
+        let error = result
+            .err()
+            .expect("source paint must not hide unsupported opacity");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ZENUML, 1))
+        );
+        let rendered = render_zenuml_with_theme(&source, &mixed_theme, false);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 1);
+    }
+}
+
+#[test]
+fn zenuml_typed_font_size_reaches_layout_and_paint_together() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::ZENUML,
+                    ThemeTextStyle::default()
+                        .with_font_stack(FontStack::single("Wide ZenUML Font").unwrap())
+                        .with_font_size_px(24.0)
+                        .unwrap(),
+                ),
+            ),
+        )
+        .unwrap();
+    let rendered = render_zenuml_with_theme(ZENUML_PAINT, &theme, false);
+    assert!(themed_zenuml_css_rule(rendered.svg(), "participant-label").contains("font-size:24px"));
+    assert!(themed_zenuml_css_rule(rendered.svg(), "message-label").contains("font-size:21px"));
+    assert!(
+        themed_zenuml_css_rule(rendered.svg(), "participant-label")
+            .contains("font-family:\"Wide ZenUML Font\";")
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let actor = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("data-participant") == Some("Alice"))
+        .unwrap();
+    let rect = actor
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert!(rect.attribute("height").unwrap().parse::<f64>().unwrap() >= 48.0);
 }
 
 #[test]
