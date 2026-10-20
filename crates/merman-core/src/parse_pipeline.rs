@@ -1141,6 +1141,8 @@ impl<'a> ParsePipeline<'a> {
         let (mut effective_config, source_config) =
             self.effective_config_before_detect(&pre.config, control)?;
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
+        let track_detector = !self.engine.presentation_defaults.is_empty_object();
+        let detector_before = track_detector.then(|| effective_config.begin_mutation_tracking());
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
             None => match self.engine.registry.detect_type_precleaned_controlled(
@@ -1152,11 +1154,17 @@ impl<'a> ParsePipeline<'a> {
                 Err(error) => return Ok(Err(error)),
             },
         };
+        let detector_writes = if let Some(before) = detector_before {
+            effective_config.take_mutation_paths(&before)
+        } else {
+            Vec::new()
+        };
         control.checkpoint()?;
-        crate::config::resolve_appearance(
+        let external_palette = crate::config::resolve_appearance(
             &diagram_type,
             &source_config,
             &self.engine.site_config_delta,
+            &self.engine.presentation_defaults,
             &crate::generated::upstream_default_config(),
             &mut effective_config,
         );
@@ -1179,6 +1187,17 @@ impl<'a> ParsePipeline<'a> {
                     crate::config::clone_value_nonrecursive(variables),
                 );
             }
+        } else if external_palette && track_detector {
+            if let Err(error) = crate::config::apply_external_presentation_palette(
+                &mut effective_config,
+                &self.engine.presentation_defaults,
+                &self.engine.presentation_non_paint_defaults,
+                &self.engine.site_config_delta,
+                &source_config,
+                Some(&detector_writes),
+            ) {
+                return Ok(Err(error.into()));
+            }
         } else if has_config_overrides {
             if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
                 return Ok(Err(error.into()));
@@ -1196,6 +1215,31 @@ impl<'a> ParsePipeline<'a> {
         }
 
         control.checkpoint()?;
+        effective_config.set_presentation_defaults_active(
+            self.engine
+                .presentation_defaults
+                .presentation_defaults_active(),
+        );
+        effective_config.set_presentation_font_defaults_active(
+            self.engine
+                .presentation_defaults
+                .presentation_font_defaults_active(),
+        );
+        let axis_text_path = "themeVariables.wardley.axisTextColor";
+        effective_config.set_wardley_axis_text_authored(
+            self.engine
+                .site_config_delta
+                .get_str(axis_text_path)
+                .is_some()
+                || source_config.get_str(axis_text_path).is_some()
+                || detector_writes.iter().any(|path| {
+                    path.is_empty()
+                        || path == axis_text_path
+                        || axis_text_path
+                            .strip_prefix(path)
+                            .is_some_and(|suffix| suffix.starts_with('.'))
+                }),
+        );
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
         control.checkpoint()?;
 

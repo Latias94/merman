@@ -238,4 +238,8 @@ impl HostTheme {
             || !self.roles.is_empty()
             || !self.series_palette.is_empty()
     }
+
+    pub(super) fn has_paint_values(&self) -> bool {
+        self.appearance.is_some() || !self.roles.is_empty() || !self.series_palette.is_empty()
+    }
 }

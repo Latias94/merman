@@ -222,7 +222,7 @@ impl Drop for ManagedSemanticJson {
     }
 }
 
-fn equal_values(left: &Value, right: &Value) -> bool {
+pub(crate) fn equal_values(left: &Value, right: &Value) -> bool {
     let mut stack = vec![(left, right)];
     while let Some((left, right)) = stack.pop() {
         match (left, right) {

@@ -7,9 +7,11 @@ pub(crate) fn resolve_appearance(
     diagram_type: &str,
     source: &MermaidConfig,
     initialize: &MermaidConfig,
+    presentation: &MermaidConfig,
     defaults: &MermaidConfig,
     effective: &mut MermaidConfig,
-) {
+) -> bool {
+    let mut external_palette = false;
     let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
     for key in ["theme", "look", "layout"] {
         // Mindmap's database chooses Cose only when the caller supplied no layout.
@@ -17,9 +19,14 @@ pub(crate) fn resolve_appearance(
         // become indistinguishable from an explicit request (including null).
         let mindmap_default = (section == "mindmap" && key == "layout")
             .then(|| Value::String("cose-bilkent".to_string()));
-        let value = [source, initialize]
+        let authored = [source, initialize]
             .into_iter()
-            .find_map(|layer| read_appearance(layer, section, key))
+            .find_map(|layer| read_appearance(layer, section, key));
+        if key == "theme" {
+            external_palette = authored.is_some_and(|value| value.as_str() != Some("null"));
+        }
+        let value = authored
+            .or_else(|| read_appearance(presentation, section, key))
             .or(mindmap_default.as_ref())
             .or_else(|| read_appearance(defaults, section, key));
         let Some(value) = value else {
@@ -40,6 +47,7 @@ pub(crate) fn resolve_appearance(
             effective.set_value(&scoped_key, value.clone());
         }
     }
+    external_palette
 }
 
 fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Option<&'a Value> {
@@ -83,6 +91,7 @@ mod tests {
             "flowchart-v2",
             &source,
             &initialize,
+            &MermaidConfig::empty_object(),
             &defaults,
             &mut effective,
         );
@@ -164,7 +173,14 @@ mod tests {
             let source = MermaidConfig::from_value(source);
             effective.deep_merge(initialize.as_value());
             effective.deep_merge(source.as_value());
-            resolve_appearance("mindmap", &source, &initialize, &defaults, &mut effective);
+            resolve_appearance(
+                "mindmap",
+                &source,
+                &initialize,
+                &MermaidConfig::empty_object(),
+                &defaults,
+                &mut effective,
+            );
             assert_eq!(effective.as_value()["layout"], expected);
         }
     }
