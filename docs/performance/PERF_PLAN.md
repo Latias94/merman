@@ -17,6 +17,18 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
+validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
+`e1707685fb8c9f587d0139899a5c5bc8cc148bf0`. All 8100 release tests pass (seven skipped),
+together with strict Clippy, 37 DOM entries, optimized full WASM including wasm-opt, 34 release
+theme acceptance tests and 245 Python performance contracts. All 13 serial command stages finish
+successfully and all 19,448 frozen non-documentation source hashes remain unchanged. Fresh DOM
+report copies and WASM input/artifact digests are archived with the ignored experiment records.
+This checkpoint integrates prepared redraw and persistent mounting while preserving theme
+ownership repairs. Historical allocation and v0.9.0 latency reports retain their original
+revisions; no new timing claim or all-family goal completion follows from this merge. The private
+probe migrations still require source revalidation and current exact error oracles before use.
+
 The [October 20 main-integration checkpoint](theme_main_integration_macos_2026-10-20.md)
 validates clean merge `9b4ff208f` of upstream `d249bb2dc`: 7651 release tests pass (seven skipped),
 strict Clippy and 37 DOM entries pass, optimized full WASM completes, 245 Python performance
