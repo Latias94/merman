@@ -246,6 +246,10 @@ fn build_source(family: Family, scale: u32, seed: u64) -> String {
     source
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Keep parse results inline; boxing would add probe-owned allocations to the measurement."
+)]
 enum ParseResult {
     Typed(ParsedDiagramRender),
     Json(ParsedDiagram),
@@ -569,8 +573,110 @@ fn write_json_line(value: &impl Serialize) -> io::Result<()> {
     stdout.flush()
 }
 
+fn execute_state_shape(seed: u64) -> Result<Value, String> {
+    let engine =
+        Engine::new().with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(seed));
+    let mut rows = Vec::with_capacity(MEMORY_SCALES.len());
+    for scale in MEMORY_SCALES {
+        let source = build_source(Family::State, scale, seed);
+        let result = parse(&engine, Route::Typed, Family::State.diagram_type(), &source)?;
+        let ParseResult::Typed(parsed) = result else {
+            return Err("State shape mode requires the typed route".into());
+        };
+        let RenderSemanticModel::State(model) = parsed.model() else {
+            return Err("State shape mode returned another diagram family".into());
+        };
+        if model.document.len() != 1 {
+            return Err("State shape mode supports only the existing single-document chain".into());
+        }
+        let statements = model
+            .document
+            .root()
+            .and_then(|root| model.document.get(root))
+            .ok_or("State shape mode requires its canonical root document")?;
+        let complexity = merman_core::resources::ModelComplexity::from_parsed_render(&parsed);
+        let compatibility = parsed
+            .model()
+            .compatibility_json(parsed.metadata())
+            .map_err(|error| error.to_string())?;
+        verify_model(&compatibility, Family::State, scale, seed);
+        let mut compatibility_bytes = Vec::new();
+        compatibility
+            .write_json(&mut compatibility_bytes)
+            .map_err(|error| error.to_string())?;
+        rows.push(serde_json::json!({
+            "scale": scale,
+            "source_bytes": source.len(),
+            "source_sha256": sha256_bytes(source.as_bytes()),
+            "canonical": {
+                "statement_count": statements.len(),
+                "state_count": model.states.len(),
+                "relation_count": model.relations.len(),
+                "flat_document_count": model.document.len(),
+                "node_count": model.nodes.len(),
+                "edge_count": model.edges.len()
+            },
+            "admitted_model_complexity": {
+                "items": complexity.items,
+                "text_bytes": complexity.text_bytes,
+                "nesting_depth": complexity.nesting_depth
+            },
+            "compatibility_projection": {
+                "required_by_typed_operation": false,
+                "legacy_json_output_bytes": compatibility_bytes.len()
+            }
+        }));
+    }
+    Ok(serde_json::json!({
+        "kind": "state-flat-chain-shape-characterization",
+        "allocation_evidence": false,
+        "family": "state",
+        "route": "typed",
+        "seed": seed,
+        "executable_sha256": executable_sha256()?,
+        "rows": rows
+    }))
+}
+
+fn run_state_shape_mode() {
+    let result = std::panic::catch_unwind(|| {
+        let mut args = std::env::args().skip(2);
+        let seed = args
+            .next()
+            .ok_or("--state-shape requires one decimal u64 seed")?;
+        if seed.is_empty() || !seed.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("--state-shape seed must be a decimal u64".into());
+        }
+        let seed = seed
+            .parse::<u64>()
+            .map_err(|_| "--state-shape seed must be a decimal u64")?;
+        if args.next().is_some() {
+            return Err("--state-shape accepts only one decimal u64 seed".into());
+        }
+        execute_state_shape(seed)
+    })
+    .unwrap_or_else(|_| Err("State shape characterization panicked".into()));
+    match result {
+        Ok(sidecar) => {
+            if write_json_line(&sidecar).is_err() {
+                std::process::exit(2);
+            }
+        }
+        Err(error) => {
+            let _ = write_json_line(&serde_json::json!({
+                "kind": "state-flat-chain-shape-characterization", "error": error
+            }));
+            std::process::exit(2);
+        }
+    }
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|_| {}));
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--state-shape")) {
+        run_state_shape_mode();
+        return;
+    }
     let result = match std::panic::catch_unwind(execute_probe) {
         Ok(result) => result,
         Err(_) => Err("parse memory probe panicked".into()),

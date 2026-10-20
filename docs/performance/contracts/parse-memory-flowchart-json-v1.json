@@ -16,7 +16,7 @@
     "inputs": [
       {
         "path": "crates/merman/benches/parse_memory.rs",
-        "sha256": "93e34e6f48e541447968b04b0c7da9d3837c4c72022d3fb34dfd0e5e79a292f4"
+        "sha256": "d1e6ecab220fcd57a15a8207fa0d12f95c52877d32640964b80f08676a8f79a8"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",
