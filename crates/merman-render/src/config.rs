@@ -75,7 +75,7 @@ impl<'a> DiagramLook<'a> {
     pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
         let value = raw
             .map(str::trim)
-            .filter(|look| !look.is_empty())
+            .filter(|look| matches!(*look, "classic" | "handDrawn" | "neo"))
             .unwrap_or(DEFAULT_DIAGRAM_LOOK);
         Self { value }
     }
