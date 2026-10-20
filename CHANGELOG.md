@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Fixed
+
+- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#228](https://github.com/Latias94/merman/issues/228)
+- Filled C4 boundaries no longer cover their children. Host themes also reach boundary labels, relationships, and arrowheads while explicit configuration and relationship styles retain priority. [#229](https://github.com/Latias94/merman/issues/229)
+- Wardley host themes reach anchor labels, component surfaces, and structural lines while preserving explicit colors and evolved-component styling. [#230](https://github.com/Latias94/merman/issues/230)
+- ZenUML host themes consistently style the frame, participants, messages, lifelines, notes, groups, activations, and text. Explicit ZenUML settings retain priority, and layout uses the same typography as the rendered labels. [#231](https://github.com/Latias94/merman/issues/231)
+- Explicit site or source theme selections preserve the selected Mermaid theme's complete derived palette instead of mixing it with host-derived colors. Independent host fonts remain available, and host roles fill only values missing from the selected theme. This fixes ER, Quadrant, and Timeline color combinations under host themes. [#232](https://github.com/Latias94/merman/issues/232)
+- Restrict look-based SVG selectors to supported looks; unsupported values use the normal fallback.
+- Drop rejected Block inline CSS declarations instead of copying them into SVG, preserving valid sibling declarations.
+- Validate Requirement source CSS while preserving declaration order, quoted values, and `!important` handling.
+
+These rendering fixes can change SVG and exported image/PDF snapshots. Review regenerated output; the existing Presentation API and Options JSON schema 2 remain the integration contract.
+
 ## [0.9.1] - 2026-10-18
 
 - Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
