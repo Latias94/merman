@@ -88,6 +88,10 @@ impl ZenumlSourceStyle {
     pub(crate) fn configured_color(&self, key: &str) -> Option<&str> {
         self.colors.get(key).map(String::as_str)
     }
+
+    pub(crate) fn uses_default_css(&self) -> bool {
+        self.colors.is_empty() && self.typography.uses_default_css()
+    }
 }
 
 /// Final ZenUML frame-title fill shared by stylesheet emission and terminal evidence.
