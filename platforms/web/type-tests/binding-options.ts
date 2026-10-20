@@ -6,6 +6,8 @@ import {
   layoutJsonWithTextMeasurer,
   materializeTheme,
   renderSvgWithTextMeasurer,
+  renderSvgResult,
+  svgPlanJson,
 } from "../src/runtime-render.js";
 import type { BindingDiagnosticErrorDetails } from "../src/public-catalog.js";
 import type {
@@ -77,6 +79,7 @@ const svgOptions: SvgBindingOptions = {
   fixed_today: "2026-08-12",
   parse: { suppress_errors: true },
   svg: { diagram_id: "example" },
+  layout: { adaptation: "fit-width", container_width: 421 },
 };
 const explicitNullTextMeasurementOptions: SvgBindingOptions = {
   environment: { text_measurement: null },
@@ -429,3 +432,47 @@ const malformedThemeDiagnostic: ThemeDiagnostic = {
   source_paths: [2],
 };
 void malformedThemeDiagnostic;
+
+
+// Prepared redraws cannot mutate frozen parse configuration or the captured theme.
+import type { BrowserPreparedSource, PreparedSourceOutputOptions, HostTextMeasurerPreparedSourceOutputOptions } from "../src/public-types.js";
+declare const preparedSource: BrowserPreparedSource;
+preparedSource.renderSvg({ layout: { container_width: 480 }, resources, timeout_ms: 100 });
+preparedSource.renderSvgWithTextMeasurer(() => undefined, { svg: { diagram_id: "retained" } });
+const preparedOutput: PreparedSourceOutputOptions = { layout: { container_width: 640 } };
+// @ts-expect-error Parse options require a new preparation.
+preparedSource.renderSvg({ parse: { suppress_errors: true } });
+// @ts-expect-error Configuration requires a new preparation.
+preparedSource.renderSvg({ site_config: {} });
+// @ts-expect-error Themes are frozen by preparation.
+preparedSource.renderSvg({ theme: null });
+// @ts-expect-error Host measurers own the output measurement selection.
+const preparedHostOutput: HostTextMeasurerPreparedSourceOutputOptions = { environment: { text_measurement: "deterministic" } };
+void preparedOutput;
+void preparedHostOutput;
+
+const unsupportedAdaptation: SvgBindingOptions = {
+  // @ts-expect-error explicit placement modes are bounded by the Rust owner.
+  layout: { adaptation: "shrink-font" },
+};
+void unsupportedAdaptation;
+
+const adaptationIds: string[] = svgPlanJson("kanban").supported_layout_adaptation_ids;
+const adaptation = renderSvgResult("kanban").metadata.layout_adaptation;
+if (adaptation) {
+  const width: number = adaptation.actual_width;
+  const overflowed: boolean = adaptation.overflowed;
+  void width;
+  void overflowed;
+}
+void adaptationIds;
+
+const mountedOptions: import("../src/public-types.js").MountDiagramOptions = {
+  outputOptions: { layout: { adaptation: "fit-width" }, timeout_ms: 250 },
+  textMeasurement: "browser",
+};
+const invalidMountedOptions: import("../src/public-types.js").MountDiagramOptions = {
+  // @ts-expect-error The mount owns its SVG ID namespace.
+  outputOptions: { svg: { diagram_id: "shared-id" } },
+};
+void [mountedOptions, invalidMountedOptions];

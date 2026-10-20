@@ -13,7 +13,7 @@ fn render(source: &str) -> (C4DiagramLayout, String) {
     let environment = RenderEnvironment::deterministic();
     let session = environment.begin_session().expect("render session");
     let options = LayoutOptions::headless_svg_defaults().with_screen_available_width(4000.0);
-    let artifact = family::prepare(parsed, &options, session).expect("prepare C4");
+    let artifact = family::prepare(&parsed, &options, session).expect("prepare C4");
     let projection = artifact.layout_json().expect("layout projection");
     let layout =
         serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("typed C4 layout");

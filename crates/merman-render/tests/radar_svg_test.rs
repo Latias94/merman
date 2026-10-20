@@ -62,7 +62,7 @@ fn render_radar_with_theme_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Radar session");
-    family::prepare(parsed, &LayoutOptions::default(), session)?
+    family::prepare(&parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -94,7 +94,7 @@ fn render_radar_svg_from_text(text: &str) -> String {
         .expect("detect radar");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("layout radar");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout radar");
 
     artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -115,7 +115,7 @@ fn try_render_radar_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Radar resource-bound session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -655,7 +655,7 @@ fn radar_series_palette_fails_closed_beyond_the_twelve_slot_surface() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict oversized Radar session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare oversized themed Radar")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
     let error = match rendered {
@@ -686,7 +686,7 @@ fn radar_series_palette_fails_closed_for_a_non_twelve_theme_color_limit() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict nonstandard-limit Radar session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare nonstandard-limit themed Radar")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
     let error = match rendered {

@@ -57,7 +57,7 @@ fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagra
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("typed State layout");
     let projection = artifact.layout_json().expect("State layout projection");
     serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
 }
@@ -87,7 +87,7 @@ fn layout_state_from_text_with_options_and_policy(
         .begin_session()
         .unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("typed State layout");
     let projection = artifact.layout_json().expect("State layout projection");
     serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
 }

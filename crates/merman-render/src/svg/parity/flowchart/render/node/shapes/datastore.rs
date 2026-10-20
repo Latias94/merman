@@ -79,3 +79,44 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_datastore(
         fmt(h)
     );
 }
+
+pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let w = common.layout_node.width.max(1.0);
+    let h = common.layout_node.height.max(1.0);
+    let Some(_) = super::super::roughjs::roughjs_prepare_paths_for_hand_drawn_rect(
+        super::super::roughjs::RoughGeometryTarget::Query,
+        -w / 2.0,
+        -h / 2.0,
+        w,
+        h,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.work_meter,
+        common.hand_drawn_seed,
+    ) else {
+        return;
+    };
+    let Some(_) = super::super::roughjs::roughjs_prepare_hand_drawn_line_path(
+        -w / 2.0,
+        -h / 2.0,
+        w / 2.0,
+        -h / 2.0,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.hand_drawn_seed,
+    ) else {
+        return;
+    };
+    let _ = super::super::roughjs::roughjs_prepare_hand_drawn_line_path(
+        -w / 2.0,
+        h / 2.0,
+        w / 2.0,
+        h / 2.0,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.hand_drawn_seed,
+    );
+}

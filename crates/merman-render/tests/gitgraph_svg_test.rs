@@ -221,7 +221,7 @@ fn try_render_gitgraph_with_theme_engine_and_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed GitGraph session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()

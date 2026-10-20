@@ -62,7 +62,7 @@ fn render_venn_with_theme_requirement(
         .begin_session_with_theme(theme)
         .expect("begin themed Venn session");
 
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("venn-theme".to_string()),
             ..SvgRenderOptions::default()
@@ -83,7 +83,7 @@ fn render_typed_venn_with_engine(input: &str, engine: Engine) -> (VennDiagramLay
         .expect("diagram detected");
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize Venn layout");
     let layout: VennDiagramLayout =
         serde_json::from_value(projection["layout"]["VennDiagram"].clone())
@@ -115,7 +115,7 @@ fn try_render_venn_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse Venn resource-bound fixture")
         .expect("detect Venn resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("venn-bounded".to_string()),
@@ -636,7 +636,7 @@ union A,B
         .expect("diagram detected");
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     assert_eq!(artifact.family_id(), merman_render::DiagramFamilyId::VENN);
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())

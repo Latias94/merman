@@ -316,18 +316,31 @@ impl AgentflowDiagramRenderModel {
                 .map(|(id, ancestor)| ((*id).to_string(), (*ancestor).to_string())),
         );
         context.set_subgraph_color_ordinals(containment.color_ordinals(&self.sub_graphs));
-        model.edges.retain_mut(|edge| {
-            let authored_self_loop = edge.from == edge.to;
-            if let Some(replacement) = context.collapsed_replacement(&edge.from) {
-                edge.from = replacement.to_string();
-            }
-            if let Some(replacement) = context.collapsed_replacement(&edge.to) {
-                edge.to = replacement.to_string();
-            }
-            // Agentflow retains authored loops even when their node is collapsed.
-            authored_self_loop || edge.from != edge.to
-        });
+        model.edges = self
+            .edges
+            .iter()
+            .zip(model.edges)
+            .filter_map(|(source, mut edge)| {
+                let (from, to) = containment.rendered_edge_endpoints(source)?;
+                if edge.from != from {
+                    from.clone_into(&mut edge.from);
+                }
+                if edge.to != to {
+                    to.clone_into(&mut edge.to);
+                }
+                Some(edge)
+            })
+            .collect();
         (model, context)
+    }
+
+    /// Borrows the exact labels and kinds selected by the concrete Flowchart adapter.
+    #[doc(hidden)]
+    pub fn render_label_sources(&self) -> AgentflowRenderLabelSources<'_> {
+        AgentflowRenderLabelSources {
+            model: self,
+            containment: self.containment(),
+        }
     }
 
     // Mirror agentflowDb.getData: resolve collapse first, then admit parents in reverse
@@ -397,7 +410,77 @@ struct AgentflowContainment<'a> {
     diagnostics: Vec<AgentflowDiagnostic>,
 }
 
-impl AgentflowContainment<'_> {
+/// Operation-local label view; canonical labels are never copied for typography admission.
+#[doc(hidden)]
+pub struct AgentflowRenderLabelSources<'a> {
+    model: &'a AgentflowDiagramRenderModel,
+    containment: AgentflowContainment<'a>,
+}
+
+impl AgentflowRenderLabelSources<'_> {
+    pub fn node_labels(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
+        self.model
+            .vertices
+            .iter()
+            .map(|node| {
+                (
+                    node.label.as_deref().unwrap_or(&node.id),
+                    self.model.presentation.node_label_type(&node.id),
+                )
+            })
+            .chain(self.model.connectors.iter().map(|node| {
+                (
+                    node.title.as_deref().unwrap_or(&node.id),
+                    self.model.presentation.node_label_type(&node.id),
+                )
+            }))
+    }
+
+    pub fn edge_labels(&self) -> impl Iterator<Item = Option<(&str, Option<&str>)>> {
+        self.model.edges.iter().enumerate().map(|(index, edge)| {
+            self.containment.rendered_edge_endpoints(edge)?;
+            let label = edge.label.as_deref()?;
+            let generated;
+            let id = match edge.id.as_deref() {
+                Some(id) => id,
+                None => {
+                    generated = format!("edge-{index}");
+                    &generated
+                }
+            };
+            Some((label, self.model.presentation.edge_label_type(id)))
+        })
+    }
+
+    pub fn subgraph_labels(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
+        self.model.sub_graphs.iter().map(|graph| {
+            (
+                graph.title.as_deref().unwrap_or_default(),
+                self.model
+                    .presentation
+                    .subgraph_label_types
+                    .get(&graph.id)
+                    .map(String::as_str),
+            )
+        })
+    }
+}
+
+impl<'a> AgentflowContainment<'a> {
+    fn rendered_edge_endpoints(&self, edge: &'a AgentflowEdge) -> Option<(&'a str, &'a str)> {
+        let from = self
+            .collapsed_replacements
+            .get(edge.start.as_str())
+            .copied()
+            .unwrap_or(&edge.start);
+        let to = self
+            .collapsed_replacements
+            .get(edge.end.as_str())
+            .copied()
+            .unwrap_or(&edge.end);
+        (edge.start == edge.end || from != to).then_some((from, to))
+    }
+
     fn color_ordinals(&self, graphs: &[AgentflowSubGraph]) -> Vec<(String, usize)> {
         let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
         for graph in graphs {

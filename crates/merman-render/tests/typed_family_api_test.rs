@@ -29,7 +29,7 @@ fn render_session() -> RenderSession {
 #[test]
 fn c4_exposes_layout_only_through_the_prepared_family_artifact() {
     let parsed = parse_for_render("C4Context\nSystem(api, \"API\")\n");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), render_session())
         .expect("prepare C4 artifact");
     let projection = artifact.layout_json().expect("project C4 layout");
 
@@ -43,7 +43,7 @@ fn c4_exposes_layout_only_through_the_prepared_family_artifact() {
 #[test]
 fn xychart_exposes_layout_only_through_the_prepared_family_artifact() {
     let parsed = parse_for_render("xychart-beta\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [7]\n");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), render_session())
         .expect("prepare XYChart artifact");
     let projection = artifact.layout_json().expect("project XYChart layout");
     let layout = &projection["layout"]["XyChartDiagram"];
@@ -61,7 +61,7 @@ fn xychart_exposes_layout_only_through_the_prepared_family_artifact() {
 fn architecture_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("architecture-beta\n  service api(server)[API]\n");
     let session = render_session();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Architecture artifact");
     let options = SvgRenderOptions {
         diagram_id: Some("typed-architecture".to_string()),
@@ -87,7 +87,7 @@ fn architecture_reports_the_missing_cytoscape_layout_capability() {
         Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
         result => panic!("unexpected Architecture parse result: {result:?}"),
     };
-    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
+    let error = match family::prepare(&parsed, &LayoutOptions::default(), render_session()) {
         Err(error) => error,
         Ok(_) => panic!("Architecture must be rejected without layout-cytoscape"),
     };
@@ -122,7 +122,7 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin default-feature Mindmap theme session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("tidy-tree Mindmap must not require layout-cytoscape");
     assert_eq!(artifact.family_id().as_str(), "mindmap");
     let rendered = artifact
@@ -148,7 +148,7 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
 fn state_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("stateDiagram-v2\n[*] --> Active\n");
     let session = render_session();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare State artifact");
     let options = SvgRenderOptions {
         diagram_id: Some("typed-state".to_string()),
@@ -200,7 +200,7 @@ fn finalized_svg_receipt_rejects_other_renders_and_mutated_output() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        family::prepare(parsed, &LayoutOptions::default(), session)
+        family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap()
@@ -277,7 +277,7 @@ fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capabilit
         };
         match (
             family::prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::headless_svg_defaults(),
                 render_session(),
             ),

@@ -11,6 +11,66 @@ const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
+pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
+    ctx: &FlowchartRenderCtx<'_>,
+    cluster: &LayoutCluster,
+    origin_x: f64,
+    origin_y: f64,
+) -> crate::Result<()> {
+    ctx.work_meter
+        .checkpoint(merman_core::OperationPhase::Layout)
+        .map_err(crate::Error::from)?;
+    if ctx.compatibility.look.as_str() != "handDrawn"
+        || ctx
+            .swimlane_lanes_by_id
+            .get(cluster.id.as_str())
+            .is_some_and(|lane| lane.parent_id.is_none())
+        || (!ctx.subgraph_has_children(cluster.id.as_str())
+            && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx))
+    {
+        return Ok(());
+    }
+    let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
+    let left = cluster.x - cluster.width / 2.0 + ctx.tx - origin_x;
+    let top = cluster.y - cluster.height / 2.0 + ctx.ty - origin_y;
+    let width = cluster.width.max(1.0);
+    let height = cluster.height.max(1.0);
+    if ctx.diagram_type == "agentflow" {
+        let path = rounded_rect_path_d(left, top, width, height, 10.0);
+        let _ = super::node::roughjs::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+            &path,
+            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+            &ctx.hand_drawn_seed,
+        );
+    } else {
+        let path = rounded_rect_path_d(left, top, width, height, 0.0);
+        let stroke_width = parse_css_px_f32(
+            terminal.compiled.stroke_width.as_ref(),
+            terminal.typed_stroke_width.unwrap_or(1.3),
+        );
+        let dash = terminal
+            .compiled
+            .stroke_dasharray
+            .as_deref()
+            .unwrap_or("0 0")
+            .trim();
+        let _ = super::node::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+            super::node::roughjs::RoughGeometryTarget::Query,
+            &path,
+            stroke_width,
+            dash,
+            FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
+            FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
+            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+            ctx.work_meter,
+            &ctx.hand_drawn_seed,
+        );
+    }
+    ctx.work_meter
+        .checkpoint(merman_core::OperationPhase::Layout)
+        .map_err(crate::Error::from)
+}
+
 fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
     let mut out = String::new();
     let _ = write!(
@@ -271,7 +331,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
-    let Some(cluster_dom_id) = ctx.document_ids.cluster(cluster.id.as_str()) else {
+    let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(
                 "missing prepared Flowchart DOM id for cluster `{}`",

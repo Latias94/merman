@@ -19,6 +19,7 @@ use super::target_admission::{
 /// Successful SVG output and the evidence for the operation that produced it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgOutput {
+    layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     svg: String,
     evidence: RenderEvidence,
     admission: TargetAdmissionReceipt,
@@ -34,6 +35,7 @@ pub struct SvgOutput {
 /// options can share that exact context but cannot replace it or add one after layout completed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RenderedDocument {
+    layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     svg: merman_render::svg::ResvgCompatibleSvg,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
@@ -140,6 +142,11 @@ impl PreparedPdfExport<'_> {
 }
 
 impl RenderedDocument {
+    /// Actual width and overflow from explicitly adapted family placement.
+    pub const fn layout_adaptation(&self) -> Option<merman_render::LayoutAdaptationObservation> {
+        self.layout_adaptation
+    }
+
     pub(super) fn new(
         completion: merman_render::family::FamilyRenderCompletion<
             merman_render::svg::ResvgCompatibleSvg,
@@ -156,10 +163,12 @@ impl RenderedDocument {
         ))]
         selected_native_fonts: Option<merman_export::NativeFontContext>,
     ) -> Self {
+        let layout_adaptation = completion.layout_adaptation();
         let (svg, family) = completion.into_output_and_report();
         let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
         let portability = document_portability_report(&svg, &evidence);
         Self {
+            layout_adaptation,
             svg,
             evidence,
             portability,
@@ -267,6 +276,7 @@ impl RenderedDocument {
         let admission = native_raster_admission(export_report, &self.evidence, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(RasterOutput {
+            layout_adaptation: self.layout_adaptation,
             bytes,
             evidence: Arc::clone(&self.evidence),
             export_report,
@@ -365,6 +375,7 @@ impl RenderedDocument {
         let admission = native_pdf_admission(export_report, &self.evidence, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(PdfOutput {
+            layout_adaptation: self.layout_adaptation,
             bytes,
             evidence: Arc::clone(&self.evidence),
             export_report,
@@ -374,6 +385,11 @@ impl RenderedDocument {
 }
 
 impl SvgOutput {
+    /// Actual width and overflow from explicitly adapted family placement.
+    pub const fn layout_adaptation(&self) -> Option<merman_render::LayoutAdaptationObservation> {
+        self.layout_adaptation
+    }
+
     pub fn svg(&self) -> &str {
         &self.svg
     }
@@ -403,6 +419,7 @@ impl SvgOutput {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone)]
 pub struct RasterOutput {
+    layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     bytes: Vec<u8>,
     evidence: Arc<RenderEvidence>,
     export_report: merman_export::RasterExportReport,
@@ -411,6 +428,11 @@ pub struct RasterOutput {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl RasterOutput {
+    /// Actual width and overflow from explicitly adapted family placement.
+    pub const fn layout_adaptation(&self) -> Option<merman_render::LayoutAdaptationObservation> {
+        self.layout_adaptation
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -440,6 +462,7 @@ impl RasterOutput {
 #[cfg(feature = "pdf")]
 #[derive(Debug, Clone)]
 pub struct PdfOutput {
+    layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     bytes: Vec<u8>,
     evidence: Arc<RenderEvidence>,
     export_report: merman_export::PdfExportReport,
@@ -448,6 +471,11 @@ pub struct PdfOutput {
 
 #[cfg(feature = "pdf")]
 impl PdfOutput {
+    /// Actual width and overflow from explicitly adapted family placement.
+    pub const fn layout_adaptation(&self) -> Option<merman_render::LayoutAdaptationObservation> {
+        self.layout_adaptation
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -479,6 +507,7 @@ pub(super) fn finish_standalone_svg_target(
     family: merman_render::family::FamilyRenderReport,
     required_capabilities: Vec<merman_render::RenderCapability>,
     control: &merman_core::OperationControl,
+    layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
 ) -> Result<SvgOutput, RenderError> {
     crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
@@ -486,6 +515,7 @@ pub(super) fn finish_standalone_svg_target(
     crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
+        layout_adaptation,
         svg: svg.into_string(),
         evidence,
         admission,

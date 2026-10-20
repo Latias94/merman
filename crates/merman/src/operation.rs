@@ -1,7 +1,5 @@
 //! Internal operation ownership for the public rendering facade.
 //!
-//! This module owns the one source-to-semantic execution boundary. Target adapters receive the
-//! completed operation projection and must not create a replacement runtime context or control.
 
 use merman_core::{
     Engine, OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
@@ -11,11 +9,12 @@ use merman_core::{
     runtime::OperationContext,
 };
 
+use crate::render::prepared::PreparedSource;
 use crate::render::{RenderError, ResourceLimitCause, ResourceLimitExceeded};
+use merman_core::resources::ModelComplexity;
 #[cfg(feature = "svg")]
 use merman_render::diagram_theme::DiagramTheme;
 
-/// Parse-stage state borrowing the engine while owning the operation's execution context.
 #[derive(Debug)]
 pub(crate) struct Operation<'engine> {
     engine: &'engine Engine,
@@ -34,8 +33,25 @@ impl<'engine> Operation<'engine> {
         resources: InputResourcePolicy,
         #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Result<Self, RenderError> {
+        Self::begin_source_bytes(
+            engine,
+            source.len(),
+            control,
+            resources,
+            #[cfg(feature = "svg")]
+            theme,
+        )
+    }
+
+    fn begin_source_bytes(
+        engine: &'engine Engine,
+        source_bytes: usize,
+        control: OperationControl,
+        resources: InputResourcePolicy,
+        #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
+    ) -> Result<Self, RenderError> {
         checkpoint(&control, OperationPhase::Admission)?;
-        if let Err(error) = resources.check_source_bytes(source) {
+        if let Err(error) = resources.check_source_byte_count(source_bytes) {
             return Err(terminate_input_resource_error(
                 &control,
                 OperationPhase::Admission,
@@ -52,6 +68,42 @@ impl<'engine> Operation<'engine> {
             #[cfg(feature = "svg")]
             theme,
         })
+    }
+
+    pub(crate) fn resume_prepared(
+        engine: &'engine Engine,
+        prepared: &PreparedSource,
+        control: OperationControl,
+        resources: InputResourcePolicy,
+    ) -> Result<SemanticArtifact, RenderError> {
+        let operation = Self::begin_source_bytes(
+            engine,
+            prepared.source_bytes(),
+            control,
+            resources,
+            #[cfg(feature = "svg")]
+            prepared.theme().cloned(),
+        )?;
+        checkpoint(&operation.control, OperationPhase::Semantic)?;
+        if let Err(error) = resources.check_model_complexity(prepared.model_complexity()) {
+            checkpoint(&operation.control, OperationPhase::Semantic)?;
+            return Err(terminate_input_resource_error(
+                &operation.control,
+                OperationPhase::Semantic,
+                error,
+            ));
+        }
+        checkpoint(&operation.control, OperationPhase::Semantic)?;
+        Ok(SemanticArtifact::from_prepared(
+            prepared.clone(),
+            OperationExecution {
+                control: operation.control,
+                #[cfg(any(feature = "svg", feature = "ascii"))]
+                context: operation.context,
+                #[cfg(feature = "svg")]
+                theme: operation.theme,
+            },
+        ))
     }
 
     pub(crate) fn parse_render_model(
@@ -76,7 +128,8 @@ impl<'engine> Operation<'engine> {
             return Ok(None);
         };
         checkpoint(&self.control, OperationPhase::Semantic)?;
-        if let Err(error) = self.resources.check_parsed_render(&parsed) {
+        let complexity = ModelComplexity::from_parsed_render(&parsed);
+        if let Err(error) = self.resources.check_model_complexity(complexity) {
             checkpoint(&self.control, OperationPhase::Semantic)?;
             return Err(terminate_input_resource_error(
                 &self.control,
@@ -87,7 +140,15 @@ impl<'engine> Operation<'engine> {
         checkpoint(&self.control, OperationPhase::Semantic)?;
         Ok(Some(SemanticArtifact {
             state: Box::new(SemanticArtifactState {
-                parsed,
+                prepared: PreparedSource::new(
+                    parsed,
+                    self.context.clone(),
+                    parse_options,
+                    source.len(),
+                    complexity,
+                    #[cfg(feature = "svg")]
+                    self.theme.clone(),
+                ),
                 operation: OperationExecution {
                     control: self.control,
                     #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -197,19 +258,19 @@ pub struct SemanticArtifact {
 
 #[derive(Debug)]
 struct SemanticArtifactState {
-    parsed: ParsedDiagramRender,
+    prepared: PreparedSource,
     operation: OperationExecution,
 }
 
 impl SemanticArtifact {
     /// Returns metadata captured by the controlled parse operation.
     pub fn metadata(&self) -> &ParseMetadata {
-        self.state.parsed.metadata()
+        self.state.prepared.metadata()
     }
 
     /// Returns the stable family/model kind selected by the semantic parser.
     pub fn semantic_kind(&self) -> &'static str {
-        self.state.parsed.model().kind()
+        self.state.prepared.semantic_kind()
     }
 
     /// Returns the typed Mermaid diagram id selected during preprocessing.
@@ -220,21 +281,38 @@ impl SemanticArtifact {
     /// Returns the catalog-owned family selected after detection defaults and configuration
     /// effects were applied for this canonical operation.
     pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
-        self.state.parsed.family_id()
+        self.state.prepared.family_id()
     }
 
     pub(crate) fn parsed(&self) -> &ParsedDiagramRender {
-        &self.state.parsed
+        self.state.prepared.parsed()
     }
 
     pub(crate) fn control(&self) -> &OperationControl {
         &self.state.operation.control
     }
 
+    /// Retains this successful parse without retaining its control, ledger, or output state.
+    pub fn into_prepared_source(self) -> PreparedSource {
+        self.state.prepared
+    }
+
+    pub(crate) fn from_prepared(prepared: PreparedSource, operation: OperationExecution) -> Self {
+        Self {
+            state: Box::new(SemanticArtifactState {
+                prepared,
+                operation,
+            }),
+        }
+    }
+
     #[cfg(any(feature = "svg", feature = "ascii"))]
-    pub(crate) fn into_parts(self) -> (ParsedDiagramRender, OperationExecution) {
-        let SemanticArtifactState { parsed, operation } = *self.state;
-        (parsed, operation)
+    pub(crate) fn into_parts(self) -> (PreparedSource, OperationExecution) {
+        let SemanticArtifactState {
+            prepared,
+            operation,
+        } = *self.state;
+        (prepared, operation)
     }
 }
 

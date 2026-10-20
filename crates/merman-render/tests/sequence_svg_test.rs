@@ -174,7 +174,7 @@ fn render_sequence_with_environment(
 ) -> SequenceRenderObservation {
     let session = environment.begin_session().expect("begin Sequence session");
     let parsed = parse_sequence_for_render(&Engine::new(), source);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -195,7 +195,7 @@ fn try_render_sequence_svg_with_resource_policy(
         .begin_session()
         .expect("begin Sequence resource-bound session");
     let parsed = parse_sequence_for_render(&Engine::new(), source);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -484,7 +484,7 @@ fn render_prepared_sequence_after_release(
 ) -> SequenceRenderObservation {
     let session = environment.begin_session().expect("begin Sequence session");
     let parsed = parse_sequence_for_render(&Engine::new(), source);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
     prepared
@@ -640,8 +640,8 @@ fn layout_sequence_from_environment(
 ) -> SequenceDiagramLayout {
     let parsed = parse_sequence_for_render(&Engine::new(), text);
     let session = environment.begin_session().unwrap();
-    let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed Sequence layout");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .expect("typed Sequence layout");
     let projection = artifact.layout_json().expect("Sequence layout projection");
     serde_json::from_value(projection["layout"]["SequenceDiagram"].clone())
         .expect("Sequence layout")
@@ -767,7 +767,7 @@ fn render_sequence_svg_from_fixture_with_options(
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Sequence artifact");
 
     artifact
@@ -786,7 +786,7 @@ fn sequence_layout_json_from_fixture(fixture: &str) -> merman_core::ManagedSeman
     let text = std::fs::read_to_string(&path).expect("fixture");
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
 
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Sequence artifact")
         .layout_json()
         .expect("project Sequence layout JSON")
@@ -803,7 +803,7 @@ fn render_sequence_svg_from_text_with_options(text: &str, options: &SvgRenderOpt
         .begin_session()
         .unwrap();
     let parsed = parse_sequence_for_render(&engine, text);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
     artifact
@@ -819,7 +819,7 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         .begin_session()
         .unwrap();
     let parsed = parse_sequence_for_render(&engine, text);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
     artifact
@@ -900,7 +900,7 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
             .begin_session()
             .unwrap();
         let parsed = parse_sequence_for_render(&Engine::new(), text);
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
         artifact
             .render_svg(
@@ -1102,7 +1102,7 @@ fn render_sequence_svg_with_theme_variables(
         "themeVariables": theme_variables,
     })));
     let parsed = parse_sequence_for_render(&engine, text);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
     artifact
@@ -1125,7 +1125,7 @@ fn sequence_activation_svg_width_preserves_json_number_only_input() {
         let parsed =
             parse_sequence_for_render(&engine, "sequenceDiagram\nA->>+B: Hello\nB-->>-A: Reply");
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -1165,7 +1165,7 @@ fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
 
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let parsed = parse_sequence_for_render(&Engine::new(), &source);
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .expect("prepare Sequence artifact");
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1198,7 +1198,7 @@ fn sequence_builtin_route_reuses_self_and_multiline_message_bounds() {
     let dimension_calls = |source: &str| {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let parsed = parse_sequence_for_render(&Engine::new(), source);
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1254,7 +1254,7 @@ end
 fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emission() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2024,15 +2024,12 @@ fn sequence_diagram_title_expands_the_root_for_typed_base_font_size() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin portable Sequence title session");
-    let artifact = family::prepare(
-        parse_sequence_for_render(
-            &engine,
-            "sequenceDiagram\ntitle Large Diagram Title\nparticipant A\nparticipant B\nA->>B: hello\n",
-        ),
-        &LayoutOptions::default(),
-        session,
-    )
-    .expect("prepare large Sequence title");
+    let canonical_1 = parse_sequence_for_render(
+        &engine,
+        "sequenceDiagram\ntitle Large Diagram Title\nparticipant A\nparticipant B\nA->>B: hello\n",
+    );
+    let artifact = family::prepare(&canonical_1, &LayoutOptions::default(), session)
+        .expect("prepare large Sequence title");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render large Sequence title");
@@ -2840,7 +2837,7 @@ end"#;
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin {case} Sequence role paint session: {error}"));
         let diagram_id = format!("sequence-role-paint-{case}");
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare {case} Sequence role paint: {error}"))
             .render_svg(
                 &SvgRenderOptions {
@@ -2968,7 +2965,7 @@ fn render_sequence_paint_owner_case(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .unwrap_or_else(|error| panic!("begin {origin} Sequence {case} {property}: {error}"));
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap_or_else(|error| panic!("prepare {origin} Sequence {case} {property}: {error}"))
         .render_svg(
             &SvgRenderOptions {
@@ -3261,7 +3258,7 @@ Alice->>Bob: Message
                     panic!("begin {origin} Sequence ActorLabel {case} session: {error}")
                 });
             let diagram_id = format!("sequence-actor-label-{origin}-{case}");
-            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .unwrap_or_else(|error| {
                     panic!("prepare {origin} Sequence ActorLabel {case}: {error}")
                 })
@@ -3434,7 +3431,7 @@ end
                     panic!("begin {origin} Sequence LoopLabel {case} session: {error}")
                 });
             let diagram_id = format!("sequence-loop-label-{origin}-{case}");
-            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .unwrap_or_else(|error| {
                     panic!("prepare {origin} Sequence LoopLabel {case}: {error}")
                 })
@@ -3902,7 +3899,7 @@ end"#;
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin strict Neutral site text {case}: {error}"));
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare Neutral site text {case}: {error}"))
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render strict Neutral site text {case}: {error}"));
@@ -4024,7 +4021,7 @@ fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin strict Sequence {case} math session: {error}"));
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare Sequence {case} math: {error}"))
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render strict Sequence {case} math: {error}"));
@@ -4139,7 +4136,7 @@ fn sequence_math_css_colors_reach_browser_and_native_glyphs() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap();
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -4206,7 +4203,7 @@ fn sequence_math_notes_keep_note_style_inside_control_frames() {
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
                 .begin_session_with_theme(&theme)
                 .unwrap();
-            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .unwrap()
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .unwrap();
@@ -4279,8 +4276,8 @@ end"#;
         .with_text_measurement_policy(measurement_policy)
         .begin_session()
         .expect("begin configured Sequence measurement session");
-    let _measurement_artifact = family::prepare(
-        measurement_parsed,
+    let _ = family::prepare(
+        &measurement_parsed,
         &LayoutOptions::default(),
         measurement_session,
     )
@@ -4305,8 +4302,9 @@ end"#;
         );
     }
 
+    let canonical_2 = parse_sequence_for_render(&engine, source);
     let rendered = family::prepare(
-        parse_sequence_for_render(&engine, source),
+        &canonical_2,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic()
             .begin_session()
@@ -4378,12 +4376,9 @@ end"#;
         .with_text_measurement_policy(measurement_policy)
         .begin_session()
         .expect("begin Sequence CSSOM font measurement session");
-    let _measurement_artifact = family::prepare(
-        parse_sequence_for_render(&engine, source),
-        &LayoutOptions::default(),
-        measurement_session,
-    )
-    .expect("prepare Sequence CSSOM font measurement artifact");
+    let canonical_3 = parse_sequence_for_render(&engine, source);
+    let _ = family::prepare(&canonical_3, &LayoutOptions::default(), measurement_session)
+        .expect("prepare Sequence CSSOM font measurement artifact");
     let requests = host.snapshot();
 
     for text_fragment in ["CSSOM Actor", "CSSOM Message", "CSSOM Note", "CSSOM Loop"] {
@@ -4509,8 +4504,8 @@ Note over Alice,Bob: Config Note Weight"#;
         .with_text_measurement_policy(measurement_policy)
         .begin_session_with_theme(&theme)
         .expect("begin measured Sequence note session");
-    let _measurement_artifact = family::prepare(
-        measurement_parsed,
+    let _ = family::prepare(
+        &measurement_parsed,
         &LayoutOptions::default(),
         measurement_session,
     )
@@ -4531,7 +4526,7 @@ Note over Alice,Bob: Config Note Weight"#;
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin configured Sequence note session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare configured Sequence note")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render configured Sequence note");
@@ -4604,7 +4599,7 @@ fn sequence_typed_message_css_escapes_the_diagram_id_selector() {
         ..SvgRenderOptions::default()
     };
 
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence Message theme")
         .render_svg(&options, &SvgDebugOptions::default())
         .expect("render Sequence Message theme");
@@ -4650,7 +4645,7 @@ Bob-->>Alice: Second"#;
             .begin_session_with_theme(&theme)
             .expect("begin strict Sequence autonumber session");
         let diagram_id = format!("sequence-number-{case}");
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare themed Sequence autonumber")
             .render_svg(
                 &SvgRenderOptions {
@@ -4713,7 +4708,7 @@ fn sequence_number_label_is_not_applicable_without_autonumber() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Sequence session without autonumber");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence source without autonumber")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("an absent Sequence number label must remain portable");
@@ -4764,7 +4759,7 @@ fn sequence_number_label_unsupported_selectors_fail_closed() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin strict {case} Sequence number session: {error}"));
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare {case} Sequence number theme: {error}"));
         let error = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -4819,7 +4814,7 @@ fn sequence_number_label_does_not_emit_a_superseded_direct_fill() {
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin mixed Sequence number session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare mixed Sequence number theme")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render mixed Sequence number theme in best-effort mode");
@@ -4891,15 +4886,12 @@ Alice->>Bob: Clear Message"#;
         .with_text_measurement_policy(measurement_policy)
         .begin_session_with_theme(&theme)
         .expect("begin Sequence clear measurement session");
-    let _measurement_artifact = family::prepare(
-        engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse measured Sequence clear source")
-            .expect("detect measured Sequence clear source"),
-        &LayoutOptions::default(),
-        measurement_session,
-    )
-    .expect("prepare measured Sequence clear artifact");
+    let canonical_4 = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse measured Sequence clear source")
+        .expect("detect measured Sequence clear source");
+    let _ = family::prepare(&canonical_4, &LayoutOptions::default(), measurement_session)
+        .expect("prepare measured Sequence clear artifact");
     assert!(
         host.snapshot().iter().any(|exchange| {
             exchange.request.text.contains("Clear Message")
@@ -4911,17 +4903,14 @@ Alice->>Bob: Clear Message"#;
     let render_session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin Sequence clear session");
-    let rendered = family::prepare(
-        engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse rendered Sequence clear source")
-            .expect("detect rendered Sequence clear source"),
-        &LayoutOptions::default(),
-        render_session,
-    )
-    .expect("prepare Sequence clear artifact")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render Sequence clear typography");
+    let canonical_5 = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse rendered Sequence clear source")
+        .expect("detect rendered Sequence clear source");
+    let rendered = family::prepare(&canonical_5, &LayoutOptions::default(), render_session)
+        .expect("prepare Sequence clear artifact")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence clear typography");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid clear typography SVG");
     let message = document
         .descendants()
@@ -4988,15 +4977,12 @@ end"#;
         .with_text_measurement_policy(measurement_policy)
         .begin_session_with_theme(&theme)
         .expect("begin measured Sequence LoopLabel session");
-    let _measurement_artifact = family::prepare(
-        engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse measured Sequence LoopLabel source")
-            .expect("detect measured Sequence LoopLabel source"),
-        &LayoutOptions::default(),
-        measurement_session,
-    )
-    .expect("prepare measured Sequence LoopLabel artifact");
+    let canonical_6 = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse measured Sequence LoopLabel source")
+        .expect("detect measured Sequence LoopLabel source");
+    let _ = family::prepare(&canonical_6, &LayoutOptions::default(), measurement_session)
+        .expect("prepare measured Sequence LoopLabel artifact");
     assert!(
         host.snapshot().iter().any(|exchange| {
             exchange.request.text == "critical"
@@ -5009,17 +4995,14 @@ end"#;
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin portable large Sequence LoopLabel session");
-    let rendered = family::prepare(
-        engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse rendered Sequence LoopLabel source")
-            .expect("detect rendered Sequence LoopLabel source"),
-        &LayoutOptions::default(),
-        render_session,
-    )
-    .expect("prepare portable large Sequence LoopLabel artifact")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("measured LoopLabel control keyword must seal as portable");
+    let canonical_7 = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse rendered Sequence LoopLabel source")
+        .expect("detect rendered Sequence LoopLabel source");
+    let rendered = family::prepare(&canonical_7, &LayoutOptions::default(), render_session)
+        .expect("prepare portable large Sequence LoopLabel artifact")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("measured LoopLabel control keyword must seal as portable");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid LoopLabel SVG");
     let control_structure = document
         .descendants()
@@ -5154,7 +5137,7 @@ fn sequence_explicit_default_role_typography_remains_a_portability_residual() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict explicit-default Sequence session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare explicit-default Sequence theme");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -5191,11 +5174,12 @@ fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
         .expect("compile mixed Sequence Lifeline theme");
     let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
 
+    let canonical_8 = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse mixed Sequence Lifeline source")
+        .expect("detect mixed Sequence Lifeline source");
     let rendered = family::prepare(
-        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse mixed Sequence Lifeline source")
-            .expect("detect mixed Sequence Lifeline source"),
+        &canonical_8,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -5218,7 +5202,7 @@ fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict mixed Sequence Lifeline session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare strict mixed Sequence Lifeline theme");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -5825,7 +5809,7 @@ Note right of B: $$x^2$$
         .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), text);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -5864,7 +5848,7 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -5906,7 +5890,7 @@ fn try_render_sequence_theme_request(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("Sequence theme session");
-    family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+    family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     })
 }
@@ -7644,7 +7628,7 @@ fn sequence_note_label_effect_final_output_and_region_budgets_remain_authoritati
             &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
             source,
         );
-        family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+        family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
             artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         })
     };
@@ -7713,7 +7697,7 @@ fn sequence_note_label_math_glow_remains_incomplete_and_clear_is_consumed() {
             "sequenceDiagram\nNote over A,B: Ordinary\nNote over A,B: $$x^2$$",
         );
         let result =
-            family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+            family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
                 artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             });
         assert_eq!(result.is_ok(), clear, "{:?}", result.as_ref().err());
@@ -7926,7 +7910,7 @@ fn sequence_loop_label_math_effects_remain_incomplete_but_clear_is_consumed() {
                 source,
             );
             let result =
-                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
                     artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 });
             assert_eq!(
@@ -8154,7 +8138,7 @@ fn sequence_actor_label_math_glow_is_incomplete_and_clear_preserves_fallback() {
                 &format!("sequenceDiagram\n{declaration}\nA->>B: Work"),
             );
             let result =
-                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
                     artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 });
             assert_eq!(

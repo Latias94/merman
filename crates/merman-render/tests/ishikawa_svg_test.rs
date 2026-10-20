@@ -87,7 +87,7 @@ fn try_render_ishikawa_with_theme_requirement_and_id(
         .begin_session_with_theme(theme)
         .expect("begin strict portable Ishikawa session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -152,7 +152,7 @@ fn ishikawa_layout_json_with_theme(theme: &DiagramTheme, engine: Engine) -> serd
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(theme)
         .expect("begin themed Ishikawa layout session");
-    let projection = family::prepare(parsed, &LayoutOptions::default(), session)
+    let projection = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed Ishikawa layout")
         .layout_json()
         .expect("serialize themed Ishikawa layout");
@@ -174,7 +174,7 @@ fn try_render_ishikawa_svg_with_resource_policy(
         .with_resource_policy(policy)
         .begin_session()
         .expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     Ok(artifact
         .render_svg(
             &SvgRenderOptions {
@@ -264,7 +264,7 @@ ishikawa-beta
         .unwrap();
     assert_eq!(parsed.metadata().diagram_type, "ishikawa");
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     let ishikawa_layout: IshikawaDiagramLayout =
         serde_json::from_value(projection["layout"]["IshikawaDiagram"].clone()).unwrap();
@@ -442,7 +442,7 @@ ishikawa-beta
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -1168,7 +1168,7 @@ fn ishikawa_deep_hierarchy_projects_and_renders_flat_model() {
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("flat deep Ishikawa layout");
     let projection = artifact
         .layout_json()

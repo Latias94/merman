@@ -16,7 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     icon_size: f64,
 ) -> crate::Result<String> {
     let id_scope =
-        ctx.document_ids
+        ctx.document_ids()
             .icon_scope(node_id)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Flowchart icon scope for node `{node_id}`"),
@@ -244,6 +244,47 @@ pub(super) fn timed_node_roughjs<T>(
     }
 }
 
+pub(super) fn prepare_node_path(
+    common: &super::FlowchartNodeGeometry<'_>,
+    path: &str,
+    target: super::roughjs::RoughGeometryTarget,
+) -> Option<super::roughjs::RoughPathPair> {
+    if common.look_is_hand_drawn() {
+        super::roughjs::roughjs_prepare_paths_for_hand_drawn_svg_path(
+            target,
+            path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    } else {
+        super::roughjs::roughjs_prepare_paths_for_svg_path(
+            path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.hand_drawn_seed,
+        )
+    }
+}
+
+pub(super) fn prepare_node_polygon(
+    common: &super::FlowchartNodeGeometry<'_>,
+    points: &[(f64, f64)],
+    path: &str,
+    target: super::roughjs::RoughGeometryTarget,
+) -> Option<super::roughjs::RoughPathPair> {
+    if common.look_is_hand_drawn() {
+        prepare_node_path(common, path, target)
+    } else {
+        super::roughjs::roughjs_prepare_paths_for_polygon(
+            points,
+            common.stroke_width,
+            common.hand_drawn_seed,
+        )
+    }
+}
+
 /// Generate the complete RoughJS hand-drawn pair for a node path.
 ///
 /// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
@@ -254,16 +295,14 @@ pub(super) fn hand_drawn_path_pair(
     details: &mut FlowchartRenderDetails,
     path_data: &str,
 ) -> Option<(String, String)> {
-    hand_drawn_path_pair_with_stroke(
-        common.look_is_hand_drawn(),
-        common.timing,
-        details,
-        path_data,
-        common.stroke_width,
-        common.stroke_dasharray,
-        common.work_meter,
-        common.hand_drawn_seed,
-    )
+    if !common.look_is_hand_drawn() {
+        return None;
+    }
+    timed_node_roughjs(common.timing, details, || {
+        prepare_node_path(common, path_data, super::roughjs::RoughGeometryTarget::Svg)
+            .and_then(|paths| paths.into_svg_paths(common.work_meter))
+    })
+    .filter(|(fill, stroke)| !fill.is_empty() && !stroke.is_empty())
 }
 
 #[allow(

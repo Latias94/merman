@@ -175,6 +175,49 @@ fn native_fonts_allow_paint_styles_and_property_names_inside_labels() {
 }
 
 #[test]
+fn native_fonts_reject_effective_closed_subgraph_text_geometry() {
+    for header in [
+        "flowchart TD",
+        #[cfg(feature = "diagram-swimlane")]
+        "swimlane-beta TD",
+    ] {
+        let source = format!(
+            "{header}\nsubgraph G[Measured]\nA[Measured node]\nend\nstyle G letter-spacing:4px\n"
+        );
+        let error = match Renderer::new().render(RenderRequest::svg(
+            &source,
+            OperationControl::new(),
+            native_request(),
+        )) {
+            Err(error) => error,
+            Ok(_) => panic!("{header}: native admission accepted effective text geometry"),
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("text geometry style `letter-spacing`"),
+            "{header}: {error}"
+        );
+    }
+}
+
+#[cfg(feature = "diagram-state")]
+#[test]
+fn native_state_admission_ignores_overwritten_and_nested_style_statements() {
+    for source in [
+        "stateDiagram-v2\nA-->B\nstyle A word-spacing:2px\nstyle A fill:red\n",
+        "stateDiagram-v2\nstate Outer {\nA-->B\nstyle A word-spacing:2px\n}\n",
+    ] {
+        let output = Renderer::new().render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            native_request(),
+        ));
+        assert!(output.is_ok(), "{source}: {:?}", output.err());
+    }
+}
+
+#[test]
 fn native_fonts_reject_css_injected_by_output_policy() {
     let mut request = native_request();
     request.pipeline = Some(
@@ -206,7 +249,10 @@ fn deterministic_fonts_preserve_existing_custom_typography() {
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-er",
-    feature = "diagram-state"
+    feature = "diagram-state",
+    feature = "diagram-requirement",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow"
 ))]
 #[test]
 fn native_fonts_check_other_families_structured_style_slots() {
@@ -217,6 +263,14 @@ fn native_fonts_check_other_families_structured_style_slots() {
         "erDiagram\nCUSTOMER ||--o{ ORDER : places\nstyle CUSTOMER letter-spacing:2px\n",
         #[cfg(feature = "diagram-state")]
         "stateDiagram-v2\nA-->B\nclassDef spaced word-spacing:2px\nclass A spaced\n",
+        #[cfg(feature = "diagram-requirement")]
+        "requirementDiagram\nrequirement A {\n}\nstyle A letter-spacing:2px\n",
+        #[cfg(feature = "diagram-usecase")]
+        "usecase-beta\nactor User\nUser --> Login\nstyle Login word-spacing:2px\n",
+        #[cfg(feature = "diagram-agentflow")]
+        "agentflow-beta\nA[Measured label] --> B\nstyle A word-spacing:2px\n",
+        #[cfg(feature = "diagram-agentflow")]
+        "agentflow-beta\nA --> B\nclassDef spaced word-spacing:2px\nclass A spaced\n",
     ];
     for source in sources {
         let result = Renderer::new().render(RenderRequest::new(

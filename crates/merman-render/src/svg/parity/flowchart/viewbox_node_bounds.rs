@@ -656,7 +656,6 @@ mod tests {
                 svg_label_sidecar: &sidecar,
             },
             &execution,
-            None,
         )
         .unwrap()
         .to_string()

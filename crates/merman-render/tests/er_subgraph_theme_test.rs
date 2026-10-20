@@ -59,7 +59,7 @@ fn render_cluster_with_spec(
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(&theme)
         .expect("begin ER cluster session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare ER cluster")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     let svg = rendered.svg().to_owned();
@@ -107,7 +107,7 @@ style Shared stroke-width:7px
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin ER session");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Dagre duplicate clusters")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render duplicate ER clusters");

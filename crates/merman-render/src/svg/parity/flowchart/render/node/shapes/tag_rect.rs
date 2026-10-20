@@ -16,41 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 12.0 } else { p };
-    let w = metrics.width + 2.0 * padding_x;
-    let h = metrics.height + 2.0 * padding_y;
-    let x = -w / 2.0;
-    let y = -h / 2.0;
-    let tag_w = 0.2 * h;
-    let tag_h = 0.2 * h;
-
-    let rect_points = vec![
-        (x - tag_w / 2.0, y),
-        (x + w + tag_w / 2.0, y),
-        (x + w + tag_w / 2.0, y + h),
-        (x - tag_w / 2.0, y + h),
-    ];
-    let tag_points = vec![
-        (x + w - tag_w / 2.0, y + h),
-        (x + w + tag_w / 2.0, y + h),
-        (x + w + tag_w / 2.0, y + h - tag_h),
-    ];
-
-    let rect_path = path_from_points(&rect_points);
-    let tag_path = path_from_points(&tag_points);
-
+    let (rect_path, tag_path) = prepare_tag_rect_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let rect_paths = helpers::hand_drawn_path_pair(common, details, &rect_path);
         let tag_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -148,4 +114,69 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_tag_rect_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (String, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = metrics.width + 2.0 * padding_x;
+    let h = metrics.height + 2.0 * padding_y;
+    let x = -w / 2.0;
+    let y = -h / 2.0;
+    let tag_w = 0.2 * h;
+    let tag_h = 0.2 * h;
+
+    let rect_points = vec![
+        (x - tag_w / 2.0, y),
+        (x + w + tag_w / 2.0, y),
+        (x + w + tag_w / 2.0, y + h),
+        (x - tag_w / 2.0, y + h),
+    ];
+    let tag_points = vec![
+        (x + w - tag_w / 2.0, y + h),
+        (x + w + tag_w / 2.0, y + h),
+        (x + w + tag_w / 2.0, y + h - tag_h),
+    ];
+
+    let rect_path = path_from_points(&rect_points);
+    let tag_path = path_from_points(&tag_points);
+
+    (rect_path, tag_path)
+}
+
+pub(super) fn advance_tag_rect_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (rect_path, tag_path) = prepare_tag_rect_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &rect_path, target);
+    if common.look_is_hand_drawn() {
+        let _ = super::super::roughjs::roughjs_prepare_paths_for_hand_drawn_solid_svg_path(
+            target,
+            &tag_path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        );
+    } else {
+        let _ = super::super::helpers::prepare_node_path(common, &tag_path, target);
+    }
 }

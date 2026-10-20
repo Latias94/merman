@@ -139,7 +139,7 @@ fn try_render_tree_view_with_theme_and_environment(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Tree View session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let projection = artifact.layout_json()?;
     let layout = serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone())
         .expect("Tree View layout projection");
@@ -231,7 +231,7 @@ fn render_parsed_tree_view_svg(
     options: SvgRenderOptions,
     session: RenderSession,
 ) -> String {
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     artifact
         .render_svg(&options, &SvgDebugOptions::default())
         .unwrap()
@@ -252,7 +252,7 @@ fn try_render_tree_view_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse TreeView resource-bound fixture")
         .expect("detect TreeView resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
@@ -315,7 +315,7 @@ fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDia
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .expect("TreeView diagram");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone()).unwrap()
 }

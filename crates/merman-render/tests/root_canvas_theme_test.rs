@@ -65,7 +65,7 @@ fn render_root_canvas() -> String {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("admit portable root canvas theme");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Flowchart")
         .render_svg(
             &SvgRenderOptions {

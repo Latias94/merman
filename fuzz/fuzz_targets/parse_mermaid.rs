@@ -1,8 +1,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::{Engine, ParseOptions};
-use merman_fuzz::{MAX_PARSE_INPUT_BYTES, bounded_utf8, deterministic_engine};
+use merman::Engine;
+use merman_fuzz::{MAX_PARSE_INPUT_BYTES, assert_parse_paths, bounded_utf8, deterministic_engine};
 
 thread_local! {
     static ENGINE: Engine = deterministic_engine();
@@ -13,24 +13,5 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    ENGINE.with(|engine| {
-        let semantic = engine.parse_diagram_sync(source, ParseOptions::strict());
-        let render_model =
-            engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
-
-        if let (Ok(Some(semantic)), Ok(Some(render_model))) = (&semantic, &render_model) {
-            assert_eq!(
-                semantic.meta.diagram_type,
-                render_model.metadata().diagram_type,
-                "semantic and render-model parsers selected different diagram types"
-            );
-            assert_eq!(
-                semantic.meta.title,
-                render_model.metadata().title,
-                "semantic and render-model parsers retained different titles"
-            );
-        }
-
-        let _ = engine.parse_diagram_sync(source, ParseOptions::lenient());
-    });
+    ENGINE.with(|engine| assert_parse_paths(engine, source));
 });

@@ -10,7 +10,209 @@ use merman_render::model::{SwimlaneDirection, SwimlaneLayout};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[path = "support/generated_graphs.rs"]
+mod generated_graphs;
+
 const EPSILON: f64 = 1.0e-6;
+
+#[test]
+fn generated_swimlane_graphs_preserve_membership_routes_and_determinism() {
+    use generated_graphs::{DIRECTIONS, SEEDS, Topology, generate};
+    for seed in SEEDS {
+        for direction in DIRECTIONS {
+            for topology in [
+                Topology::Dag,
+                Topology::NestedDag,
+                Topology::ParallelDag,
+                Topology::Cycle,
+            ] {
+                let graph = generate(seed, direction, topology, true);
+                let source = &graph.source;
+                let layout = try_layout_swimlane(source).unwrap_or_else(|error| {
+                    panic!("{error}, seed={seed} topology={topology:?}\n{source}")
+                });
+                let finite = |values: &[f64]| values.iter().all(|value| value.is_finite());
+                let node = |id: &str| {
+                    layout
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == id && !node.is_edge_label)
+                        .unwrap_or_else(|| panic!("missing {id}, seed={seed}\n{source}"))
+                };
+                assert_eq!(
+                    layout
+                        .nodes
+                        .iter()
+                        .filter(|node| !node.is_edge_label)
+                        .count(),
+                    graph.leaves.len(),
+                    "seed={seed}\n{source}"
+                );
+                for (id, expected_parent) in &graph.leaves {
+                    let node = node(id);
+                    assert!(
+                        finite(&[node.x, node.y, node.width, node.height])
+                            && node.width > 0.0
+                            && node.height > 0.0,
+                        "{id}, seed={seed}\n{source}"
+                    );
+                    if let Some(parent_id) = expected_parent {
+                        assert_eq!(
+                            node.parent_id.as_ref(),
+                            Some(parent_id),
+                            "{id}, seed={seed}\n{source}"
+                        );
+                        let lane = layout
+                            .lanes
+                            .iter()
+                            .find(|lane| &lane.id == parent_id)
+                            .expect("declared parent lane");
+                        assert!(
+                            contains_node(lane, node),
+                            "{parent_id} must contain {id}, seed={seed}\n{source}"
+                        );
+                    }
+                }
+                let rect = |x: f64, y: f64, width: f64, height: f64| {
+                    (
+                        x - width / 2.0,
+                        y - height / 2.0,
+                        x + width / 2.0,
+                        y + height / 2.0,
+                    )
+                };
+                let contains = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| {
+                    a.0 <= b.0 + EPSILON
+                        && a.1 <= b.1 + EPSILON
+                        && a.2 + EPSILON >= b.2
+                        && a.3 + EPSILON >= b.3
+                };
+                let separate = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| {
+                    a.2 <= b.0 + EPSILON
+                        || b.2 <= a.0 + EPSILON
+                        || a.3 <= b.1 + EPSILON
+                        || b.3 <= a.1 + EPSILON
+                };
+                for (id, parent_id) in &graph.groups {
+                    let lane = layout
+                        .lanes
+                        .iter()
+                        .find(|lane| &lane.id == id)
+                        .expect("declared lane");
+                    assert!(
+                        finite(&[lane.x, lane.y, lane.width, lane.height])
+                            && lane.width > 0.0
+                            && lane.height > 0.0,
+                        "{id}, seed={seed}\n{source}"
+                    );
+                    if let Some(parent_id) = parent_id {
+                        let parent = layout
+                            .lanes
+                            .iter()
+                            .find(|lane| &lane.id == parent_id)
+                            .expect("parent lane");
+                        assert_eq!(
+                            lane.parent_id.as_ref(),
+                            Some(parent_id),
+                            "seed={seed}\n{source}"
+                        );
+                        assert!(
+                            contains(
+                                rect(parent.x, parent.y, parent.width, parent.height),
+                                rect(lane.x, lane.y, lane.width, lane.height)
+                            ),
+                            "{parent_id} must contain {id}, seed={seed}\n{source}"
+                        );
+                    }
+                }
+                for (index, left) in layout.nodes.iter().enumerate() {
+                    for right in &layout.nodes[index + 1..] {
+                        if left.parent_id == right.parent_id
+                            && !left.is_edge_label
+                            && !right.is_edge_label
+                        {
+                            assert!(
+                                separate(
+                                    rect(left.x, left.y, left.width, left.height),
+                                    rect(right.x, right.y, right.width, right.height)
+                                ),
+                                "siblings {}/{} overlap, seed={seed}\n{source}",
+                                left.id,
+                                right.id
+                            );
+                        }
+                    }
+                }
+                for (index, left) in layout.lanes.iter().enumerate() {
+                    for right in &layout.lanes[index + 1..] {
+                        if left.parent_id == right.parent_id {
+                            assert!(
+                                separate(
+                                    rect(left.x, left.y, left.width, left.height),
+                                    rect(right.x, right.y, right.width, right.height)
+                                ),
+                                "sibling lanes {}/{} overlap, seed={seed}\n{source}",
+                                left.id,
+                                right.id
+                            );
+                        }
+                    }
+                }
+                let mut endpoints = layout
+                    .edges
+                    .iter()
+                    .map(|edge| (edge.from.clone(), edge.to.clone()))
+                    .collect::<Vec<_>>();
+                let mut expected = graph.edges.clone();
+                endpoints.sort();
+                expected.sort();
+                assert_eq!(
+                    endpoints, expected,
+                    "edge multiplicity and endpoints, seed={seed}\n{source}"
+                );
+                for edge in &layout.edges {
+                    assert!(
+                        edge.points.len() >= 2
+                            && edge.points.iter().all(|point| finite(&[point.x, point.y])),
+                        "route {}, seed={seed}\n{source}",
+                        edge.id
+                    );
+                    assert!(
+                        edge.points
+                            .windows(2)
+                            .all(|pair| (pair[0].x - pair[1].x).abs() <= EPSILON
+                                || (pair[0].y - pair[1].y).abs() <= EPSILON),
+                        "non-orthogonal {}, seed={seed}\n{source}",
+                        edge.id
+                    );
+                }
+                for pair in graph.chain.windows(2) {
+                    let (from, to) = (node(&pair[0]), node(&pair[1]));
+                    let ordered = match direction {
+                        "TB" => from.y < to.y,
+                        "BT" => from.y > to.y,
+                        "LR" => from.x < to.x,
+                        "RL" => from.x > to.x,
+                        _ => unreachable!(),
+                    };
+                    assert!(ordered, "chain direction, seed={seed}\n{source}");
+                }
+                let bounds = layout.bounds.as_ref().expect("nonempty graph bounds");
+                assert!(
+                    finite(&[bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y])
+                        && bounds.min_x < bounds.max_x
+                        && bounds.min_y < bounds.max_y,
+                    "seed={seed}\n{source}"
+                );
+                assert_eq!(
+                    serde_json::to_value(&layout).unwrap(),
+                    serde_json::to_value(try_layout_swimlane(source).unwrap()).unwrap(),
+                    "nondeterministic Swimlane seed={seed}\n{source}"
+                );
+            }
+        }
+    }
+}
 
 struct FixedTextMeasurer;
 
@@ -132,7 +334,7 @@ fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
     let session = environment
         .begin_session()
         .map_err(|error| format!("render session failed: {error}"))?;
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .map_err(|error| format!("swimlane layout failed: {error}"))?;
     let projection = artifact
         .layout_json()
@@ -163,7 +365,7 @@ fn layout_swimlane_with_width_aware_measurer(source: &str) -> SwimlaneLayout {
         ),
     );
     let session = environment.begin_session().expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare swimlane layout");
     let projection = artifact.layout_json().expect("swimlane projection");
     serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
@@ -188,7 +390,7 @@ fn layout_swimlane_with_font_size_aware_measurer(source: &str) -> SwimlaneLayout
         ),
     );
     let session = environment.begin_session().expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare swimlane layout");
     let projection = artifact.layout_json().expect("swimlane projection");
     serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())

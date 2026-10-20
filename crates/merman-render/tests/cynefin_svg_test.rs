@@ -44,7 +44,7 @@ fn parse_layout_and_render_with_environment(
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse cynefin")
         .expect("detect cynefin");
-    let artifact = family::prepare(parsed, layout_options, session).expect("prepare cynefin");
+    let artifact = family::prepare(&parsed, layout_options, session).expect("prepare cynefin");
     let projection = artifact.layout_json().expect("serialize Cynefin layout");
     let layout: CynefinDiagramLayout =
         serde_json::from_value(projection["layout"]["CynefinDiagram"].clone())
@@ -76,7 +76,7 @@ fn try_render_cynefin_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse Cynefin resource-bound fixture")
         .expect("detect Cynefin resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("cynefin-bounded".to_string()),
@@ -163,7 +163,7 @@ fn try_render_cynefin_with_theme(
         .expect("parse themed Cynefin")
         .expect("detect themed Cynefin");
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let projection = artifact.layout_json()?;
     let layout = serde_json::from_value(projection["layout"]["CynefinDiagram"].clone())
         .expect("Cynefin layout projection");

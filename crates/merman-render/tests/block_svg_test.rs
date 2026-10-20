@@ -55,7 +55,7 @@ fn try_render_block_svg_from_text_with_engine_and_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
     Ok(artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
@@ -109,7 +109,7 @@ fn render_block_geometry(config: serde_json::Value, source: &str) -> (String, se
         .expect("parse Block geometry")
         .expect("detect Block geometry");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Block geometry");
     let layout =
         artifact.layout_json().expect("project Block geometry")["layout"]["BlockDiagram"].clone();
@@ -396,7 +396,7 @@ fn render_block_with_theme_requirement(
         .begin_session_with_theme(theme)
         .expect("begin themed Block session");
 
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Block")
         .render_svg(
             &SvgRenderOptions {
@@ -476,7 +476,7 @@ fn block_generic_text_stroke_keeps_a_residual_with_or_without_fill() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap();
-        let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let result = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
         assert!(
@@ -672,7 +672,7 @@ fn block_node_label_mixed_rule_is_rejected_in_strict_mode() {
         .begin_session_with_theme(&theme)
         .unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     assert!(
         artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2296,7 +2296,7 @@ fn block_svg_edge_background_uses_operation_text_bounds() {
             ))
             .begin_session()
             .unwrap();
-        let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -2661,7 +2661,7 @@ fn block_background_unsupported_winning_facet_stays_residual() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .unwrap();
-        let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let result = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
         assert!(
@@ -3891,7 +3891,7 @@ fn block_source_font_weight_priority_reaches_labels_and_measurement() {
                 .begin_session()
                 .unwrap();
             let artifact =
-                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .unwrap();

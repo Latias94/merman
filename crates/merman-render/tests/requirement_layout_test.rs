@@ -28,7 +28,7 @@ fn render_with_config(
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Requirement");
     let projection = artifact.layout_json().expect("layout projection");
     let svg = artifact

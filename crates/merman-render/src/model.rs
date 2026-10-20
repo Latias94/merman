@@ -142,12 +142,11 @@ pub struct LayoutEdge {
     pub stroke_dasharray: Option<String>,
 }
 
-/// Post-paint edge geometry, recovered from the same compute phase that emits the SVG.
+/// Edge geometry prepared by the same family-local route and label decisions as SVG.
 ///
-/// `LayoutEdge::points` is the ELK port polyline *before* the endpoints are clipped to the
-/// endpoint shapes' ink. Clipping happens during paint, and consumers that need the geometry that
-/// is actually on screen currently have to render a whole SVG and recover it from the
-/// `data-points` attribute, which is why this projection exists.
+/// `LayoutEdge::points` precedes endpoint clipping. This projection refines those routes without
+/// serializing SVG. It reports the `data-points` polyline, before later cluster path clipping,
+/// rather than the complete visible curve.
 ///
 /// Coordinates are in the **same space as `LayoutEdge::points`** (layout coordinates), so a
 /// consumer can treat this as a refinement of the layout projection rather than a second,
@@ -201,6 +200,59 @@ impl EdgePaintGeometryOutput {
 
     pub fn edges(&self) -> &[EdgePaintGeometry] {
         &self.edges
+    }
+
+    /// Encodes geometry with exact byte admission and cooperative cancellation.
+    ///
+    /// Typed geometry construction does not consume this encoded-output budget.
+    pub fn write_json_controlled(
+        &self,
+        writer: &mut impl std::io::Write,
+        resources: crate::resources::RenderResourcePolicy,
+        control: &merman_core::OperationControl,
+    ) -> crate::Result<()> {
+        let meter =
+            crate::resources::OperationWorkMeter::new_with_control(resources, control.clone());
+        let mut output = GeometryJsonWriter {
+            writer,
+            meter: &meter,
+            written: 0,
+            terminal: None,
+        };
+        let result = serde_json::to_writer(&mut output, self);
+        if let Some(error) = output.terminal {
+            return Err(error.into());
+        }
+        result?;
+        meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        Ok(())
+    }
+}
+
+struct GeometryJsonWriter<'a, W> {
+    writer: &'a mut W,
+    meter: &'a crate::resources::OperationWorkMeter,
+    written: usize,
+    terminal: Option<crate::resources::OperationWorkError>,
+}
+
+impl<W: std::io::Write> std::io::Write for GeometryJsonWriter<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        for chunk in bytes.chunks(1024) {
+            if let Err(error) = self
+                .meter
+                .preflight_geometry_json_bytes(self.written, chunk.len())
+            {
+                self.terminal = Some(error);
+                return Err(std::io::Error::other("edge geometry output terminated"));
+            }
+            self.writer.write_all(chunk)?;
+            self.written += chunk.len();
+        }
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
     }
 }
 

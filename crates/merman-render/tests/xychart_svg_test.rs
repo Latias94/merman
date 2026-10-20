@@ -57,7 +57,7 @@ fn render_xychart_with_theme_and_engine(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable XY Chart session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed XY Chart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed XY Chart")
@@ -77,7 +77,7 @@ fn try_render_xychart_with_theme(
     let session = environment
         .begin_session_with_theme(theme)
         .expect("begin themed XY Chart session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let projection = artifact.layout_json()?;
     let layout = serde_json::from_value(projection["layout"]["XyChartDiagram"].clone())
         .expect("XY Chart layout projection");
@@ -128,7 +128,7 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize XYChart layout");
     serde_json::from_value(projection["layout"]["XyChartDiagram"].clone())
         .expect("XYChart layout projection")
@@ -158,7 +158,7 @@ fn try_render_xychart_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
 
     Ok(artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?

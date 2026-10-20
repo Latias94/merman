@@ -1,6 +1,7 @@
 # Headless Layout
 
-Merman lays out Mermaid `@12.0.0` diagrams in Rust without a browser or JavaScript runtime.
+Merman lays out diagrams from the [selected Mermaid baseline](../alignment/README.md#machine-authorities)
+in Rust without a browser or JavaScript runtime.
 Layout is a target-local phase of one operation-scoped render, not a JSON-first stage that can be
 paired with an unrelated semantic model.
 
@@ -50,13 +51,19 @@ Opening separate layout and SVG requests intentionally creates separate operatio
 target ownership and resource accounting explicit instead of exposing a reusable SVG-only layout
 artifact.
 
+Current development builds can share immutable parsing between those operations with
+`Renderer::prepare_source()` and `render_prepared()`. Each target still computes its own layout
+under fresh control and resource admission. See the
+[prepared rendering migration](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
 ## Typed Ownership
 
 1. `merman-core` detects the diagram and constructs family semantics under one
    `OperationControl` and runtime context.
 2. The public facade owns the format-neutral `SemanticArtifact`.
 3. `RenderTarget::LayoutJson` or `RenderTarget::Svg` enters the SVG adapter.
-4. `merman-render::family::prepare` computes the matching typed layout behind the facade.
+4. `merman-render::family::prepare` borrows the canonical model/context and computes the matching
+   owned typed layout behind the facade.
 5. Layout JSON or SVG is projected from that same target-local artifact.
 
 The opaque artifact makes cross-family combinations unrepresentable. Compatibility semantic or
@@ -76,6 +83,32 @@ Use `RenderEnvironment::deterministic()` for built-in font-agnostic measurement.
 supply host services explicitly; a successful host measurement bypasses the deterministic fallback
 for that request.
 `LayoutOptions` contains layout request values and does not own environment services.
+
+## Explicit Kanban Width Adaptation
+
+Set `LayoutOptions.adaptation` to `LayoutAdaptation::FitWidth`, or use binding JSON
+`{"layout":{"adaptation":"fit-width","container_width":425}}`. The default is `None` / `"none"`.
+Only Kanban supports this mode; the SVG capability plan reports its supported modes in
+`supported_layout_adaptation_ids`. Other families reject explicit adaptation, including empty
+edge-geometry queries, without starting unused layout services.
+
+Fit-width packs whole columns into rows in source order. It preserves configured section width,
+labels, fonts, task occurrences, IDs and ticket links. Labels and column heights are prepared once;
+placement uses the operation's existing cancellation and layout-work budget. A column wider than
+its available container keeps its natural width and reports overflow. This is placement adaptation,
+not a maximum SVG width or a font-scaling policy.
+
+`layout_json` exposes `meta.layout_adaptation`, and completed SVG/native results expose the same
+ordinary observation through `layout_adaptation()` and binding metadata `layout_adaptation`:
+`mode`, `requested_width`, `actual_width`, and `overflowed`. Actual width includes the existing
+viewBox padding, before viewport scaling; an empty board retains its 100px fallback. Native SDKs
+preserve this additive metadata in their existing `raw_json` / `rawJson` field.
+
+Kanban retains Mermaid's existing configuration precedence: effective `mindmap.padding` precedes
+`kanban.padding`. With the selected defaults (200px columns, 5px gaps, 10px viewBox padding), one
+column needs 220px and two need 425px. Explicit `mindmap.padding: 8` gives 216px and 421px.
+Default rendering and fit-width requests wide enough for the natural strip produce identical SVG
+bytes. Reuse a prepared source to switch widths without reparsing.
 
 ## Low-Level Use
 

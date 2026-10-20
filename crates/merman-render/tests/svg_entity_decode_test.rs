@@ -29,7 +29,7 @@ fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::default();
-    let artifact = family::prepare(parsed, &layout_opts, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_opts, session).expect("layout ok");
 
     artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())

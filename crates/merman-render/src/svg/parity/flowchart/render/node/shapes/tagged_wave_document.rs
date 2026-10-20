@@ -16,66 +16,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    // Mermaid renders this shape only once during createGraph layout: the base `w/h` come from
-    // the label bbox, and only then `updateNodeBounds(...)` inflates `node.width/height` to the
-    // final outer bbox used by Dagre. Our pipeline is split into headless layout + SVG render, so
-    // `layout_node.width/height` already contain that inflated outer bbox. Feeding them back here
-    // would recursively enlarge the wave/tag geometry a second time.
-    let _ = common.layout_node;
-    let w = (metrics.width + 2.0 * p).max(0.0);
-    let h = (metrics.height + 2.0 * p).max(0.0);
-    let wave_amplitude = h / 8.0;
-    let tag_width = 0.2 * w;
-    let tag_height = 0.2 * h;
-    let final_h = h + wave_amplitude;
-
-    // Mermaid shifts label to the left padding origin and up by waveAmplitude/2.
-    label.dx = -w / 2.0 + p + metrics.width / 2.0;
-    label.dy = -h / 2.0 + p - wave_amplitude / 2.0 + metrics.height / 2.0;
-
-    let ext = (w / 2.0) * 0.1;
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((-w / 2.0 - ext, final_h / 2.0));
-    points.extend(generate_full_sine_wave_points(
-        -w / 2.0 - ext,
-        final_h / 2.0,
-        w / 2.0 + ext,
-        final_h / 2.0,
-        wave_amplitude,
-        0.8,
-    ));
-    points.push((w / 2.0 + ext, -final_h / 2.0));
-    points.push((-w / 2.0 - ext, -final_h / 2.0));
-
-    let x = -w / 2.0 + ext;
-    let y = -final_h / 2.0 - tag_height * 0.4;
-    let mut tag_points: Vec<(f64, f64)> = Vec::new();
-    tag_points.push((x + w - tag_width, (y + h) * 1.3));
-    tag_points.push((x + w, y + h - tag_height));
-    tag_points.push((x + w, (y + h) * 0.9));
-    tag_points.extend(generate_full_sine_wave_points(
-        x + w,
-        (y + h) * 1.25,
-        x + w - tag_width,
-        (y + h) * 1.3,
-        -h * 0.02,
-        0.5,
-    ));
-
-    let wave_rect_path = path_from_points(&points);
-    let tag_path = path_from_points(&tag_points);
-
+    let (wave_amplitude, wave_rect_path, tag_path) =
+        prepare_tagged_wave_document_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let wave_paths = helpers::hand_drawn_path_pair(common, details, &wave_rect_path);
         let tag_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -173,4 +115,94 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_tagged_wave_document_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, String, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    // Mermaid renders this shape only once during createGraph layout: the base `w/h` come from
+    // the label bbox, and only then `updateNodeBounds(...)` inflates `node.width/height` to the
+    // final outer bbox used by Dagre. Our pipeline is split into headless layout + SVG render, so
+    // `layout_node.width/height` already contain that inflated outer bbox. Feeding them back here
+    // would recursively enlarge the wave/tag geometry a second time.
+    let _ = common.layout_node;
+    let w = (metrics.width + 2.0 * p).max(0.0);
+    let h = (metrics.height + 2.0 * p).max(0.0);
+    let wave_amplitude = h / 8.0;
+    let tag_width = 0.2 * w;
+    let tag_height = 0.2 * h;
+    let final_h = h + wave_amplitude;
+
+    // Mermaid shifts label to the left padding origin and up by waveAmplitude/2.
+    label.dx = -w / 2.0 + p + metrics.width / 2.0;
+    label.dy = -h / 2.0 + p - wave_amplitude / 2.0 + metrics.height / 2.0;
+
+    let ext = (w / 2.0) * 0.1;
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push((-w / 2.0 - ext, final_h / 2.0));
+    points.extend(generate_full_sine_wave_points(
+        -w / 2.0 - ext,
+        final_h / 2.0,
+        w / 2.0 + ext,
+        final_h / 2.0,
+        wave_amplitude,
+        0.8,
+    ));
+    points.push((w / 2.0 + ext, -final_h / 2.0));
+    points.push((-w / 2.0 - ext, -final_h / 2.0));
+
+    let x = -w / 2.0 + ext;
+    let y = -final_h / 2.0 - tag_height * 0.4;
+    let mut tag_points: Vec<(f64, f64)> = Vec::new();
+    tag_points.push((x + w - tag_width, (y + h) * 1.3));
+    tag_points.push((x + w, y + h - tag_height));
+    tag_points.push((x + w, (y + h) * 0.9));
+    tag_points.extend(generate_full_sine_wave_points(
+        x + w,
+        (y + h) * 1.25,
+        x + w - tag_width,
+        (y + h) * 1.3,
+        -h * 0.02,
+        0.5,
+    ));
+
+    let wave_rect_path = path_from_points(&points);
+    let tag_path = path_from_points(&tag_points);
+
+    (wave_amplitude, wave_rect_path, tag_path)
+}
+
+pub(super) fn advance_tagged_wave_document_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, wave_rect_path, tag_path) = prepare_tagged_wave_document_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &wave_rect_path, target);
+    if common.look_is_hand_drawn() {
+        let _ = super::super::roughjs::roughjs_prepare_paths_for_hand_drawn_solid_svg_path(
+            target,
+            &tag_path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        );
+    } else {
+        let _ = super::super::helpers::prepare_node_path(common, &tag_path, target);
+    }
 }

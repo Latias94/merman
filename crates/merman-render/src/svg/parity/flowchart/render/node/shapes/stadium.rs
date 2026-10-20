@@ -16,34 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Port of Mermaid `stadium.ts` points + `createPathFromPoints`.
-    // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.
-    // Use one source geometry for layout, paint, and intersection. The sampled arc list is
-    // retained for the path, while the source theoretical width remains the node dimension;
-    // re-sampling it during layout would shrink the same stadium twice.
-    //
-    // Mermaid sizes the path from the `labelHelper(...)` bbox, so HTML labels are measured with
-    // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let geometry = crate::flowchart::StadiumGeometry::from_label(
-        metrics.width,
-        metrics.height,
-        ctx.node_padding,
-        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
-    );
-    let path_data = path_from_points(&geometry.points);
-    let w = geometry.width;
-    let h = geometry.height;
-    let radius = h / 2.0;
-
+    let (path_data, w, h, radius) = prepare_stadium_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         if let Some((fill_d, stroke_d)) =
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -120,4 +93,64 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         fmt(radius),
         fmt(radius)
     );
+}
+
+fn prepare_stadium_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (String, f64, f64, f64) {
+    // Port of Mermaid `stadium.ts` points + `createPathFromPoints`.
+    // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.
+    // Use one source geometry for layout, paint, and intersection. The sampled arc list is
+    // retained for the path, while the source theoretical width remains the node dimension;
+    // re-sampling it during layout would shrink the same stadium twice.
+    //
+    // Mermaid sizes the path from the `labelHelper(...)` bbox, so HTML labels are measured with
+    // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let geometry = crate::flowchart::StadiumGeometry::from_label(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    );
+    let path_data = path_from_points(&geometry.points);
+    let w = geometry.width;
+    let h = geometry.height;
+    let radius = h / 2.0;
+
+    (path_data, w, h, radius)
+}
+
+pub(super) fn advance_stadium_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (path_data, _, _, _) = prepare_stadium_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    if common.look_is_hand_drawn() {
+        let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+            target,
+            &path_data,
+            common.stroke_width,
+            common.stroke_dasharray,
+            FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
+            FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
+            FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+            common.work_meter,
+            common.hand_drawn_seed,
+        );
+    } else {
+        let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
+    }
 }

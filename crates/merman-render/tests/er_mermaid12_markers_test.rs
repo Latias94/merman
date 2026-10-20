@@ -17,7 +17,7 @@ fn render_er_source(source: &str) -> String {
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap()

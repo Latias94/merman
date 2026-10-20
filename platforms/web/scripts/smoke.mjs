@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { preparedSourceSmoke } from "./prepared-source-smoke.mjs";
 import { customizeNodeColors } from "../examples/custom-theme.mjs";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
@@ -127,6 +128,7 @@ const presetManifest = JSON.parse(
 class FakeMeasureElement {
   constructor(tagName = "div", canvasContext = null) {
     this.tagName = tagName;
+    this.ownerDocument = globalThis.document;
     this.canvasContext = canvasContext;
   }
 
@@ -407,6 +409,27 @@ if (hasCapability("svg")) {
     );
   }
 
+  await preparedSourceSmoke(api, exportedWasmModule, hostTextMeasurementResult);
+  const adaptiveSource = "kanban\n  todo[Todo]\n    a[First]\n  doing[Doing]\n    b[Second]\n  done[Done]\n    c[Third]";
+  assert.deepEqual(api.svgPlanJson(adaptiveSource).supported_layout_adaptation_ids, ["none", "fit-width"]);
+  const adaptive = api.prepareSource(adaptiveSource);
+  try {
+    const wide = adaptive.renderSvg();
+    const narrow = adaptive.renderSvgResult({ layout: { adaptation: "fit-width", container_width: 425 } });
+    assert.deepEqual(narrow.metadata.layout_adaptation, {
+      mode: "fit-width", requested_width: 425, actual_width: 425, overflowed: false,
+    });
+    assert.notEqual(narrow.svg, wide);
+    assert.equal(adaptive.renderSvg({ layout: { adaptation: "fit-width", container_width: 800 } }), wide);
+    const overflow = adaptive.renderSvgResult({ layout: { adaptation: "fit-width", container_width: 219 } });
+    assert.equal(overflow.metadata.layout_adaptation.actual_width, 220);
+    assert.equal(overflow.metadata.layout_adaptation.overflowed, true);
+    assert.deepEqual(JSON.parse(adaptive.layoutJson({ layout: { adaptation: "fit-width", container_width: 425 } })).meta.layout_adaptation, narrow.metadata.layout_adaptation);
+    assert.throws(() => api.edgeGeometryJson('pie\n  "One" : 1', { layout: { adaptation: "fit-width" } }), error => error.code_name === "MERMAN_RENDER_ERROR" && /fit-width/.test(error.message));
+  } finally {
+    adaptive.dispose();
+  }
+
   const themeDesign = {
     tokens: { text: { type: "color", value: "#123456" } },
     styles: { text: { fill: { kind: "solid", color: { ref: "text" } } } },
@@ -666,6 +689,8 @@ if (hasCapability("svg")) {
     });
   }
 } else {
+  assert.equal(typeof api.prepareSource, "undefined");
+  assert.equal(typeof exportedWasmModule.PreparedSource, "undefined");
   assert.equal(themeCatalog.structured_spec_available, false);
   assert.deepEqual(themeCatalog.supported_output_ids, []);
   assert.deepEqual(themeCatalog.presets, []);
@@ -692,7 +717,7 @@ assert.deepEqual(generatedAsciiResourceLimitIds, [
 const expectedResourceLimitIds = [
   ...(hasCapability("ascii") ? generatedAsciiResourceLimitIds : []),
   ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
-  ...(hasCapability("svg") ? ["max_layout_work_units"] : []),
+  ...(hasCapability("svg") ? ["max_geometry_json_bytes", "max_layout_work_units"] : []),
   "max_model_items",
   "max_model_nesting_depth",
   "max_model_text_bytes",
@@ -1878,6 +1903,14 @@ async function runSameProcessPackageSmoke() {
   assert.equal(full.themeCatalog().presets.length, 10);
   assert.ok(full.themeCatalog().known_semantic_target_ids.includes("node"));
   assert.match(full.renderSvg(source, options), /<svg/);
+  const prepared = full.prepareSource(source, options);
+  assert.equal(typeof analysis.prepareSource, "undefined");
+  assert.equal(typeof analysisWasm.PreparedSource, "undefined");
+  analysis.runtimeCatalog();
+  assert.match(prepared.renderSvg(), /<svg/);
+  assert.ok(JSON.parse(prepared.layoutJson()).semantic);
+  prepared.dispose();
+
   assert.equal(
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false

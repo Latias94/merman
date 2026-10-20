@@ -13,24 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        None,
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding;
-    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
-    let h = (w + metrics.height).max(1.0);
-    let pts = vec![
-        (0.0, -h),
-        (w + metrics.height, -h),
-        ((w + metrics.height) / 2.0, 0.0),
-    ];
-    let path_data = path_from_points(&pts);
+    let (metrics, p, h, path_data) = prepare_manual_file_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -114,24 +97,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 12.0 } else { p };
-    let w = (metrics.width + 2.0 * padding_x).max(1.0);
-    let h = (metrics.height + 2.0 * padding_y).max(1.0);
-    let x = -w / 2.0;
-    let y = -h / 2.0;
-    let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
-    let path_data = path_from_points(&points);
+    let (metrics, p, padding_x, h, path_data) = prepare_manual_input_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -207,4 +173,82 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     // look-specific horizontal padding.
     label.dx = -padding_x + p;
     label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
+}
+
+fn prepare_manual_file_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::text::TextMetrics, f64, f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding;
+    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
+    let h = (w + metrics.height).max(1.0);
+    let pts = vec![
+        (0.0, -h),
+        (w + metrics.height, -h),
+        ((w + metrics.height) / 2.0, 0.0),
+    ];
+    let path_data = path_from_points(&pts);
+    (metrics, p, h, path_data)
+}
+
+fn prepare_manual_input_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::text::TextMetrics, f64, f64, f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(1.0);
+    let h = (metrics.height + 2.0 * padding_y).max(1.0);
+    let x = -w / 2.0;
+    let y = -h / 2.0;
+    let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
+    let path_data = path_from_points(&points);
+    (metrics, p, padding_x, h, path_data)
+}
+
+pub(super) fn advance_manual_file_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, _, _, path_data) = prepare_manual_file_geometry(ctx, common, label);
+    let _ = super::super::helpers::prepare_node_path(
+        common,
+        &path_data,
+        super::super::roughjs::RoughGeometryTarget::Query,
+    );
+}
+
+pub(super) fn advance_manual_input_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, _, _, _, path_data) = prepare_manual_input_geometry(ctx, common, label);
+    let _ = super::super::helpers::prepare_node_path(
+        common,
+        &path_data,
+        super::super::roughjs::RoughGeometryTarget::Query,
+    );
 }

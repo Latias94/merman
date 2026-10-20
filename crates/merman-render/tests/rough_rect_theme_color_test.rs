@@ -20,7 +20,7 @@ fn render_paths(source: &str, color: &str, seed: u32) -> Vec<String> {
         .expect("parse diagram")
         .expect("detect diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let svg = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare diagram")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("paint colors must not reject rectangle geometry")

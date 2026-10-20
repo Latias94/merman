@@ -6,6 +6,7 @@ mod edge_path;
 pub(in crate::svg::parity) mod node;
 mod root;
 
+pub(in crate::svg::parity::flowchart) use cluster::advance_rough_geometry as advance_flowchart_cluster_rough_geometry;
 pub(in crate::svg::parity) use cluster::render_flowchart_cluster;
 pub(in crate::svg::parity) use edge_label::render_flowchart_edge_label;
 pub(super) use edge_label::resolve_flowchart_edge_label_position;

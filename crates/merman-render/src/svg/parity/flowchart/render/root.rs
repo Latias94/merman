@@ -23,30 +23,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
         &'cache mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
     pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
-    pub(in crate::svg::parity::flowchart) edge_label_positions:
-        Option<FxHashMap<crate::flowchart::FlowchartEdgeKey, crate::model::LayoutPoint>>,
-}
-
-fn record_edge_label_position(
-    positions: &mut Option<
-        FxHashMap<crate::flowchart::FlowchartEdgeKey, crate::model::LayoutPoint>,
-    >,
-    ctx: &FlowchartRenderCtx<'_>,
-    edge_key: crate::flowchart::FlowchartEdgeKey,
-    position: Option<crate::model::LayoutPoint>,
-    origin_x: f64,
-    origin_y: f64,
-) {
-    let (Some(positions), Some(position)) = (positions, position) else {
-        return;
-    };
-    positions.insert(
-        edge_key,
-        crate::model::LayoutPoint {
-            x: position.x + origin_x - ctx.tx,
-            y: position.y + origin_y - ctx.ty,
-        },
-    );
+    pub(in crate::svg::parity::flowchart) edge_labels:
+        &'cache mut super::super::paint::FlowchartEdgeLabels,
 }
 
 struct FlowchartRootFrame<'data, 'plan> {
@@ -128,23 +106,16 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root<'data, 'plan>(
                 let Some(current) = frame.as_ref() else {
                     break;
                 };
-                let position = render_swimlane_edge_label_node(
+                render_swimlane_edge_label_node(
                     out,
                     ctx,
                     id,
                     edge,
                     current.origin_x,
                     current.content_origin_y,
-                    &*session.edge_cache,
+                    session.edge_labels,
                 )?;
-                record_edge_label_position(
-                    &mut session.edge_label_positions,
-                    ctx,
-                    edge.key,
-                    position,
-                    current.origin_x,
-                    current.content_origin_y,
-                );
+
                 ctx.checkpoint_emit()?;
                 out.checkpoint()?;
                 continue;
@@ -322,6 +293,12 @@ fn render_flowchart_elk_edge_paths(
     edges: &[super::super::render_input::FlowchartRenderEdgeRef<'_>],
 ) -> crate::Result<()> {
     ctx.checkpoint_emit()?;
+    super::super::paint::prepare_rough_edge_paths(ctx, edges, session.edge_cache)?;
+    if ctx.hand_drawn_seed.seed().may_use_math_random() {
+        session
+            .edge_labels
+            .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
+    }
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     if edges.is_empty() {
         out.push_str(r#"<g class="edges edgePaths"/>"#);
@@ -340,7 +317,7 @@ fn render_flowchart_elk_edge_paths(
             0.0,
             0.0,
             &mut scratch,
-            &mut *session.edge_cache,
+            &*session.edge_cache,
         )?;
         ctx.checkpoint_emit()?;
         out.checkpoint()?;
@@ -368,15 +345,8 @@ fn render_flowchart_elk_edge_labels(
         if edge_label_is_empty(ctx, e) {
             continue;
         }
-        let position = render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache)?;
-        record_edge_label_position(
-            &mut session.edge_label_positions,
-            ctx,
-            e.key,
-            position,
-            0.0,
-            0.0,
-        );
+        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, session.edge_labels)?;
+
         out.checkpoint()?;
     }
     out.push_str("</g>");
@@ -443,6 +413,12 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
     let edges = root_emission.edges();
     drop(_g_edges_select);
 
+    super::super::paint::prepare_rough_edge_paths(ctx, edges, session.edge_cache)?;
+    if ctx.hand_drawn_seed.seed().may_use_math_random() {
+        session
+            .edge_labels
+            .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
+    }
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     let edge_group_class = if ctx.swimlane_direction.is_some() {
         "edges edgePaths"
@@ -464,7 +440,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                 origin_x,
                 frame.content_origin_y,
                 &mut scratch,
-                &mut *session.edge_cache,
+                &*session.edge_cache,
             )?;
             ctx.checkpoint_emit()?;
             out.checkpoint()?;
@@ -485,26 +461,19 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             // Its SVG empty-label background remains immediately after that edge's wrapper.
             for &e in edges {
                 ctx.checkpoint_emit()?;
-                let position = render_flowchart_edge_label(
+                render_flowchart_edge_label(
                     out,
                     ctx,
                     e,
                     origin_x,
                     frame.content_origin_y,
-                    &*session.edge_cache,
+                    session.edge_labels,
                 )?;
                 if edge_label_is_empty(ctx, e) {
                     out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
                     out.checkpoint()?;
                 }
-                record_edge_label_position(
-                    &mut session.edge_label_positions,
-                    ctx,
-                    e.key,
-                    position,
-                    origin_x,
-                    frame.content_origin_y,
-                );
+
                 out.checkpoint()?;
             }
         } else if !ctx.edge_html_labels {
@@ -521,22 +490,15 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             }
             for &e in edges {
                 ctx.checkpoint_emit()?;
-                let position = render_flowchart_edge_label(
+                render_flowchart_edge_label(
                     out,
                     ctx,
                     e,
                     origin_x,
                     frame.content_origin_y,
-                    &*session.edge_cache,
+                    session.edge_labels,
                 )?;
-                record_edge_label_position(
-                    &mut session.edge_label_positions,
-                    ctx,
-                    e.key,
-                    position,
-                    origin_x,
-                    frame.content_origin_y,
-                );
+
                 out.checkpoint()?;
             }
         } else {
@@ -544,22 +506,15 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             // place as zero-sized foreignObjects instead of being partitioned ahead of labels.
             for &e in edges {
                 ctx.checkpoint_emit()?;
-                let position = render_flowchart_edge_label(
+                render_flowchart_edge_label(
                     out,
                     ctx,
                     e,
                     origin_x,
                     frame.content_origin_y,
-                    &*session.edge_cache,
+                    session.edge_labels,
                 )?;
-                record_edge_label_position(
-                    &mut session.edge_label_positions,
-                    ctx,
-                    e.key,
-                    position,
-                    origin_x,
-                    frame.content_origin_y,
-                );
+
                 out.checkpoint()?;
             }
         }

@@ -21,7 +21,7 @@ fn render(source: &str, theme: &str, look: &str) -> String {
         .expect("parse flowchart")
         .expect("Flowchart model");
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )

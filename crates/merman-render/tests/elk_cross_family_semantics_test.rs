@@ -70,7 +70,7 @@ fn render(source: &str, line_hops: Option<Value>) -> (Value, SvgGeometry) {
         .expect("parse crossing fixture")
         .expect("detect diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare crossing fixture");
     let layout = artifact.layout_json().expect("layout JSON")["layout"].clone();
     let svg = artifact

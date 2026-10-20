@@ -10,7 +10,7 @@ fn render_flowchart(source: &str) -> String {
         .expect("parse Flowchart")
         .expect("Flowchart diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout Flowchart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Flowchart")

@@ -69,7 +69,9 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(in crate::svg::parity::flowchart) document_ids:
-        &'a super::document_ids::FlowchartDocumentIds<'a>,
+        std::cell::OnceCell<super::document_ids::FlowchartDocumentIds>,
+    pub(in crate::svg::parity::flowchart) layout: &'a FlowchartLayout,
+    pub(in crate::svg::parity::flowchart) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(in crate::svg::parity::flowchart) node_border_color: &'a String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
     pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
@@ -122,7 +124,25 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) html_label_text_style: &'a TextStyle,
 }
 
-impl FlowchartRenderCtx<'_> {
+impl<'a> FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) fn document_ids(
+        &self,
+    ) -> &super::document_ids::FlowchartDocumentIds {
+        self.document_ids.get_or_init(|| {
+            super::document_ids::FlowchartDocumentIds::prepare(
+                super::document_ids::FlowchartDocumentIdRequest {
+                    diagram_id: self.diagram_id.semantic_str(),
+                    edge_order: &self.edge_order,
+                    node_dom_index: &self.node_dom_index,
+                    subgraph_index_by_id: &self.subgraph_indices_by_id,
+                    layout_nodes: &self.layout.nodes,
+                    swimlane_nodes: self.swimlane_layout.map(|layout| layout.nodes.as_slice()),
+                    swimlane_lanes: self.swimlane_layout.map(|layout| layout.lanes.as_slice()),
+                },
+            )
+        })
+    }
+
     pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
     }
@@ -192,7 +212,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
     /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
     pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
-    pub(in crate::svg::parity::flowchart) data_points_b64: String,
     pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
     pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
     /// A crossing triggered after-paint path rewriting, even if its visible jump was suppressed.

@@ -123,8 +123,8 @@ pub use render::{PdfOutput, PdfRequest, PreparedPdfExport};
 #[cfg(feature = "png")]
 pub use render::{PngRequest, PreparedPngExport};
 pub use render::{
-    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
-    ResourceLimitExceeded, SemanticArtifact,
+    PrepareSourceRequest, PreparedSource, RenderError, RenderOutput, RenderRequest, RenderTarget,
+    Renderer, ResourceLimitCause, ResourceLimitExceeded, SemanticArtifact,
 };
 
 /// Diagnostics and source-mapping APIs for lint and analysis workflows.

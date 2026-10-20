@@ -44,6 +44,7 @@ pub enum MermanResourceOverrideId {
     MaxAsciiGraphemeBytes,
     MaxAsciiNestingDepth,
     MaxPreparedTextRetainedBytes,
+    MaxGeometryJsonBytes,
 }
 
 impl MermanResourceOverrideId {
@@ -71,6 +72,7 @@ impl MermanResourceOverrideId {
         Self::MaxAsciiGraphemeBytes => "max_ascii_grapheme_bytes",
         Self::MaxAsciiNestingDepth => "max_ascii_nesting_depth",
         Self::MaxPreparedTextRetainedBytes => "max_prepared_text_retained_bytes",
+        Self::MaxGeometryJsonBytes => "max_geometry_json_bytes",
         }
     }
 }

@@ -54,7 +54,7 @@ fn render(environment: RenderEnvironment, backend: &str) -> (String, TextMeasure
         .unwrap()
         .unwrap();
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         environment.begin_session().unwrap(),
     )

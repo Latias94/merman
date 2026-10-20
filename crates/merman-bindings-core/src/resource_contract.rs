@@ -270,6 +270,7 @@ pub(crate) enum BindingResourceScope {
     ThemeAuthoring,
     Ascii,
     Layout,
+    EdgeGeometry,
     Svg,
     Png,
     Jpeg,
@@ -281,7 +282,7 @@ impl BindingResourceScope {
         let input = merman::resources::InputResourceLimitId::from_stable_id(stable_id);
         let analysis_document = is_analysis_document_limit(stable_id);
         let ascii = is_ascii_limit(stable_id);
-        let render = is_render_limit(stable_id);
+        let render = is_render_limit(stable_id) && stable_id != "max_geometry_json_bytes";
         let export_outputs = export_limit_output_ids(stable_id);
 
         match self {
@@ -296,6 +297,15 @@ impl BindingResourceScope {
             Self::ThemeAuthoring => is_theme_resource_limit(stable_id),
             Self::Ascii => input.is_some() || ascii,
             Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
+            Self::EdgeGeometry => {
+                input.is_some()
+                    || matches!(
+                        stable_id,
+                        "max_layout_work_units"
+                            | "max_prepared_text_retained_bytes"
+                            | "max_geometry_json_bytes"
+                    )
+            }
             Self::Svg => input.is_some() || render,
             Self::Png => {
                 input.is_some()
@@ -323,6 +333,7 @@ impl BindingResourceScope {
             Self::ThemeAuthoring => "theme authoring",
             Self::Ascii => "ASCII render",
             Self::Layout => "layout",
+            Self::EdgeGeometry => "edge geometry",
             Self::Svg => "SVG render",
             Self::Png => "PNG export",
             Self::Jpeg => "JPEG export",

@@ -79,6 +79,8 @@ pub use target_admission::{
 };
 
 pub use crate::operation_runner::SemanticArtifact;
+pub(crate) mod prepared;
+pub use prepared::{PrepareSourceRequest, PreparedSource};
 
 /// Successful SVG layout inspection output.
 #[cfg(feature = "svg")]
@@ -184,6 +186,10 @@ impl From<merman_render::Error> for RenderError {
     fn from(error: merman_render::Error) -> Self {
         match error {
             merman_render::Error::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            merman_render::Error::SemanticProjection(error) => Self::from(error),
+            merman_render::Error::PortabilityUnavailableForTarget { target } => {
+                Self::PortabilityUnavailableForTarget { target }
+            }
             merman_render::Error::ResourceLimitExceeded(resource) => {
                 Self::from(ResourceLimitExceeded::from(resource))
             }
@@ -994,32 +1000,6 @@ impl Renderer {
 }
 
 #[cfg(feature = "native-fonts")]
-const UNSUPPORTED_NATIVE_TEXT_STYLES: &[&str] = &[
-    "letter-spacing",
-    "word-spacing",
-    "text-transform",
-    "white-space",
-    "font",
-    "font-variant",
-    "font-stretch",
-    "font-feature-settings",
-    "font-variation-settings",
-    "font-kerning",
-    "line-height",
-    "text-indent",
-    "writing-mode",
-    "direction",
-    "unicode-bidi",
-    "text-anchor",
-    "dominant-baseline",
-    "alignment-baseline",
-    "baseline-shift",
-    "kerning",
-    "text-rendering",
-    "font-size-adjust",
-];
-
-#[cfg(feature = "native-fonts")]
 fn ensure_native_font_theme_typography(
     diagram_type: &str,
     config: &serde_json::Value,
@@ -1065,146 +1045,6 @@ fn ensure_native_font_theme_typography(
     Ok(())
 }
 
-#[cfg(all(
-    feature = "native-fonts",
-    any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    )
-))]
-fn unsupported_native_flowchart_html_style(
-    model: &merman_core::diagrams::flowchart::FlowchartModel,
-    context: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    config: &merman_core::MermaidConfig,
-    swimlane: bool,
-    control: &OperationControl,
-) -> Result<Option<String>, RenderError> {
-    let value = config.as_value();
-    // Node shapes use the root switch; edges and ordinary clusters honor the legacy fallback.
-    let node_html = value.get("htmlLabels").and_then(serde_json::Value::as_bool);
-    let edge_html = node_html
-        .or_else(|| {
-            value
-                .pointer("/flowchart/htmlLabels")
-                .and_then(serde_json::Value::as_bool)
-        })
-        .unwrap_or(true);
-    let inspect = |label: &str, label_type: Option<&str>| {
-        merman_render::text::unsupported_html_label_style(
-            label,
-            label_type.unwrap_or("text"),
-            config,
-            UNSUPPORTED_NATIVE_TEXT_STYLES,
-            control,
-        )
-        .map_err(RenderError::Cancelled)
-    };
-    if node_html.unwrap_or(true) {
-        for node in &model.nodes {
-            if let Some(property) = inspect(
-                context.node_label_for_render(node).unwrap_or(&node.id),
-                node.label_type.as_deref(),
-            )? {
-                return Ok(Some(property));
-            }
-        }
-    }
-    if edge_html {
-        for (semantic_index, edge) in model.edges.iter().enumerate() {
-            if let Some(label) = context.edge_label_for_render(semantic_index, edge)
-                && let Some(property) = inspect(label, edge.label_type.as_deref())?
-            {
-                return Ok(Some(property));
-            }
-        }
-    }
-    // Dedicated Swimlane titles evaluate only flowchart.htmlLabels and always use Markdown.
-    let swimlane_title_html = match value.pointer("/flowchart/htmlLabels") {
-        None => true,
-        Some(serde_json::Value::Bool(false) | serde_json::Value::Null) => false,
-        Some(serde_json::Value::Number(value)) => value.as_f64() != Some(0.0),
-        Some(serde_json::Value::String(value)) => !matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "false" | "null" | "0"
-        ),
-        Some(_) => true,
-    };
-    // Only top-level Swimlane groups use the dedicated renderer; nested groups stay Flowchart.
-    let subgraph_children: std::collections::HashSet<&str> = if swimlane {
-        model
-            .subgraphs
-            .iter()
-            .flat_map(|subgraph| subgraph.nodes.iter().map(String::as_str))
-            .collect()
-    } else {
-        Default::default()
-    };
-    for (ordinal, subgraph) in model.subgraphs.iter().enumerate() {
-        let (title_html, label_type) =
-            if swimlane && !subgraph_children.contains(subgraph.id.as_str()) {
-                (swimlane_title_html, Some("markdown"))
-            } else {
-                (edge_html, subgraph.label_type.as_deref())
-            };
-        if title_html
-            && let Some(property) = inspect(
-                context.subgraph_title_for_render(ordinal, subgraph),
-                label_type,
-            )?
-        {
-            return Ok(Some(property));
-        }
-    }
-    Ok(None)
-}
-
-#[cfg(feature = "native-fonts")]
-fn unsupported_native_text_style(model: &serde_json::Value) -> Option<&str> {
-    fn declaration(value: &serde_json::Value) -> Option<&str> {
-        match value {
-            serde_json::Value::String(raw) => raw.split(';').find_map(|declaration| {
-                let (property, _) = declaration.split_once(':')?;
-                let property = property.trim();
-                UNSUPPORTED_NATIVE_TEXT_STYLES
-                    .iter()
-                    .any(|name| property.eq_ignore_ascii_case(name))
-                    .then_some(property)
-            }),
-            serde_json::Value::Array(values) => values.iter().find_map(declaration),
-            _ => None,
-        }
-    }
-
-    match model {
-        serde_json::Value::Object(fields) => fields.iter().find_map(|(key, value)| {
-            // Inspect parser-owned declaration slots, never labels or arbitrary source text.
-            if matches!(
-                key.as_str(),
-                "style"
-                    | "styles"
-                    | "textStyles"
-                    | "cssStyle"
-                    | "cssStyles"
-                    | "cssCompiledStyles"
-                    | "labelStyle"
-            ) {
-                declaration(value)
-            } else if key == "classDefs" {
-                value.as_object().and_then(|classes| {
-                    classes.values().find_map(|class| {
-                        declaration(class).or_else(|| unsupported_native_text_style(class))
-                    })
-                })
-            } else {
-                unsupported_native_text_style(value)
-            }
-        }),
-        serde_json::Value::Array(values) => values.iter().find_map(unsupported_native_text_style),
-        _ => None,
-    }
-}
-
 impl SemanticArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
     pub fn compatibility_json(&self) -> Result<merman_core::ManagedSemanticJson, RenderError> {
@@ -1216,6 +1056,14 @@ impl SemanticArtifact {
     }
 
     fn admit_target(&self, target: RenderTarget) -> Result<RenderTarget, RenderError> {
+        #[cfg(feature = "svg")]
+        if matches!(&target, RenderTarget::EdgeGeometryJson(_)) {
+            crate::operation_runner::checkpoint(self.control(), OperationPhase::Layout)?;
+            if !merman_render::family::has_edge_geometry(self.parsed())? {
+                return Ok(target);
+            }
+        }
+
         #[cfg(feature = "native-fonts")]
         let target = target
             .normalize_native_font_context()?
@@ -1241,47 +1089,18 @@ impl SemanticArtifact {
                     "native font measurement does not support themeCSS or scoped CSS applied after layout; configure fontFamily through Mermaid configuration".to_owned(),
                 ).into());
             }
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
-            ))]
-            {
-                let property = match self.parsed().model() {
-                    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-                    merman_core::RenderSemanticModel::Flowchart(model) => {
-                        let default_context = Default::default();
-                        unsupported_native_flowchart_html_style(
-                            model,
-                            self.parsed()
-                                .flowchart_render_context()
-                                .unwrap_or(&default_context),
-                            &metadata.effective_config,
-                            metadata.effective_config.get_str("layout") == Some("swimlane"),
-                            self.control(),
-                        )?
-                    }
-                    #[cfg(feature = "diagram-agentflow")]
-                    merman_core::RenderSemanticModel::Agentflow(model) => {
-                        let (model, context) = model.to_flowchart_model();
-                        unsupported_native_flowchart_html_style(
-                            &model,
-                            &context,
-                            &metadata.effective_config,
-                            false,
-                            self.control(),
-                        )?
-                    }
-                    _ => None,
-                };
-                if let Some(property) = property {
-                    return Err(merman_export::NativeFontError::Measurement(format!(
-                        "native font measurement does not support the inline HTML text geometry style `{property}`; use deterministic text measurement to preserve compatibility"
-                    )).into());
-                }
+            if let Some(property) = merman_render::__private::unsupported_native_html_style(
+                self.parsed(),
+                self.control(),
+            )? {
+                return Err(merman_export::NativeFontError::Measurement(format!(
+                    "native font measurement does not support the inline HTML text geometry style `{property}`; use deterministic text measurement to preserve compatibility"
+                )).into());
             }
-            let model = self.compatibility_json()?;
-            if let Some(property) = unsupported_native_text_style(&model) {
+            if let Some(property) = merman_render::__private::unsupported_native_text_style(
+                self.parsed(),
+                self.control(),
+            )? {
                 return Err(merman_export::NativeFontError::Measurement(format!(
                     "native font measurement does not support the text geometry style `{property}`"
                 ))
@@ -1370,10 +1189,17 @@ fn render_svg_target(
         request.pipeline.as_ref(),
     )
     .map_err(RenderError::from)?;
-    let (svg, family) = finalized.into_completion().into_output_and_report();
-    let output =
-        finish_standalone_svg_target(svg, family, required_capabilities, &operation.control)
-            .map(Some);
+    let completion = finalized.into_completion();
+    let layout_adaptation = completion.layout_adaptation();
+    let (svg, family) = completion.into_output_and_report();
+    let output = finish_standalone_svg_target(
+        svg,
+        family,
+        required_capabilities,
+        &operation.control,
+        layout_adaptation,
+    )
+    .map(Some);
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
     output
@@ -1447,22 +1273,16 @@ fn render_layout_json_target(
             target: "layout-json",
         });
     }
-    // Project the semantic payload while the facade still owns the caller's operation control.
-    // The family artifact only assembles the envelope; it must not silently re-run an
-    // uncontrolled compatibility projection during layout emission.
-    let compatibility = semantic.compatibility_json()?;
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),
         operation.context,
         operation.control,
     )?;
-    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
         .map_err(RenderError::from)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact
-        .layout_json_with_compatibility_json(compatibility)
-        .map_err(RenderError::from)?;
+    let layout = artifact.layout_json().map_err(RenderError::from)?;
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
@@ -1473,13 +1293,29 @@ fn render_edge_geometry_json_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
+    crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
+    if request.environment.theme_portability_requirement()
+        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+    {
+        return Err(RenderError::PortabilityUnavailableForTarget {
+            target: "edge-geometry-json",
+        });
+    }
+    merman_render::family::validate_layout_options(semantic.parsed(), &request.layout)?;
+    if !merman_render::family::has_edge_geometry(semantic.parsed())? {
+        crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Emit)?;
+        return Ok(Some(merman_render::model::EdgePaintGeometryOutput::new(
+            semantic.parsed().metadata().diagram_type.clone(),
+            Vec::new(),
+        )));
+    }
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),
         operation.context,
         operation.control,
     )?;
-    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
         .map_err(RenderError::from)?;
     let diagram_type = artifact.metadata().diagram_type.clone();
     let geometry = artifact.edge_geometry_json().map_err(RenderError::from)?;
@@ -1502,7 +1338,8 @@ fn render_svg_plan_target(
         operation.context,
         operation.control,
     )?;
-    merman_render::family::plan_render(&parsed, &session)
+    merman_render::family::validate_layout_options(parsed.parsed(), &request.layout)?;
+    merman_render::family::plan_render(parsed.parsed(), &session)
         .map(Some)
         .map_err(RenderError::from)
 }
@@ -1553,7 +1390,7 @@ fn prepare_rendered_family_svg(
         operation.context.clone(),
         operation.control.clone(),
     )?;
-    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
         .map_err(RenderError::from)?;
     let rendered = artifact
         .render_svg(&request.options, &request.debug)
@@ -1601,7 +1438,7 @@ fn render_ascii_target(
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;
     let result = renderer.render_parsed_report(
-        &parsed,
+        parsed.parsed(),
         request.viewport,
         &operation.control,
         &operation.context,

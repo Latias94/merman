@@ -81,7 +81,7 @@ fn render_with_html_labels(
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
     }
     let session = environment.begin_session_with_theme(theme).unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
@@ -452,7 +452,7 @@ fn host_region_ceiling_is_enforced_before_node_filter_emission() {
         .with_theme_resource_ceiling(ceiling)
         .begin_session_with_theme(&theme)
         .unwrap();
-    let error = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let error = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .err()

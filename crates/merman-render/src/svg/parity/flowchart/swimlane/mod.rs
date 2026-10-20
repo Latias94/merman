@@ -73,7 +73,6 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
-    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
@@ -98,7 +97,38 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             render_config: artifact.render_config(),
         },
         options,
-        edge_paint_geometry,
+    )
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(in crate::svg::parity) fn swimlane_edge_geometry(
+    artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
+    metadata: &merman_core::ParseMetadata,
+    options: &SvgExecution<'_>,
+) -> Result<Vec<crate::model::EdgePaintGeometry>> {
+    let layout = artifact.pair().layout();
+    let model = artifact.pair().semantic();
+    let flowchart_layout = adapt_swimlane_layout(model, layout);
+    super::paint::edge_geometry(
+        super::svg_emit::FlowchartSvgModelRequest {
+            layout: &flowchart_layout,
+            swimlane_layout: Some(layout),
+            model,
+            render_context: artifact.render_context(),
+            effective_config: &metadata.effective_config,
+            diagram_type: metadata.diagram_type.as_str(),
+            diagram_title: metadata.title.as_deref(),
+            svg_label_sidecar: artifact.svg_label_sidecar(),
+            theme_evidence: artifact.theme_evidence(),
+            effect_evidence: artifact.effect_evidence(),
+            expected_effect_applications: artifact.expected_effect_applications(),
+            edge_style_plan: artifact.edge_style_plan(),
+            edge_theme: artifact.edge_theme(),
+            prepared_theme: artifact.prepared_theme(),
+            prepared_nodes: artifact.prepared_nodes(),
+            render_config: artifact.render_config(),
+        },
+        options,
     )
 }
 
@@ -418,11 +448,7 @@ mod tests {
         }
     }
 
-    fn cache_entry(
-        d: &str,
-        data_points_b64: &str,
-        points: Vec<crate::model::LayoutPoint>,
-    ) -> FlowchartEdgePathCacheEntry {
+    fn cache_entry(d: &str, points: Vec<crate::model::LayoutPoint>) -> FlowchartEdgePathCacheEntry {
         let path_length = svg_path_length_from_d(d);
         let label_path_points = points.clone();
         FlowchartEdgePathCacheEntry {
@@ -433,7 +459,6 @@ mod tests {
                 pb: svg_path_bounds_from_d(d),
                 d: d.to_string(),
                 data_points: points,
-                data_points_b64: data_points_b64.to_string(),
                 original_path_length: path_length,
                 path_length,
                 line_hop_applied: false,
@@ -470,15 +495,11 @@ mod tests {
         let mut cache = FxHashMap::default();
         cache.insert(
             render_edges[0].key,
-            cache_entry("M0,-10L0,10", "vertical-points", vertical_points.clone()),
+            cache_entry("M0,-10L0,10", vertical_points.clone()),
         );
         cache.insert(
             render_edges[1].key,
-            cache_entry(
-                "M-10,0L10,0",
-                "horizontal-points",
-                horizontal_points.clone(),
-            ),
+            cache_entry("M-10,0L10,0", horizontal_points.clone()),
         );
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -499,14 +520,13 @@ mod tests {
         assert_eq!(vertical.d, "M0,-10L0,10");
         assert_points_eq(&vertical.data_points, &vertical_points);
         assert_points_eq(&vertical.label_path_points, &vertical_points);
-        assert_eq!(vertical.data_points_b64, "vertical-points");
 
         let horizontal = &cache[&render_edges[1].key].geom;
         assert!(horizontal.line_hop_applied);
         assert!(horizontal.d.contains("A6,6 0 0 1"), "{}", horizontal.d);
         assert_points_eq(&horizontal.data_points, &horizontal_points);
         assert_points_eq(&horizontal.label_path_points, &horizontal_points);
-        assert_eq!(horizontal.data_points_b64, "horizontal-points");
+
         assert!(
             horizontal.path_length.expect("post-processed path length")
                 > horizontal
@@ -537,15 +557,11 @@ mod tests {
                 let mut cache = FxHashMap::default();
                 cache.insert(
                     render_edges[0].key,
-                    cache_entry(
-                        "M0.0005,-1L0.0005,1",
-                        "vertical-points",
-                        vertical_points.clone(),
-                    ),
+                    cache_entry("M0.0005,-1L0.0005,1", vertical_points.clone()),
                 );
                 cache.insert(
                     render_edges[1].key,
-                    cache_entry("M0,0L10,0", "horizontal-points", horizontal_points.clone()),
+                    cache_entry("M0,0L10,0", horizontal_points.clone()),
                 );
                 let work_meter = crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -573,7 +589,7 @@ mod tests {
                 assert_eq!(horizontal.path_length, horizontal.original_path_length);
                 assert_points_eq(&horizontal.data_points, &horizontal_points);
                 assert_points_eq(&horizontal.label_path_points, &horizontal_points);
-                assert_eq!(horizontal.data_points_b64, "horizontal-points");
+
                 // This original dotted Neo mask has a 4px marker clearance, but the
                 // upstream rewrite takes its fourth number (2), even without a visible hop.
                 let original_style = "stroke-dasharray: 0 0 2 2 4; stroke-dashoffset: 0;";
@@ -606,19 +622,11 @@ mod tests {
         let mut cache = FxHashMap::default();
         cache.insert(
             render_edges[0].key,
-            cache_entry(
-                "M0,-10L0,10",
-                "vertical-points",
-                vec![point(0.0, -10.0), point(0.0, 10.0)],
-            ),
+            cache_entry("M0,-10L0,10", vec![point(0.0, -10.0), point(0.0, 10.0)]),
         );
         cache.insert(
             render_edges[1].key,
-            cache_entry(
-                "M-10,0L10,0",
-                "horizontal-points",
-                vec![point(-10.0, 0.0), point(10.0, 0.0)],
-            ),
+            cache_entry("M-10,0L10,0", vec![point(-10.0, 0.0), point(10.0, 0.0)]),
         );
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "swimlane": { "lineHops": false }

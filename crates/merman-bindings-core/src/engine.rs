@@ -1,3 +1,8 @@
+#[cfg(feature = "svg")]
+mod prepared_source;
+#[cfg(feature = "svg")]
+pub use prepared_source::BindingPreparedSource;
+
 use crate::artifact_contract::{ValidatedArtifactContract, default_artifact_contract};
 use crate::operation::{AdmittedArtifactOperation, BindingOperationOutput};
 use crate::{

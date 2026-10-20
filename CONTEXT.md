@@ -30,7 +30,7 @@ Primary capability areas:
 
 ## Baseline
 
-Current pinned upstream baseline: `mermaid@12.0.0`.
+The selected upstream baseline is owned by the [alignment authority map](docs/alignment/README.md#machine-authorities).
 
 Authoritative baseline sources:
 

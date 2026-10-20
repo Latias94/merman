@@ -109,3 +109,32 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cloud(
     }
     render_organic_shape(out, common, &geometry, details);
 }
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    cloud: bool,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let w = common.layout_node.label_width.unwrap_or(0.0).max(0.0);
+    let h = common.layout_node.label_height.unwrap_or(0.0).max(0.0);
+    let geometry = if cloud {
+        crate::flowchart::cloud_geometry(w, h, ctx.node_padding)
+    } else {
+        crate::flowchart::bang_geometry(w, h, ctx.node_padding)
+    };
+    let path = path_data(&geometry.arcs);
+    let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+        super::super::roughjs::RoughGeometryTarget::Query,
+        &path,
+        common.stroke_width,
+        common.stroke_dasharray,
+        HAND_DRAWN_FILL_WEIGHT,
+        HAND_DRAWN_HACHURE_GAP,
+        HAND_DRAWN_ROUGHNESS,
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
+}

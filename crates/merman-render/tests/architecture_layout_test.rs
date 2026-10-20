@@ -26,7 +26,7 @@ fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureD
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize layout");
     serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
         .expect("architecture layout projection")
@@ -143,7 +143,7 @@ fn architecture_default_layout_options_execute_fcose_layout() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let json = artifact.layout_json().expect("serialize layout");
     let layout: ArchitectureDiagramLayout =
         serde_json::from_value(json["layout"]["ArchitectureDiagram"].clone())
@@ -190,7 +190,7 @@ architecture-beta
         .begin_session()
         .unwrap();
 
-    family::prepare(parsed, &LayoutOptions::default(), exact_session)
+    family::prepare(&parsed, &LayoutOptions::default(), exact_session)
         .expect("the exact public FCoSE work budget should be accepted");
 
     let parsed = Engine::new()
@@ -205,7 +205,7 @@ architecture-beta
         )
         .begin_session()
         .unwrap();
-    let error = match family::prepare(parsed, &LayoutOptions::default(), below_session) {
+    let error = match family::prepare(&parsed, &LayoutOptions::default(), below_session) {
         Ok(_) => panic!("a below-exact FCoSE work budget must be rejected"),
         Err(error) => error,
     };
@@ -233,7 +233,7 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match family::prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => panic!("contradictory row constraints must fail at layout"),
         Err(error) => error,
     };

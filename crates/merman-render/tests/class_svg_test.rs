@@ -59,7 +59,7 @@ fn render_class_svg_from_text_with_session(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, layout_options, session).expect("layout ok");
 
     artifact
         .render_svg(svg_options, &SvgDebugOptions::default())
@@ -294,7 +294,7 @@ fn try_render_class_svg_with_theme_environment(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Class session");
-    family::prepare(parsed, &LayoutOptions::default(), session)?
+    family::prepare(&parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -321,7 +321,7 @@ fn layout_and_render_class_svg_with_theme(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin themed Class session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed Class diagram");
     let layout = serde_json::from_value(
         artifact.layout_json().expect("Class layout projection")["layout"]["ClassDiagramV2"]
@@ -346,7 +346,7 @@ fn try_render_class_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Class resource-bound fixture")
         .expect("detect Class resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -1230,7 +1230,7 @@ fn layout_class_with_dagre(
     session: RenderSession,
 ) -> merman_render::model::ClassDiagramLayout {
     let artifact =
-        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("Class layout");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("Class layout");
     serde_json::from_value(
         artifact.layout_json().expect("Class layout projection")["layout"]["ClassDiagramV2"]
             .clone(),
@@ -1284,7 +1284,7 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
             "the typed Class model must preserve the detector-selected diagram id for {source:?}"
         );
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("layout ok");
         let svg = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -3140,7 +3140,7 @@ fn class_elk_missing_section_with_short_cardinality_path_reports_source_error() 
         .unwrap()
         .unwrap();
     let result = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     );
@@ -3174,7 +3174,7 @@ fn class_and_er_elk_missing_sections_paint_clipped_linear_edges_and_centered_lab
                 .expect("diagram detected");
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let artifact =
-                family::prepare(parsed, &LayoutOptions::default(), session).expect("layout");
+                family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout");
             let json = artifact.layout_json().expect("layout projection");
             let layout = &json["layout"][projection];
             let nodes: Vec<LayoutNode> = serde_json::from_value(layout["nodes"].clone()).unwrap();
@@ -5793,7 +5793,7 @@ fn class_elk_interface_padding_is_measured_before_layout_and_matches_painted_rec
                     .unwrap()
                     .unwrap();
                 let artifact = family::prepare(
-                    parsed,
+                    &parsed,
                     &LayoutOptions::headless_svg_defaults(),
                     RenderEnvironment::deterministic().begin_session().unwrap(),
                 )
@@ -6087,7 +6087,7 @@ fn class_cardinality_terminals_share_measured_bounds_and_centered_inner_in_both_
                 .unwrap()
                 .unwrap();
             let artifact = family::prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::default(),
                 RenderEnvironment::deterministic().begin_session().unwrap(),
             )
@@ -6265,7 +6265,7 @@ fn class_svg_member_escape_normalization_matches_layout_and_visible_text() {
                     .unwrap()
                     .unwrap();
                 let artifact = family::prepare(
-                    parsed,
+                    &parsed,
                     &LayoutOptions::default(),
                     RenderEnvironment::deterministic().begin_session().unwrap(),
                 )
@@ -6503,7 +6503,7 @@ fn class_svg_empty_markdown_members_restore_source_row_for_layout_and_emission()
                 .unwrap()
                 .unwrap();
             let artifact = family::prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::default(),
                 environment.begin_session().unwrap(),
             )

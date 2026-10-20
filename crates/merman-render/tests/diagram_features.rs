@@ -46,7 +46,7 @@ fn render(source: &str) -> (RenderFamilyKind, String) {
     let parsed = parse(source);
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     assert!(family::plan_render(&parsed, &session).unwrap().is_ready());
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let kind = artifact.family_kind();
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -104,7 +104,7 @@ fn widened_core_cannot_bypass_local_handlers_or_precedence() {
             Err(Error::UnsupportedDiagram { .. })
         ));
         assert!(matches!(
-            family::prepare(parsed, &LayoutOptions::default(), session),
+            family::prepare(&parsed, &LayoutOptions::default(), session),
             Err(Error::UnsupportedDiagram { .. })
         ));
     }
@@ -147,7 +147,7 @@ fn swimlane_preserves_dagre_and_elk_routes() {
     };
     assert_eq!(plan.required_capabilities(), expected);
     assert!(plan.is_ready());
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
 }
 
@@ -202,7 +202,7 @@ fn custom_provenance_and_cancellation_precede_family_availability() {
         Err(Error::Cancelled(_))
     ));
     assert!(matches!(
-        family::prepare(parsed, &LayoutOptions::default(), session),
+        family::prepare(&parsed, &LayoutOptions::default(), session),
         Err(Error::Cancelled(_))
     ));
 }

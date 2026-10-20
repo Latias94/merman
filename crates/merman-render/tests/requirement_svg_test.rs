@@ -193,7 +193,7 @@ fn try_render_requirement_with_theme_requirement_and_environment(
         .begin_session_with_theme(theme)
         .expect("begin themed Requirement session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("requirement-theme".to_string()),
             ..SvgRenderOptions::default()
@@ -218,7 +218,7 @@ fn render_requirement_without_theme_and_engine(
         .begin_session()
         .expect("begin Requirement session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Requirement")
         .render_svg(
             &SvgRenderOptions {

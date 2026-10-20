@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
+use merman as parse_api;
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgPipeline, TextMeasurementPolicy};
-use merman::time::CivilDate;
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
     SvgRequest, runtime::RuntimePolicy,
 };
 use roxmltree::Document;
@@ -19,14 +19,9 @@ pub fn bounded_utf8(data: &[u8], max_bytes: usize) -> Option<&str> {
     std::str::from_utf8(data).ok()
 }
 
-pub fn deterministic_engine() -> Engine {
-    let policy = RuntimePolicy::deterministic()
-        .try_with_fixed_local_offset_minutes(0)
-        .expect("valid UTC offset")
-        .with_fixed_today(CivilDate::new(2025, 1, 1))
-        .with_fixed_unix_millis(1_735_689_600_000);
-    Engine::new().with_runtime_policy(policy)
-}
+#[path = "../../crates/merman-core/tests/support/parse_equivalence.rs"]
+mod parse_equivalence;
+pub use parse_equivalence::{assert_parse_paths, deterministic_engine};
 
 #[derive(Debug, Clone)]
 pub struct BoundedRenderer {

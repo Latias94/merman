@@ -46,6 +46,7 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxSvgElements = MermanResourceLimitId("max_svg_elements")
     public static let svgBackendTreeNodes = MermanResourceLimitId("svg_backend_tree_nodes")
     public static let svgBackendTreeDepth = MermanResourceLimitId("svg_backend_tree_depth")
+    public static let maxGeometryJsonBytes = MermanResourceLimitId("max_geometry_json_bytes")
     public static let maxDocumentDiagrams = MermanResourceLimitId("max_document_diagrams")
     public static let maxAsciiGridCells = MermanResourceLimitId("max_ascii_grid_cells")
     public static let maxAsciiLayoutWorkUnits = MermanResourceLimitId("max_ascii_layout_work_units")
@@ -79,6 +80,7 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxSvgElements,
         .svgBackendTreeNodes,
         .svgBackendTreeDepth,
+        .maxGeometryJsonBytes,
         .maxDocumentDiagrams,
         .maxAsciiGridCells,
         .maxAsciiLayoutWorkUnits,
@@ -116,6 +118,7 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_svg_elements": MermanResourceLimitMetadata(id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1),
         "svg_backend_tree_nodes": MermanResourceLimitMetadata(id: "svg_backend_tree_nodes", phase: "svg_postprocess", overridable: false, minimumValue: 1),
         "svg_backend_tree_depth": MermanResourceLimitMetadata(id: "svg_backend_tree_depth", phase: "svg_postprocess", overridable: false, minimumValue: 1),
+        "max_geometry_json_bytes": MermanResourceLimitMetadata(id: "max_geometry_json_bytes", phase: "geometry_output", overridable: true, minimumValue: 1),
         "max_document_diagrams": MermanResourceLimitMetadata(id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0),
         "max_ascii_grid_cells": MermanResourceLimitMetadata(id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1),
         "max_ascii_layout_work_units": MermanResourceLimitMetadata(id: "max_ascii_layout_work_units", phase: "ascii_layout_work", overridable: true, minimumValue: 1),

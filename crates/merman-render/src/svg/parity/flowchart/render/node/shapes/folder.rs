@@ -36,23 +36,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let (measured_width, measured_height, tab_height) =
-        folder_geometry(metrics.width, metrics.height, ctx.node_padding);
-    // Mermaid takes the larger of the rendered label box and any pre-existing node dimensions.
-    let width = measured_width.max(common.layout_node.width.max(0.0));
-    let total_height = measured_height.max(common.layout_node.height.max(0.0));
-    let points = folder_points(width, total_height, tab_height.min(total_height));
-    let path_data = path_from_points(&points);
-
+    let (total_height, tab_height, path_data) = prepare_folder_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let rough_paths = helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_hand_drawn_svg_path(
@@ -94,4 +78,42 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
 
     let body_height = total_height - tab_height.min(total_height);
     label.dy = -total_height / 2.0 + tab_height.min(total_height) + body_height / 2.0;
+}
+
+fn prepare_folder_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let (measured_width, measured_height, tab_height) =
+        folder_geometry(metrics.width, metrics.height, ctx.node_padding);
+    // Mermaid takes the larger of the rendered label box and any pre-existing node dimensions.
+    let width = measured_width.max(common.layout_node.width.max(0.0));
+    let total_height = measured_height.max(common.layout_node.height.max(0.0));
+    let points = folder_points(width, total_height, tab_height.min(total_height));
+    let path_data = path_from_points(&points);
+
+    (total_height, tab_height, path_data)
+}
+
+pub(super) fn advance_folder_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, _, path_data) = prepare_folder_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

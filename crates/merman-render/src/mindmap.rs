@@ -885,7 +885,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let artifact =
-            crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap();
+            crate::family::prepare(&parsed, &crate::LayoutOptions::default(), session).unwrap();
         let layout = artifact.layout_json().unwrap();
         let nodes = layout["layout"]["MindmapDiagram"]["nodes"]
             .as_array()

@@ -78,7 +78,7 @@ fn appearance_resolution_cannot_restore_secure_source_keys() {
         "---\nconfig:\n  theme: base\n  flowchart:\n    theme: forest\n---\nflowchart TD\nA-->B";
     let meta = engine.parse_metadata_sync(source).unwrap();
     assert_eq!(meta.effective_config.get_str("theme"), Some("dark"));
-    assert_eq!(meta.config.get_str("theme"), Some("base"));
+    assert!(meta.config.get_str("theme").is_none());
 }
 
 #[test]

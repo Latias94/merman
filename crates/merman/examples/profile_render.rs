@@ -244,14 +244,14 @@ fn run_layout(
         .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
     merman_render::family::prepare(
-        parsed.clone(),
+        &parsed,
         case.layout_options,
         case.environment.begin_session()?,
     )?;
 
     run_for_duration(duration, batch_size, || {
         let artifact = merman_render::family::prepare(
-            black_box(parsed.clone()),
+            black_box(&parsed),
             case.layout_options,
             case.environment.begin_session()?,
         )?;
@@ -270,7 +270,7 @@ fn run_render(
         .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
     let artifact = merman_render::family::prepare(
-        parsed.clone(),
+        &parsed,
         case.layout_options,
         case.environment.begin_session()?,
     )?;
@@ -278,7 +278,7 @@ fn run_render(
 
     run_for_duration(duration, batch_size, || {
         let artifact = merman_render::family::prepare(
-            black_box(parsed.clone()),
+            black_box(&parsed),
             case.layout_options,
             case.environment.begin_session()?,
         )?;

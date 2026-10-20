@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:b718d584ab67b3ef3927b035443db095db6ec6108afcc13ca481e08061d73188";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:bea8bcb3994ef6860921a10ac076893357b7794f28165fa8dca2c219c2981b94";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -448,7 +448,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
-        description: "Render Mermaid input and report post-paint edge geometry as JSON.",
+        description: "Compute Mermaid edge paint geometry as JSON without serializing SVG.",
         input_kind: "mermaid-source",
         media_type: "application/json",
         requires_uri: false,

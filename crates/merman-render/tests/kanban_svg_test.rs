@@ -138,7 +138,7 @@ fn try_render_kanban_with_layout_and_environment(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Kanban session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let projection = artifact.layout_json()?;
     let layout = serde_json::from_value(projection["layout"]["KanbanDiagram"].clone())
         .expect("Kanban layout projection");
@@ -359,7 +359,7 @@ fn try_render_kanban_svg_with_theme(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Kanban session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     render_kanban_artifact(artifact)
 }
 
@@ -378,8 +378,8 @@ fn parse_layout_and_render(source: &str) -> (KanbanDiagramLayout, String) {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("start deterministic render session");
-    let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("prepare Kanban layout");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .expect("prepare Kanban layout");
     render_kanban_artifact(artifact).expect("render Kanban SVG")
 }
 
@@ -395,7 +395,7 @@ fn try_render_kanban_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("start resource-bound Kanban render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("kanban-bounded".to_string()),
@@ -1696,7 +1696,7 @@ fn kanban_legacy_title_color_has_no_consumer_while_text_color_styles_labels() {
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin unthemed Kanban session");
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare ordinary configured Kanban");
         render_kanban_artifact(artifact)
             .expect("render ordinary configured Kanban")

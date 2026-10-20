@@ -16,7 +16,7 @@ fn render_swimlane_with_layout(source: &str, diagram_id: &str) -> (String, Swiml
         .expect("parse swimlane")
         .expect("detect swimlane");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = serde_json::from_value(
         artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
     )

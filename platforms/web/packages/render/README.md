@@ -23,7 +23,11 @@ renderSvgToElement(target, `flowchart TD
   A --> B`);
 ```
 
-Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element. Source builds also
+expose `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
+Dispose the returned snapshot when finished; see the
+[prepared-source guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#reuse-a-parsed-source).
+
 
 ## Runtime and resources
 

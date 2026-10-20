@@ -177,7 +177,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         let render_context = parsed.flowchart_render_context().unwrap().clone();
         let environment = RenderEnvironment::deterministic();
         let artifact = crate::family::prepare(
-            parsed.clone(),
+            &parsed,
             &crate::LayoutOptions::default(),
             environment.begin_session().unwrap(),
         )
@@ -424,7 +424,6 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 svg_label_sidecar: &sidecar,
             },
             &execution,
-            None,
         )
         .unwrap()
         .to_string();

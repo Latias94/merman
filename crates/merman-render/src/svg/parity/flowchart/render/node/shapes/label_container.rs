@@ -13,10 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hourglass_collate(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let w = common.layout_node.width.max(30.0);
-    let h = common.layout_node.height.max(30.0);
-    let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
-    let path_data = path_from_points(&pts);
+    let (w, h, path_data) = hourglass_geometry(common);
     if let Some((fill_d, stroke_d)) =
         super::super::helpers::hand_drawn_path_pair(common, details, &path_data)
     {
@@ -109,5 +106,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_notched_rectangle(
         util::fmt(-w / 2.0),
         util::fmt(h / 2.0),
         OptionalStyleAttr(common.style),
+    );
+}
+
+fn hourglass_geometry(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64, String) {
+    let w = common.layout_node.width.max(30.0);
+    let h = common.layout_node.height.max(30.0);
+    let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
+    let path_data = path_from_points(&pts);
+    (w, h, path_data)
+}
+
+pub(super) fn advance_hourglass_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
+    let (_, _, path) = hourglass_geometry(common);
+    let _ = super::super::helpers::prepare_node_path(
+        common,
+        &path,
+        super::super::roughjs::RoughGeometryTarget::Query,
     );
 }

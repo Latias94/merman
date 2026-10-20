@@ -83,6 +83,12 @@ final class MermanResourceLimitId {
     false,
     1,
   );
+  static const maxGeometryJsonBytes = MermanResourceLimitId._known(
+    'max_geometry_json_bytes',
+    'geometry_output',
+    true,
+    1,
+  );
   static const maxDocumentDiagrams = MermanResourceLimitId._known(
     'max_document_diagrams',
     'document_scan',
@@ -219,6 +225,7 @@ final class MermanResourceLimitId {
     maxSvgElements,
     svgBackendTreeNodes,
     svgBackendTreeDepth,
+    maxGeometryJsonBytes,
     maxDocumentDiagrams,
     maxAsciiGridCells,
     maxAsciiLayoutWorkUnits,
@@ -296,6 +303,7 @@ enum MermanResourceOverrideId {
   maxPreparedTextRetainedBytes('max_prepared_text_retained_bytes', 1),
   maxSvgBytes('max_svg_bytes', 1),
   maxSvgElements('max_svg_elements', 1),
+  maxGeometryJsonBytes('max_geometry_json_bytes', 1),
   maxDocumentDiagrams('max_document_diagrams', 0),
   maxAsciiGridCells('max_ascii_grid_cells', 1),
   maxAsciiLayoutWorkUnits('max_ascii_layout_work_units', 1),

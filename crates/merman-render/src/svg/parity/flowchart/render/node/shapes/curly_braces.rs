@@ -582,3 +582,34 @@ mod tests {
         assert!(((bounds.max_x - bounds.min_x) - expected_width).abs() < 1e-9);
     }
 }
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) {
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let geometry = curly_brace_comment_geometry(
+        common.shape,
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    );
+    for path in geometry.paths {
+        let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
+            &path.d,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.hand_drawn_seed,
+        );
+    }
+}

@@ -82,9 +82,10 @@ export function bindSurfaceRuntime<
   surfaceLoader: MermanWasmLoader<Module>,
   implementation: Implementation,
   packageDefaultWasmSource?: MermanWasmSource,
+  requiredWasmExports: readonly string[] = [],
 ): SurfaceRuntime<Module, Implementation> {
   const sharedLoader = surfaceLoader as unknown as MermanWasmLoader;
-  const state = createMermanRuntimeState(sharedLoader);
+  const state = createMermanRuntimeState(sharedLoader, requiredWasmExports);
   const runtime: Record<string, RuntimeFunction> = {};
 
   for (const [name, binding] of Object.entries(implementation)) {

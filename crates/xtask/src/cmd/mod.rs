@@ -19,6 +19,7 @@ pub(crate) mod import;
 pub(crate) mod lalrpop_parsers;
 pub(crate) mod mermaid_reference;
 pub(crate) mod native_abi;
+pub(crate) mod parser_differential;
 pub(crate) mod paths;
 pub(crate) mod playground_ascii_capabilities;
 pub(crate) mod playground_catalog;

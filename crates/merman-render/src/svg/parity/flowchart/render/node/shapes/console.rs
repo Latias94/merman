@@ -13,25 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_console(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding.max(0.0);
-    let glyph_band = 20.0;
-    let radius = 12.0;
-    let w = (metrics.width + 2.0 * p)
-        .max(common.layout_node.width.max(0.0))
-        .max(90.0);
-    let h = (metrics.height + 2.0 * p + glyph_band).max(common.layout_node.height.max(0.0));
-    let top = -h / 2.0;
-    let body_path = path_from_points(&rounded_rect_points(-w / 2.0, top, w, h, radius));
-
+    let (glyph_band, radius, w, h, top, body_path) = prepare_console_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let _ = write!(
             out,
@@ -96,4 +78,44 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_console(
     out.push_str("</g>");
 
     label.dy = top + glyph_band + (h - glyph_band) / 2.0;
+}
+
+fn prepare_console_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, f64, f64, f64, f64, String) {
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding.max(0.0);
+    let glyph_band = 20.0;
+    let radius = 12.0;
+    let w = (metrics.width + 2.0 * p)
+        .max(common.layout_node.width.max(0.0))
+        .max(90.0);
+    let h = (metrics.height + 2.0 * p + glyph_band).max(common.layout_node.height.max(0.0));
+    let top = -h / 2.0;
+    let body_path = path_from_points(&rounded_rect_points(-w / 2.0, top, w, h, radius));
+
+    (glyph_band, radius, w, h, top, body_path)
+}
+
+pub(super) fn advance_console_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, _, _, _, _, body_path) = prepare_console_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &body_path, target);
 }

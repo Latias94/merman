@@ -132,6 +132,13 @@ pub(in crate::svg::parity) struct RoughRectSpec<'a> {
 pub(in crate::svg::parity) fn roughjs_paths_for_rect(
     spec: RoughRectSpec<'_>,
 ) -> Option<(String, String)> {
+    roughjs_rect_operations(spec)
+        .map(|(fill, stroke)| (ops_to_svg_path_d(&fill), ops_to_svg_path_d(&stroke)))
+}
+
+pub(in crate::svg::parity) fn roughjs_rect_operations(
+    spec: RoughRectSpec<'_>,
+) -> Option<(roughr::core::OpSet<f64>, roughr::core::OpSet<f64>)> {
     let RoughRectSpec {
         x,
         y,
@@ -169,16 +176,20 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
     let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
     let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
 
-    Some((
-        ops_to_svg_path_d(&fill_opset),
-        ops_to_svg_path_d(&stroke_opset),
-    ))
+    Some((fill_opset, stroke_opset))
 }
 
 pub(in crate::svg::parity) fn roughjs_circle_path_d(
     diameter: f64,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
+    roughjs_circle_operations(diameter, randomness).map(|opset| ops_to_svg_path_d(&opset))
+}
+
+pub(in crate::svg::parity) fn roughjs_circle_operations(
+    diameter: f64,
+    randomness: &roughr::core::RoughRandomness,
+) -> Option<roughr::core::OpSet<f64>> {
     let mut opts = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
@@ -188,7 +199,7 @@ pub(in crate::svg::parity) fn roughjs_circle_path_d(
         .build()
         .ok()?;
     let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
-    Some(ops_to_svg_path_d(&opset))
+    Some(opset)
 }
 
 #[cfg(test)]

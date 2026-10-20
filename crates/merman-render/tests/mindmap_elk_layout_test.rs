@@ -20,7 +20,7 @@ fn render(layout: &str) -> (MindmapDiagramLayout, String) {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare registered Mindmap layout");
     let projection = artifact.layout_json().expect("layout JSON");
     let layout = serde_json::from_value(projection["layout"]["MindmapDiagram"].clone())

@@ -51,6 +51,7 @@ class FakeStyle {
 class FakeMeasureElement {
   constructor(tagName, canvasContext = null) {
     this.tagName = tagName;
+    this.ownerDocument = globalThis.document;
     this.canvasContext = canvasContext;
   }
 

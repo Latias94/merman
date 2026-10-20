@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 mod common;
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
@@ -344,7 +350,7 @@ fn render_state_layout_and_svg_from_text_in_environment(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State source")
         .expect("detect State diagram");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State artifact");
     let projection = artifact.layout_json().expect("State layout projection");
     let layout = serde_json::from_value(projection["layout"]["StateDiagramV2"].clone())
@@ -363,7 +369,7 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State artifact");
 
     artifact
@@ -385,7 +391,7 @@ fn try_render_state_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State resource-bound fixture")
         .expect("detect State resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -442,7 +448,10 @@ fn render_state_svg_from_text_with_theme_in_environment(
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
 ) -> String {
-    prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment)
+    let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment);
+    family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+        .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed State artifact")
         .svg()
@@ -453,14 +462,13 @@ fn prepare_state_artifact_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     let session = environment.begin_session_with_theme(theme).unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed State artifact")
+    (parsed, LayoutOptions::default(), session)
 }
 
 fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
@@ -468,10 +476,12 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
 ) -> (String, String) {
-    let rendered =
-        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment)
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .expect("render themed State artifact");
+    let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment);
+    let rendered = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed State artifact");
     let public_svg = rendered.svg().to_owned();
     let rendered = rendered
         .finalize_resvg(&SvgPipeline::resvg_safe())
@@ -532,7 +542,7 @@ fn render_strict_state_svg_with_theme_and_config(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .unwrap_or_else(|error| panic!("begin strict {origin} State session: {error}"));
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap_or_else(|error| panic!("prepare strict {origin} State artifact: {error}"))
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap_or_else(|error| panic!("render strict {origin} State artifact: {error}"));
@@ -788,7 +798,7 @@ fn state_note_clear_radius_remains_strictly_unsupported() {
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State note source")
         .expect("State diagram detected");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match family::prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => panic!("clearing State Note radius must fail closed in portable mode"),
         Err(error) => error,
     };
@@ -903,7 +913,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source")
         .expect("State diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare strict portable State artifact");
     artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -917,7 +927,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source without edges")
         .expect("State diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare strict portable State artifact without edges");
     let debug = SvgDebugOptions {
         include_edges: false,
@@ -1136,7 +1146,7 @@ fn state_svg_terminal_effect_region_uses_the_session_resource_intersection() {
                 .parse_diagram_for_render_model_sync(source, ParseOptions::default())
                 .expect("parse State source")
                 .expect("State diagram detected");
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare State artifact");
         let error =
             match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
@@ -3281,7 +3291,7 @@ fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
                             "begin strict {origin} {theme_id} {config_key} State session: {error}"
                         )
                     });
-                let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
                     .unwrap_or_else(|error| {
                         panic!("prepare strict {origin} {theme_id} {config_key} State: {error}")
                     })
@@ -3395,7 +3405,7 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
                 .unwrap_or_else(|error| {
                     panic!("begin strict {origin} {theme_id} {config_key} State session: {error}")
                 });
-            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .unwrap_or_else(|error| {
                     panic!("prepare strict {origin} {theme_id} {config_key} State: {error}")
                 })
@@ -5698,7 +5708,7 @@ fn state_composite_paint_uses_large_and_multiline_title_measurements() {
                     .expect("parse composite")
                     .expect("State diagram");
                 let session = RenderEnvironment::deterministic().begin_session().unwrap();
-                let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
                     .expect("prepare composite");
                 let projection = artifact.layout_json().expect("State layout projection");
                 let clusters = projection["layout"]["StateDiagramV2"]["clusters"]
@@ -5957,7 +5967,7 @@ Active --> Active: LOG
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
         .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     let layout: merman_render::model::StateDiagramLayout =
         serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).unwrap();

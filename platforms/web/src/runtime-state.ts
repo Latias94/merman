@@ -13,6 +13,7 @@ import type {
 export interface MermanRuntimeState {
   defaultLoader: MermanWasmLoader;
   wasmModule: MermanWasmModule | null;
+  requiredWasmExports: readonly string[];
   initPromise: Promise<MermanWasmModule> | null;
   supportedDiagramsCache: DiagramType[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
@@ -24,10 +25,12 @@ export interface MermanRuntimeState {
 let activeRuntimeState: MermanRuntimeState | null = null;
 
 export function createMermanRuntimeState(
-  defaultLoader: MermanWasmLoader
+  defaultLoader: MermanWasmLoader,
+  requiredWasmExports: readonly string[] = [],
 ): MermanRuntimeState {
   return {
     defaultLoader,
+    requiredWasmExports,
     wasmModule: null,
     initPromise: null,
     supportedDiagramsCache: null,

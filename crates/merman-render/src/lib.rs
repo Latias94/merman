@@ -299,6 +299,9 @@ pub mod __private {
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
 
     pub use crate::diagram_theme::{EffectColorSpace, EffectInput};
+    pub use crate::family::native_typography::{
+        unsupported_native_html_style, unsupported_native_text_style,
+    };
     pub use crate::native_filter_receipt::{
         NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits,
         NativeSvgShadowStage,
@@ -730,6 +733,13 @@ pub enum Error {
     Cancelled(#[from] merman_core::OperationCancelled),
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
+    #[error("layout adaptation `{adaptation}` is unsupported for diagram `{diagram_type}`")]
+    UnsupportedLayoutAdaptation {
+        adaptation: &'static str,
+        diagram_type: String,
+    },
+    #[error("fit-width layout.container_width must be finite and positive")]
+    InvalidAdaptationWidth,
     #[error("render session lacks capability `{capability}` required by diagram `{diagram_type}`")]
     MissingCapability {
         capability: RenderCapability,
@@ -786,10 +796,16 @@ pub enum Error {
         verification: crate::diagram_theme::RootThemeVerification,
         residual_count: usize,
     },
+    #[error(transparent)]
+    SemanticProjection(merman_core::Error),
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
     #[error("parsed diagram is bound to a different theme session")]
     ThemeParseBindingMismatch,
+    #[error(
+        "render target `{target}` does not support RequirePortable because it has no target portability admission"
+    )]
+    PortabilityUnavailableForTarget { target: &'static str },
     #[error(transparent)]
     ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
     #[error(
@@ -936,6 +952,63 @@ impl Error {
     }
 }
 
+/// Explicit placement adaptation requested by the host.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LayoutAdaptation {
+    #[default]
+    None,
+    FitWidth,
+}
+
+impl LayoutAdaptation {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::FitWidth => "fit-width",
+        }
+    }
+}
+
+/// Actual layout width observed after explicit adaptation, before SVG viewport scaling.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct LayoutAdaptationObservation {
+    mode: LayoutAdaptation,
+    requested_width: f64,
+    actual_width: f64,
+    overflowed: bool,
+}
+
+// Both widths are finite at construction; NaN cannot enter this immutable observation.
+impl Eq for LayoutAdaptationObservation {}
+
+impl LayoutAdaptationObservation {
+    #[cfg(feature = "diagram-kanban")]
+    pub(crate) fn fit_width(requested_width: f64, actual_width: f64) -> Self {
+        debug_assert!(requested_width.is_finite() && requested_width > 0.0);
+        debug_assert!(actual_width.is_finite() && actual_width > 0.0);
+        Self {
+            mode: LayoutAdaptation::FitWidth,
+            requested_width,
+            actual_width,
+            overflowed: actual_width > requested_width,
+        }
+    }
+
+    pub const fn mode(self) -> LayoutAdaptation {
+        self.mode
+    }
+    pub const fn requested_width(self) -> f64 {
+        self.requested_width
+    }
+    pub const fn actual_width(self) -> f64 {
+        self.actual_width
+    }
+    pub const fn overflowed(self) -> bool {
+        self.overflowed
+    }
+}
+
 /// Host-provided geometry available to family layout algorithms.
 ///
 /// This models the element that owns diagram layout, not a browser page viewport and not the
@@ -943,6 +1016,8 @@ impl Error {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct LayoutOptions {
+    /// Opt-in family placement behavior. Defaults retain Mermaid-compatible layout.
+    pub adaptation: LayoutAdaptation,
     /// Width of the host layout container in CSS pixels.
     ///
     /// Families whose Mermaid renderer reads DOM-available width use this value.
@@ -959,6 +1034,7 @@ pub struct LayoutOptions {
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
+            adaptation: LayoutAdaptation::None,
             container_width: 800.0,
             container_height: 600.0,
             screen_available_width: None,
@@ -970,6 +1046,12 @@ impl LayoutOptions {
     /// Returns geometry defaults suitable for headless SVG rendering.
     pub fn headless_svg_defaults() -> Self {
         Self::default()
+    }
+
+    /// Selects explicit family placement adaptation.
+    pub fn with_adaptation(mut self, adaptation: LayoutAdaptation) -> Self {
+        self.adaptation = adaptation;
+        self
     }
 
     /// Sets the host layout container dimensions in CSS pixels.
@@ -1317,7 +1399,7 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        crate::family::prepare(parsed, layout_options, session)
+        crate::family::prepare(&parsed, layout_options, session)
             .expect("prepare")
             .render_svg(svg_options, &crate::svg::SvgDebugOptions::default())
             .expect("render")
@@ -1378,7 +1460,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = crate::family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         assert_eq!(artifact.family_id(), crate::DiagramFamilyId::FLOWCHART);
     }
 
@@ -1432,7 +1514,7 @@ A-->B
             .begin_session()
             .unwrap();
 
-        let err = match crate::family::prepare(parsed, &options, session) {
+        let err = match crate::family::prepare(&parsed, &options, session) {
             Err(error) => error,
             Ok(_) => panic!("expected resource limit error"),
         };
@@ -1462,7 +1544,7 @@ A-->B
             .begin_session()
             .unwrap();
 
-        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+        let err = match crate::family::prepare(&parsed, &LayoutOptions::default(), session) {
             Err(error) => error,
             Ok(_) => panic!("expected flowchart layout work resource limit"),
         };
@@ -1489,7 +1571,7 @@ A-->B
             .begin_session()
             .unwrap();
 
-        let error = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+        let error = match crate::family::prepare(&parsed, &LayoutOptions::default(), session) {
             Err(error) => error,
             Ok(_) => panic!("Class layout unexpectedly bypassed the work budget"),
         };
@@ -1581,7 +1663,7 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = match crate::family::prepare(parsed, &options, session) {
+        let err = match crate::family::prepare(&parsed, &options, session) {
             Err(error) => error,
             Ok(_) => panic!("expected resource limit error"),
         };
@@ -1613,7 +1695,7 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = match crate::family::prepare(parsed, &options, session) {
+        let err = match crate::family::prepare(&parsed, &options, session) {
             Err(error) => error,
             Ok(_) => panic!("expected resource limit error"),
         };
@@ -1645,7 +1727,7 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = match crate::family::prepare(parsed, &options, session) {
+        let err = match crate::family::prepare(&parsed, &options, session) {
             Err(error) => error,
             Ok(_) => panic!("expected resource limit error"),
         };
@@ -1861,7 +1943,7 @@ id1(Start)-->id2(Stop)
                         .contains(&RenderCapability::LayoutElk)
                 );
                 assert!(plan.missing_capabilities().is_empty());
-                let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session)
+                let artifact = crate::family::prepare(&parsed, &LayoutOptions::default(), session)
                     .expect("unregistered loader falls back before capability admission");
                 let geometry = artifact.layout_json().unwrap()["layout"].clone();
                 let svg = artifact
@@ -1898,7 +1980,7 @@ id1(Start)-->id2(Stop)
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = crate::family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let geometry = artifact.layout_json().unwrap()["layout"].clone();
         let dagre_parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -1911,7 +1993,8 @@ id1(Start)-->id2(Stop)
             .begin_session()
             .unwrap();
         let dagre_artifact =
-            crate::family::prepare(dagre_parsed, &LayoutOptions::default(), dagre_session).unwrap();
+            crate::family::prepare(&dagre_parsed, &LayoutOptions::default(), dagre_session)
+                .unwrap();
         assert_eq!(geometry, dagre_artifact.layout_json().unwrap()["layout"]);
         let svg = artifact
             .render_svg(
@@ -1944,7 +2027,7 @@ id1(Start)-->id2(Stop)
                 let session = crate::environment::RenderEnvironment::deterministic()
                     .begin_session()
                     .unwrap();
-                let result = crate::family::prepare(parsed, &LayoutOptions::default(), session);
+                let result = crate::family::prepare(&parsed, &LayoutOptions::default(), session);
                 if layout == "cose-bilkent" && cfg!(feature = "layout-cytoscape") {
                     assert!(
                         matches!(result, Err(Error::InvalidModel { message }) if message.contains("Root node is required")),
@@ -1975,7 +2058,7 @@ id1(Start)-->id2(Stop)
             &[RenderCapability::LayoutCytoscape]
         );
         assert!(matches!(
-            crate::family::prepare(parsed, &LayoutOptions::default(), session),
+            crate::family::prepare(&parsed, &LayoutOptions::default(), session),
             Err(Error::MissingCapability {
                 capability: RenderCapability::LayoutCytoscape,
                 ..
@@ -2012,7 +2095,7 @@ id1(Start)-->id2(Stop)
                 let plan = crate::family::plan_render(&parsed, &session).unwrap();
                 assert_eq!(plan.missing_capabilities(), &[RenderCapability::LayoutElk]);
                 assert!(matches!(
-                    crate::family::prepare(parsed, &LayoutOptions::default(), session),
+                    crate::family::prepare(&parsed, &LayoutOptions::default(), session),
                     Err(Error::MissingCapability {
                         capability: RenderCapability::LayoutElk,
                         ..

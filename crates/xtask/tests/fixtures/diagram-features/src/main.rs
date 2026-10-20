@@ -45,7 +45,7 @@ fn main() {
                     let plan = merman_render::family::plan_render(&parsed, &session).unwrap();
                     assert!(plan.is_ready(), "{family}: {plan:?}");
                     let prepared = merman_render::family::prepare(
-                        parsed.clone(),
+                        &parsed,
                         &merman_render::LayoutOptions::default(),
                         session,
                     )
@@ -70,7 +70,7 @@ fn main() {
                         &environment.begin_session().unwrap(),
                     );
                     let prepared = merman_render::family::prepare(
-                        parsed.clone(),
+                        &parsed,
                         &merman_render::LayoutOptions::default(),
                         environment.begin_session().unwrap(),
                     );

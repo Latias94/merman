@@ -5,6 +5,10 @@ Use this index to choose an upgrade path by the version you have installed. Merm
 Development now targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
 
+Source builds after `0.9.1` also have a
+[prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
+covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
+
 ## Merman 0.9.1
 
 This patch was released from `release/0.9.1`, with selected fixes from development applied to the

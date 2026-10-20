@@ -13,14 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let geometry = crate::flowchart::OddGeometry::from_bounds(
-        common.layout_node.width,
-        common.layout_node.height,
-    );
-    let dx = geometry.shift_x;
-    label.dx = dx;
-    let path_data = path_from_points(&geometry.points);
-
+    let (geometry, dx, path_data) = prepare_odd_geometry(common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -89,4 +82,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
             OptionalStyleAttr(common.style)
         );
     }
+}
+
+fn prepare_odd_geometry(
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::flowchart::OddGeometry, f64, String) {
+    let geometry = crate::flowchart::OddGeometry::from_bounds(
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    let dx = geometry.shift_x;
+    label.dx = dx;
+    let path_data = path_from_points(&geometry.points);
+
+    (geometry, dx, path_data)
+}
+
+pub(super) fn advance_odd_rough_geometry(
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, _, path_data) = prepare_odd_geometry(common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

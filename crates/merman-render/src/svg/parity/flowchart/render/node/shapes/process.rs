@@ -74,3 +74,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     out.push_str(" />");
     super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
 }
+
+pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
+    if common.look_is_hand_drawn() {
+        let width = common.layout_node.width.max(1.0);
+        let height = common.layout_node.height.max(1.0);
+        let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_rect(
+            super::super::roughjs::RoughGeometryTarget::Query,
+            -width / 2.0,
+            -height / 2.0,
+            width,
+            height,
+            common.stroke_width,
+            common.stroke_dasharray,
+            HAND_DRAWN_FILL_WEIGHT,
+            HAND_DRAWN_HACHURE_GAP,
+            HAND_DRAWN_ROUGHNESS,
+            common.work_meter,
+            common.hand_drawn_seed,
+        );
+    }
+}

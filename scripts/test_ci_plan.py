@@ -184,6 +184,9 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-render/src/lib.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
             "crates/xtask/src/cmd/flowchart_elk_corpus.rs": True,
+            "crates/xtask/src/cmd/parser_differential.rs": True,
+            "tools/mermaid-cli/parser-oracle.mjs": True,
+            "tools/mermaid-cli/parser-oracle.test.mjs": True,
             "crates/xtask/src/svgdom.rs": True,
             "fixtures/_config/default.json": True,
             "fixtures/_verification/deterministic-root-contracts.json": True,
@@ -854,6 +857,24 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("needs: ci-plan", svg)
         self.assertIn('"svg-parity":{"owner":"core"', gate)
         self.assertIn("needs.ci-plan.outputs.svg_parity == 'true'", gate)
+
+    def test_parser_differential_has_bounded_reference_and_independent_discovery_owners(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        ci = workflow_job((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"), "svg-parity")
+        fuzz = (root / ".github/workflows/fuzz.yml").read_text(encoding="utf-8")
+        discovery = workflow_job(fuzz, "parser-differential")
+        libfuzzer = workflow_job(fuzz, "libfuzzer")
+        self.assertIn("parser-differential --cases 256", ci)
+        self.assertIn("browsers install chrome-headless-shell", ci)
+        self.assertIn("path: repo-ref/mermaid", ci)
+        self.assertLess(ci.index("browsers install chrome-headless-shell"), ci.index("parser-differential --cases 256"))
+        self.assertIn("parser-differential --cases 5000 --timeout-seconds 900", discovery)
+        self.assertIn("github.event_name == 'schedule'", discovery)
+        self.assertIn("target/parser-differential", discovery)
+        self.assertNotIn("parser-oracle.mjs", libfuzzer)
+        self.assertNotIn("browsers install", libfuzzer)
 
     def test_distribution_checks_do_not_wait_for_unrelated_native_builds(self) -> None:
         from scripts.test_release_workflow_security import workflow_job

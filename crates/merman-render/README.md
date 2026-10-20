@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout_options = LayoutOptions::headless_svg_defaults();
     let control = OperationControl::new();
     let session = RenderEnvironment::deterministic().begin_session_with_control(control)?;
-    let artifact = family::prepare(parsed, &layout_options, session)?;
+    let artifact = family::prepare(&parsed, &layout_options, session)?;
 
     // Compatibility layout JSON projects from this exact typed family artifact.
     let layout_json = artifact.layout_json()?;

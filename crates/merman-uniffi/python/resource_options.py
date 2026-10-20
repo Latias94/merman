@@ -30,6 +30,7 @@ class ResourceLimitId(str):
     MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
     SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
     SVG_BACKEND_TREE_DEPTH: ClassVar[ResourceLimitId]
+    MAX_GEOMETRY_JSON_BYTES: ClassVar[ResourceLimitId]
     MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
     MAX_ASCII_GRID_CELLS: ClassVar[ResourceLimitId]
     MAX_ASCII_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
@@ -96,6 +97,7 @@ ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
 ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
 ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
 ResourceLimitId.SVG_BACKEND_TREE_DEPTH = ResourceLimitId("svg_backend_tree_depth")
+ResourceLimitId.MAX_GEOMETRY_JSON_BYTES = ResourceLimitId("max_geometry_json_bytes")
 ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
 ResourceLimitId.MAX_ASCII_GRID_CELLS = ResourceLimitId("max_ascii_grid_cells")
 ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS = ResourceLimitId("max_ascii_layout_work_units")
@@ -129,6 +131,7 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_SVG_ELEMENTS,
     ResourceLimitId.SVG_BACKEND_TREE_NODES,
     ResourceLimitId.SVG_BACKEND_TREE_DEPTH,
+    ResourceLimitId.MAX_GEOMETRY_JSON_BYTES,
     ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
     ResourceLimitId.MAX_ASCII_GRID_CELLS,
     ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS,
@@ -164,6 +167,7 @@ _RESOURCE_LIMIT_METADATA = {
     "max_svg_elements": ("svg_postprocess", True, 1),
     "svg_backend_tree_nodes": ("svg_postprocess", False, 1),
     "svg_backend_tree_depth": ("svg_postprocess", False, 1),
+    "max_geometry_json_bytes": ("geometry_output", True, 1),
     "max_document_diagrams": ("document_scan", True, 0),
     "max_ascii_grid_cells": ("ascii_layout", True, 1),
     "max_ascii_layout_work_units": ("ascii_layout_work", True, 1),
@@ -195,6 +199,7 @@ class ResourceOverrideId(str, Enum):
     MAX_PREPARED_TEXT_RETAINED_BYTES = "max_prepared_text_retained_bytes"
     MAX_SVG_BYTES = "max_svg_bytes"
     MAX_SVG_ELEMENTS = "max_svg_elements"
+    MAX_GEOMETRY_JSON_BYTES = "max_geometry_json_bytes"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
     MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
     MAX_ASCII_LAYOUT_WORK_UNITS = "max_ascii_layout_work_units"
@@ -220,6 +225,7 @@ _MINIMUM_LIMIT_VALUES = {
     ResourceOverrideId.MAX_PREPARED_TEXT_RETAINED_BYTES: 1,
     ResourceOverrideId.MAX_SVG_BYTES: 1,
     ResourceOverrideId.MAX_SVG_ELEMENTS: 1,
+    ResourceOverrideId.MAX_GEOMETRY_JSON_BYTES: 1,
     ResourceOverrideId.MAX_DOCUMENT_DIAGRAMS: 0,
     ResourceOverrideId.MAX_ASCII_GRID_CELLS: 1,
     ResourceOverrideId.MAX_ASCII_LAYOUT_WORK_UNITS: 1,

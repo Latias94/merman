@@ -94,7 +94,7 @@ fn journey_text_fill_has_portable_terminal_evidence() {
                 .begin_session_with_theme(&theme)
                 .expect("start portable Journey session");
             let artifact =
-                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
                     .expect("prepare Journey");
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -143,7 +143,7 @@ fn render_journey_rules_with_requirement(
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(&theme)
         .expect("begin Journey session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -443,7 +443,7 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                     .begin_session_with_theme(&theme)
                     .expect("begin Journey session");
                 let artifact =
-                    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
                         .expect("prepare Journey text paint fixture");
                 let rendered = artifact
                     .render_svg(
@@ -595,7 +595,7 @@ fn journey_task_radius_reaches_terminal_svg_without_changing_sections() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable Journey session");
-        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare themed Journey");
         let svg = artifact
             .render_svg(
@@ -651,7 +651,7 @@ fn journey_task_static_paint_reaches_terminal_rect_and_is_fully_accounted() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Journey");
     let rendered = artifact
         .render_svg(
@@ -712,7 +712,7 @@ fn journey_task_explicit_default_paint_reaches_terminal_rect_and_is_fully_accoun
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable Journey session");
-        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare explicitly default-themed Journey");
         let rendered = artifact
             .render_svg(
@@ -767,7 +767,7 @@ fn journey_task_explicit_default_paint_is_not_applicable_without_tasks() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable empty Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare empty Journey");
     let rendered = artifact
         .render_svg(
@@ -799,7 +799,7 @@ fn journey_base_typography_drives_scoped_css_and_is_fully_accounted() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Journey");
     let rendered = artifact
         .render_svg(
@@ -865,7 +865,7 @@ fn journey_explicit_theme_font_size_owns_only_the_size_route() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare configured Journey");
     let rendered = artifact
         .render_svg(
@@ -912,7 +912,7 @@ fn journey_task_palette_reaches_section_and_task_terminals_without_legacy_projec
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Journey");
     let rendered = artifact
         .render_svg(
@@ -993,7 +993,7 @@ journey
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Journey");
     let rendered = artifact
         .render_svg(
@@ -1071,7 +1071,7 @@ fn journey_task_transparent_palette_reaches_both_terminals() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Journey");
     let rendered = artifact
         .render_svg(
@@ -1164,7 +1164,7 @@ fn journey_task_theme_receipts_only_require_actual_section_headers() {
                 .begin_session_with_theme(&theme)
                 .unwrap();
             let rendered =
-                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
                     .unwrap()
                     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                     .expect("valid unsectioned tasks must complete their actual receipts");

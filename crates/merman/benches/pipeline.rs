@@ -601,7 +601,7 @@ fn bench_layout(c: &mut Criterion) {
             .unwrap_or_else(|| panic!("layout/{name} preflight returned no render model"));
         let output_identity = || {
             let artifact = merman_render::family::prepare(
-                parsed.clone(),
+                &parsed,
                 &layout,
                 environment.begin_session().expect("render session"),
             )
@@ -616,15 +616,10 @@ fn bench_layout(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
             b.iter_batched(
-                || {
-                    (
-                        (*data).clone(),
-                        environment.begin_session().expect("render session"),
-                    )
-                },
+                || (data, environment.begin_session().expect("render session")),
                 |(parsed, session)| {
                     let artifact =
-                        merman_render::family::prepare(parsed, &layout, session).expect("layout");
+                        merman_render::family::prepare(&parsed, &layout, session).expect("layout");
                     black_box(artifact);
                 },
                 BatchSize::SmallInput,
@@ -659,7 +654,7 @@ fn bench_render(c: &mut Criterion) {
 
         let output_identity = || {
             let artifact = merman_render::family::prepare(
-                parsed.clone(),
+                &parsed,
                 &layout,
                 environment.begin_session().expect("render session"),
             )
@@ -676,7 +671,7 @@ fn bench_render(c: &mut Criterion) {
             b.iter_batched(
                 || {
                     merman_render::family::prepare(
-                        (*data).clone(),
+                        data,
                         &layout,
                         environment.begin_session().expect("render session"),
                     )

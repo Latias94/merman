@@ -87,7 +87,13 @@ Typst `@preview/merman:0.5.0` keeps 0.4.0's rendering functions, figures, profil
 
 ## Edge geometry and terminal output
 
+For development builds after `0.9.1`, see the
+[later geometry resource migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets).
+The SVG-admission description below records this guide's historical release contract.
+
 Use the SVG-capable `edge-geometry-json` operation or typed `RenderTarget::EdgeGeometryJson` for clipped points and painted label centers in Flowchart, Swimlane, and Agentflow. `layout-json` still returns pre-paint layout coordinates. Other families return an empty edge list. The operation observes SVG output admission as well as layout-work limits. Web packages with rendering expose `edgeGeometryJson`, `edgeGeometryObject`, and `edgeGeometryJsonWithTextMeasurer`.
+
+For the subsequent removal of SVG generation and migration to an encoded geometry budget, see [Edge geometry resource migration](../migrations/edge-geometry-resources.md).
 
 ASCII/Unicode routing now preserves loop-back contacts, distinct labels, closed compound frames, sibling gutters, and Sequence label spacing. Padding inside Flowchart/Swimlane/State nodes is separate from graph spacing:
 
