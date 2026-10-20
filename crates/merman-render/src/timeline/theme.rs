@@ -178,7 +178,7 @@ impl TimelineEventTheme {
                     continue;
                 }
                 let color_scale_path = format!("themeVariables.cScale{slot}");
-                let paint = if merman_core::__private::config_path_overrides_typed_default(
+                let paint = if merman_core::__private::config_paint_overrides_typed_default(
                     effective_config,
                     &color_scale_path,
                 ) {
@@ -228,7 +228,7 @@ impl TimelineEventTheme {
             None,
             work_meter,
         )?;
-        let source_owns_event_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let source_owns_event_stroke = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.nodeBorder",
         );
@@ -630,13 +630,13 @@ fn timeline_event_fill_source_owned(
         return false;
     };
     if binding.use_neo_gradient {
-        return merman_core::__private::config_path_overrides_typed_default(
+        return merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.mainBkg",
         );
     }
     if !binding.is_redux_theme {
-        return merman_core::__private::config_path_overrides_typed_default(
+        return merman_core::__private::config_paint_overrides_typed_default(
             config,
             &format!("themeVariables.cScale{slot}"),
         );
@@ -644,7 +644,7 @@ fn timeline_event_fill_source_owned(
 
     if binding.is_color_theme && !binding.is_dark_theme {
         if binding.has_source_border_slot(slot) {
-            return merman_core::__private::config_path_overrides_typed_default(
+            return merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.borderColorArray",
             );
@@ -656,7 +656,7 @@ fn timeline_event_fill_source_owned(
         return false;
     }
 
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 fn timeline_classic_line_stroke(
@@ -669,7 +669,7 @@ fn timeline_classic_line_stroke(
         return None;
     }
     let inverse_path = format!("themeVariables.cScaleInv{slot}");
-    if merman_core::__private::config_path_overrides_typed_default(config, &inverse_path) {
+    if merman_core::__private::config_paint_overrides_typed_default(config, &inverse_path) {
         return binding
             .source_inverse(slot)
             .map(str::to_owned)

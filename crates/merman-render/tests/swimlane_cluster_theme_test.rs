@@ -1,7 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MermaidThemeCompatibility,
+    OrdinalSelector, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -231,15 +232,36 @@ fn swimlane_neo_non_palette_lane_stroke_has_the_matching_cluster_css_owner() {
 
 #[test]
 fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() {
-    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
     for selected in ["default", "redux-color"] {
-        let rendered = render_swimlane_cluster(
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_mermaid_compatibility(
+                        MermaidThemeCompatibility::default()
+                            .with_theme(selected)
+                            .unwrap(),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Cluster,
+                                ThemeStylePatch::default()
+                                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                            )
+                            .for_family(DiagramFamilyId::SWIMLANE),
+                        ),
+                    ),
+            )
+            .unwrap();
+        let rendered = try_render_swimlane_cluster(
             SWIMLANE_SOURCE,
             &theme,
             MermaidConfig::from_value(json!({
-                "layout": "swimlane", "look": "neo", "theme": selected
+                "layout": "swimlane", "look": "neo"
             })),
-        );
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
         let lane = document
             .descendants()
@@ -257,6 +279,68 @@ fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() 
                 style.contains("stroke:#654321 !important"),
                 "{class_name}: {style}"
             );
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.source_residual_count(), 0);
+        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
+    }
+}
+
+#[test]
+fn swimlane_source_and_site_selected_palettes_own_lane_stroke() {
+    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for selected in ["default", "redux-color"] {
+        for origin in ["site", "source"] {
+            let mut config = json!({"layout": "swimlane", "look": "neo", "secure": []});
+            let source = if origin == "site" {
+                config["theme"] = json!(selected);
+                SWIMLANE_SOURCE.to_owned()
+            } else {
+                format!("---\nconfig:\n  theme: {selected}\n---\n{SWIMLANE_SOURCE}")
+            };
+            let unstyled = render_swimlane_cluster(
+                &source,
+                &baseline,
+                MermaidConfig::from_value(config.clone()),
+            );
+            let rendered =
+                render_swimlane_cluster(&source, &theme, MermaidConfig::from_value(config));
+            assert_eq!(rendered.svg(), unstyled.svg(), "{selected}/{origin}");
+            assert!(!rendered.svg().contains("#654321"));
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let lane = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some("Lane"))
+                .unwrap();
+            assert_eq!(
+                lane.attribute("data-color-id").is_some(),
+                selected == "redux-color"
+            );
+            if selected == "default" {
+                for class_name in ["swimlane-body", "swimlane-title"] {
+                    assert_eq!(lane_rect_style(&document, class_name).2, "#aaaa33");
+                }
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.source_residual_count(), 0);
+            assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
         }
     }
 }

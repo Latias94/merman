@@ -993,8 +993,8 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         (
             serde_json::json!({"theme":"base","themeVariables":{"textColor":"#abcdef"}}),
             "#abcdef",
-            "#123456",
-            true,
+            "rgb(8.5000000002, 5.7500000001, 0)",
+            false,
         ),
         (
             serde_json::json!({"themeVariables":{"titleColor":"#abcdef"}}),

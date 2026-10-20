@@ -287,24 +287,24 @@ impl GitGraphPaletteSourceOwnership {
     fn from_config(config: &MermaidConfig) -> Self {
         Self {
             git: std::array::from_fn(|slot| {
-                merman_core::__private::config_path_overrides_typed_default(
+                merman_core::__private::config_paint_overrides_typed_default(
                     config,
                     GIT_COLOR_PATHS[slot],
                 )
             }),
-            node_border: merman_core::__private::config_path_overrides_typed_default(
+            node_border: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 NODE_BORDER_PATH,
             ),
-            main_background: merman_core::__private::config_path_overrides_typed_default(
+            main_background: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 MAIN_BACKGROUND_PATH,
             ),
-            primary_color: merman_core::__private::config_path_overrides_typed_default(
+            primary_color: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 PRIMARY_COLOR_PATH,
             ),
-            border_color_array: merman_core::__private::config_path_overrides_typed_default(
+            border_color_array: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 BORDER_COLOR_ARRAY_PATH,
             ),

@@ -231,7 +231,7 @@ impl RadarTitleThemePlan {
         };
 
         let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.titleColor",
         );
@@ -669,7 +669,7 @@ impl RadarSeriesPaintPlan {
                     )?;
                     if style.fill_resolution().winner().is_some()
                         || style.stroke_resolution().winner().is_some()
-                        || merman_core::__private::config_path_overrides_typed_default(
+                        || merman_core::__private::config_paint_overrides_typed_default(
                             effective_config,
                             color_scale_path,
                         )

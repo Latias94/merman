@@ -117,10 +117,10 @@ impl CynefinTypographyThemePlan {
             })
             .unwrap_or_default();
         let config_owns_text_fill = theme.is_some()
-            && (merman_core::__private::config_path_overrides_typed_default(
+            && (merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.textColor",
-            ) || merman_core::__private::config_path_overrides_typed_default(
+            ) || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.cynefin.textColor",
             ));

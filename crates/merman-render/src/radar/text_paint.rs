@@ -91,7 +91,7 @@ impl RadarTextPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let owns_text = merman_core::__private::config_path_overrides_typed_default(
+        let owns_text = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.textColor",
         );
@@ -101,7 +101,7 @@ impl RadarTextPaintPlan {
             Some(1),
             work_meter,
         )?;
-        let owns_title = merman_core::__private::config_path_overrides_typed_default(
+        let owns_title = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.titleColor",
         ) || title_style.fill_resolution().winner().is_some();

@@ -12,8 +12,8 @@ use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, PatternKind,
-    PatternSpec, Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    PatternSpec, Specified, ThemeColorValue, ThemePortabilityRequirement, ThemePreset, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
     materialize_theme_design,
 };
 use merman_render::environment::{
@@ -2984,6 +2984,63 @@ fn er_text_fill_tracks_the_visible_title_and_its_own_configuration() {
             let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(evidence.applied_count(), usize::from(!owned));
             assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+        }
+    }
+}
+
+#[test]
+fn er_selected_forest_palette_owns_html_fallback_text_under_editor_presets() {
+    let source = "%%{init: {'theme':'forest'}}%%\nerDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {\n  string id PK\n  string name\n}\nORDER {\n  string id PK\n  string customer_id FK\n}";
+    for preset in [ThemePreset::EditorLight, ThemePreset::EditorDark] {
+        let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+        for html in [false, true] {
+            let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
+                source,
+                &theme,
+                Engine::new()
+                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels": html}))),
+                ThemePortabilityRequirement::BestEffort,
+            );
+            let rendered = family::prepare(&parsed, &layout, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert_eq!(
+                rendered
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.nodeTextColor"),
+                None,
+                "Forest uses textColor when its HTML label node color is absent"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let attributes = document
+                .descendants()
+                .filter(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "attribute-name")
+                    })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(attributes.len(), 4, "{preset:?}/html={html}");
+            for attribute in attributes {
+                assert!(
+                    !attribute.attribute("style").is_some_and(|style| {
+                        style.split(';').any(|declaration| {
+                            declaration.trim().starts_with("fill:")
+                                || declaration.trim().starts_with("color:")
+                        })
+                    }),
+                    "{preset:?}/html={html}: {:?}",
+                    attribute.attribute("style")
+                );
+            }
+            assert!(
+                rendered.svg().contains("font-family:Inter,"),
+                "palette ownership must preserve the independent host font stack"
+            );
         }
     }
 }

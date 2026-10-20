@@ -1349,11 +1349,8 @@ fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
 }
 
 fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool) -> bool {
-    let node_text_owned =
-        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText);
-    if html_labels && (!node_text_owned || config.get_str("themeVariables.nodeTextColor").is_some())
-    {
-        node_text_owned
+    if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
+        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText)
     } else {
         mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Text)
     }

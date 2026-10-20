@@ -67,7 +67,7 @@ impl ArchitectureSurfaceThemePlan {
             theme: theme.cloned(),
             title_keys,
             service_stroke_source_owned: super::mermaid_owns_group_stroke(effective_config),
-            text_fill_source_owned: merman_core::__private::config_path_overrides_typed_default(
+            text_fill_source_owned: merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 TEXT_COLOR_PATH,
             ),
@@ -121,18 +121,18 @@ impl ArchitectureSurfaceThemePlan {
 }
 
 fn mermaid_owns_arrow_fill(config: &MermaidConfig) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(
+    if merman_core::__private::config_paint_overrides_typed_default(
         config,
         ARCH_EDGE_ARROW_COLOR_PATH,
     ) {
         return true;
     }
-    if merman_core::__private::config_path_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH)
+    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
     {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(config, LINE_COLOR_PATH)
+    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
 }

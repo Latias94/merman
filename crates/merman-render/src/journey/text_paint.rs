@@ -61,7 +61,7 @@ impl JourneyTextPaintPlan {
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let config_owned = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.textColor",
         );

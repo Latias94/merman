@@ -79,7 +79,7 @@ impl VennTypographyThemePlan {
         // non-Default themes can derive `vennSetTextColor` and carry the ownership edge there.
         // Check the resolved role rather than its possible source variables.
         let config_owns_text_fill = theme.is_some()
-            && merman_core::__private::config_path_overrides_typed_default(
+            && merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.vennSetTextColor",
             );
@@ -275,7 +275,7 @@ impl VennTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.vennTitleTextColor",
         );

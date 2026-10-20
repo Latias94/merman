@@ -298,18 +298,18 @@ impl KanbanTaskTheme {
         let item_count = occurrences.len();
 
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
-        let source_owned_card_fill = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned_card_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.background",
         );
-        let source_owned_card_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned_card_stroke = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.nodeBorder",
         );
         // Query only the terminal path consumed by the Kanban writer. Core provenance may carry
         // derived ownership into `textColor`; upstream inputs such as `primaryTextColor` are not
         // enumerated here as a second ownership authority.
-        let source_owned_label = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned_label = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.textColor",
         );

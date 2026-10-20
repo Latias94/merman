@@ -145,7 +145,7 @@ impl GitGraphTextPaintPlan {
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
         let owned: [bool; 3] = std::array::from_fn(|i| {
-            merman_core::__private::config_path_overrides_typed_default(config, SOURCES[i])
+            merman_core::__private::config_paint_overrides_typed_default(config, SOURCES[i])
                 || (i == 2 && color_gen)
         });
         plan.fills = std::array::from_fn(|i| {

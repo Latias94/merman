@@ -11,10 +11,10 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, OrdinalSelector, Specified,
-    TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
-    ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, MermaidThemeCompatibility,
+    OrdinalSelector, Specified, TextStylePatch, ThemeColorValue, ThemeEffectPatch,
+    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 
 use merman_render::environment::{
@@ -37,6 +37,27 @@ fn classic_engine() -> Engine {
         "look": "classic",
         "layout": "dagre"
     })))
+}
+
+// Typed adapter fixtures select their Mermaid baseline through the recipe, leaving
+// external configuration free to own only the properties each case authors.
+fn classic_typed_engine() -> Engine {
+    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "classic",
+        "layout": "dagre"
+    })))
+}
+
+fn state_theme_spec_with_theme(theme: &str) -> DiagramThemeSpec {
+    DiagramThemeSpec::new().with_mermaid_compatibility(
+        MermaidThemeCompatibility::default()
+            .with_theme(theme)
+            .expect("valid State fixture theme"),
+    )
+}
+
+fn state_theme_spec() -> DiagramThemeSpec {
+    state_theme_spec_with_theme("default")
 }
 
 fn state_edge_data_points(svg: &str, edge_id: &str) -> Vec<merman_render::model::LayoutPoint> {
@@ -448,8 +469,48 @@ fn render_state_svg_from_text_with_theme_in_environment(
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
 ) -> String {
+    render_state_svg_from_text_with_theme_and_engine_in_environment(
+        text,
+        theme,
+        classic_typed_engine(),
+        environment,
+    )
+}
+
+fn render_classic_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+    render_classic_state_svg_from_text_with_theme_in_environment(
+        text,
+        theme,
+        &RenderEnvironment::deterministic(),
+    )
+}
+
+fn render_classic_state_svg_from_text_with_theme_in_environment(
+    text: &str,
+    theme: &DiagramTheme,
+    environment: &RenderEnvironment,
+) -> String {
+    render_state_svg_from_text_with_theme_and_engine_in_environment(
+        text,
+        theme,
+        classic_engine(),
+        environment,
+    )
+}
+
+fn render_state_svg_from_text_with_theme_and_engine_in_environment(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    environment: &RenderEnvironment,
+) -> String {
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
-        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment);
+        prepare_state_artifact_from_text_with_theme_in_environment(
+            text,
+            theme,
+            engine,
+            environment,
+        );
     family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -461,10 +522,11 @@ fn render_state_svg_from_text_with_theme_in_environment(
 fn prepare_state_artifact_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
+    engine: Engine,
     environment: &RenderEnvironment,
 ) -> FamilyFixture {
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -477,7 +539,12 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     environment: &RenderEnvironment,
 ) -> (String, String) {
     let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
-        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment);
+        prepare_state_artifact_from_text_with_theme_in_environment(
+            text,
+            theme,
+            classic_typed_engine(),
+            environment,
+        );
     let rendered = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -507,11 +574,11 @@ fn render_strict_state_svg_with_theme_and_config(
 ) -> (String, StateThemeEvidenceCounts) {
     let (engine, source) = match origin {
         "site" => (
-            classic_engine().with_site_config(MermaidConfig::from_value(config)),
+            classic_typed_engine().with_site_config(MermaidConfig::from_value(config)),
             source.to_string(),
         ),
         "source" => (
-            classic_engine()
+            classic_typed_engine()
                 .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []}))),
             {
                 let directive = format!(
@@ -538,8 +605,10 @@ fn render_strict_state_svg_with_theme_and_config(
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap_or_else(|error| panic!("parse strict {origin} State source: {error}"))
         .unwrap_or_else(|| panic!("detect strict {origin} State source"));
+    // Raw recipe compatibility remains an escape hatch. These cases verify typed
+    // family terminals and exact family evidence independently of that residual.
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
         .begin_session_with_theme(theme)
         .unwrap_or_else(|error| panic!("begin strict {origin} State session: {error}"));
     let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
@@ -562,7 +631,7 @@ fn render_strict_state_svg_with_theme_and_config(
 #[test]
 fn state_effect_clear_suppresses_bindings_on_non_filter_node_surfaces() {
     let empty_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
+        .compile(state_theme_spec())
         .unwrap();
     for (target, source) in [
         (
@@ -592,7 +661,7 @@ fn state_effect_clear_suppresses_bindings_on_non_filter_node_surfaces() {
         .unwrap();
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new()
+                state_theme_spec()
                     .with_effects(
                         DiagramEffectSet::default()
                             .with_graph(graph)
@@ -691,7 +760,7 @@ fn state_note_radius_theme(radius: Specified<f32>) -> DiagramTheme {
 fn state_transition_label_font_size_theme(font_size_px: f32) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::TransitionLabel,
                 ThemeStylePatch {
                     typography: TextStylePatch {
@@ -742,7 +811,7 @@ fn state_note_rough_paths(svg: &str) -> Vec<String> {
 fn state_note_positive_radius_changes_rough_geometry() {
     let source = "stateDiagram-v2\nA\nnote right of A : rounded note\n";
     let baseline = render_state_svg_from_text(source);
-    let rounded = render_state_svg_from_text_with_theme(
+    let rounded = render_classic_state_svg_from_text_with_theme(
         source,
         &state_note_radius_theme(Specified::Value(12.0)),
     );
@@ -757,7 +826,7 @@ fn state_note_positive_radius_changes_rough_geometry() {
 fn state_note_zero_radius_preserves_square_rough_path_bytes() {
     let source = "stateDiagram-v2\nA\nnote right of A : square note\n";
     let baseline = render_state_svg_from_text(source);
-    let explicit_zero = render_state_svg_from_text_with_theme(
+    let explicit_zero = render_classic_state_svg_from_text_with_theme(
         source,
         &state_note_radius_theme(Specified::Value(0.0)),
     );
@@ -771,11 +840,11 @@ fn state_note_zero_radius_preserves_square_rough_path_bytes() {
 #[test]
 fn state_note_radius_clamps_to_half_the_shortest_side() {
     let source = "stateDiagram-v2\nA\nnote right of A : clamped note\n";
-    let large = render_state_svg_from_text_with_theme(
+    let large = render_classic_state_svg_from_text_with_theme(
         source,
         &state_note_radius_theme(Specified::Value(10_000.0)),
     );
-    let larger = render_state_svg_from_text_with_theme(
+    let larger = render_classic_state_svg_from_text_with_theme(
         source,
         &state_note_radius_theme(Specified::Value(100_000.0)),
     );
@@ -819,7 +888,7 @@ fn state_note_clear_radius_remains_strictly_unsupported() {
 fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
     let theme = state_hard_shadow_theme(5.0, 6.0, 4.0);
     let source = "stateDiagram-v2\n[*] --> Ready\nReady --> ExtraordinarilyWideStateName\nExtraordinarilyWideStateName --> [*]\n";
-    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let svg = render_classic_state_svg_from_text_with_theme(source, &theme);
     let document = roxmltree::Document::parse(&svg).expect("valid themed State SVG XML");
     let filters = document
         .descendants()
@@ -897,7 +966,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
             ),
         )
         .expect("compile comparison theme");
-    let baseline_view_box = svg_view_box(&render_state_svg_from_text_with_theme(
+    let baseline_view_box = svg_view_box(&render_classic_state_svg_from_text_with_theme(
         source,
         &baseline_theme,
     ));
@@ -954,7 +1023,7 @@ fn state_svg_soft_shadow_uses_four_sigma_regions_and_expands_the_root_viewbox() 
         ),
     );
     let source = "stateDiagram-v2\n[*] --> Ready\nReady --> ExtraordinarilyWideStateName\nExtraordinarilyWideStateName --> [*]\n";
-    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let svg = render_classic_state_svg_from_text_with_theme(source, &theme);
     let document = roxmltree::Document::parse(&svg).expect("valid soft-shadow State SVG XML");
 
     let filters = document
@@ -993,7 +1062,7 @@ fn state_svg_soft_shadow_uses_four_sigma_regions_and_expands_the_root_viewbox() 
             ),
         )
         .expect("compile comparison theme");
-    let baseline_view_box = svg_view_box(&render_state_svg_from_text_with_theme(
+    let baseline_view_box = svg_view_box(&render_classic_state_svg_from_text_with_theme(
         source,
         &baseline_theme,
     ));
@@ -1001,7 +1070,7 @@ fn state_svg_soft_shadow_uses_four_sigma_regions_and_expands_the_root_viewbox() 
     assert!(effect_view_box[2] >= baseline_view_box[2] + 66.0 - 1.0e-6);
     assert!(effect_view_box[3] >= baseline_view_box[3] + 66.0 - 1.0e-6);
 
-    let strict_svg = render_state_svg_from_text_with_theme_in_environment(
+    let strict_svg = render_classic_state_svg_from_text_with_theme_in_environment(
         source,
         &theme,
         &RenderEnvironment::deterministic()
@@ -1033,8 +1102,8 @@ Ready --> [*]
         .expect("compile State comparison theme");
     let shadow_theme = state_hard_shadow_theme(48.0, 0.0, 2.0);
 
-    let baseline_svg = render_state_svg_from_text_with_theme(source, &baseline_theme);
-    let shadow_svg = render_state_svg_from_text_with_theme(source, &shadow_theme);
+    let baseline_svg = render_classic_state_svg_from_text_with_theme(source, &baseline_theme);
+    let shadow_svg = render_classic_state_svg_from_text_with_theme(source, &shadow_theme);
     assert_eq!(
         state_diagram_title_x(&shadow_svg),
         state_diagram_title_x(&baseline_svg),
@@ -1058,7 +1127,7 @@ Ready --> [*]
 fn state_svg_derives_safe_regions_for_negative_hard_shadow_offsets() {
     let theme = state_hard_shadow_theme(-5.0, -6.0, 2.0);
     let source = "stateDiagram-v2\n[*] --> Compact\nCompact --> ASignificantlyWiderState\nASignificantlyWiderState --> [*]\n";
-    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let svg = render_classic_state_svg_from_text_with_theme(source, &theme);
     let regions = state_effect_filter_regions(&svg);
     assert_eq!(regions.len(), 2);
     assert!(regions[0].0 < regions[1].0, "node widths must differ");
@@ -1083,7 +1152,7 @@ fn state_svg_derives_safe_regions_for_negative_hard_shadow_offsets() {
 #[test]
 fn state_svg_uses_the_classic_default_one_pixel_stroke_for_effect_bounds() {
     let theme = state_hard_shadow_theme_with(DiagramThemeCompiler::new(), 5.0, 6.0, None);
-    let svg = render_state_svg_from_text_with_theme(
+    let svg = render_classic_state_svg_from_text_with_theme(
         "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
         &theme,
     );
@@ -1108,7 +1177,7 @@ fn state_svg_excludes_non_painting_strokes_from_effect_bounds() {
     ] {
         let source =
             format!("stateDiagram-v2\n[*] --> Ready\nReady --> [*]\nstyle Ready {source_style}\n");
-        let svg = render_state_svg_from_text_with_theme(&source, &theme);
+        let svg = render_classic_state_svg_from_text_with_theme(&source, &theme);
         let regions = state_effect_filter_regions(&svg);
         let [(width, height, region)] = regions.as_slice() else {
             panic!("expected one materialized State hard-shadow region for {source_style}");
@@ -1269,7 +1338,7 @@ fn state_svg_compiled_theme_styles_structural_roles_and_reflows_transition_label
             .with_variant(ThemeVariant::End),
         );
     let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .compile(state_theme_spec().with_styles(styles))
         .expect("compile State structural theme");
     let source = r#"stateDiagram-v2
 state Parent {
@@ -1388,7 +1457,7 @@ fn state_direct_paints_yield_to_terminal_mermaid_owners_from_site_and_source() {
         };
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new()
+                state_theme_spec()
                     .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(target, style))),
             )
             .unwrap_or_else(|error| panic!("compile {case} State ownership theme: {error}"));
@@ -1452,7 +1521,7 @@ fn state_transition_marker_paints_use_transition_color_before_line_color() {
     ] {
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
+                state_theme_spec().with_styles(
                     ThemeRuleSet::default()
                         .with_rule(ThemeRule::new(ThemeTarget::TransitionMarker, style)),
                 ),
@@ -1511,7 +1580,6 @@ fn state_transition_marker_paints_use_transition_color_before_line_color() {
                 &theme,
                 SOURCE,
                 serde_json::json!({
-                    "theme": "default",
                     "themeVariables": { "lineColor": MERMAID_COLOR },
                 }),
                 origin,
@@ -1568,7 +1636,7 @@ fn state_neo_note_stroke_yields_to_the_shared_node_border_owner() {
 
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Note,
                 ThemeStylePatch::default().with_stroke(
                     CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neo State note stroke"),
@@ -1645,20 +1713,19 @@ fn state_neo_note_stroke_does_not_yield_to_state_border() {
     const NON_OWNER_COLOR: &str = "#22c55e";
 
     let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+        .compile(state_theme_spec_with_theme("base").with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Note,
                 ThemeStylePatch::default().with_stroke(
                     CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neo State note stroke"),
                 ),
-            ))),
-        )
+            )),
+        ))
         .expect("compile Neo State note non-owner theme");
     let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
         &theme,
         SOURCE,
         serde_json::json!({
-            "theme": "base",
             "look": "neo",
             "themeVariables": {
                 "stateBorder": NON_OWNER_COLOR,
@@ -1721,7 +1788,7 @@ fn state_neo_shared_node_stroke_uses_the_scoped_gradient_for_state_note_and_star
     };
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(ThemeRule::new(ThemeTarget::State, stroke()))
                     .with_rule(ThemeRule::new(ThemeTarget::Note, stroke()))
@@ -2009,7 +2076,7 @@ fn state_composite_terminal_owners_follow_shape_look_and_gradient_branch() {
             );
         }
         let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .compile(state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap_or_else(|error| panic!("compile {} State theme: {error}", case.name));
 
         for origin in ["site", "source"] {
@@ -2410,7 +2477,7 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
         };
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
+                state_theme_spec().with_styles(
                     ThemeRuleSet::default()
                         .with_rule(ThemeRule::new(case.target, style).with_variant(case.variant)),
                 ),
@@ -2585,7 +2652,7 @@ fn state_neo_global_node_gradient_owns_rough_special_path_strokes() {
     for (case, target, variant, source, terminal) in cases {
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
+                state_theme_spec().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
                             target,
@@ -2750,10 +2817,9 @@ fn state_structural_direct_paints_remain_applied_without_terminal_provenance() {
         expected_style: &'static str,
     }
 
-    let classic = || serde_json::json!({"theme": "base", "htmlLabels": false});
+    let classic = || serde_json::json!({"htmlLabels": false});
     let neo = || {
         serde_json::json!({
-            "theme": "base",
             "look": "neo",
             "htmlLabels": false,
         })
@@ -2861,7 +2927,7 @@ fn state_structural_direct_paints_remain_applied_without_terminal_provenance() {
         };
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
+                state_theme_spec_with_theme("base").with_styles(
                     ThemeRuleSet::default()
                         .with_rule(ThemeRule::new(case.target, style).with_variant(case.variant)),
                 ),
@@ -2965,7 +3031,7 @@ fn state_note_stroke_yields_to_derived_note_background_ownership() {
 
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Note,
                 ThemeStylePatch::default().with_stroke(
                     CanvasPaint::solid(TYPED_COLOR).expect("valid typed State note stroke"),
@@ -3010,7 +3076,7 @@ fn state_transition_label_background_uses_distinct_native_and_html_terminal_owne
 
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec_with_theme("base").with_styles(
                 ThemeRuleSet::default().with_rule(ThemeRule::new(
                     ThemeTarget::TransitionLabelBackground,
                     ThemeStylePatch::default().with_fill(
@@ -3032,8 +3098,7 @@ fn state_transition_label_background_uses_distinct_native_and_html_terminal_owne
     for (case, html_labels, configured_path, mermaid_owns_terminal) in cases {
         for origin in ["site", "source"] {
             let config = serde_json::json!({
-                "theme": "base",
-                "htmlLabels": html_labels,
+                    "htmlLabels": html_labels,
                 "themeVariables": {(configured_path): MERMAID_COLOR},
             });
             let (svg, evidence) =
@@ -3100,7 +3165,7 @@ Second --> Third: second transition
             .with_ordinal(OrdinalSelector::exact(2).expect("valid second ordinal")),
         );
     let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .compile(state_theme_spec().with_styles(styles))
         .expect("compile ordinal State transition-label backgrounds");
     let (parity_svg, native_svg) =
         render_state_public_and_native_svg_from_text_with_theme_in_environment(
@@ -3231,18 +3296,14 @@ Second --> Third: second transition
 fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
     const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
     const TYPED_COLOR: &str = "#ec4899";
-
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Transition,
-                ThemeStylePatch::default().with_stroke(
-                    CanvasPaint::solid(TYPED_COLOR).expect("valid typed State transition stroke"),
-                ),
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid(TYPED_COLOR).unwrap()),
             ))),
         )
-        .expect("compile State transition ownership theme");
-
+        .expect("compile extended State transition ownership theme");
     for theme_id in [
         "neo",
         "neo-dark",
@@ -3251,104 +3312,79 @@ fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
         "redux-color",
         "redux-dark-color",
     ] {
-        for (config_key, mermaid_owns_transition) in [("background", true), ("primaryColor", false)]
-        {
+        for config_key in ["background", "primaryColor"] {
             for origin in ["site", "source"] {
                 let config = serde_json::json!({
                     "theme": theme_id,
                     "themeVariables": {(config_key): "#ffffff"},
                 });
-                let (engine, source) = if origin == "site" {
-                    (
-                        classic_engine().with_site_config(MermaidConfig::from_value(config)),
-                        SOURCE.to_string(),
-                    )
-                } else {
-                    (
-                        classic_engine().with_site_config(MermaidConfig::from_value(
-                            serde_json::json!({"secure": []}),
-                        )),
-                        format!("%%{{init: {config}}}%%\n{SOURCE}"),
-                    )
-                };
-                let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
-                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "parse strict {origin} {theme_id} {config_key} State source: {error}"
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        panic!("detect strict {origin} {theme_id} {config_key} State source")
-                    });
-                let session = RenderEnvironment::deterministic()
-                    .with_theme_portability_requirement(
-                        ThemePortabilityRequirement::RequirePortable,
-                    )
-                    .begin_session_with_theme(&theme)
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "begin strict {origin} {theme_id} {config_key} State session: {error}"
-                        )
-                    });
-                let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
-                    .unwrap_or_else(|error| {
-                        panic!("prepare strict {origin} {theme_id} {config_key} State: {error}")
-                    })
-                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                    .unwrap_or_else(|error| {
-                        panic!("render strict {origin} {theme_id} {config_key} State: {error}")
-                    });
-
-                if mermaid_owns_transition {
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    SOURCE,
+                    config.clone(),
+                    origin,
+                );
+                let baseline = render_unhosted_state_svg_with_config(SOURCE, config, origin);
+                assert_eq!(
+                    state_svg_stylesheet(&svg),
+                    state_svg_stylesheet(&baseline),
+                    "host paint must preserve the selected {origin} {theme_id}/{config_key} palette"
+                );
+                assert!(
+                    !svg.contains(TYPED_COLOR),
+                    "external {origin} {theme_id}/{config_key} must own transition paint: {svg}"
+                );
+                if config_key == "background" {
                     assert!(
-                        rendered.svg().contains("stroke:#000000"),
-                        "derived transitionColor must reach {origin} {theme_id} State SVG: {}",
-                        rendered.svg()
-                    );
-                    assert!(
-                        !rendered.svg().contains(TYPED_COLOR),
-                        "typed transition stroke must yield to {origin} {theme_id} background: {}",
-                        rendered.svg()
-                    );
-                } else {
-                    assert!(
-                        rendered.svg().contains(TYPED_COLOR),
-                        "typed transition stroke must retain the unowned {origin} {theme_id} primaryColor route: {}",
-                        rendered.svg()
+                        svg.contains(".transition{stroke:#000000;"),
+                        "background must derive the transition terminal: {svg}"
                     );
                 }
-
-                let completion = rendered.into_completion();
-                let evidence = merman_render::__private::family_evidence(completion.report());
                 assert_eq!(
-                    evidence.required_count(),
-                    1,
-                    "{origin} {theme_id} {config_key}"
-                );
-                assert_eq!(
-                    evidence.accounted_count(),
-                    1,
-                    "{origin} {theme_id} {config_key}"
-                );
-                assert_eq!(
-                    evidence.applied_count(),
-                    usize::from(!mermaid_owns_transition),
-                    "{origin} {theme_id} {config_key}"
-                );
-                assert_eq!(
-                    evidence.not_applicable_count(),
-                    usize::from(mermaid_owns_transition),
-                    "{origin} {theme_id} {config_key}"
-                );
-                assert_eq!(
-                    evidence.theme_residual_count(),
-                    0,
-                    "{origin} {theme_id} {config_key}"
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: 1,
+                        accounted: 1,
+                        applied: 0,
+                        not_applicable: 1,
+                        residual: 0,
+                    },
+                    "{origin} {theme_id}/{config_key}"
                 );
             }
         }
     }
+}
+
+fn render_unhosted_state_svg_with_config(
+    source: &str,
+    config: serde_json::Value,
+    origin: &str,
+) -> String {
+    let (engine, source) = if origin == "site" {
+        (
+            classic_typed_engine().with_site_config(MermaidConfig::from_value(config)),
+            source.to_string(),
+        )
+    } else {
+        assert_eq!(origin, "source");
+        (
+            classic_typed_engine()
+                .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []}))),
+            format!("%%{{init: {config}}}%%\n{source}"),
+        )
+    };
+    render_state_svg_from_text_with_engine(engine, &source)
+}
+
+fn state_svg_stylesheet(svg: &str) -> String {
+    roxmltree::Document::parse(svg)
+        .expect("valid State SVG")
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("State stylesheet")
+        .to_owned()
 }
 
 #[test]
@@ -3356,160 +3392,68 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
     const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
     const MERMAID_COLOR: &str = "#22c55e";
     const TYPED_COLOR: &str = "#ec4899";
-
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Transition,
-                ThemeStylePatch::default().with_stroke(
-                    CanvasPaint::solid(TYPED_COLOR).expect("valid typed State transition stroke"),
-                ),
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid(TYPED_COLOR).unwrap()),
             ))),
         )
         .expect("compile State transition ownership theme");
-
-    for (theme_id, config_key, mermaid_owns_transition) in [
+    for (theme_id, config_key, derived_owner) in [
         ("base", "lineColor", true),
         ("forest", "lineColor", true),
         ("default", "lineColor", false),
         ("dark", "lineColor", false),
         ("neutral", "lineColor", false),
+        ("dark", "mainContrastColor", true),
     ] {
         for origin in ["site", "source"] {
             let config = serde_json::json!({
                 "theme": theme_id,
                 "themeVariables": {(config_key): MERMAID_COLOR},
             });
-            let (engine, source) = if origin == "site" {
-                (
-                    classic_engine().with_site_config(MermaidConfig::from_value(config)),
-                    SOURCE.to_string(),
-                )
-            } else {
-                (
-                    classic_engine().with_site_config(MermaidConfig::from_value(
-                        serde_json::json!({"secure": []}),
-                    )),
-                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
-                )
-            };
-            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                .unwrap_or_else(|error| {
-                    panic!("parse strict {origin} {theme_id} {config_key} State source: {error}")
-                })
-                .unwrap_or_else(|| panic!("detect strict {origin} {theme_id} {config_key} State"));
-            let session = RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
-                .unwrap_or_else(|error| {
-                    panic!("begin strict {origin} {theme_id} {config_key} State session: {error}")
-                });
-            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
-                .unwrap_or_else(|error| {
-                    panic!("prepare strict {origin} {theme_id} {config_key} State: {error}")
-                })
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap_or_else(|error| {
-                    panic!("render strict {origin} {theme_id} {config_key} State: {error}")
-                });
-
-            if mermaid_owns_transition {
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                SOURCE,
+                config.clone(),
+                origin,
+            );
+            let baseline = render_unhosted_state_svg_with_config(SOURCE, config, origin);
+            let css = state_svg_stylesheet(&svg);
+            assert_eq!(
+                css,
+                state_svg_stylesheet(&baseline),
+                "host paint must preserve the selected {origin} {theme_id}/{config_key} palette"
+            );
+            assert!(
+                !svg.contains(TYPED_COLOR),
+                "external {origin} {theme_id}/{config_key} must own transition paint: {svg}"
+            );
+            if origin == "source" && config_key == "mainContrastColor" {
                 assert!(
-                    rendered.svg().contains("stroke:#22c55e"),
-                    "{theme_id} {config_key} must reach the {origin} State transition: {}",
-                    rendered.svg()
+                    !css.contains(".transition{stroke:#22c55e;"),
+                    "source directives must filter the non-schema mainContrastColor: {css}"
                 );
+            } else if derived_owner {
                 assert!(
-                    !rendered.svg().contains(TYPED_COLOR),
-                    "typed stroke must yield to {origin} {theme_id} {config_key}: {}",
-                    rendered.svg()
-                );
-            } else {
-                assert!(
-                    rendered.svg().contains(TYPED_COLOR),
-                    "typed stroke must remain Applied for {origin} {theme_id} {config_key}: {}",
-                    rendered.svg()
+                    css.contains(".transition{stroke:#22c55e;"),
+                    "the pinned {origin} {theme_id}/{config_key} derivation must reach its terminal: {css}"
                 );
             }
-
-            let completion = rendered.into_completion();
-            let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(
-                evidence.required_count(),
-                1,
-                "{origin} {theme_id} {config_key}"
-            );
-            assert_eq!(
-                evidence.accounted_count(),
-                1,
-                "{origin} {theme_id} {config_key}"
-            );
-            assert_eq!(
-                evidence.applied_count(),
-                usize::from(!mermaid_owns_transition),
-                "{origin} {theme_id} {config_key}"
-            );
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(mermaid_owns_transition),
-                "{origin} {theme_id} {config_key}"
-            );
-            assert_eq!(
-                evidence.theme_residual_count(),
-                0,
-                "{origin} {theme_id} {config_key}"
+                evidence,
+                StateThemeEvidenceCounts {
+                    required: 1,
+                    accounted: 1,
+                    applied: 0,
+                    not_applicable: 1,
+                    residual: 0,
+                },
+                "{origin} {theme_id}/{config_key}"
             );
         }
     }
-
-    let config = serde_json::json!({
-        "theme": "dark",
-        "themeVariables": { "mainContrastColor": MERMAID_COLOR },
-    });
-    let (svg, evidence) =
-        render_strict_state_svg_with_theme_and_config(&theme, SOURCE, config, "site");
-    assert!(
-        svg.contains("stroke:#22c55e"),
-        "Dark site mainContrastColor must reach the State transition: {svg}"
-    );
-    assert!(
-        !svg.contains(TYPED_COLOR),
-        "typed State transition stroke must yield to Dark site mainContrastColor: {svg}"
-    );
-    assert_eq!(
-        evidence,
-        StateThemeEvidenceCounts {
-            required: 1,
-            accounted: 1,
-            applied: 0,
-            not_applicable: 1,
-            residual: 0,
-        },
-        "Dark site mainContrastColor"
-    );
-
-    let source_config = serde_json::json!({
-        "theme": "dark",
-        "themeVariables": { "mainContrastColor": MERMAID_COLOR },
-    });
-    let (source_svg, source_evidence) =
-        render_strict_state_svg_with_theme_and_config(&theme, SOURCE, source_config, "source");
-    assert!(
-        source_svg.contains(TYPED_COLOR),
-        "source directives cannot own the non-schema mainContrastColor route: {source_svg}"
-    );
-    assert_eq!(
-        source_evidence,
-        StateThemeEvidenceCounts {
-            required: 1,
-            accounted: 1,
-            applied: 1,
-            not_applicable: 0,
-            residual: 0,
-        },
-        "Dark source mainContrastColor"
-    );
 }
 
 #[test]
@@ -3984,7 +3928,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
 fn state_note_compatibility_css_targets_the_note_text_terminal() {
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(ThemeRule::new(
                         ThemeTarget::Note,
@@ -4068,7 +4012,7 @@ note right of A : terminal note text
 fn state_svg_title_theme_fill_reaches_the_terminal_svg_text_paint() {
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec().with_styles(
                 ThemeRuleSet::default().with_rule(ThemeRule::new(
                     ThemeTarget::Title,
                     ThemeStylePatch::default()
@@ -4111,23 +4055,21 @@ stateDiagram-v2
 Ready
 "#;
 
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
+    let theme =
+        DiagramThemeCompiler::new()
+            .compile(state_theme_spec_with_theme("base").with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
                     ThemeTarget::Title,
                     ThemeStylePatch::default().with_fill(
                         CanvasPaint::solid(TYPED_COLOR).expect("valid State title paint"),
                     ),
-                ),
-            ),
-        ))
-        .expect("compile State title ownership theme");
+                )),
+            ))
+            .expect("compile State title ownership theme");
     let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
         &theme,
         SOURCE,
         serde_json::json!({
-            "theme": "base",
             "themeVariables": { "titleColor": NON_OWNER_COLOR },
         }),
         "site",
@@ -4191,7 +4133,7 @@ fn state_svg_split_rough_surfaces_keep_fill_and_stroke_styles_on_their_own_paths
                 .with_variant(ThemeVariant::Special),
         );
     let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .compile(state_theme_spec().with_styles(styles))
         .expect("compile split-surface State theme");
     let svg = render_state_svg_from_text_with_theme(
         r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
@@ -5069,7 +5011,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
             );
         }
         let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .compile(state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap_or_else(|error| panic!("compile {} theme: {error}", case.name));
 
         for origin in ["site", "source"] {
@@ -5177,7 +5119,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
 
     let divider_fill_theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Composite,
@@ -5226,7 +5168,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
 fn state_hand_drawn_rect_with_title_shares_typed_stroke_with_its_divider() {
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec_with_theme("base").with_styles(
                 ThemeRuleSet::default().with_rule(ThemeRule::new(
                     ThemeTarget::State,
                     ThemeStylePatch::default()
@@ -5244,7 +5186,6 @@ fn state_hand_drawn_rect_with_title_shares_typed_stroke_with_its_divider() {
         &theme,
         "stateDiagram-v2\nDisplay : Ready\nDisplay : Running\n",
         serde_json::json!({
-            "theme": "base",
             "look": "handDrawn",
             "handDrawnSeed": 7,
         }),
@@ -5304,7 +5245,7 @@ fn state_neo_zero_stroke_width_owns_composite_and_special_path_terminals() {
     };
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            state_theme_spec().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(ThemeRule::new(ThemeTarget::Composite, width()))
                     .with_rule(
@@ -5432,7 +5373,7 @@ fn state_stroke_width_terminal_ownership_follows_surface_and_look() {
     for case in owned_cases {
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
+                state_theme_spec().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
                             case.target,
@@ -5597,7 +5538,7 @@ fn state_stroke_width_terminal_ownership_follows_surface_and_look() {
             );
         }
         let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .compile(state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap_or_else(|error| panic!("compile {} width theme: {error}", case.name));
 
         for origin in ["site", "source"] {
@@ -6381,7 +6322,7 @@ fn state_svg_preserves_ordered_shadow_inputs_and_accumulated_bounds() {
                 ),
             )
             .unwrap();
-        render_state_svg_from_text_with_theme_in_environment(
+        render_classic_state_svg_from_text_with_theme_in_environment(
             source,
             &theme,
             &RenderEnvironment::deterministic()
@@ -6622,7 +6563,7 @@ fn state_elk_parallel_self_loops_preserve_transition_label_and_marker_ordinals()
         }
     }
     let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .compile(state_theme_spec().with_styles(rules))
         .unwrap();
     let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
         &theme,
@@ -6701,10 +6642,10 @@ fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rec
                 &["outer", "inner"][..],
             ),
         ] {
-            let theme =
-                DiagramThemeCompiler::new()
-                    .compile(DiagramThemeSpec::new().with_styles(
-                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
                             target,
                             ThemeStylePatch {
                                 geometry: ThemeGeometryPatch {
@@ -6712,9 +6653,10 @@ fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rec
                                 },
                                 ..Default::default()
                             },
-                        )),
-                    ))
-                    .unwrap();
+                        ),
+                    )),
+                )
+                .unwrap();
             let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
                 &theme,
                 source,

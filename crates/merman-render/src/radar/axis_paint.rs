@@ -82,7 +82,7 @@ impl RadarAxisPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, axis_count);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let owns_line = merman_core::__private::config_path_overrides_typed_default(
+        let owns_line = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.lineColor",
         );
@@ -95,7 +95,7 @@ impl RadarAxisPaintPlan {
             "themeVariables.radar.axisColor"
         };
         let owns_axis =
-            merman_core::__private::config_path_overrides_typed_default(config, axis_path);
+            merman_core::__private::config_paint_overrides_typed_default(config, axis_path);
         // Base lineColor styles marker classes that Radar never instantiates. Retain the
         // historical CSS projection, but only axisColor has actual paint terminals here.
         let source_owns_paint = owns_axis;

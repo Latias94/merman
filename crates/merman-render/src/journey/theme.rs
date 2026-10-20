@@ -593,12 +593,12 @@ fn typed_radius(
 
 fn journey_fill_source_owned(config: &MermaidConfig, task_num: i64) -> bool {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_path_overrides_typed_default(config, &path)
+    merman_core::__private::config_paint_overrides_typed_default(config, &path)
 }
 
 fn journey_palette_source_owned(config: &MermaidConfig, task_num: i64) -> Option<Box<str>> {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_path_overrides_typed_default(config, &path)
+    merman_core::__private::config_paint_overrides_typed_default(config, &path)
         .then(|| {
             config
                 .get_str(&path)

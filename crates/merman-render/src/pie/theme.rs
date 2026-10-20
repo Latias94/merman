@@ -242,7 +242,7 @@ impl PieThemePlan {
                 self.palette_key = Some(key.clone());
                 let mut missing_typed_color = false;
                 for (index, paint) in self.paints.iter_mut().enumerate() {
-                    if merman_core::__private::config_path_overrides_typed_default(
+                    if merman_core::__private::config_paint_overrides_typed_default(
                         effective_config,
                         MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                     ) {
@@ -339,7 +339,7 @@ impl PieThemePlan {
                 ) else {
                     continue;
                 };
-                if merman_core::__private::config_path_overrides_typed_default(
+                if merman_core::__private::config_paint_overrides_typed_default(
                     effective_config,
                     MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                 ) {
@@ -491,7 +491,7 @@ impl PieThemePlan {
     ) -> Result<(), OperationWorkError> {
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             PIE_TITLE_FILL_PATH,
         );
@@ -619,7 +619,7 @@ impl PieThemePlan {
         occurrence_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             PIE_SECTION_TEXT_FILL_PATH,
         );
@@ -1279,7 +1279,7 @@ fn record_terminal_paint(
 }
 
 fn mermaid_owns_stroke_site(effective_config: &MermaidConfig, path: &str) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+    merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
 }
 
 fn explicit_config_owns_stroke_site(effective_config: &MermaidConfig, path: &str) -> bool {

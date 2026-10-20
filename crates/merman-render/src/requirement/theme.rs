@@ -561,30 +561,31 @@ fn typed_stroke_expectation(
 }
 
 fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
         || matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
         )
-        || (merman_core::__private::config_path_overrides_typed_default(
+        || (merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.borderColorArray",
-        ) && merman_core::__private::config_path_overrides_typed_default(
+        ) && merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.bkgColorArray",
         ))
 }
 
 fn mermaid_owns_requirement_stroke(config: &MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        )
-        || merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.borderColorArray",
-        )
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    ) || matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) || merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.borderColorArray",
+    )
 }
 
 #[derive(Debug, Default)]
