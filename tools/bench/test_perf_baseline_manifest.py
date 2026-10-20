@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -563,6 +564,123 @@ class PerfBaselineManifestTest(unittest.TestCase):
         path = self.root / "baseline.json"
         self._write_json(path, value if value is not None else self.freeze())
         return path
+
+    def _use_current_driver_build_provenance(self) -> None:
+        recipe = run_native_memory.memory_recipe(
+            self.root,
+            target_dir=self.root / "target",
+            toolchain=None,
+            corpus=self.corpus_path,
+            contract=self.owner_contract,
+        )
+        artifact = json.dumps(
+            {
+                "reason": "compiler-artifact",
+                "target": {"name": recipe.bench, "kind": ["bench"]},
+                "executable": str(self.executable),
+            }
+        )
+        with mock.patch.object(
+            run_native_memory.subprocess,
+            "run",
+            side_effect=[
+                subprocess.CompletedProcess([], 0, stdout="removed", stderr=""),
+                subprocess.CompletedProcess([], 0, stdout=artifact, stderr=""),
+            ],
+        ):
+            executable, provenance = run_native_memory.discover_executable(
+                recipe, timeout_seconds=30
+            )
+        self.assertEqual(executable, self.executable)
+        report = baseline.load_strict_json(self.report_path)
+        report["recipe"]["profile_reset_command"] = (
+            run_native_memory.cargo_clean_bench_profile_command(recipe)
+        )
+        report["executable"]["build"] = provenance
+        self._write_json(self.report_path, report)
+
+    def test_freeze_and_verify_accept_current_driver_build_provenance(self) -> None:
+        self._use_current_driver_build_provenance()
+
+        manifest = self.freeze()
+
+        baseline.verify_baseline(
+            self.root, self.write_manifest(manifest), git_probe=self.git
+        )
+
+    def test_freeze_rejects_damaged_current_driver_build_provenance(self) -> None:
+        self._use_current_driver_build_provenance()
+        original = baseline.load_strict_json(self.report_path)
+        missing = object()
+        cases = (
+            (
+                "recipe reset command",
+                ("recipe", "profile_reset_command"),
+                [*original["recipe"]["profile_reset_command"], "--quiet"],
+                "recipe profile reset command differs",
+            ),
+            (
+                "executable reset command",
+                ("executable", "build", "profile_reset", "command"),
+                ["cargo", "clean"],
+                "executable profile reset command differs",
+            ),
+            (
+                "missing recipe reset",
+                ("recipe", "profile_reset_command"),
+                missing,
+                r"report\.executable\.build fields differ",
+            ),
+            (
+                "missing executable reset",
+                ("executable", "build", "profile_reset"),
+                missing,
+                r"report\.executable\.build fields differ",
+            ),
+            (
+                "unknown recipe field",
+                ("recipe", "unexpected"),
+                None,
+                r"report\.recipe fields differ",
+            ),
+            (
+                "unknown build field",
+                ("executable", "build", "unexpected"),
+                None,
+                r"report\.executable\.build fields differ",
+            ),
+            (
+                "unknown reset field",
+                ("executable", "build", "profile_reset", "unexpected"),
+                None,
+                r"build\.profile_reset fields differ",
+            ),
+            (
+                "invalid reset stdout digest",
+                ("executable", "build", "profile_reset", "stdout_sha256"),
+                "not-sha256",
+                r"profile_reset\.stdout_sha256 must be 64-character",
+            ),
+            (
+                "invalid reset stderr digest",
+                ("executable", "build", "profile_reset", "stderr_sha256"),
+                "A" * 64,
+                r"profile_reset\.stderr_sha256 must be 64-character",
+            ),
+        )
+        for label, path, value, expected_error in cases:
+            with self.subTest(field=label):
+                damaged = copy.deepcopy(original)
+                target = damaged
+                for segment in path[:-1]:
+                    target = target[segment]
+                if value is missing:
+                    del target[path[-1]]
+                else:
+                    target[path[-1]] = value
+                self._write_json(self.report_path, damaged)
+                with self.assertRaisesRegex(baseline.ManifestError, expected_error):
+                    self.freeze()
 
     def test_freeze_records_committed_tree_recipes_and_every_fixture(self) -> None:
         manifest = self.freeze()

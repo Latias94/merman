@@ -21,7 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 from compare_mermaid_renderers import best_effort_cpu_model
-from compare_self import cargo_prebuild_command
+from compare_self import cargo_clean_bench_profile_command, cargo_prebuild_command
 from corpus_utils import load_corpus as load_typed_corpus
 from corpus_utils import resolve_lane_selector
 from native_memory import (
@@ -1343,7 +1343,11 @@ def _inspect_native_memory_report(
     _string(report["run_id"], "native-memory report.run_id")
 
     recipe = _object(report["recipe"], "native-memory report.recipe")
-    _fields(recipe, _REPORT_RECIPE_FIELDS, "native-memory report.recipe")
+    has_profile_reset = "profile_reset_command" in recipe
+    recipe_fields = _REPORT_RECIPE_FIELDS | (
+        {"profile_reset_command"} if has_profile_reset else set()
+    )
+    _fields(recipe, recipe_fields, "native-memory report.recipe")
     requested_toolchain = _optional_string(
         recipe["requested_toolchain"],
         "native-memory report.recipe.requested_toolchain",
@@ -1628,6 +1632,7 @@ def _inspect_native_memory_report(
             )
     try:
         canonical_build_command = cargo_prebuild_command(canonical_recipe)
+        canonical_reset_command = cargo_clean_bench_profile_command(canonical_recipe)
     except (OSError, ValueError) as error:
         raise ManifestError(
             f"cannot reconstruct canonical native-memory build command: {error}"
@@ -1642,6 +1647,17 @@ def _inspect_native_memory_report(
             "native-memory report recipe build command differs from the canonical "
             "native-memory build command"
         )
+    if has_profile_reset:
+        reset_command = _string_list(
+            recipe["profile_reset_command"],
+            "native-memory report.recipe.profile_reset_command",
+            allow_empty=False,
+        )
+        if reset_command != canonical_reset_command:
+            raise ManifestError(
+                "native-memory report recipe profile reset command differs from the "
+                "canonical native-memory profile reset command"
+            )
     build_environment = _object(
         recipe["build_environment"], "native-memory report.recipe.build_environment"
     )
@@ -1681,7 +1697,11 @@ def _inspect_native_memory_report(
             "persistent baseline requires a Cargo-built executable; "
             "explicit executable build skipping is diagnostic-only"
         )
-    elif frozenset(build) == frozenset({"command", "stdout_sha256", "stderr_sha256"}):
+    else:
+        build_fields = frozenset({"command", "stdout_sha256", "stderr_sha256"})
+        if has_profile_reset:
+            build_fields |= {"profile_reset"}
+        _fields(build, build_fields, "native-memory report.executable.build")
         executable_build_command = _string_list(
             build["command"],
             "native-memory report.executable.build.command",
@@ -1694,8 +1714,23 @@ def _inspect_native_memory_report(
             )
         _sha256(build["stdout_sha256"], "native-memory report.executable.build.stdout_sha256")
         _sha256(build["stderr_sha256"], "native-memory report.executable.build.stderr_sha256")
-    else:
-        raise ManifestError("native-memory executable build provenance fields differ")
+        if has_profile_reset:
+            context = "native-memory report.executable.build.profile_reset"
+            reset = _object(build["profile_reset"], context)
+            _fields(
+                reset,
+                frozenset({"command", "stdout_sha256", "stderr_sha256"}),
+                context,
+            )
+            if _string_list(
+                reset["command"], f"{context}.command", allow_empty=False
+            ) != canonical_reset_command:
+                raise ManifestError(
+                    "native-memory executable profile reset command differs from the "
+                    "canonical native-memory profile reset command"
+                )
+            _sha256(reset["stdout_sha256"], f"{context}.stdout_sha256")
+            _sha256(reset["stderr_sha256"], f"{context}.stderr_sha256")
     executable_path, _ = _resolve_artifact_file(
         root, str(executable["path"]), "native-memory report.executable.path"
     )
