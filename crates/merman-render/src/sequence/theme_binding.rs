@@ -140,16 +140,19 @@ impl SequenceCompatBinding {
         }
     }
 
-    pub(crate) fn text_surface_fills(&self) -> [String; super::SequenceTextSurface::COUNT] {
-        [
-            self.actor_text.clone(),
-            self.text_color.clone(),
-            self.signal_text.clone(),
-            self.note_text.clone(),
-            self.label_text.clone(),
-            self.loop_text.clone(),
-            self.loop_text.clone(),
-        ]
+    pub(crate) fn text_surface_fill(&self, surface: super::SequenceTextSurface) -> &str {
+        use super::SequenceTextSurface;
+
+        match surface {
+            SequenceTextSurface::ParticipantLabel => &self.actor_text,
+            SequenceTextSurface::BoxTitle => &self.text_color,
+            SequenceTextSurface::MessageLabel => &self.signal_text,
+            SequenceTextSurface::NoteLabel => &self.note_text,
+            SequenceTextSurface::ControlKeyword => &self.label_text,
+            SequenceTextSurface::ControlPrimaryTitle | SequenceTextSurface::ControlSectionTitle => {
+                &self.loop_text
+            }
+        }
     }
 
     pub(crate) fn actor_palette_mode(&self) -> bool {
@@ -233,7 +236,8 @@ mod tests {
         assert_eq!(binding.label_box_fill, "blue");
         assert_eq!(binding.rect_default_fill, "blue");
         assert_eq!(
-            binding.text_surface_fills(),
+            super::super::SequenceTextSurface::ALL
+                .map(|surface| binding.text_surface_fill(surface)),
             [
                 "green", "purple", "yellow", "cyan", "green", "green", "green"
             ]

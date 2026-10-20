@@ -184,8 +184,8 @@ pub(super) fn render_state_node_svg(
                     crate::state::StateTerminalPaintProperty::Stroke,
                     ctx.diagram_id,
                 );
-                let fill = fill_override.unwrap_or(compatibility_fill.as_str());
-                let stroke = stroke_override.unwrap_or(compatibility_stroke.as_str());
+                let fill = fill_override.unwrap_or(compatibility_fill.as_ref());
+                let stroke = stroke_override.unwrap_or(compatibility_stroke.as_ref());
                 let stroke_width = stroke_width_override
                     .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                     .max(0.0);
@@ -299,7 +299,7 @@ pub(super) fn render_state_node_svg(
                 crate::state::StateTerminalPaintProperty::Stroke,
                 ctx.diagram_id,
             );
-            let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_str());
+            let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_ref());
             let outer_stroke_width = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(outer_surface))
                 .max(0.0);
@@ -387,8 +387,8 @@ pub(super) fn render_state_node_svg(
                 crate::state::StateTerminalPaintProperty::Stroke,
                 ctx.diagram_id,
             );
-            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_ref());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_ref());
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
@@ -450,8 +450,8 @@ pub(super) fn render_state_node_svg(
                 crate::state::StateTerminalPaintProperty::Stroke,
                 ctx.diagram_id,
             );
-            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_ref());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_ref());
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
@@ -566,8 +566,8 @@ pub(super) fn render_state_node_svg(
                 crate::state::StateTerminalPaintProperty::Stroke,
                 ctx.diagram_id,
             );
-            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_ref());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_ref());
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
@@ -902,8 +902,8 @@ pub(super) fn render_state_node_svg(
                 crate::state::StateTerminalPaintProperty::Stroke,
                 ctx.diagram_id,
             );
-            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_ref());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_ref());
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);

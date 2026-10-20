@@ -346,6 +346,14 @@ If A/A is unstable or the derived count exceeds the fixed budget, the result is 
 harness does not weaken thresholds, extend the budget after seeing results, or stop when an interval
 first becomes favorable.
 
+The generic A/A prerequisite still requires identity, order effects and the sampling budget to
+pass separately for both metrics. That is stronger than proving the complement of a joint
+regression, which needs only one qualified upper bound below its threshold. The classifier uses
+that documented complement; it does not relax A/A, sample counts, confidence adjustment or
+improvement admission. Historical receipts retain their original method and outcomes. Any future
+release-specific calibration protocol must be versioned and preregistered before fresh A/A and A/B;
+old observations cannot be reclassified as new confirmation.
+
 One normalized Criterion point estimate per side within an AB/BA pair is one independent
 observation. Corpus schema-v2 lane metadata owns the public operation and normalization. Current and
 registered historical selectors can therefore confirm the same operation even when their Criterion
@@ -354,6 +362,47 @@ match the registered divisor. Legacy corpus schema-v1 evidence has no such attes
 requires exact benchmark identity and divisors of one, while any override remains diagnostic-only.
 
 ### Statistics and decisions
+
+For a release-distance question, opt into `--confirmation-protocol joint_non_regression_v1`.
+The default `generic_v2` and low-latency improvement contracts retain their existing A/A rules.
+This separate protocol confirms the complement of a joint regression; it never assesses candidate
+improvement or admission. This version fixes the confidence level at 0.95 and the thresholds
+at 10% and 1000 ns; every selected row
+must be a comparable registered public operation. It cannot run in diagnostic, discovery-only, dirty or
+low-latency mode. A frozen generic discovery may supply verified executable identities; all A/A
+and A/B observations must still be fresh.
+
+For each row and metric, both runners must complete eight A/A pairs with identity and order-effect intervals
+inside that metric's margin. The maximum untruncated required pair count across the two runners
+must fit the cap. Among qualified metrics, select the smaller required count, breaking ties in
+favor of relative movement. Freeze this selection before A/B. The cohort count is the maximum
+selected count over every row. If any row has no qualified metric, block A/B globally and retain
+every row as inconclusive. Runner, identity and coverage failures remain evidence-contract failures.
+
+Before the first A/B observation, create an exclusive `*.calibration-plan.json` beside the JSON
+report. It records the complete fixture scope, frozen runners, A/A results, each metric's
+qualification/reasons/required count, selected certificates, thresholds, confidence recipe and
+fixed schedule. An existing or unwritable plan blocks A/B. Output paths cannot overwrite the plan
+or discovery input, and final verification checks its SHA. Place evidence under ignored
+`target/bench`; a plan written into tracked source is not exempt from checkout-identity checks.
+
+Every row must complete the fixed balanced cohort schedule before any timing label is admitted.
+Only its preselected metric can prove non-regression with an upper bound at or below the threshold.
+Regression additionally requires both metrics qualified, enough fixed pairs for both, and both
+lower bounds strictly above threshold. Other cases remain inconclusive; a truncated or failed
+schedule is an evidence-contract failure. Both raw metrics and all qualification reasons remain
+visible. `improvement_outcome` is null because this protocol does not assess improvement.
+
+The decision error budget uses `2R` components for `R` selected rows. Conditional on the frozen
+plan and valid paired-bootstrap bounds, a false non-regression label requires the preselected
+upper bound to fail; a false regression label requires a lower bound for an actually non-regressing
+metric that has not crossed its threshold to fail. Allocating `alpha/(2R)` per tail bounds these
+two decision errors across the cohort by alpha. This is not a claim that all displayed upper and
+lower endpoints simultaneously cover
+their estimands. Bootstrap validity remains an empirical assumption about the host and noise.
+Selecting a smaller A/A variance can underestimate sampling needs; the pair-count formula is a
+planning heuristic, not a guarantee of 80% power. No post-A/B metric switch, budget extension,
+early favorable stopping or historical receipt reclassification is allowed.
 
 The canonical signed metrics are:
 

@@ -660,66 +660,57 @@ impl KanbanTaskTheme {
             .is_some_and(|item| item.label_foreground.is_some())
     }
 
-    #[cfg(test)]
-    pub(crate) fn terminal_decisions(
-        &self,
-        config: &MermaidConfig,
-    ) -> crate::Result<Option<Vec<KanbanTaskTerminalDecision>>> {
-        self.bind_terminal_decisions(
-            config
-                .get_bool("darkMode")
-                .or_else(|| config.get_bool("themeVariables.darkMode"))
-                .unwrap_or(false),
-        )
-    }
-
-    pub(super) fn bind_terminal_decisions(
-        &self,
-        dark_mode: bool,
-    ) -> crate::Result<Option<Vec<KanbanTaskTerminalDecision>>> {
-        let Some(items) = self.items.as_deref() else {
-            return Ok(None);
+    pub(super) fn bind_terminal_paints(&mut self, dark_mode: bool) -> crate::Result<()> {
+        let Some(items) = self.items.as_deref_mut() else {
+            return Ok(());
         };
-        items
-            .iter()
-            .map(|item| Self::terminal_decision(item, dark_mode))
-            .collect::<crate::Result<Vec<_>>>()
-            .map(Some)
+        for item in items {
+            if item.typed_fill.is_none()
+                && let Some(fill) = item.palette_fill.as_mut()
+            {
+                fill.css = if dark_mode {
+                    darken(&fill.css, 10.0)?
+                } else {
+                    lighten(&fill.css, 10.0)?
+                };
+            }
+        }
+        Ok(())
     }
 
-    fn terminal_decision(
-        item: &KanbanTaskResolvedItem,
-        dark_mode: bool,
-    ) -> crate::Result<KanbanTaskTerminalDecision> {
+    pub(crate) fn terminal_decision(&self, item_index: usize) -> KanbanTaskTerminalDecision<'_> {
+        let Some(items) = self.items.as_deref() else {
+            return KanbanTaskTerminalDecision::default();
+        };
+        let item = &items[item_index];
         let (fill_css, fill_capability, fill_rule_index) =
             if let Some(fill) = item.typed_fill.as_ref() {
                 (
-                    Some(fill.css.clone()),
+                    Some(fill.css.as_str()),
                     Some(fill.capability),
                     Some(fill.rule_index),
                 )
             } else {
                 let fill = item.palette_fill.as_ref();
-                let fill_css = match fill {
-                    Some(fill) if dark_mode => Some(darken(&fill.css, 10.0)?),
-                    Some(fill) => Some(lighten(&fill.css, 10.0)?),
-                    None => None,
-                };
-                (fill_css, fill.map(|fill| fill.capability), None)
+                (
+                    fill.map(|fill| fill.css.as_str()),
+                    fill.map(|fill| fill.capability),
+                    None,
+                )
             };
         let stroke = item.typed_stroke.as_ref();
         let label = item.label_foreground.as_ref();
-        Ok(KanbanTaskTerminalDecision {
+        KanbanTaskTerminalDecision {
             fill_css,
             fill_capability,
             fill_rule_index,
-            stroke_css: stroke.map(|stroke| stroke.css.clone()),
+            stroke_css: stroke.map(|stroke| stroke.css.as_str()),
             stroke_capability: stroke.map(|stroke| stroke.capability),
             stroke_rule_index: stroke.map(|stroke| stroke.rule_index),
-            label_css: label.map(|label| label.css.clone()),
+            label_css: label.map(|label| label.css.as_str()),
             label_capability: label.map(|label| label.capability),
             label_rule_index: label.map(|label| label.rule_index),
-        })
+        }
     }
 
     pub(crate) fn begin_terminal_outcome(&self) -> Option<KanbanTaskThemeOutcome> {
@@ -883,29 +874,29 @@ impl KanbanTaskTheme {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct KanbanTaskTerminalDecision {
-    fill_css: Option<String>,
+pub(crate) struct KanbanTaskTerminalDecision<'a> {
+    fill_css: Option<&'a str>,
     fill_capability: Option<ThemeCapability>,
     fill_rule_index: Option<usize>,
-    stroke_css: Option<String>,
+    stroke_css: Option<&'a str>,
     stroke_capability: Option<ThemeCapability>,
     stroke_rule_index: Option<usize>,
-    label_css: Option<String>,
+    label_css: Option<&'a str>,
     label_capability: Option<ThemeCapability>,
     label_rule_index: Option<usize>,
 }
 
-impl KanbanTaskTerminalDecision {
+impl KanbanTaskTerminalDecision<'_> {
     pub(crate) fn fill_css(&self) -> Option<&str> {
-        self.fill_css.as_deref()
+        self.fill_css
     }
 
     pub(crate) fn label_css(&self) -> Option<&str> {
-        self.label_css.as_deref()
+        self.label_css
     }
 
     pub(crate) fn stroke_css(&self) -> Option<&str> {
-        self.stroke_css.as_deref()
+        self.stroke_css
     }
 }
 
@@ -1024,7 +1015,7 @@ impl KanbanTaskThemeOutcome {
         }
     }
 
-    pub(crate) fn record_item(&mut self, decision: &KanbanTaskTerminalDecision) {
+    pub(crate) fn record_item(&mut self, decision: &KanbanTaskTerminalDecision<'_>) {
         self.radius_written = true;
         if let Some(capability) = decision.fill_capability {
             if let Some(rule_index) = decision.fill_rule_index {
@@ -1050,7 +1041,7 @@ impl KanbanTaskThemeOutcome {
         &mut self,
         visible_run_count: usize,
         inherited_color_run_count: usize,
-        decision: &KanbanTaskTerminalDecision,
+        decision: &KanbanTaskTerminalDecision<'_>,
     ) {
         if let (Some(capability), Some(rule_index)) =
             (decision.label_capability, decision.label_rule_index)
@@ -1134,7 +1125,6 @@ mod tests {
                 KanbanTaskTheme::baseline(item_count, KanbanTypographyPlan::resolve(None, &config));
             assert_eq!(theme.item_count(), item_count);
             assert!(theme.items.is_none());
-            assert!(theme.terminal_decisions(&config).unwrap().is_none());
             assert_eq!(theme.radius_px(item_count), None);
             assert_eq!(theme.radius_px(usize::MAX), None);
             if item_count > 0 {

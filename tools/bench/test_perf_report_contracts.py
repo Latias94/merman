@@ -924,6 +924,104 @@ class PerfCommentContractsTest(unittest.TestCase):
         self.assertIn("exit", body.lower())
         self.assertNotIn("Status: `confirmed regression`", body)
 
+    def test_joint_protocol_comment_separates_decision_error_from_interval_coverage(self) -> None:
+        report = self._v2_report("inconclusive")
+        method = report["method"]
+        method["confirmation_protocol"] = "joint_non_regression_v1"
+        method["decision_error_contract"] = {
+            "protocol": "joint_non_regression_v1",
+            "family_wise_error_rate": 0.05,
+            "component_tail_error_rate": 0.025,
+            "family_size": 2,
+        }
+        method["joint_non_regression_contract"] = {
+            "calibration_plan": {"path": "/evidence/plan.json", "sha256": "0" * 64},
+            "fixed_confirmation_pairs": 8,
+            "rows": {
+                "flowchart_medium": {
+                    "selected_metric": "log_ratio",
+                    "metrics": {
+                        "log_ratio": {"qualified": True, "required_pairs": 8},
+                        "absolute_ns": {"qualified": False, "required_pairs": 44},
+                    },
+                },
+            },
+        }
+        body = render_perf_comment.render_comment(
+            report,
+            run_url="https://example.test/run",
+            artifact_name="perf-regression",
+            process_exit_code=3,
+        )
+        self.assertIn("Status: `inconclusive`", body)
+        self.assertIn("Confirmation protocol: `joint_non_regression_v1`", body)
+        self.assertIn("Decision family error budget: `5%`", body)
+        self.assertIn("does not claim simultaneous coverage", body)
+        self.assertNotIn("Simultaneous confidence:", body)
+        self.assertIn("not assessed by this protocol", body)
+        self.assertIn("`flowchart_medium` | `log_ratio` | `True` / `8` | `False` / `44`", body)
+        self.assertIn("Unqualified metrics are descriptive", body)
+
+        report["summary"].update(outcome="confirmed_non_regression", exit_code=0)
+        report["rows"][0].update(outcome="confirmed_non_regression", pair_count=8)
+        self.assertIn("Status: `confirmed non-regression`", render_perf_comment.render_comment(
+            report, run_url="https://example.test/run", artifact_name="perf-regression", process_exit_code=0,
+        ))
+        valid = json.dumps(report)
+        for invalid_field in ("improvement", "admission", "unknown-admission", "false-admission",
+                              "missing-qualification", "zero-required", "short-schedule",
+                              "list-certificate", "dict-certificate", "wrong-error-budget"):
+            with self.subTest(invalid_field=invalid_field):
+                report = json.loads(valid)
+                if invalid_field == "improvement":
+                    report["rows"][0]["improvement_outcome"] = "confirmed_improvement"
+                elif invalid_field == "admission":
+                    report["summary"]["candidate_decision"] = "accepted"
+                elif invalid_field == "unknown-admission":
+                    report["summary"]["candidate_decision"] = "unknown"
+                elif invalid_field == "false-admission":
+                    report["summary"]["candidate_decision"] = False
+                elif invalid_field == "short-schedule":
+                    report["rows"][0]["pair_count"] = 7
+                elif invalid_field in ("list-certificate", "dict-certificate"):
+                    policy = report["method"]["joint_non_regression_contract"]["rows"]["flowchart_medium"]
+                    policy["selected_metric"] = [] if invalid_field == "list-certificate" else {}
+                elif invalid_field == "wrong-error-budget":
+                    report["method"]["decision_error_contract"].update(
+                        family_wise_error_rate=0.10, component_tail_error_rate=0.05,
+                    )
+                else:
+                    metric = report["method"]["joint_non_regression_contract"]["rows"]["flowchart_medium"]["metrics"]["log_ratio"]
+                    if invalid_field == "missing-qualification":
+                        del metric["qualified"]
+                    else:
+                        metric["required_pairs"] = 0
+                rejected = render_perf_comment.render_comment(
+                    report,
+                    run_url="https://example.test/run",
+                    artifact_name="perf-regression",
+                    process_exit_code=0,
+                )
+                self.assertIn("Status: `contract failure`", rejected)
+
+    def test_joint_comment_rejects_missing_certificates_and_unknown_protocol(self) -> None:
+        for invalid in ("missing-contract", "unknown-protocol", "unknown-admission"):
+            with self.subTest(invalid=invalid):
+                report = self._v2_report("confirmed_regression")
+                report["method"]["confirmation_protocol"] = "joint_non_regression_v1"
+                if invalid == "unknown-protocol":
+                    report["method"]["confirmation_protocol"] = "joint_non_regression_v2"
+                if invalid == "unknown-admission":
+                    report["summary"]["candidate_decision"] = "unknown"
+                body = render_perf_comment.render_comment(
+                    report,
+                    run_url="https://example.test/run",
+                    artifact_name="perf-regression",
+                    process_exit_code=1,
+                )
+                self.assertIn("Status: `contract failure`", body)
+                self.assertNotIn("Status: `confirmed regression`", body)
+
     def test_schema_v2_process_exit_is_part_of_the_consumer_contract(self) -> None:
         body = render_perf_comment.render_comment(
             self._v2_report("inconclusive"),

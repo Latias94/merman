@@ -18,7 +18,6 @@ pub(crate) struct RadarCssBinding {
     pub(crate) legend_font_size: f64,
     pub(crate) curve_opacity: f64,
     pub(crate) curve_stroke_width: f64,
-    pub(crate) series_colors: [String; 12],
 }
 
 impl RadarCssBinding {
@@ -51,12 +50,6 @@ impl RadarCssBinding {
             legend_font_size: scoped_number("legendFontSize", 12.0),
             curve_opacity: scoped_number("curveOpacity", 0.5),
             curve_stroke_width: scoped_number("curveStrokeWidth", 2.0),
-            series_colors: std::array::from_fn(|index| {
-                color(
-                    &format!("cScale{index}"),
-                    crate::svg::render_theme::radar_default_series_color(index),
-                )
-            }),
         }
     }
 }
@@ -70,13 +63,12 @@ mod tests {
         let binding = RadarCssBinding::resolve(&serde_json::json!({
             "radar": {"axisColor": "var(--axis)", "axisStrokeWidth": "invalid"},
             "themeVariables": {
-                "textColor": "currentColor", "cScale0": "var(--series)",
+                "textColor": "currentColor",
                 "radar": {"axisColor": "#123456", "axisStrokeWidth": "3.5"}
             }
         }));
         assert_eq!(binding.axis_color, "var(--axis)");
         assert_eq!(binding.text_color, "currentColor");
-        assert_eq!(binding.series_colors[0], "var(--series)");
         assert_eq!(binding.axis_stroke_width, 3.5);
         assert_eq!(binding.legend_font_size, 12.0);
     }

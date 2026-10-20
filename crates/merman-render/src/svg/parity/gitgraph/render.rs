@@ -502,6 +502,9 @@ fn gitgraph_node_palette_css(
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
     receipt: &mut Option<crate::gitgraph::GitGraphNodePaletteReceipt>,
 ) -> String {
+    if !node_palette.has_palette_assignment() {
+        return String::new();
+    }
     let id = crate::svg::escape_css_identifier(diagram_id);
     let mut css = String::new();
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {

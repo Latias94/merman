@@ -768,7 +768,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         work_meter.as_ref(),
     )?;
 
-    let css = SequencePreparedCss::resolve(&typography, &terminal_theme, &activation_theme);
+    let css = SequencePreparedCss::resolve(&typography, &terminal_theme);
     Ok(SequencePreparedArtifact {
         layout: SequenceDiagramLayout {
             nodes,

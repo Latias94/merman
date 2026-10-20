@@ -182,7 +182,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
     let series_paint =
-        crate::radar::RadarSeriesPaintPlan::baseline_with_binding(typography.css_binding(), model);
+        crate::radar::RadarSeriesPaintPlan::baseline(effective_config.as_value(), model);
     let title_theme = crate::radar::RadarTitleThemePlan::baseline();
     let axis_paint = crate::radar::RadarAxisPaintPlan::baseline_with_binding(
         typography.css_binding(),
@@ -550,7 +550,11 @@ mod tests {
             None,
             None,
             &typography,
-            &theme.series_colors,
+            crate::radar::RadarSeriesPaintPlan::baseline(
+                config,
+                &RadarDiagramRenderModel::default(),
+            )
+            .colors(),
             |_, _| {},
         )
         .expect("String-backed Radar CSS writer");

@@ -371,7 +371,12 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
     for (point_index, p) in model.points.iter().enumerate() {
-        let binding = point_theme.point_binding(point_index);
+        let binding = point_theme.point_binding(
+            point_index,
+            p,
+            point_class_styles(model, p),
+            cfg.point_radius,
+        );
 
         let x = scale_linear(
             (0.0, 1.0),
@@ -386,10 +391,10 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
         points.push(QuadrantChartPointData {
             x,
             y,
-            fill: binding.fill.clone(),
+            fill: binding.fill.to_owned(),
             radius: binding.radius,
-            stroke_color: binding.stroke_color.clone(),
-            stroke_width: binding.stroke_width.clone(),
+            stroke_color: binding.stroke_color.to_owned(),
+            stroke_width: binding.stroke_width.to_owned(),
             text: QuadrantChartTextData {
                 text: p.text.clone(),
                 fill: theme.quadrant_point_text_fill.clone(),

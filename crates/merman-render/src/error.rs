@@ -43,9 +43,7 @@ pub(crate) struct ErrorSurfaceReceipt {
     expected_version: InheritedTextRunFacts,
     expected_details: Box<[InheritedTextRunFacts]>,
     detail_text_counts: Box<[usize]>,
-    root_font_family_css: Option<Box<str>>,
-    inherited_font_family_css: Option<Box<str>>,
-    root_variable_font_family_css: Option<Box<str>>,
+    css_emitted: bool,
     css_emission_unique: bool,
     message_text_count: usize,
     version_text_count: usize,
@@ -65,9 +63,7 @@ impl ErrorSurfaceReceipt {
             expected_version: expected_version.clone(),
             expected_details: expected_details.into(),
             detail_text_counts: vec![0; expected_details.len()].into_boxed_slice(),
-            root_font_family_css: None,
-            inherited_font_family_css: None,
-            root_variable_font_family_css: None,
+            css_emitted: false,
             css_emission_unique: true,
             message_text_count: 0,
             version_text_count: 0,
@@ -81,10 +77,7 @@ impl ErrorSurfaceReceipt {
         inherited_font_family_css: &str,
         root_variable_font_family_css: &str,
     ) {
-        if self.root_font_family_css.is_some()
-            || self.inherited_font_family_css.is_some()
-            || self.root_variable_font_family_css.is_some()
-        {
+        if self.css_emitted {
             self.css_emission_unique = false;
             return;
         }
@@ -93,9 +86,7 @@ impl ErrorSurfaceReceipt {
         self.terminal_matches &= root_font_family_css == expected;
         self.terminal_matches &= inherited_font_family_css == expected;
         self.terminal_matches &= root_variable_font_family_css == expected;
-        self.root_font_family_css = Some(root_font_family_css.into());
-        self.inherited_font_family_css = Some(inherited_font_family_css.into());
-        self.root_variable_font_family_css = Some(root_variable_font_family_css.into());
+        self.css_emitted = true;
     }
 
     pub(crate) fn record_error_text(
@@ -137,12 +128,8 @@ impl ErrorSurfaceReceipt {
     }
 
     fn proves_font_stack(&self) -> bool {
-        self.css_emission_unique
-            && self.root_font_family_css.as_deref() == Some(self.expected_font_family_css.as_ref())
-            && self.inherited_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.root_variable_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
+        self.css_emitted
+            && self.css_emission_unique
             && self.message_text_count == 1
             && self.version_text_count == 1
             && self.detail_text_counts.iter().all(|count| *count == 1)
@@ -398,6 +385,49 @@ pub(crate) fn layout_error_diagram_typed(
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
+
+    #[test]
+    fn error_font_receipt_requires_unique_css_and_cannot_repair_a_wrong_first_emission() {
+        let config = MermaidConfig::default();
+        let plan =
+            ErrorTypographyThemePlan::resolve(None, &config, &DeterministicTextMeasurer::default());
+        let with_text = || {
+            let mut receipt = plan.begin_terminal_receipt();
+            for (role, run) in [
+                (ErrorTextRole::Message, plan.message_geometry()),
+                (ErrorTextRole::Version, plan.version_geometry()),
+            ] {
+                receipt.record_error_text(
+                    role,
+                    "error-text",
+                    run.text(),
+                    run.font_size_px(),
+                    run.x(),
+                    run.y(),
+                );
+            }
+            receipt
+        };
+        let font = plan.font_family_css();
+        let mut duplicate = with_text();
+        assert!(!duplicate.proves_font_stack());
+        duplicate.record_css_emission(font, font, font);
+        assert!(duplicate.proves_font_stack());
+        duplicate.record_css_emission(font, font, font);
+        assert!(!duplicate.proves_font_stack());
+
+        for first in [
+            ("wrong", font, font),
+            (font, "wrong", font),
+            (font, font, "wrong"),
+        ] {
+            let mut bad_first = with_text();
+            bad_first.record_css_emission(first.0, first.1, first.2);
+            assert!(!bad_first.proves_font_stack());
+            bad_first.record_css_emission(font, font, font);
+            assert!(!bad_first.proves_font_stack());
+        }
+    }
 
     #[test]
     fn error_layout_preserves_upstream_canvas_and_anchors_for_the_default_font() {

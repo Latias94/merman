@@ -29,9 +29,7 @@ const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
 pub(crate) struct InfoSurfaceReceipt {
     expected_font_family_css: Box<str>,
     expected_version: InheritedTextRunFacts,
-    root_font_family_css: Option<Box<str>>,
-    inherited_font_family_css: Option<Box<str>>,
-    root_variable_font_family_css: Option<Box<str>>,
+    css_emitted: bool,
     css_emission_unique: bool,
     version_text_count: usize,
     version_fill_css: Option<Box<str>>,
@@ -43,9 +41,7 @@ impl InfoSurfaceReceipt {
         Self {
             expected_font_family_css: expected_font_family_css.into(),
             expected_version: expected_version.clone(),
-            root_font_family_css: None,
-            inherited_font_family_css: None,
-            root_variable_font_family_css: None,
+            css_emitted: false,
             css_emission_unique: true,
             version_text_count: 0,
             version_fill_css: None,
@@ -59,10 +55,7 @@ impl InfoSurfaceReceipt {
         inherited_font_family_css: &str,
         root_variable_font_family_css: &str,
     ) {
-        if self.root_font_family_css.is_some()
-            || self.inherited_font_family_css.is_some()
-            || self.root_variable_font_family_css.is_some()
-        {
+        if self.css_emitted {
             self.css_emission_unique = false;
             return;
         }
@@ -71,9 +64,7 @@ impl InfoSurfaceReceipt {
         self.terminal_matches &= root_font_family_css == expected;
         self.terminal_matches &= inherited_font_family_css == expected;
         self.terminal_matches &= root_variable_font_family_css == expected;
-        self.root_font_family_css = Some(root_font_family_css.into());
-        self.inherited_font_family_css = Some(inherited_font_family_css.into());
-        self.root_variable_font_family_css = Some(root_variable_font_family_css.into());
+        self.css_emitted = true;
     }
 
     pub(crate) fn record_version_text(
@@ -96,12 +87,8 @@ impl InfoSurfaceReceipt {
     }
 
     fn proves_font_stack(&self) -> bool {
-        self.css_emission_unique
-            && self.root_font_family_css.as_deref() == Some(self.expected_font_family_css.as_ref())
-            && self.inherited_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.root_variable_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
+        self.css_emitted
+            && self.css_emission_unique
             && self.version_text_count == 1
             && self.terminal_matches
     }
@@ -460,6 +447,56 @@ pub(crate) fn layout_info_diagram_typed(
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
+
+    #[test]
+    fn css_failure_and_duplicates_keep_info_fill_coupled_to_the_first_terminal() {
+        let config = MermaidConfig::default();
+        let plan = InfoTypographyThemePlan::resolve(
+            None,
+            &config,
+            &DeterministicTextMeasurer::default(),
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .expect("resolve Info theme");
+        let with_version = || {
+            let mut receipt = plan.begin_terminal_receipt();
+            let version = plan.version_geometry();
+            receipt.record_version_text(
+                "version",
+                version.text(),
+                version.font_size_px(),
+                version.x(),
+                version.y(),
+                Some("#123456"),
+            );
+            receipt
+        };
+        let font = plan.font_family_css();
+        let mut duplicate = with_version();
+        assert!(!duplicate.proves_font_stack());
+        assert!(duplicate.proves_text_fill("#123456"));
+        duplicate.record_css_emission(font, font, font);
+        assert!(duplicate.proves_font_stack());
+        duplicate.record_css_emission("wrong", "wrong", "wrong");
+        assert!(!duplicate.proves_font_stack());
+        assert!(duplicate.proves_text_fill("#123456"));
+
+        for first in [
+            ("wrong", font, font),
+            (font, "wrong", font),
+            (font, font, "wrong"),
+        ] {
+            let mut bad_first = with_version();
+            bad_first.record_css_emission(first.0, first.1, first.2);
+            assert!(!bad_first.proves_font_stack());
+            assert!(!bad_first.proves_text_fill("#123456"));
+            bad_first.record_css_emission(font, font, font);
+            assert!(!bad_first.proves_font_stack());
+            assert!(!bad_first.proves_text_fill("#123456"));
+        }
+    }
 
     #[test]
     fn info_layout_records_upstream_configured_canvas_size() {
