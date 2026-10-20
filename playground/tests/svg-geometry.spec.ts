@@ -334,7 +334,7 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
   ]);
 });
 
-test("responsive preview preserves renderer viewBox ownership", async ({ page }) => {
+test("responsive preview preserves renderer viewBox and authored background ownership", async ({ page }) => {
   await page.goto(sourceOrigin);
   const result = await page.evaluate(async () => {
     const { projectNavigableInlineSvg } = await import(
@@ -365,7 +365,7 @@ test("responsive preview preserves renderer viewBox ownership", async ({ page })
 
   expect(result).toEqual([
     {
-      backgroundColor: "",
+      backgroundColor: "white",
       sourceUnchanged: true,
       viewBox: "5 6 120 40",
       width: "100%",

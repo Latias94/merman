@@ -11,6 +11,32 @@ import {
   renderSvgResultWithTextMeasurer,
 } from "../dist/runtime-render.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
+import { customizeNodeColors } from "../examples/custom-theme.mjs";
+
+test("scoped customization preserves bindings and unrelated fields in both recipe kinds", () => {
+  for (const [kind, payload, field] of [
+    ["design", { tokens: { brand: { type: "color", value: "#123456" } }, rules: [] }, "rules"],
+    ["complete_spec", { effects: [], styles: [] }, "styles"],
+  ]) {
+    const original = {
+      schema_version: 1, kind,
+      [kind]: { ...payload, canvas: { base: "#ffffff", bleed: 8, layers: [{ paint: "#eeeeee" }] } },
+    };
+    const before = structuredClone(original);
+    const result = customizeNodeColors(original, {
+      background: "#000000", nodeBorder: "#abcdef", classFill: null,
+    });
+    assert.deepEqual(original, before);
+    const value = result[kind];
+    assert.deepEqual(value.canvas, { ...original[kind].canvas, base: "#000000" });
+    assert.equal(value[field].length, 2);
+    assert.equal(value[field][1].style.fill, null, "explicit clear must survive customization");
+    assert.equal(value[field][0].kind, kind === "design" ? undefined : "rule");
+    value.canvas.base = before[kind].canvas.base;
+    value[field].splice(-2);
+    assert.deepEqual(result, original, "scoped edits must preserve the rest of the authored document");
+  }
+});
 
 test("theme authoring rejects non-finite numbers before they become Clear", async () => {
   const calls = [];
@@ -18,8 +44,8 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
     async () => ({
       default: async () => {},
       transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-      materializeTheme(definition, options) {
-        calls.push({ definition, options });
+      materializeTheme(design, options) {
+        calls.push({ design, options });
         return { schema_version: 1 };
       },
       describeThemeSupport(query, options) {
@@ -34,12 +60,9 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
   for (const value of [NaN, Infinity, -Infinity]) {
     assert.throws(
       () => runtime.materializeTheme({
-        authoring_schema_version: 1,
-        expansion_version: 1,
-        tokens: {},
-        styles: [{ kind: "rule", target: "text", style: { opacity: value } }],
+        styles: { text: { opacity: value } },
       }),
-      { name: "TypeError", message: /theme definition contains a non-finite number/ },
+      { name: "TypeError", message: /theme design contains a non-finite number/ },
     );
     assert.throws(
       () => runtime.describeThemeSupport({
@@ -53,14 +76,7 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
     );
     assert.throws(
       () => runtime.materializeTheme({
-        authoring_schema_version: 1,
-        expansion_version: 1,
-        tokens: {},
-        styles: [{
-          kind: "rule",
-          target: "text",
-          style: { opacity: { toJSON: () => value } },
-        }],
+        styles: { text: { opacity: { toJSON: () => value } } },
       }),
       TypeError,
     );
@@ -68,21 +84,18 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
   assert.deepEqual(calls, [], "invalid inputs must not reach the WASM transport");
 
   for (const opacity of [null, 0, 0.5, 1]) {
-    const definition = {
-      authoring_schema_version: 1,
-      expansion_version: 1,
-      tokens: {},
-      styles: [{ kind: "rule", target: "text", style: { opacity } }],
+    const design = {
+      styles: { text: { opacity } },
     };
-    runtime.materializeTheme(definition, { theme: "dark" });
+    runtime.materializeTheme(design, { theme: "dark" });
     assert.deepEqual(calls.at(-1), {
-      definition: JSON.stringify(definition),
+      design: JSON.stringify(design),
       options: JSON.stringify({ theme: "dark" }),
     });
   }
-  const raw = '{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}';
+  const raw = '{}';
   runtime.materializeTheme(raw);
-  assert.equal(calls.at(-1).definition, raw);
+  assert.equal(calls.at(-1).design, raw);
 });
 
 

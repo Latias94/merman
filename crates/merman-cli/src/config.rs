@@ -29,7 +29,7 @@ use merman::svg::{
     TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
-use merman_bindings_core::{compile_theme_definition_json_with, compile_theme_selection_json_with};
+use merman_bindings_core::{compile_theme_design_json_with, compile_theme_selection_json_with};
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Clone)]
@@ -307,7 +307,7 @@ pub(crate) fn rustdoc_renderer_for_resolved(
 enum ThemeInput<'a> {
     Preset(ThemePreset),
     SelectionFile(&'a Path),
-    DefinitionFile(&'a Path),
+    DesignFile(&'a Path),
 }
 
 #[cfg(feature = "svg")]
@@ -315,18 +315,18 @@ impl<'a> ThemeInput<'a> {
     fn resolve(
         preset: Option<ThemePreset>,
         selection_file: Option<&'a Path>,
-        definition_file: Option<&'a Path>,
+        design_file: Option<&'a Path>,
     ) -> Result<Option<Self>, CliError> {
-        match (preset, selection_file, definition_file) {
+        match (preset, selection_file, design_file) {
             (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
                 Err(CliError::InvalidInput(
-                    "--theme-preset, --theme-file, and --theme-definition are mutually exclusive"
+                    "--theme-preset, --theme-file, and --theme-design-file are mutually exclusive"
                         .to_string(),
                 ))
             }
             (Some(preset), None, None) => Ok(Some(Self::Preset(preset))),
             (None, Some(path), None) => Ok(Some(Self::SelectionFile(path))),
-            (None, None, Some(path)) => Ok(Some(Self::DefinitionFile(path))),
+            (None, None, Some(path)) => Ok(Some(Self::DesignFile(path))),
             (None, None, None) => Ok(None),
         }
     }
@@ -341,10 +341,10 @@ impl<'a> ThemeInput<'a> {
             Self::Preset(preset) => compiler
                 .compile_preset(preset)
                 .map_err(|error| CliError::InvalidInput(format!("invalid theme preset: {error}"))),
-            Self::SelectionFile(path) | Self::DefinitionFile(path) => {
-                let definition = matches!(self, Self::DefinitionFile(_));
-                let input_name = if definition {
-                    "theme definition file"
+            Self::SelectionFile(path) | Self::DesignFile(path) => {
+                let design = matches!(self, Self::DesignFile(_));
+                let input_name = if design {
+                    "theme design file"
                 } else {
                     "theme selection file"
                 };
@@ -358,8 +358,8 @@ impl<'a> ThemeInput<'a> {
                     InputLimit::new("max_theme_encoded_bytes", Some(max_bytes)),
                     control,
                 )?;
-                let result = if definition {
-                    compile_theme_definition_json_with(compiler, &bytes)
+                let result = if design {
+                    compile_theme_design_json_with(compiler, &bytes)
                 } else {
                     compile_theme_selection_json_with(compiler, &bytes)
                 };
@@ -392,7 +392,7 @@ impl<'a> RendererInputs<'a> {
             theme: ThemeInput::resolve(
                 render.theme_preset,
                 render.theme_file.as_deref(),
-                render.theme_definition.as_deref(),
+                render.theme_design_file.as_deref(),
             )?,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -407,7 +407,7 @@ impl<'a> RendererInputs<'a> {
             theme: ThemeInput::resolve(
                 render.theme_preset,
                 render.theme_file.as_deref(),
-                render.theme_definition.as_deref(),
+                render.theme_design_file.as_deref(),
             )?,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -553,7 +553,7 @@ mod tests {
         ResolvedRenderOptions {
             theme_preset: None,
             theme_file: None,
-            theme_definition: None,
+            theme_design_file: None,
             #[cfg(feature = "native-fonts")]
             fonts: crate::cli::FontCliArgs::default(),
             math_renderer,
@@ -578,10 +578,10 @@ mod tests {
             (cancelled, merman::CancelReason::Requested),
             (expired, merman::CancelReason::DeadlineExceeded),
         ] {
-            for definition in [false, true] {
+            for design in [false, true] {
                 let mut render = resolved_render(None);
-                if definition {
-                    render.theme_definition = Some(path.clone());
+                if design {
+                    render.theme_design_file = Some(path.clone());
                 } else {
                     render.theme_file = Some(path.clone());
                 }
@@ -599,7 +599,7 @@ mod tests {
                     matches!(error, CliError::Render(merman::RenderError::Cancelled(cancelled))
                         if cancelled.phase == merman::OperationPhase::Admission
                             && cancelled.reason == reason),
-                    "expected {reason} for theme definition={definition}, got {error}"
+                    "expected {reason} for theme design={design}, got {error}"
                 );
             }
         }

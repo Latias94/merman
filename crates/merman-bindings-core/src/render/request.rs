@@ -893,16 +893,19 @@ mod tests {
 
     #[test]
     fn theme_diagnostics_locate_authored_rules_after_palette_entries() {
-        for kind in ["complete_spec", "definition"] {
+        for kind in ["complete_spec", "design"] {
             let styles = serde_json::json!([
                 {"kind": "ordinal-palette", "target": "node", "colors": ["#123456"]},
                 {"kind": "rule", "target": "lifeline", "family": "sequence",
                  "style": {"stroke": {"paint": "#2563eb"}, "radius": 6}}
             ]);
             let mut recipe = serde_json::json!({"schema_version": 1, "kind": kind});
-            recipe[kind] = if kind == "definition" {
-                serde_json::json!({"authoring_schema_version": 1, "expansion_version": 1,
-                    "tokens": {}, "styles": styles})
+            recipe[kind] = if kind == "design" {
+                serde_json::json!({
+                    "palettes":{"node":["#123456"]},
+                    "rules":[{"target":"lifeline","family":"sequence",
+                        "style":{"stroke":{"paint":"#2563eb"},"radius":6}}]
+                })
             } else {
                 serde_json::json!({"styles": styles})
             };
@@ -938,7 +941,12 @@ mod tests {
                 .expect("unsupported winning radius is explained");
             assert_eq!(diagnostic["subject"], "rule");
             assert_eq!(diagnostic["source_document"], kind);
-            assert_eq!(diagnostic["source_paths"], serde_json::json!(["/styles/1"]));
+            let path = if kind == "design" {
+                "/rules/0/style"
+            } else {
+                "/styles/1"
+            };
+            assert_eq!(diagnostic["source_paths"], serde_json::json!([path]));
             assert_eq!(diagnostic["generated"], false);
             assert!(
                 diagnostic.get("property").is_none(),

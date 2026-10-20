@@ -115,7 +115,7 @@ struct MermanAppleSmoke {
 
         let invalidThemeRequest = MermanOperationRequestV4(
             operationId: "materialize-theme-json",
-            source: #"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#,
+            source: #"{"styles":{"node":{"typography":{"font_stack":[]}}}}"#,
             uri: nil,
             optionsJson: nil,
             control: nil
@@ -126,7 +126,7 @@ struct MermanAppleSmoke {
         ] {
             do {
                 _ = try operation()
-                throw SmokeError.failed("invalid theme definition was accepted")
+                throw SmokeError.failed("invalid theme design was accepted")
             } catch let error as MermanError {
                 switch error {
                 case let .Binding(_, codeName, _, _, _, _, _, _, detailsJson, _):
@@ -139,7 +139,7 @@ struct MermanAppleSmoke {
                           codeName == "MERMAN_INVALID_ARGUMENT",
                           authoring["schema_version"] as? Int == 1,
                           diagnostic["code"] as? String == "theme-authoring.invalid-token-value",
-                          diagnostic["path"] as? String == "/styles/0/style/typography/font_stack",
+                          diagnostic["path"] as? String == "/styles/node/typography/font_stack",
                           context == ["expected_domain_id": "font-stack"] else {
                         throw SmokeError.failed("theme authoring lost its structured details")
                     }

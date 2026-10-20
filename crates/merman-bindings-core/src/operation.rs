@@ -2340,10 +2340,9 @@ mod tests {
         for operation in BindingOperationKind::all().filter(|operation| operation.is_compiled()) {
             let input = match operation.input_kind() {
                 "mermaid-source" => b"flowchart TD\nA --> B".as_slice(),
-                "theme-definition-json" => br##"{
-                    "authoring_schema_version": 1,
-                    "expansion_version": 1,
-                    "tokens": {"series": ["#123456"]}
+                "theme-design-json" => br##"{
+                    "tokens": {"brand": {"type":"color","value":"#123456"}},
+                    "styles": {"node": {"fill":{"kind":"solid","color":{"ref":"brand"}}}}
                 }"##
                 .as_slice(),
                 "theme-support-query-json" => br#"{
@@ -2683,20 +2682,26 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn reusable_theme_authoring_accepts_exact_input_limit_without_changing_engine_ceiling() {
-        let definition = br##"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"text":"#123456"}}"##;
+        // Keep the raw input larger than its lowered specification so this checks input-byte
+        // admission independently of the materialized-output ceiling.
+        let design = format!(
+            r##"{{{}"styles":{{"text":{{"fill":"#123456"}}}}}}"##,
+            " ".repeat(256)
+        );
+        let design = design.as_bytes();
         let engine = crate::BindingEngine::new(b"").expect("default engine");
         let expected = execute_once_data(BindingOperationRequest::new(
             "materialize-theme-json",
-            definition,
+            design,
         ))
-        .expect("baseline definition");
-        for limit in [1, definition.len()] {
+        .expect("baseline design");
+        for limit in [1, design.len()] {
             let options = serde_json::to_vec(&serde_json::json!({
                 "resources": { "limits": { "max_theme_encoded_bytes": limit } }
             }))
             .unwrap();
             let rendered = engine.execute_data(
-                BindingOperationRequest::new("materialize-theme-json", definition)
+                BindingOperationRequest::new("materialize-theme-json", design)
                     .with_options_json(&options),
             );
             if limit == 1 {
@@ -2707,7 +2712,7 @@ mod tests {
             } else {
                 assert_eq!(rendered.expect("exact input byte limit"), expected);
             }
-            assert_eq!(engine.materialize_theme(definition).unwrap(), expected);
+            assert_eq!(engine.materialize_theme(design).unwrap(), expected);
         }
     }
 

@@ -40,8 +40,8 @@ test("round-trips one complete workspace snapshot through the s2 envelope", () =
 
 const CUSTOM_THEME_RECIPE = JSON.stringify({
   schema_version: 1,
-  kind: "definition",
-  definition: { tokens: { primaryColor: "#ff66aa" } },
+  kind: "design",
+  design: { tokens: { primaryColor: { type: "color", value: "#ff66aa" } } },
 });
 
 test("round-trips a custom recipe through s3 without changing s2 links", () => {
@@ -120,7 +120,7 @@ test("bounds custom recipes by UTF-8 bytes and checks only their envelope", () =
     "null",
     "[]",
     "not-json",
-    JSON.stringify({ schema_version: 2, kind: "definition" }),
+    JSON.stringify({ schema_version: 2, kind: "design" }),
     JSON.stringify({ schema_version: 1, kind: "unknown" }),
   ]) {
     assert.throws(

@@ -683,22 +683,22 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "theme-file",
         value_hint = ValueHint::FilePath,
-        conflicts_with_all = ["theme_preset", "theme_definition"],
+        conflicts_with_all = ["theme_preset", "theme_design_file"],
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
     pub(crate) theme_file: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
-    /// Shareable ThemeDefinitionV1 JSON materialized before rendering.
+    /// Shareable ThemeDesignV1 JSON materialized before rendering.
     #[arg(
-        long = "theme-definition",
+        long = "theme-design-file",
         value_hint = ValueHint::FilePath,
         conflicts_with_all = ["theme_preset", "theme_file"],
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
-    pub(crate) theme_definition: Option<PathBuf>,
+    pub(crate) theme_design_file: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
@@ -887,7 +887,7 @@ impl LayoutRenderCliArgs {
         RenderCliArgs {
             theme_preset: None,
             theme_file: None,
-            theme_definition: None,
+            theme_design_file: None,
             math_renderer: self.math_renderer,
             container_width: self.container_width,
             container_height: self.container_height,

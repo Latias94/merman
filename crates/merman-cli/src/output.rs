@@ -789,7 +789,7 @@ fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cw
     #[cfg(feature = "svg")]
     {
         anchor_optional_path(&mut common.render.theme_file, cwd);
-        anchor_optional_path(&mut common.render.theme_definition, cwd);
+        anchor_optional_path(&mut common.render.theme_design_file, cwd);
         anchor_optional_path(&mut common.css_file, cwd);
     }
 }
@@ -883,9 +883,9 @@ fn render_inputs(
         )?);
     }
     #[cfg(feature = "svg")]
-    if let Some(path) = common.render.theme_definition.as_deref() {
+    if let Some(path) = common.render.theme_design_file.as_deref() {
         inputs.push(ProtectedInput::inspect(
-            "theme definition input",
+            "theme design input",
             InputRole::Auxiliary,
             path,
             &common.cwd,

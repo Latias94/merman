@@ -2,8 +2,8 @@
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
-mod authoring;
 mod canonical_json;
+mod design;
 mod facet;
 mod finite;
 mod materialization_error;
@@ -15,10 +15,15 @@ mod theme_recipe;
 mod version;
 mod wire;
 
-pub use authoring::{
-    ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
-};
 pub use canonical_json::{CanonicalJsonError, CanonicalJsonErrorKind};
+pub use design::{
+    ThemeDesignCanvasLayerV1, ThemeDesignCanvasV1, ThemeDesignEffectV1, ThemeDesignGradientStopV1,
+    ThemeDesignInspection, ThemeDesignPaintObjectV1, ThemeDesignPaintV1, ThemeDesignReferenceUse,
+    ThemeDesignRuleV1, ThemeDesignShadowV1, ThemeDesignStrokeV1, ThemeDesignStyleV1,
+    ThemeDesignTextStyleV1, ThemeDesignTokenV1, ThemeDesignTokenValueV1, ThemeDesignTypographyV1,
+    ThemeDesignV1, ThemeDesignValueDomain, ThemeReferenceV1, ThemeShadowCompositionV1,
+    ThemeValueV1,
+};
 pub use facet::ThemeRuleFacetV1;
 pub use materialization_error::{ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1};
 pub use materialized::MaterializedThemeWireV1;

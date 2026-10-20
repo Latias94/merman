@@ -1,6 +1,6 @@
 use std::str::FromStr as _;
 
-use crate::diagram_theme::{EffectColorSpace, EffectInput};
+use crate::diagram_theme::{EffectColorSpace, EffectComposition, EffectInput};
 use sha2::{Digest as _, Sha256};
 
 const RECEIPT_DOMAIN: &[u8] = b"merman-native-shadow-application-receipt-v1";
@@ -65,6 +65,7 @@ pub struct NativeSvgFilterApplication {
     units: NativeSvgFilterUnits,
     region_bits: [u32; 4],
     color_space: EffectColorSpace,
+    composition: EffectComposition,
     stages: Vec<NativeSvgShadowStage>,
     reference_count: u32,
 }
@@ -119,6 +120,7 @@ impl NativeSvgFilterApplication {
             units,
             region_bits: region.map(normalized_f32_bits),
             color_space,
+            composition: EffectComposition::Cascade,
             stages,
             reference_count,
         })
@@ -135,11 +137,34 @@ impl NativeSvgFilterApplication {
     pub const fn color_space(&self) -> EffectColorSpace {
         self.color_space
     }
+    pub fn with_composition(mut self, composition: EffectComposition) -> Option<Self> {
+        if composition == EffectComposition::Independent
+            && self
+                .stages
+                .iter()
+                .any(|stage| stage.input() != EffectInput::SourceGraphic)
+        {
+            return None;
+        }
+        self.composition = composition;
+        Some(self)
+    }
+    pub const fn composition(&self) -> EffectComposition {
+        self.composition
+    }
     pub fn stages(&self) -> &[NativeSvgShadowStage] {
         &self.stages
     }
     /// Finite paint envelope in top/right/bottom/left order, shared with SVG lowering.
     pub fn paint_outsets(&self) -> Option<[f64; 4]> {
+        if self.composition == EffectComposition::Independent {
+            let outsets = crate::diagram_theme::EffectOutsets::default().with_independent_shadows(
+                self.stages
+                    .iter()
+                    .map(|stage| (stage.offset(), stage.std_deviation())),
+            )?;
+            return Some([outsets.top, outsets.right, outsets.bottom, outsets.left]);
+        }
         let outsets = crate::diagram_theme::EffectOutsets::default().with_shadow_stages(
             self.stages
                 .iter()
@@ -206,6 +231,9 @@ impl NativeSvgFilterReceipt {
                 EffectColorSpace::LinearRgb => 0,
                 EffectColorSpace::Srgb => 1,
             }]);
+            if application.composition == EffectComposition::Independent {
+                update_len_prefixed(&mut hasher, b"independent");
+            }
             hasher.update((application.stages.len() as u32).to_le_bytes());
             for stage in application.stages {
                 hasher.update([match stage.input {
@@ -259,6 +287,40 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn independent_composition_changes_identity_and_unions_bounds() {
+        let mut cascade = application("stack", -12.0, 2.0, 1);
+        cascade.stages[0] = NativeSvgShadowStage::new(
+            EffectInput::SourceGraphic,
+            [-12.0, 0.0],
+            [2.0; 2],
+            "#ff0000",
+        )
+        .unwrap();
+        cascade.stages.push(
+            NativeSvgShadowStage::new(EffectInput::SourceGraphic, [12.0, 0.0], [2.0; 2], "#0000ff")
+                .unwrap(),
+        );
+        let independent = cascade
+            .clone()
+            .with_composition(EffectComposition::Independent)
+            .unwrap();
+        assert_eq!(cascade.paint_outsets(), Some([8.0, 20.0, 8.0, 8.0]));
+        assert_eq!(independent.paint_outsets(), Some([8.0, 20.0, 8.0, 20.0]));
+        assert_ne!(
+            NativeSvgFilterReceipt::from_applications([cascade]),
+            NativeSvgFilterReceipt::from_applications([independent])
+        );
+        let mut invalid = application("invalid-stack", 0.0, 0.0, 1);
+        invalid.stages.push(
+            NativeSvgShadowStage::new(EffectInput::Previous, [0.0; 2], [0.0; 2], "#000").unwrap(),
+        );
+        assert!(
+            invalid
+                .with_composition(EffectComposition::Independent)
+                .is_none()
+        );
+    }
     #[test]
     fn filter_coordinate_units_participate_in_the_receipt_identity() {
         let object = application("units-theme-effect-glow", 0.0, 6.0, 1);

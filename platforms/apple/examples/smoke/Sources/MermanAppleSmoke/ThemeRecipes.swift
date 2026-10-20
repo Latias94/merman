@@ -111,8 +111,8 @@ func verifyThemePresetRecipes(client: Merman) throws {
                               && result.mediaType == "application/json", "export result changed")
             let recipe = try JSONSerialization.jsonObject(with: result.data) as! [String: Any]
             try requireRecipe(recipe["schema_version"] as? Int == 1
-                              && recipe["kind"] as? String == "complete_spec", "recipe envelope changed")
-            let spec = recipe["complete_spec"] as! [String: Any]
+                              && recipe["kind"] as? String == "design", "recipe envelope changed")
+            let spec = recipe["design"] as! [String: Any]
             if ["brutalist", "spotless", "cyberpunk"].contains(preset) {
                 try requireRecipe(spec["assets"] == nil && spec["mermaid"] == nil,
                                   "\(preset): native recipe embeds assets or compatibility settings")
@@ -151,21 +151,21 @@ func verifyThemePresetRecipes(client: Merman) throws {
 
     // Edit explicit Class paints, not every coincidentally equal color in the complete recipe.
     var edited = cyberpunk
-    var spec = edited["complete_spec"] as! [String: Any]
-    var styles = spec["styles"] as! [[String: Any]]
+    var spec = edited["design"] as! [String: Any]
+    var styles = spec["rules"] as! [[String: Any]]
     styles.append([
-        "kind": "rule", "family": "class", "target": "node",
+        "family": "class", "target": "node",
         "style": ["fill": "#123abc", "stroke": ["paint": "#456def"]],
     ])
-    spec["styles"] = styles
-    edited["complete_spec"] = spec
+    spec["rules"] = styles
+    edited["design"] = spec
     var unsupported = edited
     styles.append([
-        "kind": "rule", "family": "class", "target": "node",
+        "family": "class", "target": "node",
         "style": ["stroke": ["width": 5]],
     ])
-    spec["styles"] = styles
-    unsupported["complete_spec"] = spec
+    spec["rules"] = styles
+    unsupported["design"] = spec
     let outputParent = ProcessInfo.processInfo.environment["MERMAN_APPLE_THEME_SMOKE_OUTPUT"]
         .map { URL(fileURLWithPath: $0, isDirectory: true) }
         ?? FileManager.default.temporaryDirectory
@@ -233,8 +233,8 @@ func verifyThemePresetRecipes(client: Merman) throws {
                     try requireRecipe(diagnostics.contains {
                         $0["code"] as? String == "unsupported-geometry"
                             && $0["target"] as? String == "node"
-                            && $0["source_document"] as? String == "complete_spec"
-                            && $0["source_paths"] as? [String] == ["/styles/\(styles.count - 1)"]
+                            && $0["source_document"] as? String == "design"
+                            && $0["source_paths"] as? [String] == ["/rules/\(styles.count - 1)/style"]
                     }, "unsupported width lost its source-addressed diagnostic")
                 }
             }

@@ -1,0 +1,6 @@
+flowchart LR
+    Start([Request received]) --> Review{Ready for review?}
+    Review -->|Yes| Publish[Publish the release]
+    Review -->|No| Revise[Revise the proposal]
+    Revise --> Review
+    Publish --> Done([Complete])

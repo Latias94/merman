@@ -30,6 +30,7 @@ import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
 import { ReadOnlyEditor } from "@/src/components/ReadOnlyEditor";
+import { selectThemeDraftChanged, useAppStore } from "@/src/store";
 
 export type CompareEngineKey = "merman" | "mermaid";
 type SvgDisplayMode = "visual" | "source";
@@ -127,11 +128,13 @@ function ComparePane({
   t: (key: string) => string;
 }) {
   const { artifact } = model;
+  const themeDraftChanged = useAppStore(selectThemeDraftChanged);
   const copied =
     actions.copiedSvgTarget?.engine === artifact.key &&
     actions.copiedSvgTarget.publicationId === artifact.publicationId;
   const hasSvg = Boolean(artifact.svgArtifact);
   const actionsDisabled =
+    themeDraftChanged ||
     artifact.publicationId === null ||
     artifact.stale ||
     Boolean(artifact.unavailableLabel);

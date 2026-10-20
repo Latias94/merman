@@ -198,6 +198,13 @@
   color: var(--preview-canvas-status);
 }
 
+[data-preview-backing="transparency"] .preview-canvas,
+[data-preview-backing="transparency"].preview-canvas {
+  background-color: #f8f8f8;
+  background-image: conic-gradient(#d9d9d9 25%, #f8f8f8 0 50%, #d9d9d9 0 75%, #f8f8f8 0);
+  background-size: 16px 16px;
+}
+
 .preview-canvas-frame:focus-visible {
   box-shadow: inset 0 0 0 2px var(--ring);
 }

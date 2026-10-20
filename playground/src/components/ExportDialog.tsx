@@ -46,6 +46,7 @@ import type {
 } from "@/src/runtime/artifact-actions";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
+import { selectThemeDraftChanged, useAppStore } from "@/src/store";
 
 type ExportFormat = "svg" | "png" | "jpeg";
 type RasterSizingMode = RasterSizing["mode"];
@@ -95,6 +96,11 @@ export function ExportWorkbench({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [target, setTarget] = useState<FrozenExportTarget | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const themeDraftChanged = useAppStore(selectThemeDraftChanged);
+
+  useEffect(() => {
+    if (themeDraftChanged) setTarget(null);
+  }, [themeDraftChanged]);
 
   const openExport = useCallback(
     (

@@ -9,9 +9,9 @@ import org.json.JSONObject
 class MermanExceptionTest {
     @Test
     fun preservesThemeAuthoringAndAdditiveErrorDetails() {
-        val details = """{"theme_authoring":{"schema_version":1,"diagnostics":[{"code":"theme-authoring.invalid-token-value","severity":"error","path":"/styles/0/style/typography/font_stack","details":{"expected_domain_id":"font-stack"},"message":"font stack must not be empty"}]},"future_details":{"retained":true}}"""
+        val details = """{"theme_authoring":{"schema_version":1,"diagnostics":[{"code":"theme-authoring.invalid-token-value","severity":"error","path":"/styles/node/typography/font_stack","details":{"expected_domain_id":"font-stack"},"message":"font stack must not be empty"}]},"future_details":{"retained":true}}"""
         val error = MermanException(
-            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":$details,"message":"invalid theme definition"}""",
+            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":$details,"message":"invalid theme design"}""",
         )
         assertEquals(1, error.code)
         val projected = JSONObject(requireNotNull(error.detailsJson))
@@ -19,7 +19,7 @@ class MermanExceptionTest {
         assertEquals(1, authoring.getInt("schema_version"))
         val diagnostic = authoring.getJSONArray("diagnostics").getJSONObject(0)
         assertEquals("theme-authoring.invalid-token-value", diagnostic.getString("code"))
-        assertEquals("/styles/0/style/typography/font_stack", diagnostic.getString("path"))
+        assertEquals("/styles/node/typography/font_stack", diagnostic.getString("path"))
         assertEquals("font-stack", diagnostic.getJSONObject("details").getString("expected_domain_id"))
         assertTrue(projected.getJSONObject("future_details").getBoolean("retained"))
     }

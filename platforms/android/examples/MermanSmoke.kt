@@ -47,7 +47,7 @@ fun runMermanSmoke() {
         "analysis smoke failed"
     }
     val invalidThemeSource = """
-        {"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}
+        {"styles":{"node":{"typography":{"font_stack":[]}}}}
     """.trimIndent()
     listOf(
         "one-shot" to { Merman.execute("materialize-theme-json", invalidThemeSource) },
@@ -55,7 +55,7 @@ fun runMermanSmoke() {
     ).forEach { (consumer, operation) ->
         try {
             operation()
-            error("$consumer accepted an invalid theme definition")
+            error("$consumer accepted an invalid theme design")
         } catch (error: io.merman.MermanException) {
             val details = error.detailsJson ?: error("$consumer lost theme authoring details")
             val authoring = org.json.JSONObject(details).getJSONObject("theme_authoring")
@@ -64,7 +64,7 @@ fun runMermanSmoke() {
                     authoring.getInt("schema_version") == 1 &&
                     authoring.getJSONArray("diagnostics").getJSONObject(0).let { diagnostic ->
                         diagnostic.getString("code") == "theme-authoring.invalid-token-value" &&
-                            diagnostic.getString("path") == "/styles/0/style/typography/font_stack"
+                            diagnostic.getString("path") == "/styles/node/typography/font_stack"
                     },
             ) {
                 "$consumer lost structured theme authoring diagnostics"

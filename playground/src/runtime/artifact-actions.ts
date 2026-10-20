@@ -16,6 +16,7 @@ import {
   assertNavigableInlineSvgArtifact,
   type NavigableInlineSvg,
 } from "./render-artifact.ts";
+import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
 
 export type ArtifactEngine = "merman" | "mermaid";
 
@@ -78,26 +79,34 @@ export interface ArtifactActionIo {
 export interface ArtifactActionDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
+  readonly hasUnappliedThemeDraft?: () => boolean;
+  readonly getAppliedWorkspace?: () => WorkspaceSnapshot;
   readonly io: ArtifactActionIo;
 }
 
 export interface ExportTargetDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
+  readonly hasUnappliedThemeDraft?: () => boolean;
+  readonly getAppliedWorkspace?: () => WorkspaceSnapshot;
 }
 
 export function createExportTargetOwner({
   getRenderState,
   getRuntimeState,
+  hasUnappliedThemeDraft = () => false,
+  getAppliedWorkspace,
 }: ExportTargetDependencies): ExportTargetOwner {
   const authorities = new WeakMap<object, RasterAuthority>();
 
   return Object.freeze({
     freeze(command: FreezeExportTargetCommand): FrozenExportTarget {
+      assertAppliedTheme(hasUnappliedThemeDraft());
       const publication = currentPublication(
         getRenderState(),
         command.publicationId,
       );
+      assertAppliedPublication(publication, getAppliedWorkspace?.());
       const svgArtifact = currentSvg(publication, command.engine);
       const target = Object.freeze({
         [FROZEN_EXPORT_TARGET]: true as const,
@@ -120,6 +129,7 @@ export function createExportTargetOwner({
     },
 
     rasterArtifact(target: FrozenExportTarget): NavigableInlineSvg {
+      assertAppliedTheme(hasUnappliedThemeDraft());
       const authority = authorities.get(target);
       if (!authority) {
         throw actionError(
@@ -162,7 +172,8 @@ export type ArtifactActionErrorCode =
   | "publication-not-current"
   | "runtime-unavailable"
   | "runtime-version-mismatch"
-  | "svg-render-failed";
+  | "svg-render-failed"
+  | "theme-draft-unapplied";
 
 export class ArtifactActionError extends Error {
   readonly code: ArtifactActionErrorCode;
@@ -196,11 +207,16 @@ type FrozenActionPlan =
 export function createArtifactActionOwner({
   getRenderState,
   getRuntimeState,
+  hasUnappliedThemeDraft = () => false,
+  getAppliedWorkspace,
   io,
 }: ArtifactActionDependencies): ArtifactActionOwner {
   const renderedAscii = new WeakMap<CompletedRenderBatch, string>();
   return async (command: ArtifactActionCommand): Promise<void> => {
-    const plan = freezeActionPlan(command, getRenderState(), (publication) =>
+    if (command.action === "copy-svg") assertAppliedTheme(hasUnappliedThemeDraft());
+    const state = getRenderState();
+    if (command.action === "copy-svg") assertAppliedPublication(currentPublication(state, command.publicationId), getAppliedWorkspace?.());
+    const plan = freezeActionPlan(command, state, (publication) =>
       currentAscii(publication, getRuntimeState, renderedAscii),
     );
     switch (plan.action) {
@@ -380,4 +396,21 @@ function actionError(
   message: string
 ): ArtifactActionError {
   return new ArtifactActionError(code, projectError(message));
+}
+
+function assertAppliedTheme(dirty: boolean): void {
+  if (dirty) {
+    throw actionError("theme-draft-unapplied", "Apply the theme draft before sharing or exporting the preview.");
+  }
+}
+
+function assertAppliedPublication(publication: CompletedRenderBatch, applied: WorkspaceSnapshot | undefined): void {
+  if (!applied) return;
+  const operation = publication.snapshot.operation;
+  if (operation.source !== applied.code || operation.configJson !== applied.mermaidConfig ||
+      operation.theme !== applied.diagramTheme || operation.diagramFont !== applied.diagramFont ||
+      operation.themePresetId !== applied.themePresetId || operation.themeRecipeJson !== applied.themeRecipeJson ||
+      operation.svgPipeline !== applied.svgPipeline || operation.textMeasurementMode !== applied.textMeasurementMode) {
+    throw actionError("publication-not-current", "Wait for the applied workspace preview before exporting.");
+  }
 }

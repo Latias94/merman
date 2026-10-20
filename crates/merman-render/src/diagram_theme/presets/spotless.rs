@@ -1,26 +1,49 @@
-//! Spotless recipe: two-axis paper grid and manual-style typography, without filters.
+//! Two-axis paper grid and manual-style typography, without filters.
 
-use merman_theme_contract::{
-    DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeCanvasLayerWireV1, ThemeCanvasPaintObjectWireV1,
-    ThemeCanvasPaintWireV1, ThemeGradientStopWireV1, ThemeLinearGradientRepetitionWireV1,
-    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
-    ThemeTextStylePatchWireV1,
-};
+use merman_theme_contract::*;
 
 use super::catalog::{PresetPalette, build_cross_family_recipe};
+use super::design::*;
 use crate::DiagramFamilyId;
-use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
+use crate::diagram_theme::ThemeTarget;
 
-pub(super) fn build_recipe(
-    palette: PresetPalette,
-    resources: &ThemeResourcePolicy,
-) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
-    let mut spec = build_cross_family_recipe(palette, resources)?;
-    spec.canvas
+pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
+    let mut design = build_cross_family_recipe(palette);
+    color_token(
+        &mut design,
+        "grid-color",
+        "Paper grid",
+        "Effects",
+        "Color of the faint horizontal and vertical grid on the exported canvas.",
+        "#2c2416",
+    );
+    length_token(
+        &mut design,
+        "border-width",
+        "Border width",
+        "Geometry",
+        "Outline thickness for selected diagram bodies, connectors, and chart series.",
+        2.5,
+    );
+    number_token(
+        &mut design,
+        "label-weight",
+        "Label weight",
+        "Font weight for selected node and actor labels and XY chart titles.",
+        700.0,
+    );
+    number_token(
+        &mut design,
+        "secondary-label-weight",
+        "Secondary label weight",
+        "Font weight for selected connector and note labels.",
+        600.0,
+    );
+    design
+        .canvas
         .as_mut()
-        .expect("preset tokens materialize a canvas")
-        .layers = Some(vec![grid_layer(0.0), grid_layer(90.0)]);
-    let styles = spec.styles.get_or_insert_default();
+        .expect("shared design owns a canvas")
+        .layers = vec![grid_layer(0.0), grid_layer(90.0)];
     for (family, target) in [
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge),
@@ -31,79 +54,73 @@ pub(super) fn build_recipe(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation),
         (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
     ] {
-        styles.push(rule(
-            family,
+        design.rules.push(rule(
+            Some(family),
             target,
-            ThemeStylePatchWireV1 {
-                stroke: Some(ThemeStrokePatchWireV1 {
-                    width: SpecifiedWireV1::Value(2.5),
+            None,
+            ThemeDesignStyleV1 {
+                stroke: Some(literal(ThemeDesignStrokeV1 {
+                    width: SpecifiedWireV1::Value(reference("border-width")),
                     ..Default::default()
-                }),
+                })),
                 ..Default::default()
             },
         ));
     }
     for (family, target, weight) in [
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, 700),
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::EdgeLabel, 600),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, 700),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, 600),
-        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, 700),
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::NodeLabel,
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::EdgeLabel,
+            "secondary-label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::ActorLabel,
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::NoteLabel,
+            "secondary-label-weight",
+        ),
+        (
+            DiagramFamilyId::XY_CHART,
+            ThemeTarget::Title,
+            "label-weight",
+        ),
     ] {
-        styles.push(rule(
-            family,
-            target,
-            ThemeStylePatchWireV1 {
-                typography: Some(ThemeTextStylePatchWireV1 {
-                    font_weight: SpecifiedWireV1::Value(weight),
-                    ..Default::default()
+        design
+            .rules
+            .push(rule(Some(family), target, None, weighted(weight)));
+    }
+    design
+}
+
+fn grid_layer(angle_degrees: f32) -> ThemeDesignCanvasLayerV1 {
+    ThemeDesignCanvasLayerV1 {
+        paint: literal(ThemeDesignPaintV1::Structured(
+            ThemeDesignPaintObjectV1::LinearGradient {
+                angle_degrees: literal(angle_degrees),
+                stops: vec![
+                    stop(0.0, "grid-color", 0.02),
+                    stop(1.0 / 40.0, "grid-color", 0.02),
+                    stop(1.0 / 40.0, "grid-color", 0.0),
+                    stop(1.0, "grid-color", 0.0),
+                ],
+                repetition: Some(ThemeLinearGradientRepetitionWireV1::Tiled {
+                    width_px: 40.0,
+                    height_px: 40.0,
                 }),
-                ..Default::default()
             },
-        ));
-    }
-    Ok(spec)
-}
-
-fn rule(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    style: ThemeStylePatchWireV1,
-) -> ThemeRuleSetWireV1 {
-    ThemeRuleSetWireV1::Rule {
-        target: target.id().to_owned(),
-        family: Some(family.as_str().to_owned()),
-        variant: None,
-        ordinal: None,
-        style,
-    }
-}
-
-fn grid_layer(angle_degrees: f32) -> ThemeCanvasLayerWireV1 {
-    ThemeCanvasLayerWireV1 {
-        paint: ThemeCanvasPaintWireV1::Structured(ThemeCanvasPaintObjectWireV1::LinearGradient {
-            angle_degrees,
-            stops: vec![
-                stop(0.0, "rgba(44, 36, 22, 0.02)"),
-                stop(1.0 / 40.0, "rgba(44, 36, 22, 0.02)"),
-                stop(1.0 / 40.0, "transparent"),
-                stop(1.0, "transparent"),
-            ],
-            repetition: Some(ThemeLinearGradientRepetitionWireV1::Tiled {
-                width_px: 40.0,
-                height_px: 40.0,
-            }),
-        }),
+        )),
         opacity: None,
         blend_mode: None,
         offset_x: None,
         offset_y: None,
-    }
-}
-
-fn stop(offset: f32, color: &str) -> ThemeGradientStopWireV1 {
-    ThemeGradientStopWireV1 {
-        offset,
-        color: color.to_owned(),
     }
 }

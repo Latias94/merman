@@ -40,7 +40,7 @@ function themeCatalogFixture(overrides = {}) {
         qualified_cells: [],
         license_expression: "MIT OR Apache-2.0",
         required_attribution: null,
-        export_kind: "definition",
+        export_kind: "design",
       },
       {
         id: "future-theme",

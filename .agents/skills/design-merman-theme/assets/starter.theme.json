@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "paper": { "type": "color", "label": "Paper", "value": "#fffaf0" },
+      "ink": { "type": "color", "label": "Ink", "value": "#292524" },
+      "accent": { "type": "color", "label": "Accent", "value": "#c2410c" }
+    },
+    "canvas": { "base": { "kind": "solid", "color": { "ref": "paper" } } },
+    "styles": {
+      "node": { "fill": "#ffffff", "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } }, "width": 2 } },
+      "node-label": { "fill": { "kind": "solid", "color": { "ref": "ink" } } },
+      "edge": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } } } },
+      "edge-label": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    }
+  }
+}

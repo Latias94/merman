@@ -145,23 +145,11 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
     let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
     let rounded = compiler.compile_recipe(recipe.clone()).unwrap();
     let mut square_recipe = serde_json::to_value(recipe).unwrap();
-    let mut changed = 0;
-    for rule in square_recipe["complete_spec"]["styles"]
-        .as_array_mut()
-        .unwrap()
-    {
-        if rule["family"] == "flowchart"
-            && rule["target"] == "node"
-            && rule["style"]["radius"] == 10.0
-        {
-            rule["style"]["radius"] = serde_json::json!(0.0);
-            changed += 1;
-        }
-    }
     assert_eq!(
-        changed, 1,
-        "the public recipe must expose one family-scoped corner rule"
+        square_recipe["design"]["tokens"]["body-radius"]["value"], 10.0,
+        "the public design must expose its shared corner radius"
     );
+    square_recipe["design"]["tokens"]["body-radius"]["value"] = serde_json::json!(0.0);
     let square = compiler
         .compile_recipe(serde_json::from_value(square_recipe).unwrap())
         .unwrap();
@@ -218,20 +206,23 @@ fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
     let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
     let strong = compiler.compile_recipe(recipe.clone()).unwrap();
     let mut light_recipe = serde_json::to_value(recipe).unwrap();
-    let mut changed = 0;
-    for rule in light_recipe["complete_spec"]["styles"]
-        .as_array_mut()
-        .unwrap()
-    {
-        if rule["family"] == "flowchart"
-            && matches!(rule["target"].as_str(), Some("node-label" | "edge-label"))
-            && rule["style"]["typography"]["font_weight"] == 600
-        {
-            rule["style"]["typography"]["font_weight"] = serde_json::json!(400);
-            changed += 1;
-        }
-    }
-    assert_eq!(changed, 2, "both public label rules must carry weight 600");
+    assert_eq!(
+        light_recipe["design"]["tokens"]["label-weight"]["value"], 600.0,
+        "the public design must expose its shared label weight"
+    );
+    light_recipe["design"]["tokens"]["label-weight"]["value"] = serde_json::json!(400);
+    assert_eq!(
+        light_recipe["design"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|rule| rule["family"] == "flowchart"
+                && matches!(rule["target"].as_str(), Some("node-label" | "edge-label"))
+                && rule["style"]["typography"]["font_weight"]["ref"] == "label-weight")
+            .count(),
+        2,
+        "both public label rules must reference the edited shared label weight",
+    );
     let light = compiler
         .compile_recipe(serde_json::from_value(light_recipe).unwrap())
         .unwrap();

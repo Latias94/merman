@@ -76,7 +76,7 @@ impl ThemeDiagnostic {
     pub const fn property(&self) -> Option<&'static str> {
         self.property
     }
-    /// Payload to which `source_paths` are relative: `definition` or `complete_spec`.
+    /// Payload to which `source_paths` are relative: `design` or `complete_spec`.
     /// Rust-constructed themes and built-in selections have no original JSON document.
     pub const fn source_document(&self) -> Option<&'static str> {
         self.source_document
@@ -156,11 +156,10 @@ pub(super) fn project(
                                 format!("{prefix}/{}", typography_field(*property)),
                             );
                         }
-                        Some(ThemeSourceDocument::Definition) => {
-                            // Expansion owns the typography defaults. Do not manufacture a token
-                            // location when that token may have been omitted by the author.
-                            diagnostic.source_document = Some("definition");
-                            diagnostic.generated = true;
+                        Some(ThemeSourceDocument::Design) => {
+                            // A typography patch may be a whole-style token reference. Until a
+                            // property source is retained, do not invent a nested input location.
+                            diagnostic.source_document = Some("design");
                         }
                         None => {}
                     }

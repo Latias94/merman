@@ -431,6 +431,9 @@ fn encode_effects(encoder: &mut CanonicalEncoder, effects: &DiagramEffectSet) {
                 if graph.color_space() != super::EffectColorSpace::LinearRgb {
                     encoder.field("color-space", |encoder| encoder.string("srgb"));
                 }
+                if graph.composition() == super::EffectComposition::Independent {
+                    encoder.field("composition", |encoder| encoder.string("independent"));
+                }
                 encoder.field("primitives", |encoder| {
                     encoder.sequence_len(graph.primitives().len());
                     for primitive in graph.primitives() {
@@ -2056,6 +2059,38 @@ mod tests {
             DiagramThemeSpec::new().with_effects(
                 graphs()
                     .with_binding(EffectBinding::new(ThemeTarget::Node, "b").unwrap())
+                    .unwrap(),
+            ),
+        );
+    }
+
+    #[test]
+    fn independent_composition_has_distinct_identity_while_explicit_cascade_preserves_it() {
+        let graph = effect_graph(
+            "stack",
+            vec![EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 6.0,
+                offset_y: 6.0,
+                blur_radius: 0.0,
+                spread: 0.0,
+                color: color("#171717"),
+            }],
+        );
+        let default = with_effect_graph(graph.clone());
+        let cascade = with_effect_graph(
+            graph
+                .clone()
+                .with_composition(super::super::EffectComposition::Cascade)
+                .unwrap(),
+        );
+        assert_eq!(compile(default.clone()), compile(cascade));
+        assert_recipe_field_changes(
+            "effects.graph.composition",
+            default,
+            with_effect_graph(
+                graph
+                    .with_composition(super::super::EffectComposition::Independent)
                     .unwrap(),
             ),
         );

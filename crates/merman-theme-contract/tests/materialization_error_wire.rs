@@ -95,7 +95,7 @@ fn the_remaining_closed_codes_have_typed_details_and_round_trip() {
     let diagnostics = [
         ThemeMaterializationDiagnosticV1::invalid_definition_json(
             "schema-mismatch",
-            "definition does not match ThemeDefinitionV1",
+            "design does not match ThemeDesignV1",
         ),
         ThemeMaterializationDiagnosticV1::invalid_token_value(
             "/tokens/canvas",

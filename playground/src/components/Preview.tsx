@@ -29,7 +29,8 @@ import {
   asciiSupportLabelKey,
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
-import { useAppStore } from "@/src/store";
+import { useAppStore, selectThemeDraftChanged, type PreviewBacking } from "@/src/store";
+import { ThemeRenderStatus } from "./ThemeRenderStatus";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
   markRenderCoordinatorPresented,
@@ -119,6 +120,9 @@ export function Preview({ active = true, className }: PreviewProps) {
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
   const svgPipeline = useAppStore((state) => state.svgPipeline);
+  const themeDraftChanged = useAppStore(selectThemeDraftChanged);
+  const previewBacking = useAppStore((state) => state.previewBacking);
+  const setPreviewBacking = useAppStore((state) => state.setPreviewBacking);
   const setSvgPipeline = useAppStore((state) => state.setSvgPipeline);
   const svgPresentationMode = useAppStore(
     (state) => state.svgPresentationMode,
@@ -194,7 +198,7 @@ export function Preview({ active = true, className }: PreviewProps) {
       : undefined,
     [ready, canvasSyntaxId],
   );
-  const canvasTone = useMemo(
+  const automaticCanvasTone = useMemo(
     () =>
       resolveMermaidCanvasTone(
         canvasOperation?.configJson ?? mermaidConfig,
@@ -204,6 +208,7 @@ export function Preview({ active = true, className }: PreviewProps) {
       ),
     [canvasOperation, canvasConfigNamespace, code, diagramTheme, mermaidConfig],
   );
+  const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 
   useEffect(() => {
@@ -395,6 +400,11 @@ export function Preview({ active = true, className }: PreviewProps) {
               label={t("preview.svgBounds")}
               onPressedChange={setShowSvgBounds}
             />
+            <select className="h-7 max-w-28 rounded border bg-background px-1 text-xs" aria-label={t("themePanel.previewBacking")}
+              title={t("themePanel.previewBackingHint")}
+              value={previewBacking} onChange={(event) => setPreviewBacking(event.target.value as PreviewBacking)}>
+              {(["automatic", "light", "dark", "transparency"] as const).map((backing) => <option key={backing} value={backing}>{t(`themePanel.backing.${backing}`)}</option>)}
+            </select>
           </>
         )}
         {showToolbarActions && (
@@ -416,7 +426,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                     handleCopySvg("merman", currentPublicationId)
                   }
                   disabled={
-                    !actionsEnabled || Boolean(mermanSvgUnavailableLabel)
+                    themeDraftChanged || !actionsEnabled || Boolean(mermanSvgUnavailableLabel)
                   }
                 >
                   {copiedSvgTarget?.engine === "merman" &&
@@ -513,6 +523,8 @@ export function Preview({ active = true, className }: PreviewProps) {
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(toolbarActions)}
+      {canvasMode && <ThemeRenderStatus />}
+      {previewMode === "compare" && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themePanel.compareStyled")}</p>}
       {canvasMode && svgPipeline === "readable" && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-2">
           <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -533,6 +545,7 @@ export function Preview({ active = true, className }: PreviewProps) {
           canvasMode && "preview-canvas",
         )}
         data-preview-canvas-tone={canvasMode ? canvasTone : undefined}
+        data-preview-backing={previewBacking}
         data-svg-presentation-mode={
           canvasMode ? svgPresentationMode : undefined
         }
@@ -685,13 +698,13 @@ function TabBar({
   }, [mode]);
 
   return (
-    <div className="flex shrink-0 flex-col overflow-hidden border-b bg-muted/30 xl:h-10 xl:flex-row xl:items-center xl:justify-between xl:gap-2 xl:px-2">
+    <div className="flex shrink-0 flex-col overflow-hidden border-b bg-muted/30">
       <div
         ref={tabListRef}
         role="tablist"
         aria-label={t("preview.title")}
         aria-orientation="horizontal"
-        className="scrollbar-thin flex min-h-10 w-full min-w-0 items-center gap-1 overflow-x-auto px-2 xl:min-h-0 xl:flex-1 xl:px-0"
+        className="scrollbar-thin flex min-h-10 w-full min-w-0 items-center gap-1 overflow-x-auto px-2"
         onKeyDown={handleTabListKeyDown}
       >
         <TabButton
@@ -745,7 +758,7 @@ function TabBar({
       {rightContent && (
         <div
           data-testid="preview-toolbar-actions"
-          className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-start gap-1 overflow-x-auto border-t px-2 xl:ml-auto xl:min-h-0 xl:w-auto xl:min-w-0 xl:max-w-full xl:shrink xl:border-t-0 xl:px-0"
+          className="scrollbar-thin flex min-h-10 w-full shrink-0 flex-wrap items-center justify-start gap-1 overflow-x-visible border-t px-2 sm:flex-nowrap sm:overflow-x-auto"
         >
           {rightContent}
         </div>

@@ -1,6 +1,4 @@
-use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeDefinitionV1, ThemeTokensV1, compile_theme_definition,
-};
+use merman::diagram_theme::{DiagramThemeCompiler, ThemeDesignV1, ThemeRecipeV1};
 use merman::svg::{CssOverridePolicy, SvgOutputPolicy, SvgPipelinePreset};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
@@ -12,22 +10,22 @@ const SOURCE: &str = r#"sequenceDiagram
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let definition = ThemeDefinitionV1::new(
-        ThemeTokensV1::default()
-            .with_canvas("#0f172a")
-            .with_surface("#111827")
-            .with_surface_alt("#1f2937")
-            .with_surface_muted("#334155")
-            .with_text("#e5e7eb")
-            .with_border("#475569")
-            .with_line("#94a3b8")
-            .with_series(
-                ["#60a5fa", "#34d399", "#f59e0b"]
-                    .map(str::to_owned)
-                    .to_vec(),
-            ),
-    );
-    let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?;
+    let design: ThemeDesignV1 = serde_json::from_value(serde_json::json!({
+        "tokens": {
+            "color.ink": {"type":"color","value":"#e5e7eb","label":"Text"},
+            "paint.surface": {"type":"paint","value":"#111827","label":"Surface"},
+            "stroke.line": {"type":"stroke","value":{"paint":"#94a3b8","width":2}}
+        },
+        "canvas": {"base":"#0f172a"},
+        "styles": {
+            "actor": {"fill":{"ref":"paint.surface"},"stroke":{"ref":"stroke.line"}},
+            "actor-label": {"fill":{"kind":"solid","color":{"ref":"color.ink"}}},
+            "text": {"fill":{"kind":"solid","color":{"ref":"color.ink"}}},
+            "message": {"stroke":{"ref":"stroke.line"}},
+            "note": {"fill":"#1f2937","stroke":{"ref":"stroke.line"}}
+        }
+    }))?;
+    let theme = DiagramThemeCompiler::new().compile_recipe(ThemeRecipeV1::Design { design })?;
     let output = SvgOutputPolicy {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,

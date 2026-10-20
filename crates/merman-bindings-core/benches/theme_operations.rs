@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use merman::svg::{DiagramThemeCompiler, ThemePreset, ThemeResourcePolicy};
-use merman_bindings_core::{BindingEngine, compile_theme_definition_json_with};
+use merman_bindings_core::{BindingEngine, compile_theme_design_json_with};
 use merman_theme_authoring_fixtures::THEME_AUTHORING_GOLDEN_VECTORS_V1;
 use merman_theme_contract::{MaterializedThemeWireV1, ThemeRecipeV1};
 use serde_json::Value;
@@ -8,8 +8,7 @@ use std::hint::black_box;
 
 const OPTIONS: &[u8] =
     br#"{"version":3,"runtime_policy":"deterministic","resources":{"profile":"interactive"}}"#;
-const DEFAULT_DEFINITION: &[u8] =
-    br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+const DEFAULT_DESIGN: &[u8] = br#"{}"#;
 const SUPPORT_VECTORS: &[u8] =
     include_bytes!("../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json");
 const PRESET_CATALOG: &[u8] = include_bytes!(
@@ -23,11 +22,11 @@ fn bench_theme_operations(criterion: &mut Criterion) {
 
     // Validate shared contracts before measuring any operation. JSON decoding and assertions
     // below are setup work; the measured public operations still include their own admission.
-    let mut definitions = vec![("default", DEFAULT_DEFINITION)];
+    let mut designs = vec![("default", DEFAULT_DESIGN)];
     for vector in THEME_AUTHORING_GOLDEN_VECTORS_V1 {
         let materialized: MaterializedThemeWireV1 = serde_json::from_slice(
             &engine
-                .materialize_theme(vector.readable_definition_json())
+                .materialize_theme(vector.readable_design_json())
                 .unwrap(),
         )
         .unwrap();
@@ -36,15 +35,38 @@ fn bench_theme_operations(criterion: &mut Criterion) {
             vector.canonical_spec_json(),
         );
         let compiled =
-            compile_theme_definition_json_with(&compiler, vector.readable_definition_json())
-                .unwrap();
+            compile_theme_design_json_with(&compiler, vector.readable_design_json()).unwrap();
         let complete = compiler
             .compile_spec_wire(materialized.into_spec())
             .unwrap();
         assert_eq!(compiled.recipe_fingerprint(), complete.recipe_fingerprint());
-        definitions.push((vector.name(), vector.readable_definition_json()));
+        designs.push((vector.name(), vector.readable_design_json()));
     }
-    compile_theme_definition_json_with(&compiler, DEFAULT_DEFINITION).unwrap();
+    compile_theme_design_json_with(&compiler, DEFAULT_DESIGN).unwrap();
+    let complex = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+    let ThemeRecipeV1::Design { design: complex } = complex else {
+        panic!("editable preset");
+    };
+    let mut tokens = serde_json::Map::new();
+    tokens.insert(
+        "n0".to_owned(),
+        serde_json::json!({"type":"number","value":0.5}),
+    );
+    for index in 1..24 {
+        tokens.insert(
+            format!("n{index}"),
+            serde_json::json!({"type":"number","value":{"ref":format!("n{}",index-1)}}),
+        );
+    }
+    let aliases = serde_json::json!({"tokens":tokens,"rules":(0..128).map(|_| serde_json::json!({"target":"node","style":{"opacity":{"ref":"n23"}}})).collect::<Vec<_>>()});
+    let authored_cases = [
+        ("complex", serde_json::to_vec(&complex).unwrap()),
+        ("aliases", serde_json::to_vec(&aliases).unwrap()),
+    ];
+    for (name, design) in &authored_cases {
+        compile_theme_design_json_with(&compiler, design).expect("benchmark design compiles");
+        designs.push((*name, design.as_slice()));
+    }
 
     let support_vectors: Vec<Value> = serde_json::from_slice(SUPPORT_VECTORS).unwrap();
     let queries: Vec<Vec<u8>> = support_vectors
@@ -87,19 +109,19 @@ fn bench_theme_operations(criterion: &mut Criterion) {
         );
     }
 
-    let mut group = criterion.benchmark_group("theme_compile_definition");
-    for (name, definition) in &definitions {
-        group.bench_with_input(BenchmarkId::from_parameter(name), definition, |b, input| {
+    let mut group = criterion.benchmark_group("theme_compile_design");
+    for (name, design) in &designs {
+        group.bench_with_input(BenchmarkId::from_parameter(name), design, |b, input| {
             b.iter(|| {
-                black_box(compile_theme_definition_json_with(&compiler, black_box(input)).unwrap())
+                black_box(compile_theme_design_json_with(&compiler, black_box(input)).unwrap())
             });
         });
     }
     group.finish();
 
     let mut group = criterion.benchmark_group("theme_materialize");
-    for (name, definition) in &definitions {
-        group.bench_with_input(BenchmarkId::from_parameter(name), definition, |b, input| {
+    for (name, design) in &designs {
+        group.bench_with_input(BenchmarkId::from_parameter(name), design, |b, input| {
             b.iter(|| black_box(engine.materialize_theme(black_box(input)).unwrap()));
         });
     }
