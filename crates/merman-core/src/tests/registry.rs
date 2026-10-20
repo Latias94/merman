@@ -633,6 +633,83 @@ fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
 }
 
 #[test]
+fn class_er_pie_semantic_entrypoints_construct_once_without_editor_projection() {
+    let engine = Engine::new();
+    let mut unexpected_editor_work = Vec::new();
+    for (diagram_type, source) in [
+        (
+            "classDiagram",
+            "classDiagram\nclass Customer\nCustomer --> Order : places\n",
+        ),
+        ("er", "erDiagram\nCUSTOMER ||--o{ ORDER : places\n"),
+        ("pie", "pie showData\ntitle Shares\n\"A\": 1\n"),
+    ] {
+        let reset_syntax: fn() = match diagram_type {
+            "classDiagram" => crate::diagrams::class::reset_class_syntax_construction_count,
+            "er" => crate::diagrams::er::reset_er_syntax_construction_count,
+            "pie" => {
+                || crate::diagrams::langium_common::reset_family_syntax_construction_count("pie")
+            }
+            _ => unreachable!(),
+        };
+        let syntax_count: fn() -> usize = match diagram_type {
+            "classDiagram" => crate::diagrams::class::class_syntax_construction_count,
+            "er" => crate::diagrams::er::er_syntax_construction_count,
+            "pie" => || crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            _ => unreachable!(),
+        };
+
+        for known_type in [false, true] {
+            for typed in [false, true] {
+                reset_syntax();
+                crate::editor::test_work::reset();
+                let options = crate::ParseOptions::strict();
+                match (known_type, typed) {
+                    (false, false) => {
+                        engine.parse_diagram_sync(source, options).unwrap().unwrap();
+                    }
+                    (true, false) => {
+                        engine
+                            .parse_diagram_with_type_sync(diagram_type, source, options)
+                            .unwrap()
+                            .unwrap();
+                    }
+                    (false, true) => {
+                        engine
+                            .parse_diagram_for_render_model_sync(source, options)
+                            .unwrap()
+                            .unwrap();
+                    }
+                    (true, true) => {
+                        engine
+                            .parse_diagram_for_render_model_with_type_sync(
+                                diagram_type,
+                                source,
+                                options,
+                            )
+                            .unwrap()
+                            .unwrap();
+                    }
+                }
+                assert_eq!(
+                    syntax_count(),
+                    1,
+                    "{diagram_type}: known={known_type}, typed={typed}"
+                );
+                let work = crate::editor::test_work::read();
+                if work != crate::editor::test_work::Counts::default() {
+                    unexpected_editor_work.push((diagram_type, known_type, typed, work));
+                }
+            }
+        }
+    }
+    assert!(
+        unexpected_editor_work.is_empty(),
+        "semantic entrypoints discarded editor facts: {unexpected_editor_work:#?}"
+    );
+}
+
+#[test]
 fn langium_family_combined_parse_constructs_syntax_once() {
     for (family, source) in [
         ("info", "info\n"),
@@ -643,12 +720,19 @@ fn langium_family_combined_parse_constructs_syntax_once() {
         ("wardley", "wardley-beta\ncomponent API [0.6, 0.7]\n"),
     ] {
         crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
+        crate::editor::test_work::reset();
         assert_snapshot_has_editor_facts(source, family);
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count(family),
             1,
             "one combined request must construct {family} syntax once"
         );
+        if family == "pie" {
+            let work = crate::editor::test_work::read();
+            assert_eq!(work.collections, 1);
+            assert!(work.symbols > 0);
+            assert!(work.expected_syntax > 0);
+        }
     }
 }
 
@@ -667,12 +751,16 @@ fn git_graph_combined_parse_constructs_syntax_once() {
 #[test]
 fn er_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
     assert_snapshot_has_editor_facts("erDiagram\nCUSTOMER ||--o{ ORDER : places\n", "er");
     assert_eq!(
         crate::diagrams::er::er_syntax_construction_count(),
         1,
         "one combined request must construct ER syntax once"
     );
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
 }
 
 #[test]
@@ -689,6 +777,7 @@ fn sequence_combined_parse_constructs_family_syntax_once() {
 #[test]
 fn class_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     assert_snapshot_has_editor_facts(
         "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
         "class",
@@ -698,6 +787,10 @@ fn class_combined_parse_constructs_family_syntax_once() {
         1,
         "one combined request must construct Class syntax once"
     );
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
+    assert!(work.expected_syntax > 0);
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use crate::family::EditorFactsDemand;
 use crate::models::class_diagram as class_typed;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -54,13 +55,19 @@ impl ClassSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
+        editor_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<Actions, ClassGrammarError>,
     )> {
         let Self { events } = self;
-        let editor_facts = collect_class_editor_facts_from_events(&events, code, control)?;
+        let editor_facts = match editor_demand {
+            EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+            EditorFactsDemand::Capture => {
+                collect_class_editor_facts_from_events(&events, code, control)?
+            }
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -95,7 +102,19 @@ enum ClassSemanticFailure {
 
 impl ClassSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+        self.parse_error(&meta.diagram_type, fallback_offset)
+    }
+
+    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
+        match self {
+            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
+                diagram_type.to_string(),
+                lalrpop_parse_diagnostic(error, fallback_offset),
+            ),
+            Self::Db { message, .. } => {
+                Error::diagram_parse_fallback(diagram_type.to_string(), message.clone())
+            }
+        }
     }
 
     fn into_error_and_editor_facts(
@@ -111,15 +130,12 @@ impl ClassSemanticFailure {
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
+        let parse_error = self.parse_error(diagram_type, fallback_offset);
         match self {
             Self::Grammar {
                 error,
                 mut editor_facts,
             } => {
-                let parse_error = Error::diagram_parse_diagnostic(
-                    diagram_type.to_string(),
-                    lalrpop_parse_diagnostic(&error, fallback_offset),
-                );
                 let span = match &error {
                     lalrpop_util::ParseError::User { error } => error.span,
                     _ => lalrpop_recovery_span(&error, fallback_offset),
@@ -137,8 +153,6 @@ impl ClassSemanticFailure {
                 message,
                 mut editor_facts,
             } => {
-                let parse_error =
-                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
                 editor_facts.mark_recovered_from_parse_error(
                     format!("class semantic construction failed: {message}"),
                     None,
@@ -152,11 +166,13 @@ impl ClassSemanticFailure {
 fn construct_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>>
 {
     let syntax = ClassSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let (editor_facts, actions) =
+        syntax.into_editor_facts_and_actions(code, editor_demand, control)?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
@@ -188,9 +204,14 @@ fn parse_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
 ) -> Result<ClassSemanticSource<'a>> {
-    construct_class_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+    construct_class_semantic_source(
+        code,
+        meta,
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
 pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -220,7 +241,8 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
         class_typed::ClassStylePrecedenceFacts,
     )>,
 > {
-    let construction = construct_class_semantic_source(code, meta, control)?;
+    let construction =
+        construct_class_semantic_source(code, meta, EditorFactsDemand::Omit, control)?;
     match construction {
         Ok(source) => Ok(Ok(source.db.into_typed_model_with_style_facts(meta))),
         Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
@@ -232,7 +254,8 @@ pub(crate) fn parse_class_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_class_semantic_source(code, meta, control)?;
+    let construction =
+        construct_class_semantic_source(code, meta, EditorFactsDemand::Capture, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |ClassSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
@@ -247,6 +270,8 @@ fn collect_class_editor_facts_from_events(
     code: &str,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut facts = EditorSemanticFacts::new();
     let mut collector = ClassEditorFactCollector::new(code);
 
@@ -1270,7 +1295,7 @@ mod tests {
         let syntax = ClassSyntax::lex(&source, &control).unwrap();
         control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
         let error = syntax
-            .into_editor_facts_and_actions(&source, &control)
+            .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
             .err()
             .expect("cancelled delivery returns the outer terminal");
         assert_eq!(error.reason, crate::CancelReason::Requested);

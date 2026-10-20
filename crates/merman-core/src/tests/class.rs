@@ -823,10 +823,24 @@ class User:::service
 cssClass "User,Admin" service
 style User fill:#fff
 "#;
+    let canonical = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert_eq!(work.symbols, facts.symbols.len());
+    assert!(work.directives >= facts.directive_prefixes.len());
+    assert!(work.directives > 0);
+    assert_eq!(work.diagnostics, facts.diagnostics.len());
+    assert!(work.expected_syntax >= facts.expected_syntax.len());
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
 
@@ -1029,6 +1043,25 @@ style User fill:#fff
     assert!(facts.directive_prefixes.iter().any(|p| p == "cssClass"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+
+    for known_type in [false, true] {
+        crate::diagrams::class::reset_class_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let snapshot = if known_type {
+            engine.parse_diagram_snapshot_with_type_sync("classDiagram", text)
+        } else {
+            engine.parse_diagram_snapshot_sync(text)
+        }
+        .unwrap()
+        .unwrap();
+        assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert_eq!(snapshot.outcome().parsed_model().unwrap(), &canonical.model);
+        let ParsedEditorFacts::Available(snapshot_facts) = snapshot.editor_facts() else {
+            panic!("class snapshot must retain editor facts");
+        };
+        assert_eq!(snapshot_facts, &facts);
+    }
 }
 
 #[test]
@@ -1277,10 +1310,15 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "classDiagram\nclass User {\n  +name";
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
+    assert!(work.diagnostics > 0);
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
@@ -1291,10 +1329,15 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     }));
 
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     let error = engine
         .parse_diagram_sync(text, ParseOptions::strict())
         .expect_err("strict Class parsing rejects an unterminated body");
     assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert_eq!(
+        crate::editor::test_work::read(),
+        crate::editor::test_work::Counts::default()
+    );
     let Error::DiagramParse { diagnostic, .. } = error else {
         panic!("unterminated Class body returned a non-parse error");
     };
@@ -1303,6 +1346,20 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
         Some(SourceSpan::new(text.len(), text.len()))
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("classDiagram", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+    let ParsedEditorFacts::Available(snapshot_facts) = snapshot.editor_facts() else {
+        panic!("class recovery snapshot must retain editor facts");
+    };
+    assert_eq!(snapshot_facts, &facts);
 }
 
 #[test]
@@ -1311,10 +1368,15 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     let text = "classDiagram\n\"\nclass User\n";
     let invalid_start = text.find('"').unwrap();
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
+    assert!(work.diagnostics > 0);
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
@@ -1325,10 +1387,15 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     }));
 
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     let error = engine
         .parse_diagram_sync(text, ParseOptions::strict())
         .expect_err("strict Class parsing rejects an unterminated string");
     assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert_eq!(
+        crate::editor::test_work::read(),
+        crate::editor::test_work::Counts::default()
+    );
     let Error::DiagramParse { diagnostic, .. } = error else {
         panic!("unterminated Class string returned a non-parse error");
     };
@@ -1337,4 +1404,18 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
         Some(SourceSpan::new(invalid_start, invalid_start + 1))
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("classDiagram", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+    let ParsedEditorFacts::Available(snapshot_facts) = snapshot.editor_facts() else {
+        panic!("class recovery snapshot must retain editor facts");
+    };
+    assert_eq!(snapshot_facts, &facts);
 }

@@ -645,6 +645,195 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "diagram-sequence", feature = "diagram-state"))]
+    #[test]
+    fn parse_projection_terminals_precede_facts_and_allow_fresh_operations() {
+        use crate::parse_pipeline::{ParsePipeline, ParseTiming};
+        use crate::{Engine, ParseOptions, ParsedEditorFacts};
+
+        let engine = Engine::new();
+        for (diagram_type, source) in [
+            ("sequence", "sequenceDiagram\nAlice->>Bob: Hello\n"),
+            (
+                "stateDiagram",
+                "stateDiagram-v2\nIdle --> Running: starts\n",
+            ),
+        ] {
+            for known_type in [false, true] {
+                for snapshot in [false, true] {
+                    for reason in [CancelReason::Requested, CancelReason::DeadlineExceeded] {
+                        crate::editor::test_work::reset();
+                        let base = Instant::now();
+                        let control = OperationControl::with_clock(Arc::new(move || base));
+                        match reason {
+                            CancelReason::Requested => control.cancel(),
+                            CancelReason::DeadlineExceeded => {
+                                control.set_deadline(Duration::ZERO);
+                            }
+                        }
+                        let terminal = if snapshot {
+                            let pipeline = if known_type {
+                                ParsePipeline::known_type(
+                                    &engine,
+                                    diagram_type,
+                                    source,
+                                    ParseOptions::strict(),
+                                )
+                            } else {
+                                ParsePipeline::detect(&engine, source, ParseOptions::strict())
+                            };
+                            pipeline
+                                .parse_editor_snapshot_controlled(ParseTiming::None, &control)
+                                .expect_err("an early terminal cannot return a partial snapshot")
+                        } else if known_type {
+                            engine
+                                .parse_diagram_for_render_model_with_type_controlled_sync(
+                                    diagram_type,
+                                    source,
+                                    ParseOptions::strict(),
+                                    &control,
+                                )
+                                .expect_err("an early terminal cannot return a typed model")
+                        } else {
+                            engine
+                                .parse_diagram_for_render_model_controlled_sync(
+                                    source,
+                                    ParseOptions::strict(),
+                                    &control,
+                                )
+                                .expect_err("an early terminal cannot return a typed model")
+                        };
+                        assert_eq!(terminal.reason, reason);
+                        assert_eq!(crate::editor::test_work::read(), Default::default());
+                        assert_eq!(control.checkpoint(), Err(terminal));
+                        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+                        let fresh = OperationControl::new();
+                        if snapshot {
+                            let pipeline = if known_type {
+                                ParsePipeline::known_type(
+                                    &engine,
+                                    diagram_type,
+                                    source,
+                                    ParseOptions::strict(),
+                                )
+                            } else {
+                                ParsePipeline::detect(&engine, source, ParseOptions::strict())
+                            };
+                            let parsed = pipeline
+                                .parse_editor_snapshot_controlled(ParseTiming::None, &fresh)
+                                .unwrap()
+                                .unwrap()
+                                .expect("a fresh operation recovers the snapshot");
+                            assert!(matches!(
+                                parsed.outcome(),
+                                crate::DiagramParseOutcome::Parsed { .. }
+                            ));
+                            assert!(matches!(
+                                parsed.editor_facts(),
+                                ParsedEditorFacts::Available(_)
+                            ));
+                            assert_eq!(crate::editor::test_work::read().collections, 1);
+                            assert!(crate::editor::test_work::read().symbols > 0);
+                        } else {
+                            let parsed = if known_type {
+                                engine.parse_diagram_for_render_model_with_type_controlled_sync(
+                                    diagram_type,
+                                    source,
+                                    ParseOptions::strict(),
+                                    &fresh,
+                                )
+                            } else {
+                                engine.parse_diagram_for_render_model_controlled_sync(
+                                    source,
+                                    ParseOptions::strict(),
+                                    &fresh,
+                                )
+                            }
+                            .unwrap()
+                            .unwrap()
+                            .expect("a fresh operation recovers the typed model");
+                            assert_eq!(parsed.metadata().diagram_type, diagram_type);
+                            assert_eq!(crate::editor::test_work::read(), Default::default());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "diagram-sequence")]
+    #[test]
+    fn sequence_editor_capture_deadline_interrupts_facts_and_recovers() {
+        use crate::{DiagramParseOutcome, EditorSemanticCompleteness, Engine, ParsedEditorFacts};
+
+        let engine = Engine::new();
+        let source = format!("sequenceDiagram\n{}", "Alice->>Bob: Hello\n".repeat(1_024));
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let clock_calls = Arc::new(AtomicU64::new(0));
+        let observed_calls = Arc::clone(&clock_calls);
+        let base = Instant::now();
+        let clock = Arc::new(move || {
+            observed_calls.fetch_add(1, Ordering::Relaxed);
+            if crate::editor::test_work::read().symbols > 0 {
+                base + Duration::from_millis(2)
+            } else {
+                base
+            }
+        });
+        let control = OperationControl::with_clock(clock).with_deadline(Duration::from_millis(1));
+
+        let terminal = engine
+            .capture_diagram_snapshot_controlled_sync(&source, &control)
+            .expect_err("a deadline during editor collection cannot return a partial snapshot");
+
+        assert_eq!(terminal.reason, CancelReason::DeadlineExceeded);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        let partial = crate::editor::test_work::read();
+        assert_eq!(partial.collections, 1);
+        assert!(partial.symbols > 0 && partial.symbols <= 128 * 3);
+        assert!(partial.expected_syntax > 0 && partial.expected_syntax <= 128);
+        let calls_at_terminal = clock_calls.load(Ordering::Relaxed);
+        assert!(calls_at_terminal > 1);
+        assert_eq!(control.checkpoint(), Err(terminal));
+        assert_eq!(
+            engine
+                .capture_diagram_snapshot_controlled_sync(&source, &control)
+                .unwrap_err(),
+            terminal,
+        );
+        assert_eq!(clock_calls.load(Ordering::Relaxed), calls_at_terminal);
+        assert_eq!(crate::editor::test_work::read(), partial);
+
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let snapshot = engine
+            .capture_diagram_snapshot_controlled_sync(&source, &OperationControl::new())
+            .unwrap()
+            .into_result()
+            .unwrap()
+            .expect("a fresh operation recovers the full snapshot");
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("the recovered Sequence snapshot must contain its canonical model");
+        };
+        assert_eq!(model["actorOrder"], serde_json::json!(["Alice", "Bob"]));
+        assert_eq!(model["messages"].as_array().unwrap().len(), 1_024);
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("the recovered Sequence snapshot must retain editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.symbols.len() > partial.symbols);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+    }
+
     #[test]
     fn child_latches_the_first_reason_observed_across_its_parent_chain() {
         let now = Arc::new(AtomicU64::new(0));

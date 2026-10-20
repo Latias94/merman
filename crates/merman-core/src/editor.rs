@@ -487,12 +487,60 @@ pub struct EditorSemanticFacts {
     pub expected_syntax: Vec<EditorExpectedSyntax>,
 }
 
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "Projection work is observed by the family demand tests."
+)]
+pub(crate) mod test_work {
+    use std::cell::Cell;
+
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(crate) struct Counts {
+        pub(crate) collections: usize,
+        pub(crate) symbols: usize,
+        pub(crate) directives: usize,
+        pub(crate) diagnostics: usize,
+        pub(crate) expected_syntax: usize,
+    }
+
+    thread_local! {
+        static COUNTS: Cell<Counts> = const { Cell::new(Counts {
+            collections: 0,
+            symbols: 0,
+            directives: 0,
+            diagnostics: 0,
+            expected_syntax: 0,
+        }) };
+    }
+
+    pub(crate) fn reset() {
+        COUNTS.set(Counts::default());
+    }
+
+    pub(crate) fn read() -> Counts {
+        COUNTS.get()
+    }
+
+    pub(crate) fn record_collection() {
+        update(|work| work.collections += 1);
+    }
+
+    pub(super) fn update(record: impl FnOnce(&mut Counts)) {
+        let mut work = COUNTS.get();
+        record(&mut work);
+        COUNTS.set(work);
+    }
+}
+
 impl EditorSemanticFacts {
     pub fn new() -> Self {
         Self::default()
     }
 
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
+        #[cfg(test)]
+        test_work::update(|work| work.symbols += 1);
         self.symbols.push(symbol);
     }
 
@@ -515,11 +563,15 @@ impl EditorSemanticFacts {
         span: Option<SourceSpan>,
     ) {
         self.mark_recovered();
+        #[cfg(test)]
+        test_work::update(|work| work.diagnostics += 1);
         self.diagnostics
             .push(EditorSemanticDiagnostic::parser_recovery(message, span));
     }
 
     pub fn push_diagnostic(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
+        #[cfg(test)]
+        test_work::update(|work| work.diagnostics += 1);
         self.diagnostics
             .push(EditorSemanticDiagnostic::new(message, span));
     }
@@ -527,11 +579,15 @@ impl EditorSemanticFacts {
     pub fn push_directive_prefix(&mut self, prefix: impl Into<String>) {
         let prefix = prefix.into();
         if !self.directive_prefixes.contains(&prefix) {
+            #[cfg(test)]
+            test_work::update(|work| work.directives += 1);
             self.directive_prefixes.push(prefix);
         }
     }
 
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
+        #[cfg(test)]
+        test_work::update(|work| work.expected_syntax += 1);
         self.expected_syntax.push(expected);
     }
 

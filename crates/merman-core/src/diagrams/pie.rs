@@ -3,6 +3,7 @@ use crate::diagrams::langium_common::{
     LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
@@ -72,7 +73,8 @@ pub(crate) fn parse_pie_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
-    let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
+    let construction =
+        construct_pie_semantic_source_controlled(code, meta, EditorFactsDemand::Capture, control)?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
         |source| (pie_output_to_json(source.output, meta), source.editor_facts),
@@ -127,7 +129,8 @@ pub(crate) fn parse_pie_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<PieDiagramRenderModel>> {
-    let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
+    let construction =
+        construct_pie_semantic_source_controlled(code, meta, EditorFactsDemand::Omit, control)?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
@@ -153,13 +156,19 @@ fn construct_pie_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
-    construct_pie_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_pie_semantic_source_controlled(
+        code,
+        meta,
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_pie_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<PieSemanticSource, family::CombinedSemanticFailure>,
@@ -186,9 +195,16 @@ fn construct_pie_semantic_source_controlled(
     let mut offset = body.offset;
     let mut common = LangiumCommonFacts::default();
     let mut parsed_sections = Vec::new();
-    let mut editor_facts = EditorSemanticFacts::new();
-    if let Some(span) = body.show_data_span {
-        push_show_data_editor_fact(&mut editor_facts, span);
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
+    if let (Some(facts), Some(span)) = (&mut editor_facts, body.show_data_span) {
+        push_show_data_editor_fact(facts, span);
     }
     let mut first_error = None;
 
@@ -197,7 +213,9 @@ fn construct_pie_semantic_source_controlled(
         match parse_pie_statement(code, offset) {
             PieStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
-                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    if let Some(facts) = &mut editor_facts {
+                        push_langium_common_recovery(facts, diagnostic);
+                    }
                     first_error.get_or_insert_with(|| {
                         Error::diagram_parse_insertion_point(
                             meta.diagram_type.clone(),
@@ -206,7 +224,9 @@ fn construct_pie_semantic_source_controlled(
                         )
                     });
                 }
-                push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "pie");
+                if let Some(facts) = &mut editor_facts {
+                    push_langium_common_editor_fact(facts, &parsed.fact, "pie");
+                }
                 common.push(parsed.fact);
                 offset += parsed.consumed;
             }
@@ -214,7 +234,9 @@ fn construct_pie_semantic_source_controlled(
                 section,
                 next_offset,
             } => {
-                push_pie_section_editor_fact(&mut editor_facts, &section);
+                if let Some(facts) = &mut editor_facts {
+                    push_pie_section_editor_fact(facts, &section);
+                }
                 parsed_sections.push(section);
                 offset = next_offset;
             }
@@ -224,8 +246,9 @@ fn construct_pie_semantic_source_controlled(
                 span,
                 next_offset,
             } => {
-                editor_facts
-                    .mark_recovered_from_parse_error("unexpected pie statement", Some(span));
+                if let Some(facts) = &mut editor_facts {
+                    facts.mark_recovered_from_parse_error("unexpected pie statement", Some(span));
+                }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_fallback(
                         meta.diagram_type.clone(),
@@ -244,14 +267,23 @@ fn construct_pie_semantic_source_controlled(
             control.checkpoint()?;
         }
         if section.value < 0.0 {
-            let message = format!(
-                "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                section.label, section.value
-            );
-            editor_facts.mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_exact(meta.diagram_type.clone(), message, section.value_span)
-            });
+            if editor_facts.is_some() || first_error.is_none() {
+                let message = format!(
+                    "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
+                    section.label, section.value
+                );
+                if let Some(facts) = &mut editor_facts {
+                    facts
+                        .mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
+                }
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_exact(
+                        meta.diagram_type.clone(),
+                        message,
+                        section.value_span,
+                    )
+                });
+            }
             continue;
         }
         if seen.insert(section.label.clone()) {
@@ -263,6 +295,7 @@ fn construct_pie_semantic_source_controlled(
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
+    let editor_facts = editor_facts.unwrap_or_default();
 
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
@@ -527,6 +560,7 @@ mod tests {
             construct_pie_semantic_source_controlled(
                 "pie\n\"A\": 1\n\"B\": 2\n",
                 &metadata(),
+                EditorFactsDemand::Capture,
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
@@ -634,6 +668,8 @@ pie showData
         let expected_span = SourceSpan::new(start, start + invalid.len());
         let engine = Engine::new();
 
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        crate::editor::test_work::reset();
         let error = engine
             .parse_diagram_sync(source, ParseOptions::strict())
             .expect_err("a negative pie value must fail strict parsing");
@@ -641,12 +677,62 @@ pie showData
             panic!("expected pie parse diagnostic");
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default()
+        );
 
+        for (known_type, typed) in [(true, false), (false, true), (true, true)] {
+            crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+            crate::editor::test_work::reset();
+            let options = ParseOptions::strict();
+            let error = match (known_type, typed) {
+                (true, false) => engine
+                    .parse_diagram_with_type_sync("pie", source, options)
+                    .map(|_| ()),
+                (false, true) => engine
+                    .parse_diagram_for_render_model_sync(source, options)
+                    .map(|_| ()),
+                (true, true) => engine
+                    .parse_diagram_for_render_model_with_type_sync("pie", source, options)
+                    .map(|_| ()),
+                (false, false) => unreachable!(),
+            }
+            .expect_err("semantic-only parsing must still validate negative pie values");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected pie parse diagnostic");
+            };
+            assert_eq!(diagnostic.span(), Some(expected_span));
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+                1
+            );
+            assert_eq!(
+                crate::editor::test_work::read(),
+                crate::editor::test_work::Counts::default(),
+                "negative pie: known={known_type}, typed={typed} discarded editor facts"
+            );
+        }
+
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        crate::editor::test_work::reset();
         let facts = crate::family::test_support::editor_facts(
             parse_pie_json_and_editor_facts,
             source,
             &metadata(),
         );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        let work = crate::editor::test_work::read();
+        assert_eq!(work.collections, 1);
+        assert_eq!(work.symbols, facts.symbols.len());
+        assert_eq!(work.diagnostics, facts.diagnostics.len());
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "negative"));
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));

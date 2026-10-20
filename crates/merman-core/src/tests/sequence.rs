@@ -58,14 +58,31 @@ fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
             ParseDiagnosticSpanKind::Exact,
         ),
     ] {
-        let error = engine
-            .parse_diagram_sync(source, ParseOptions::strict())
-            .expect_err("malformed Sequence fragment is rejected");
-        let Error::DiagramParse { diagnostic, .. } = error else {
-            panic!("Sequence grammar failure must remain a parse error");
-        };
-        assert_eq!(diagnostic.span(), Some(span));
-        assert_eq!(diagnostic.span_kind(), kind);
+        for typed in [false, true] {
+            crate::editor::test_work::reset();
+            crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+            let error = if typed {
+                engine
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .expect_err("malformed Sequence fragment is rejected")
+            } else {
+                engine
+                    .parse_diagram_sync(source, ParseOptions::strict())
+                    .expect_err("malformed Sequence fragment is rejected")
+            };
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("Sequence grammar failure must remain a parse error");
+            };
+            assert_eq!(diagnostic.span(), Some(span));
+            assert_eq!(diagnostic.span_kind(), kind);
+            assert_eq!(
+                crate::diagrams::sequence::sequence_syntax_construction_count(),
+                1
+            );
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("sequence", source)
             .unwrap()
@@ -76,6 +93,13 @@ fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
             diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
                 && diagnostic.span == Some(span)
         }));
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert!(crate::editor::test_work::read().symbols > 0);
+        assert!(crate::editor::test_work::read().diagnostics > 0);
     }
 }
 
@@ -127,12 +151,21 @@ end
 Alice->>Bob: Hello
 Note over Alice,Bob: Review
 details Alice: {"owner": "platform"}"#;
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 
     let first_symbol = |name: &str| {
         facts
@@ -206,6 +239,26 @@ details Alice: {"owner": "platform"}"#;
             "missing payload expected syntax for {payload:?}"
         );
     }
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+        panic!("Sequence snapshot must retain its canonical model");
+    };
+    assert_eq!(model["actorOrder"], json!(["Alice", "Bob", "Carol"]));
+    assert_eq!(model["messages"][0]["message"], "Hello");
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("Sequence snapshot must retain editor facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 }
 
 #[test]
@@ -638,17 +691,58 @@ fn parse_sequence_minimal_signals_preserve_canonical_db_order_without_a_second_g
         "Bob-->>-Alice: Done\n",
     );
 
-    let parsed = engine
-        .parse_diagram_sync(text, ParseOptions::strict())
+    for known_type in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_with_type_sync("sequence", text, ParseOptions::strict())
+        } else {
+            engine.parse_diagram_sync(text, ParseOptions::strict())
+        }
         .unwrap()
         .expect("minimal Sequence parse");
-    let messages = parsed.model["messages"].as_array().unwrap();
-    assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
-    assert_eq!(messages.len(), 4);
-    assert_eq!(messages[0]["message"], "Start");
-    assert_eq!(messages[1]["type"], 17);
-    assert_eq!(messages[2]["message"], "Done");
-    assert_eq!(messages[3]["type"], 18);
+        let messages = parsed.model["messages"].as_array().unwrap();
+        assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0]["message"], "Start");
+        assert_eq!(messages[1]["type"], 17);
+        assert_eq!(messages[2]["message"], "Done");
+        assert_eq!(messages[3]["type"], 18);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_for_render_model_with_type_sync(
+                "sequence",
+                text,
+                ParseOptions::strict(),
+            )
+        } else {
+            engine.parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        }
+        .unwrap()
+        .expect("minimal typed Sequence parse");
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("Sequence typed parse returned another family");
+        };
+        assert_eq!(model.actor_order, ["Alice", "Bob"]);
+        assert_eq!(model.actors["Alice"].description, "Alice");
+        assert_eq!(model.messages.len(), 4);
+        assert_eq!(model.messages[0].message_text(), "Start");
+        assert_eq!(model.messages[1].message_type, 17);
+        assert_eq!(model.messages[2].message_text(), "Done");
+        assert_eq!(model.messages[3].message_type, 18);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 }
 
 #[test]
@@ -1582,12 +1676,61 @@ Server->>-user: Test2
 %% The following deactivation of Server will fail
 Server->>-user: Test3"#;
 
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
     assert!(
         err.to_string()
             .contains("Trying to inactivate an inactive participant (Server)"),
         "unexpected error: {err}"
     );
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let typed_error = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap_err();
+    assert_eq!(typed_error.to_string(), err.to_string());
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Failed(captured_error) = snapshot.outcome() else {
+        panic!("Sequence snapshot must retain the DB construction failure");
+    };
+    assert_eq!(captured_error.to_string(), err.to_string());
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Sequence DB failure must retain requested editor facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let server_start = text.find("Server").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Server"
+            && symbol.selection == SourceSpan::new(server_start, server_start + "Server".len())
+    }));
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic
+                .message
+                .contains("sequence semantic construction failed")
+    }));
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().diagnostics > 0);
 }
 
 #[test]

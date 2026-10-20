@@ -932,10 +932,24 @@ class CUSTOMER vip
 classDef important fill:#f9f
 style ORDER fill:#eee
 "#;
+    let canonical = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("er editor facts");
+    assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert_eq!(work.symbols, facts.symbols.len());
+    assert!(work.directives >= facts.directive_prefixes.len());
+    assert!(work.directives > 0);
+    assert_eq!(work.diagnostics, facts.diagnostics.len());
+    assert!(work.expected_syntax >= facts.expected_syntax.len());
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
 
@@ -1039,6 +1053,25 @@ style ORDER fill:#eee
     assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+
+    for known_type in [false, true] {
+        crate::diagrams::er::reset_er_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let snapshot = if known_type {
+            engine.parse_diagram_snapshot_with_type_sync("er", text)
+        } else {
+            engine.parse_diagram_snapshot_sync(text)
+        }
+        .unwrap()
+        .unwrap();
+        assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert_eq!(snapshot.outcome().parsed_model().unwrap(), &canonical.model);
+        let ParsedEditorFacts::Available(snapshot_facts) = snapshot.editor_facts() else {
+            panic!("er snapshot must retain editor facts");
+        };
+        assert_eq!(snapshot_facts, &facts);
+    }
 }
 
 #[test]
@@ -1273,11 +1306,16 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
     );
     let invalid_start = text.find('@').unwrap();
     crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
 
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("ER recovery facts");
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
+    assert!(work.diagnostics > 0);
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
@@ -1286,9 +1324,16 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
             && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
     }));
 
+    crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
     let error = engine
         .parse_diagram_sync(text, ParseOptions::strict())
         .expect_err("strict ER parsing rejects the invalid token");
+    assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
+    assert_eq!(
+        crate::editor::test_work::read(),
+        crate::editor::test_work::Counts::default()
+    );
     let Error::DiagramParse { diagnostic, .. } = error else {
         panic!("invalid ER token returned a non-parse error");
     };
@@ -1297,6 +1342,20 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
         Some(SourceSpan::new(invalid_start, invalid_start + 1))
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+    crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("er", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+    let ParsedEditorFacts::Available(snapshot_facts) = snapshot.editor_facts() else {
+        panic!("er recovery snapshot must retain editor facts");
+    };
+    assert_eq!(snapshot_facts, &facts);
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
@@ -49,12 +50,18 @@ impl StateSyntax {
     fn into_editor_facts_and_document(
         self,
         code: &str,
+        facts_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<StateDocument, StateGrammarError>,
     )> {
-        let editor_facts = collect_state_editor_facts_from_events(&self.events, code, control)?;
+        let editor_facts = match facts_demand {
+            EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+            EditorFactsDemand::Capture => {
+                collect_state_editor_facts_from_events(&self.events, code, control)?
+            }
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
@@ -86,7 +93,10 @@ struct StateSemanticFailure {
 
 impl StateSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+        Error::diagram_parse_diagnostic(
+            meta.diagram_type.clone(),
+            state_parse_diagnostic(&self.error, fallback_offset),
+        )
     }
 
     fn into_error_and_editor_facts(
@@ -146,7 +156,7 @@ pub(crate) fn parse_state_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
-    let construction = construct_state_semantic_source(code, control)?;
+    let construction = construct_state_semantic_source(code, EditorFactsDemand::Omit, control)?;
     match construction {
         Ok(source) => source.db.into_model_controlled(meta, control),
         Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
@@ -158,7 +168,7 @@ pub(crate) fn parse_state_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_state_semantic_source(code, control)?;
+    let construction = construct_state_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let construction = match construction {
         Ok(StateSemanticSource { db, editor_facts }) => {
             let model = match db.into_model_controlled(meta, control)? {
@@ -186,17 +196,19 @@ pub(crate) fn parse_state_json_and_editor_facts(
 }
 
 fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {
-    construct_state_semantic_source(code, &OperationControl::new())
+    construct_state_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| failure.into_parse_error(meta, code.len()))
 }
 
 fn construct_state_semantic_source(
     code: &str,
+    facts_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<StateSemanticSource, StateSemanticFailure>> {
     let syntax = StateSyntax::lex(code, control)?;
-    let (editor_facts, document) = syntax.into_editor_facts_and_document(code, control)?;
+    let (editor_facts, document) =
+        syntax.into_editor_facts_and_document(code, facts_demand, control)?;
     let mut doc = match document {
         Ok(doc) => doc,
         Err(error) => {
@@ -386,6 +398,8 @@ fn collect_state_editor_facts_from_events(
     code: &str,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut collector = StateTokenFactCollector {
         code,
         context: StateTokenContext::Default,

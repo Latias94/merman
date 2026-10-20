@@ -20,6 +20,19 @@ use serde_json::Value;
 use std::fmt;
 use std::sync::OnceLock;
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-pie",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EditorFactsDemand {
+    Omit,
+    Capture,
+}
+
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,

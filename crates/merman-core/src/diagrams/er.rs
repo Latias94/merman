@@ -1,4 +1,5 @@
 use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
@@ -665,20 +666,27 @@ impl ErSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
+        editor_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<(EditorSemanticFacts, ErParsedActions)> {
         let mut facts = EditorSemanticFacts::new();
-        let mut collector = ErEditorFactCollector::default();
-        for (index, event) in self.events.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
+        if editor_demand == EditorFactsDemand::Capture {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            let mut collector = ErEditorFactCollector::default();
+            for (index, event) in self.events.iter().enumerate() {
+                if index % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                match event {
+                    Ok((start, token, end)) => {
+                        collector.accept(code, token, *start, *end, &mut facts)
+                    }
+                    Err(_) => facts.mark_recovered(),
+                }
             }
-            match event {
-                Ok((start, token, end)) => collector.accept(code, token, *start, *end, &mut facts),
-                Err(_) => facts.mark_recovered(),
-            }
+            collector.finish(code, &mut facts);
         }
-        collector.finish(code, &mut facts);
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
@@ -714,7 +722,14 @@ impl ErSemanticFailure {
     }
 
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+        self.parse_error(&meta.diagram_type, fallback_offset)
+    }
+
+    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
+        Error::diagram_parse_diagnostic(
+            diagram_type.to_string(),
+            lalrpop_parse_diagnostic(&self.error, fallback_offset),
+        )
     }
 
     fn into_error_and_editor_facts(
@@ -730,10 +745,7 @@ impl ErSemanticFailure {
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        let error = Error::diagram_parse_diagnostic(
-            diagram_type.to_string(),
-            lalrpop_parse_diagnostic(&self.error, fallback_offset),
-        );
+        let error = self.parse_error(diagram_type, fallback_offset);
         let span = self.recovery_span(fallback_offset);
         self.editor_facts.mark_recovered_from_parse_error(
             format!(
@@ -748,10 +760,12 @@ impl ErSemanticFailure {
 
 fn construct_er_semantic_source(
     code: &str,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
     let syntax = ErSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let (editor_facts, actions) =
+        syntax.into_editor_facts_and_actions(code, editor_demand, control)?;
     let (arena, actions) = match actions {
         Ok(actions) => actions,
         Err(error) => {
@@ -768,7 +782,7 @@ fn construct_er_semantic_source(
 }
 
 fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
-    construct_er_semantic_source(code, &OperationControl::new())
+    construct_er_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
@@ -786,7 +800,7 @@ pub(crate) fn parse_er_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ErDiagramRenderModel>> {
-    let construction = construct_er_semantic_source(code, control)?;
+    let construction = construct_er_semantic_source(code, EditorFactsDemand::Omit, control)?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err((*failure).into_parse_error(meta, code.len()))),
@@ -804,7 +818,7 @@ pub(crate) fn parse_er_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_er_semantic_source(code, control)?;
+    let construction = construct_er_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
@@ -2560,7 +2574,7 @@ mod tests {
             let control = OperationControl::new();
             let syntax = ErSyntax::lex(&source, &control).unwrap();
             let (_, parsed) = syntax
-                .into_editor_facts_and_actions(&source, &control)
+                .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
                 .unwrap();
             let (arena, actions) = parsed.unwrap();
             assert_eq!(arena.records.len(), depth + 1);
@@ -2583,7 +2597,7 @@ mod tests {
         let parsing = OperationControl::new();
         let syntax = ErSyntax::lex(&source, &parsing).unwrap();
         let (_, parsed) = syntax
-            .into_editor_facts_and_actions(&source, &parsing)
+            .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &parsing)
             .unwrap();
         let (arena, actions) = parsed.unwrap();
         assert_eq!(actions.first, actions.last, "one top-level action");
@@ -2615,7 +2629,9 @@ mod tests {
         let fact_checkpoints = syntax.events.len().div_ceil(128) + 1;
         // Cancel during the third token batch, after inner grammar fragments have completed.
         control.cancel_after_checkpoints(fact_checkpoints + 2);
-        let Err(cancelled) = syntax.into_editor_facts_and_actions(&source, &control) else {
+        let Err(cancelled) =
+            syntax.into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
+        else {
             panic!("token delivery observes cancellation");
         };
         assert_eq!(control.checkpoint(), Err(cancelled));

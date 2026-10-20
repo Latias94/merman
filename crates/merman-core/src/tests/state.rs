@@ -847,36 +847,64 @@ fn state_family_entrypoints_construct_one_lexical_event_tape() {
     let engine = Engine::new();
     let input = concat!(
         "stateDiagram-v2\n",
-        "state Idle\n",
+        "state \"Waiting\" as Idle\n",
         "Idle --> Running: starts\n",
         "classDef active fill:#0f0\n",
         "class Running active\n",
     );
 
-    crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
-        .parse_diagram_sync(input, ParseOptions::strict())
+    for known_type in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_with_type_sync("stateDiagram", input, ParseOptions::strict())
+        } else {
+            engine.parse_diagram_sync(input, ParseOptions::strict())
+        }
         .expect("State JSON parse succeeds")
         .expect("State JSON parse returns a diagram");
-    assert_eq!(
-        crate::diagrams::state::state_syntax_construction_count(),
-        1,
-        "the State JSON entrypoint must construct one lexical event tape"
-    );
+        assert_eq!(parsed.model["states"]["Idle"]["id"], "Idle");
+        assert_eq!(parsed.model["states"]["Idle"]["descriptions"][0], "Waiting");
+        assert_eq!(parsed.model["relations"][0]["id2"], "Running");
+        assert_eq!(parsed.model["edges"][0]["label"], "starts");
+        assert_eq!(
+            crate::diagrams::state::state_syntax_construction_count(),
+            1,
+            "the State JSON entrypoint must construct one lexical event tape"
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
 
-    crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
-        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_for_render_model_with_type_sync(
+                "stateDiagram",
+                input,
+                ParseOptions::strict(),
+            )
+        } else {
+            engine.parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        }
         .expect("State typed parse succeeds")
         .expect("State typed parse returns a diagram");
-    assert_eq!(
-        crate::diagrams::state::state_syntax_construction_count(),
-        1,
-        "the State typed entrypoint must construct one lexical event tape"
-    );
+        let RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("State typed parse returned another family");
+        };
+        assert_eq!(model.states["Idle"].id, "Idle");
+        assert_eq!(model.states["Idle"].descriptions, ["Waiting"]);
+        assert_eq!(model.relations[0].id2, "Running");
+        assert_eq!(model.edges[0].label, "starts");
+        assert_eq!(
+            crate::diagrams::state::state_syntax_construction_count(),
+            1,
+            "the State typed entrypoint must construct one lexical event tape"
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
+    let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", input)
         .expect("State editor parse succeeds")
         .expect("State editor parse returns facts");
@@ -885,6 +913,42 @@ fn state_family_entrypoints_construct_one_lexical_event_tape() {
         1,
         "the State editor entrypoint must construct one lexical event tape"
     );
+    let idle_start = input.find("Idle").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Idle"
+            && symbol.selection == SourceSpan::new(idle_start, idle_start + "Idle".len())
+    }));
+    let label_start = input.find("starts").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "starts"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.selection == SourceSpan::new(label_start, label_start + "starts".len())
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span.start <= label_start
+            && expected.span.end >= label_start + "starts".len()
+    }));
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(input).unwrap().unwrap();
+    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+        panic!("State snapshot must retain its canonical model");
+    };
+    assert_eq!(model["states"]["Idle"]["descriptions"][0], "Waiting");
+    assert_eq!(model["edges"][0]["label"], "starts");
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("State snapshot must retain editor facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 }
 
 #[test]
@@ -1376,6 +1440,7 @@ fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() 
 fn parse_state_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
@@ -1397,7 +1462,11 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
         1,
         "incomplete State editor recovery must reuse one lexical event tape"
     );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 1);
 
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
     let Error::DiagramParse { diagnostic, .. } = engine
         .parse_diagram_sync(text, ParseOptions::strict())
@@ -1418,6 +1487,95 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
         diagnostic.span_kind(),
         ParseDiagnosticSpanKind::InsertionPoint
     );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let error = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap_err();
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("incomplete typed State parsing must return its original parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert_eq!(
+        diagnostic.span_kind(),
+        ParseDiagnosticSpanKind::InsertionPoint
+    );
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("State grammar failure must retain requested recovery facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 1);
+}
+
+#[test]
+fn state_group_description_failure_retains_requested_facts_without_discarded_editor_work() {
+    let engine = Engine::new();
+    let text = concat!(
+        "stateDiagram-v2\nstate Group {\nChild\n}\n",
+        "Group: first\nGroup: second\n",
+    );
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Failed(error) = snapshot.outcome() else {
+        panic!("multiple group descriptions must fail semantic validation");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Group nodes can only have label")
+    );
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("State semantic failure must retain requested facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let child_start = text.find("Child").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Child"
+            && symbol.selection == SourceSpan::new(child_start, child_start + "Child".len())
+    }));
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "second" && symbol.role == EditorSemanticRole::Payload
+        })
+    );
+    assert!(facts.diagnostics.is_empty());
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 0);
+
+    for typed in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let omitted_error = if typed {
+            engine
+                .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+                .unwrap_err()
+        } else {
+            engine
+                .parse_diagram_sync(text, ParseOptions::strict())
+                .unwrap_err()
+        };
+        assert_eq!(omitted_error.to_string(), error.to_string());
+        assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 }
 
 #[test]

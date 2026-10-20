@@ -1,3 +1,4 @@
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
@@ -50,13 +51,19 @@ impl SequenceSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
+        facts_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<Actions, SequenceGrammarError>,
     )> {
         let Self { events } = self;
-        let editor_facts = collect_sequence_editor_facts_from_events(&events, code, control)?;
+        let editor_facts = match facts_demand {
+            EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+            EditorFactsDemand::Capture => {
+                collect_sequence_editor_facts_from_events(&events, code, control)?
+            }
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -91,7 +98,15 @@ enum SequenceSemanticFailure {
 
 impl SequenceSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+        match self {
+            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&error, fallback_offset),
+            ),
+            Self::Db { message, .. } => {
+                Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
+            }
+        }
     }
 
     fn into_error_and_editor_facts(
@@ -156,8 +171,12 @@ pub(crate) fn parse_sequence_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
-    let construction =
-        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
+    let construction = construct_sequence_semantic_source(
+        code,
+        sequence_wrap_enabled(meta),
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     match construction {
         Ok(source) => Ok(Ok(source.db.into_render_model())),
         Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
@@ -169,8 +188,12 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction =
-        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
+    let construction = construct_sequence_semantic_source(
+        code,
+        sequence_wrap_enabled(meta),
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |SequenceSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
@@ -184,19 +207,26 @@ fn parse_sequence_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SequenceSemanticSource> {
-    construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+    construct_sequence_semantic_source(
+        code,
+        sequence_wrap_enabled(meta),
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
 fn construct_sequence_semantic_source(
     code: &str,
     wrap_enabled: Option<bool>,
+    facts_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>>
 {
     let syntax = SequenceSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let (editor_facts, actions) =
+        syntax.into_editor_facts_and_actions(code, facts_demand, control)?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
@@ -257,6 +287,8 @@ fn collect_sequence_editor_facts_from_events(
     code: &str,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut facts = EditorSemanticFacts::new();
     let mut collector = SequenceEditorFactCollector::default();
 
@@ -796,10 +828,45 @@ mod tests {
         let syntax = SequenceSyntax::lex(&source, &control).unwrap();
         control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
         let error = syntax
-            .into_editor_facts_and_actions(&source, &control)
+            .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
             .err()
             .expect("cancelled delivery returns the outer terminal");
         assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+
+    #[test]
+    fn cancelled_editor_collection_stops_with_bounded_work_and_recovers() {
+        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
+        let control = OperationControl::new();
+        crate::editor::test_work::reset();
+        reset_sequence_syntax_construction_count();
+        let syntax = SequenceSyntax::lex(&source, &control).unwrap();
+        control.cancel_after_checkpoints(1);
+
+        let error = syntax
+            .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
+            .err()
+            .expect("editor collection returns cancellation through the outer result");
+
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        let partial = crate::editor::test_work::read();
+        assert_eq!(partial.collections, 1);
+        assert!(partial.symbols > 0 && partial.symbols <= 128 * 3);
+        assert!(partial.expected_syntax > 0 && partial.expected_syntax <= 128);
+        assert_eq!(control.checkpoint(), Err(error));
+        assert_eq!(crate::editor::test_work::read(), partial);
+
+        crate::editor::test_work::reset();
+        reset_sequence_syntax_construction_count();
+        let facts = editor_facts(&source);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        assert!(facts.symbols.len() > partial.symbols);
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read().collections, 1);
     }
 
     #[test]
