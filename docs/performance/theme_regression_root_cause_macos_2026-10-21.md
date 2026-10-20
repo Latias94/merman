@@ -254,6 +254,29 @@ contains the source identity, design and correctness reviews, memory/control sum
 receipts and failed-attempt records. Full per-site and catalog raw rows remain in the ignored
 experiment directory.
 
+## Ledger latency diagnostic: no admission
+
+After the memory/work result was committed as `e76736165`, a fresh diagnostic compared it with
+clean `f46f751f` using eight end-to-end SVG fixtures and 4 balanced AB/BA pairs per fixture
+(64 timed calls). SVG output identities matched and both physical executables were frozen.
+
+| Fixture | Base | Candidate | Paired change |
+| --- | ---: | ---: | ---: |
+| Kanban | 53.12 us | 52.69 us | -0.81% |
+| Packet | 10.15 us | 9.96 us | -1.83% |
+| ZenUML | 23.09 us | 22.93 us | -0.67% |
+| Flowchart | 1.090 ms | 1.097 ms | +0.66% |
+| Journey | 28.23 us | 27.83 us | -1.42% |
+| C4 | 109.81 us | 110.55 us | +0.67% |
+| Block | 32.48 us | 32.64 us | +0.49% |
+| Sequence | 278.76 us | 280.84 us | +0.75% |
+
+No row reaches the registered materiality screen. The ownership refactor remains admitted for
+warm allocation/work only; this diagnostic does not change the v0.9.0 latency classification.
+
+The [ledger latency archive](evidence/theme-ledger-latency-2026-10-21/manifest.json) retains
+the registration, full stock report and raw normalized rows.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the

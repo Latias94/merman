@@ -51,6 +51,13 @@ error contracts match, and the full release/DOM/WASM/theme acceptance checks pas
 memory/work ownership result with an explicit O(R+B) retained-key bound, not a latency or v0.9.0
 convergence claim. Run a fresh balanced timing confirmation before reclassifying release regressions.
 
+A fresh eight-fixture diagnostic after the ledger refactor shows no material latency admission: Kanban
+-0.81%, Packet -1.83%, ZenUML -0.67%, Journey -1.42%, while Flowchart, C4, Block and Sequence
+remain within small diagnostic noise. Keep `e76736165` for the verified warm allocation/work
+reduction; do not reclassify the v0.9.0 latency regressions. The next isolated candidate is the
+ZenUML production CSS call that repeats normalized-ID classification 35 times after the public
+SVG boundary has already normalized the ID.
+
 The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
 scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
 On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;
