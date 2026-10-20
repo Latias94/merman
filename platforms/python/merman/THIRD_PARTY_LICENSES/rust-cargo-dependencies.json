@@ -100,7 +100,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "4ce9666bde6aa1d4e3676d06ab154a89777b117024cad1d18c00490f92c5969a",
+    "cargo_lock_sha256": "2bd70585b6fc1178f6a84f1710bfb01e061af9b3f8f3b7b87b888ec856cbf6a8",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "ffaa752f5f8893a9bfe30ff4a90481ca6ef6da58b411f0a4c1bb94aa2fd78aba"
   },
@@ -109,24 +109,24 @@
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 136,
-      "packages_sha256": "d3e5187d5001f3a1a27872c2f396737a08cb85b89f130175b116e836d2030751"
+      "packages_sha256": "28270c47f084e06b90e28827e57c280e28c7c865b23a8d39d31f330f84e4e22d"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
       "package_count": 135,
-      "packages_sha256": "79c8b14c95e2a30035719d14ab4371aa269d6723b1a88da9ba7d9ef08bc17f46"
+      "packages_sha256": "60ea0448783cc4c85af1837b50bf58e3f5756e9865db556c429d38ce216d9a12"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 136,
-      "packages_sha256": "3c7b5bdd50c255e1e51b2df05cabf33f7460ff8daff25a7a408fb156cb53204c"
+      "packages_sha256": "850b7608bc077f936aa3d3c0dc4064442aeea48dd1bcda912557efb0b85692aa"
     }
   ],
   "dependency_closure": {
     "package_count": 139,
-    "packages_sha256": "974f05e7c11d5a96cd24bca7a48e645cc08d012cd40b026c9b27741644c290dc"
+    "packages_sha256": "4da4cedbeefe5403fd30f35dbba509a74c2731f46e790182f436774498808c1d"
   },
   "licenses": [
     {
@@ -1017,7 +1017,7 @@
       "packages": [
         {
           "name": "getrandom",
-          "version": "0.4.3",
+          "version": "0.3.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
