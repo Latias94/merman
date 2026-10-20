@@ -17,6 +17,20 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 empty explicit-owner query checkpoint](empty_explicit_owner_query_macos_2026-10-20.md)
+skips temporary path construction when the explicit owner set is empty, while preserving outer
+Tracking/Frozen compatibility checks and the complete nonempty-set query. The preselected
+Flowchart / None primary saves 40 allocations and 1344 bytes per warmed render. All 418 catalog
+cells are stable and exact: 371 improve and 47 retain all four operation-growth metrics, with
+no increases. Of 504 jointly stable controls, 108 improve and 396 are unchanged; 141 variable
+controls remain inconclusive. All 645 output/report and independent ordered-measurer controls
+and 26 errors match. All 930 focused and 7651 full release tests pass (seven skipped), together
+with strict Clippy, 37 DOM entries, optimized full WASM and format/path checks. The independent
+terminal review verifies current DOM reports; experiment-local report copies were not archived.
+This is exact allocation/work removal, without a latency or release-convergence claim. Next
+integrate current upstream theme semantics and independently evaluate the remaining scoped
+appearance and ownership candidates. The all-family goal remains incomplete.
+
 The [October 20 post-initialization full confirmation](theme_v090_post_initialization_confirmation_macos_2026-10-20.md)
 compares clean `a6742779c` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
 and 304 fixed balanced A/B observations establish 15 within the joint budget, three regressions
@@ -43,9 +57,8 @@ its smaller operation peak growth. The constant None +12 bytes follow retained p
 lengths and remain unadjusted in raw evidence. All 930 focused and 7651 full release tests pass
 (seven skipped), together with strict Clippy, 37 DOM entries, optimized full WASM and format/path
 checks. This is warmed allocation/work removal, with no cold-start, compilation, latency or
-v0.9.0 convergence claim. Next freeze the newly admitted clean head for a fresh full19 release
-confirmation covering this and the preceding XHTML change. Keep the bounded ZenUML CSS and Packet
-sink hypotheses separate; the all-family goal remains active.
+v0.9.0 convergence claim. The separate post-initialization full19 confirmation above covers
+this clean revision and the preceding XHTML change. The all-family goal remains active.
 
 The [October 20 literal XHTML paragraph checkpoint](xhtml_plain_paragraph_macos_2026-10-20.md)
 recognizes a narrow, proven plain XML paragraph before constructing its wrapper and DOM. The
@@ -1188,9 +1201,10 @@ in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
 compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
 latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
 three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
-actual consumers before selecting further repairs. Keep empty explicit-owner queries, absent
-scoped appearance paths, frozen path storage and duplicate normalized CSS-ID owners as separate
-candidates. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+actual consumers before selecting further repairs. Empty explicit-owner queries now have an
+independent admitted allocation checkpoint. Keep absent scoped appearance paths, frozen path
+storage and duplicate normalized CSS-ID owners as separate candidates. Use fresh adjacent evidence
+and calibrated confirmation for latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 

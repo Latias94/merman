@@ -979,6 +979,9 @@ impl MermaidConfig {
     }
 
     pub(crate) fn explicit_config_owns_path(&self, dotted_path: &str) -> bool {
+        if self.explicit_config_paths.is_empty() {
+            return false;
+        }
         if dotted_path.is_empty() {
             return !self.explicit_config_paths.is_empty();
         }
