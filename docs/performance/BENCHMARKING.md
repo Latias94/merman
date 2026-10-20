@@ -38,11 +38,18 @@ It measures:
 - `compatibility_json_parse/*`: compatibility JSON parsing when the diagram type is already known.
   Historical reports may use its registered `parse_known_type/*` alias.
 - `editor_snapshot/*`: requested editor snapshot capture, retaining outcome, warnings, source
-  configuration and parser-owned facts. Identity projection is outside timing; object keys are
-  sorted only in this lane's identity while all array order and values are preserved.
+  configuration and parser-owned facts.
 - `layout/*`: geometry and route computation from a parsed diagram.
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
+
+JSON identity projection is outside timing. It sorts object keys on a managed copy while
+preserving every array order and value; the measured output is unchanged. This stabilizes
+identities for models such as State whose records use randomized map iteration. SVG identities
+retain exact serialized bytes. Compare only revisions with the same identity harness; older
+unsorted JSON hashes are historical observations, not interchangeable identity receipts.
+Include `crates/merman/benches/support/json_identity.rs` when freezing and comparing pipeline
+harness sources: the driver's primary benchmark-source digest does not include support modules.
 
 Bench fixtures live under `crates/merman/benches/fixtures/`. A direct Criterion invocation is useful
 for exploration, but its internal samples are not independent base/head observations and cannot by

@@ -6,6 +6,9 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, sync::OnceLock};
 
+#[path = "support/json_identity.rs"]
+mod json_identity;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OutputIdentity {
     output_kind: &'static str,
@@ -63,10 +66,7 @@ fn emit_preflight(group: &str, name: &str, identity: &OutputIdentity) {
 }
 
 fn json_output_identity(output_kind: &str, value: &ManagedSemanticJson) -> OutputIdentity {
-    let mut output = Vec::new();
-    value
-        .write_json(&mut output)
-        .expect("benchmark JSON output must serialize");
+    let output = json_identity::json_identity_bytes(value);
     output_identity(output_kind, &output, None)
 }
 
