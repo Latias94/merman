@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 21 root-cause investigation](theme_regression_root_cause_macos_2026-10-21.md)
+pauses small allocation repairs and prioritizes newly introduced work against v0.9.0. Independent
+history audits and full-public-E2E diagnostic interventions identify the generated CSS/XML and
+bounded append protocols as important candidates: combined bypass changes Packet by -1.368 us,
+ZenUML by -0.565 us and Kanban by -13.914 us. The interventions deliberately omit contracts and
+are not production candidates or formal recovery. They do not support a unified writer explanation
+of ZenUML. Its matched typed-parse diagnostic is only +0.340 us, while a separate default CSS
+producer intervention removes 60 non-ID substitutions and changes rich E2E by -0.831 us. All
+points and controls are preserved; no independent-stage or intervention deltas are added.
+The same audit finds repeated compiled-theme request/index ownership and five-set coverage
+reconstruction; None does not execute their nonempty work. PreparedSource Arc/metadata cleanup
+is parked because a pre-redraw release checkpoint already had similar Packet/ZenUML gaps.
+Next redesign these larger mechanisms with complete normal contracts, then obtain adjacent
+formal E2E evidence. The latest admitted release classification remains 14/2/3 on b9.
+
 The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
 scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
 On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;
@@ -28,8 +43,9 @@ full WASM, 34 theme acceptance tests, compiled pipeline discovery and native-mem
 The helper also exists unchanged in v0.9.0: this is shared memory/work removal, without a latency
 or theme-regression attribution. The earlier metadata-owner candidate remains rejected for its
 stable Venn peak regressions; its code is absent from this checkpoint. Reevaluate it independently
-against this new disposal baseline, then examine unused ZenUML editor facts and fresh-source
-ownership. All-family release convergence remains incomplete.
+against this new disposal baseline only after the root-cause priorities above. Tag-shared
+editor facts and fresh-source ownership are parked. All-family release convergence remains
+incomplete.
 
 The [October 20 appearance/CSS release checkpoint](theme_v090_appearance_css_macos_2026-10-20.md)
 compares production `b9a58731c` with v0.9.0 using fresh 608 A/A and 304 fixed balanced A/B
@@ -1289,10 +1305,14 @@ admitted allocation checkpoints. Frozen path storage remains separate. The inter
 clone was independently measured and rejected: its Packet allocation win accompanies stable
 Venn peak regressions. Its patch and failed records are preserved and its code is absent. The
 separate JSON disposal repair passes all 418 catalog/645 site behavior controls and its original
-stable-memory gate; reevaluate metadata ownership against that new baseline before integrating it.
-Unused ZenUML editor facts and the fresh-render prepared-source Arc remain separately reviewed,
-unmeasured candidates. Use calibrated
-confirmation for subsequent latency claims; see the
+stable-memory gate. The October 21 root-cause investigation now takes precedence over that
+allocation queue: redesign generated CSS/XML and bounded fragment protocol, isolate ZenUML's
+default producer and remaining completion/layout work, then unify immutable compiled-theme
+request ownership and freeze coverage once for unchanged evidence. Its diagnostic interventions
+retain full rich E2E/drop but are not safe production candidates or formal recovery. Pre-PR224
+observations refute PreparedSource Arc as the original root cause. Keep metadata/fresh-owner,
+440-slot reporting and unused editor-facts candidates parked; the latter two existed in the tag.
+Use calibrated confirmation for subsequent latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
