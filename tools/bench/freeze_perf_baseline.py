@@ -218,6 +218,9 @@ _REPORT_METHOD_FIELDS = frozenset(
         "evidence_class",
     }
 )
+_REPORT_METHOD_TIMEOUT_FIELDS = frozenset(
+    {"build_timeout_seconds", "probe_timeout_seconds"}
+)
 _REPORT_ENVIRONMENT_FIELDS = frozenset(
     {"os", "machine", "processor", "cpu", "python", "rustc", "cargo"}
 )
@@ -1362,7 +1365,14 @@ def _inspect_native_memory_report(
     _validate_report_environment(environment, host)
 
     method = _object(report["method"], "native-memory report.method")
-    _fields(method, _REPORT_METHOD_FIELDS, "native-memory report.method")
+    has_timeouts = bool(_REPORT_METHOD_TIMEOUT_FIELDS & method.keys())
+    method_fields = _REPORT_METHOD_FIELDS | (
+        _REPORT_METHOD_TIMEOUT_FIELDS if has_timeouts else set()
+    )
+    _fields(method, method_fields, "native-memory report.method")
+    if has_timeouts:
+        for field in _REPORT_METHOD_TIMEOUT_FIELDS:
+            _integer(method[field], f"native-memory report.method.{field}", minimum=1)
     scales = _int_list(method["scales"], "native-memory report.method.scales", allow_empty=False)
     if tuple(scales) != MEMORY_SCALES:
         raise ManifestError(f"native-memory report scales must be {list(MEMORY_SCALES)}")

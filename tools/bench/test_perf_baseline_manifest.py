@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import copy
 import hashlib
 import json
@@ -565,7 +566,7 @@ class PerfBaselineManifestTest(unittest.TestCase):
         self._write_json(path, value if value is not None else self.freeze())
         return path
 
-    def _use_current_driver_build_provenance(self) -> None:
+    def _use_current_driver_report(self) -> None:
         recipe = run_native_memory.memory_recipe(
             self.root,
             target_dir=self.root / "target",
@@ -592,27 +593,99 @@ class PerfBaselineManifestTest(unittest.TestCase):
                 recipe, timeout_seconds=30
             )
         self.assertEqual(executable, self.executable)
-        report = baseline.load_strict_json(self.report_path)
-        report["recipe"]["profile_reset_command"] = (
-            run_native_memory.cargo_clean_bench_profile_command(recipe)
+        source = baseline.load_strict_json(self.report_path)["source"]
+        args = argparse.Namespace(
+            repo_root=str(self.root), corpus=str(self.corpus_path),
+            lane=self._memory_lane()["id"], contract="", executable="",
+            target_dir="target", toolchain=None, repeats=5, seed=101,
+            bootstrap_resamples=10_000, timeout_seconds=30,
+            build_timeout_seconds=60, run_id="test-run",
+            json_out=str(self.report_path), allow_dirty=False,
+            smoke=False, dry_run=False,
         )
-        report["executable"]["build"] = provenance
+
+        def probe(_executable, request, *, executable_sha256, **_kwargs):
+            response = self._response(
+                scale=request["scale"], repeat=request["repeat"],
+                mode=request["mode"],
+                pair_index=(MEMORY_SCALES.index(request["scale"]) * 5
+                            + request["repeat"]),
+                executable_sha256=executable_sha256,
+            )
+            response.update({field: request[field] for field in ("invocation_id", "nonce")})
+            return response
+
+        with (
+            mock.patch.object(run_native_memory, "_git_provenance", return_value=source),
+            mock.patch.object(
+                run_native_memory, "_tool_output",
+                side_effect=[self.host["rustc"], self.host["cargo"]],
+            ),
+            mock.patch.object(
+                run_native_memory, "discover_executable",
+                return_value=(executable, provenance),
+            ),
+            mock.patch.object(run_native_memory, "run_probe", side_effect=probe) as run_probe,
+        ):
+            report, exit_code = run_native_memory.execute(args)
+        self.assertEqual(exit_code, 0, report["contract_errors"])
+        self.assertEqual(run_probe.call_count, 60)
+        environment = report["environment"]
+        self.host.update(
+            os=environment["os"], cpu=environment["cpu"],
+            architecture=environment["machine"],
+        )
         self._write_json(self.report_path, report)
 
-    def test_freeze_and_verify_accept_current_driver_build_provenance(self) -> None:
-        self._use_current_driver_build_provenance()
+    def test_freeze_and_verify_accept_current_driver_report(self) -> None:
+        for schema_version in (1, 2):
+            with self.subTest(owner_contract_schema=schema_version):
+                if schema_version == 2:
+                    self._configure_schema_v2_memory_fixture()
+                self._use_current_driver_report()
+                manifest = self.freeze()
+                baseline.verify_baseline(
+                    self.root, self.write_manifest(manifest), git_probe=self.git
+                )
 
-        manifest = self.freeze()
-
-        baseline.verify_baseline(
-            self.root, self.write_manifest(manifest), git_probe=self.git
-        )
+    def test_freeze_rejects_invalid_current_driver_timeouts(self) -> None:
+        self._use_current_driver_report()
+        original = baseline.load_strict_json(self.report_path)
+        for field in ("build_timeout_seconds", "probe_timeout_seconds"):
+            for value in (0, -1, True, False, 1.5, "30", None):
+                with self.subTest(field=field, value=value):
+                    damaged = copy.deepcopy(original)
+                    damaged["method"][field] = value
+                    self._write_json(self.report_path, damaged)
+                    with self.assertRaisesRegex(
+                        baseline.ManifestError,
+                        rf"report\.method\.{field} must be",
+                    ):
+                        self.freeze()
 
     def test_freeze_rejects_damaged_current_driver_build_provenance(self) -> None:
-        self._use_current_driver_build_provenance()
+        self._use_current_driver_report()
         original = baseline.load_strict_json(self.report_path)
         missing = object()
         cases = (
+            (
+                "missing build timeout",
+                ("method", "build_timeout_seconds"),
+                missing,
+                r"report\.method fields differ",
+            ),
+            (
+                "missing probe timeout",
+                ("method", "probe_timeout_seconds"),
+                missing,
+                r"report\.method fields differ",
+            ),
+            (
+                "unknown method field",
+                ("method", "unexpected"),
+                None,
+                r"report\.method fields differ",
+            ),
             (
                 "recipe reset command",
                 ("recipe", "profile_reset_command"),
