@@ -37,25 +37,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding.max(0.0);
-    let w = (metrics.width + 2.0 * p)
-        .max(common.layout_node.width.max(0.0))
-        .max(80.0);
-    let rim_ry = (w * 0.08).clamp(5.0, 12.0);
-    let total_height = (metrics.height + 2.0 * p + rim_ry).max(common.layout_node.height.max(0.0));
-    let top_y = -total_height / 2.0 + rim_ry;
-    let bottom_y = total_height / 2.0;
+    let (w, rim_ry, top_y, bottom_y, hand_drawn_body) = prepare_bucket_geometry(ctx, common, label);
     let bottom_w = w * 0.72;
-
     let mut body = String::new();
     let _ = write!(
         &mut body,
@@ -75,8 +58,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
         fmt(-w / 2.0),
         fmt(top_y),
     );
-    let hand_drawn_body = path_from_points(&bucket_points(w, top_y, bottom_y, bottom_w, rim_ry));
-
     if common.look_is_hand_drawn() {
         let _ = write!(
             out,
@@ -161,4 +142,46 @@ mod tests {
                 .all(|pair| pair[0].0 >= pair[1].0)
         );
     }
+}
+
+fn prepare_bucket_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, f64, f64, f64, String) {
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding.max(0.0);
+    let w = (metrics.width + 2.0 * p)
+        .max(common.layout_node.width.max(0.0))
+        .max(80.0);
+    let rim_ry = (w * 0.08).clamp(5.0, 12.0);
+    let total_height = (metrics.height + 2.0 * p + rim_ry).max(common.layout_node.height.max(0.0));
+    let top_y = -total_height / 2.0 + rim_ry;
+    let bottom_y = total_height / 2.0;
+    let bottom_w = w * 0.72;
+
+    let hand_drawn_body = path_from_points(&bucket_points(w, top_y, bottom_y, bottom_w, rim_ry));
+
+    (w, rim_ry, top_y, bottom_y, hand_drawn_body)
+}
+
+pub(super) fn advance_bucket_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, _, _, _, hand_drawn_body) = prepare_bucket_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &hand_drawn_body, target);
 }

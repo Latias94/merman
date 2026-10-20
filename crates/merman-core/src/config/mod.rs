@@ -1291,6 +1291,20 @@ impl MermaidConfig {
         }
     }
 
+    pub(crate) fn authored_source_overrides(
+        &self,
+        mut overrides: MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<MermaidConfig> {
+        control.checkpoint()?;
+        if overrides.is_empty_object() {
+            return Ok(overrides);
+        }
+        remove_secure_keys_recursive(self.as_value(), overrides.value_mut());
+        control.checkpoint()?;
+        Ok(overrides)
+    }
+
     pub(crate) fn source_filtered_overrides(
         &self,
         overrides: &MermaidConfig,

@@ -9,6 +9,7 @@ mod inherited_font_stack;
     feature = "diagram-agentflow"
 ))]
 mod label_background;
+pub(crate) mod native_typography;
 mod preparation;
 #[cfg(any(
     feature = "diagram-treemap",
@@ -27,6 +28,8 @@ pub(crate) use single_title_fill::SingleTitleFillPlan;
 pub use theme_diagnostics::ThemeDiagnostic;
 
 pub use capability::{RenderCapabilityPlan, plan_render, supports_diagram_type};
+#[doc(hidden)]
+pub use capability::{has_edge_geometry, validate_layout_options};
 pub(crate) use direct_static_paint::{
     DirectStaticPaint, DirectStaticSelectorDomain, resolve_direct_static_fill,
     resolve_direct_static_stroke,
@@ -74,7 +77,7 @@ use merman_core::{
     ParsedDiagramRender, RenderSemanticModel,
 };
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// Stable identity for a built-in typed render family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1616,12 +1619,12 @@ pub(crate) struct FamilyPair<S, L> {
     layout: L,
 }
 
-impl<S, L> FamilyPair<S, L> {
+impl<S: std::ops::Deref, L> FamilyPair<S, L> {
     fn new(semantic: S, layout: L) -> Self {
         Self { semantic, layout }
     }
 
-    pub(crate) fn semantic(&self) -> &S {
+    pub(crate) fn semantic(&self) -> &S::Target {
         &self.semantic
     }
 
@@ -1630,12 +1633,18 @@ impl<S, L> FamilyPair<S, L> {
     }
 }
 
-impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
+impl<S: std::ops::Deref, L> FamilyPair<S, L>
+where
+    S::Target: BuiltinRenderSemantic,
+{
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
-    ) -> merman_core::Result<ManagedSemanticJson> {
-        self.semantic.compatibility_json(metadata)
+        control: &merman_core::OperationControl,
+    ) -> Result<ManagedSemanticJson> {
+        self.semantic
+            .compatibility_json_controlled(metadata, control)?
+            .map_err(Error::SemanticProjection)
     }
 }
 
@@ -1645,9 +1654,9 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) struct FlowchartFamilyArtifact<L> {
-    pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
-    render_context: diagrams::flowchart::FlowchartRenderContext,
+pub(crate) struct FlowchartFamilyArtifact<'parsed, L> {
+    pair: FamilyPair<std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartModel>, L>,
+    render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     prepared_theme: crate::flowchart::FlowchartPreparedTheme,
@@ -1664,7 +1673,7 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-impl<L> FlowchartFamilyArtifact<L> {
+impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
     pub(crate) const fn render_config(&self) -> &crate::svg::FlowchartRenderConfig {
         &self.render_config
     }
@@ -1685,7 +1694,9 @@ impl<L> FlowchartFamilyArtifact<L> {
         &self.expected_effect_applications
     }
 
-    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
+    pub(crate) fn pair(
+        &self,
+    ) -> &FamilyPair<std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartModel>, L> {
         &self.pair
     }
 
@@ -1716,7 +1727,7 @@ impl<L> FlowchartFamilyArtifact<L> {
     feature = "diagram-agentflow"
 ))]
 fn flowchart_artifact_theme_evidence<L>(
-    artifact: &FlowchartFamilyArtifact<L>,
+    artifact: &FlowchartFamilyArtifact<'_, L>,
     theme: Option<&ResolvedDiagramTheme>,
 ) -> (FamilyThemeEvidence, Vec<SourceStyleResidual>) {
     let (mut evidence, source_residuals) = artifact.theme_evidence().finish(theme);
@@ -1728,8 +1739,8 @@ fn flowchart_artifact_theme_evidence<L>(
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-class")]
-pub(crate) struct ClassFamilyArtifact {
-    pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
+pub(crate) struct ClassFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed ClassDiagram, ClassDiagramLayout>,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
     render_config: crate::class::ClassRenderConfig,
@@ -1739,21 +1750,21 @@ pub(crate) struct ClassFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-c4")]
-pub(crate) struct C4FamilyArtifact {
-    pair: FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
+pub(crate) struct C4FamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
     cluster_theme: crate::c4::C4ClusterThemePlan,
     typography_theme: crate::c4::C4TypographyThemePlan,
     text_paint: crate::c4::C4TextPaintPlan,
 }
 
 #[cfg(feature = "diagram-c4")]
-impl C4FamilyArtifact {
+impl<'parsed> C4FamilyArtifact<'parsed> {
     pub(crate) const fn text_paint(&self) -> &crate::c4::C4TextPaintPlan {
         &self.text_paint
     }
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::c4::C4DiagramRenderModel, C4DiagramLayout> {
         &self.pair
     }
 
@@ -1767,7 +1778,7 @@ impl C4FamilyArtifact {
 }
 
 #[cfg(feature = "diagram-class")]
-impl ClassFamilyArtifact {
+impl<'parsed> ClassFamilyArtifact<'parsed> {
     pub(crate) const fn render_config(&self) -> &crate::class::ClassRenderConfig {
         &self.render_config
     }
@@ -1776,7 +1787,7 @@ impl ClassFamilyArtifact {
         &self.node_visual_plan
     }
 
-    pub(crate) const fn pair(&self) -> &FamilyPair<ClassDiagram, ClassDiagramLayout> {
+    pub(crate) const fn pair(&self) -> &FamilyPair<&'parsed ClassDiagram, ClassDiagramLayout> {
         &self.pair
     }
 
@@ -1795,22 +1806,23 @@ impl ClassFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-gantt")]
-pub(crate) struct GanttFamilyArtifact {
-    pair: FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>,
+pub(crate) struct GanttFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>,
     task_theme: crate::gantt::GanttTaskTheme,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-pie")]
-pub(crate) struct PieFamilyArtifact {
-    pair: FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>,
+pub(crate) struct PieFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>,
     theme: crate::pie::PieThemePlan,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-timeline")]
-pub(crate) struct TimelineFamilyArtifact {
-    pair: FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>,
+pub(crate) struct TimelineFamilyArtifact<'parsed> {
+    pair:
+        FamilyPair<&'parsed diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>,
     event_theme: crate::timeline::TimelineEventTheme,
     typography_theme: crate::timeline::TimelineTypographyThemePlan,
     text_paint: crate::timeline::TimelineTextPaintPlan,
@@ -1818,22 +1830,23 @@ pub(crate) struct TimelineFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-journey")]
-pub(crate) struct JourneyFamilyArtifact {
-    pair: FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>,
+pub(crate) struct JourneyFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>,
     task_theme: crate::journey::JourneyTaskTheme,
     text_paint: crate::journey::JourneyTextPaintPlan,
     typography_theme: crate::journey::JourneyTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-journey")]
-impl JourneyFamilyArtifact {
+impl<'parsed> JourneyFamilyArtifact<'parsed> {
     pub(crate) const fn text_paint(&self) -> &crate::journey::JourneyTextPaintPlan {
         &self.text_paint
     }
 
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>
+    {
         &self.pair
     }
 
@@ -1848,23 +1861,27 @@ impl JourneyFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-quadrant-chart")]
-pub(crate) struct QuadrantChartFamilyArtifact {
-    pair:
-        FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>,
+pub(crate) struct QuadrantChartFamilyArtifact<'parsed> {
+    pair: FamilyPair<
+        &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
+        QuadrantChartDiagramLayout,
+    >,
     point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
     text_paint: crate::quadrantchart::QuadrantChartPaintPlan,
 }
 
 #[cfg(feature = "diagram-quadrant-chart")]
-impl QuadrantChartFamilyArtifact {
+impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
     pub(crate) const fn text_paint(&self) -> &crate::quadrantchart::QuadrantChartPaintPlan {
         &self.text_paint
     }
 
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>
-    {
+    ) -> &FamilyPair<
+        &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
+        QuadrantChartDiagramLayout,
+    > {
         &self.pair
     }
 
@@ -1875,8 +1892,8 @@ impl QuadrantChartFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-xychart")]
-pub(crate) struct XyChartFamilyArtifact {
-    pair: FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
+pub(crate) struct XyChartFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
     series_paint: crate::xychart::XyChartSeriesPaintPlan,
     typography_theme: crate::xychart::XyChartTypographyThemePlan,
     paint_theme: crate::xychart::XyChartPaintPlan,
@@ -1886,8 +1903,8 @@ pub(crate) struct XyChartFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-radar")]
-pub(crate) struct RadarFamilyArtifact {
-    pair: FamilyPair<diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout>,
+pub(crate) struct RadarFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout>,
     series_paint: crate::radar::RadarSeriesPaintPlan,
     title_theme: crate::radar::RadarTitleThemePlan,
     axis_paint: crate::radar::RadarAxisPaintPlan,
@@ -1897,34 +1914,38 @@ pub(crate) struct RadarFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-sankey")]
-pub(crate) struct SankeyFamilyArtifact {
-    pair: FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>,
+pub(crate) struct SankeyFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>,
     node_palette: crate::sankey::SankeyNodePalettePlan,
     typography_theme: crate::sankey::SankeyTypographyThemePlan,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-venn")]
-pub(crate) struct VennFamilyArtifact {
-    pair: FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>,
+pub(crate) struct VennFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>,
     title_theme: crate::venn::VennTitleThemePlan,
     typography_theme: crate::venn::VennTypographyThemePlan,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-zenuml")]
-pub(crate) struct ZenumlFamilyArtifact {
-    pair:
-        FamilyPair<diagrams::zenuml::ZenumlDiagramRenderModel, crate::zenuml::ZenumlDiagramLayout>,
+pub(crate) struct ZenumlFamilyArtifact<'parsed> {
+    pair: FamilyPair<
+        &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
+        crate::zenuml::ZenumlDiagramLayout,
+    >,
     title_theme: crate::zenuml::ZenumlTitleThemePlan,
 }
 
 #[cfg(feature = "diagram-zenuml")]
-impl ZenumlFamilyArtifact {
+impl<'parsed> ZenumlFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::zenuml::ZenumlDiagramRenderModel, crate::zenuml::ZenumlDiagramLayout>
-    {
+    ) -> &FamilyPair<
+        &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
+        crate::zenuml::ZenumlDiagramLayout,
+    > {
         &self.pair
     }
 
@@ -1935,9 +1956,9 @@ impl ZenumlFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-event-modeling")]
-pub(crate) struct EventModelingFamilyArtifact {
+pub(crate) struct EventModelingFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
         EventModelingDiagramLayout,
     >,
     text_theme: crate::eventmodeling::EventModelingTextThemePlan,
@@ -1945,16 +1966,18 @@ pub(crate) struct EventModelingFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-ishikawa")]
-pub(crate) struct IshikawaFamilyArtifact {
-    pair: FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>,
+pub(crate) struct IshikawaFamilyArtifact<'parsed> {
+    pair:
+        FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>,
     text_theme: crate::ishikawa::IshikawaTextThemePlan,
 }
 
 #[cfg(feature = "diagram-ishikawa")]
-impl IshikawaFamilyArtifact {
+impl<'parsed> IshikawaFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>
+    {
         &self.pair
     }
 
@@ -1964,11 +1987,11 @@ impl IshikawaFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-event-modeling")]
-impl EventModelingFamilyArtifact {
+impl<'parsed> EventModelingFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
         EventModelingDiagramLayout,
     > {
         &self.pair
@@ -1980,10 +2003,10 @@ impl EventModelingFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-venn")]
-impl VennFamilyArtifact {
+impl<'parsed> VennFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::venn::VennDiagramRenderModel, VennDiagramLayout> {
         &self.pair
     }
 
@@ -2004,8 +2027,8 @@ impl VennFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-block")]
-pub(crate) struct BlockFamilyArtifact {
-    pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
+pub(crate) struct BlockFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
     node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
     edge_paint_theme: crate::block::BlockEdgePaintPlan,
@@ -2015,10 +2038,10 @@ pub(crate) struct BlockFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-block")]
-impl BlockFamilyArtifact {
+impl<'parsed> BlockFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {
         &self.pair
     }
 
@@ -2061,16 +2084,18 @@ impl BlockFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-railroad")]
-pub(crate) struct RailroadFamilyArtifact {
-    pair: FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>,
+pub(crate) struct RailroadFamilyArtifact<'parsed> {
+    pair:
+        FamilyPair<&'parsed diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>,
     typography_theme: crate::railroad::RailroadTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-railroad")]
-impl RailroadFamilyArtifact {
+impl<'parsed> RailroadFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2080,15 +2105,16 @@ impl RailroadFamilyArtifact {
 }
 
 #[derive(Debug)]
-pub(crate) struct ErrorFamilyArtifact {
-    pair: FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>,
+pub(crate) struct ErrorFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>,
     typography_theme: crate::error::ErrorTypographyThemePlan,
 }
 
-impl ErrorFamilyArtifact {
+impl<'parsed> ErrorFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2099,16 +2125,16 @@ impl ErrorFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-info")]
-pub(crate) struct InfoFamilyArtifact {
-    pair: FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>,
+pub(crate) struct InfoFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>,
     typography_theme: crate::info::InfoTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-info")]
-impl InfoFamilyArtifact {
+impl<'parsed> InfoFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout> {
         &self.pair
     }
 
@@ -2119,16 +2145,17 @@ impl InfoFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-cynefin")]
-pub(crate) struct CynefinFamilyArtifact {
-    pair: FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>,
+pub(crate) struct CynefinFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>,
     typography_theme: crate::cynefin::CynefinTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-cynefin")]
-impl CynefinFamilyArtifact {
+impl<'parsed> CynefinFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2139,16 +2166,17 @@ impl CynefinFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-wardley")]
-pub(crate) struct WardleyFamilyArtifact {
-    pair: FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>,
+pub(crate) struct WardleyFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>,
     typography_theme: crate::wardley::WardleyTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-wardley")]
-impl WardleyFamilyArtifact {
+impl<'parsed> WardleyFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2158,10 +2186,10 @@ impl WardleyFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-sankey")]
-impl SankeyFamilyArtifact {
+impl<'parsed> SankeyFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout> {
         &self.pair
     }
 
@@ -2182,18 +2210,18 @@ impl SankeyFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-git-graph")]
-pub(crate) struct GitGraphFamilyArtifact {
-    pair: FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>,
+pub(crate) struct GitGraphFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>,
     node_palette: crate::gitgraph::GitGraphNodePalettePlan,
     static_paint: crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-git-graph")]
-impl GitGraphFamilyArtifact {
+impl<'parsed> GitGraphFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout> {
         &self.pair
     }
 
@@ -2220,17 +2248,17 @@ impl GitGraphFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-treemap")]
-pub(crate) struct TreemapFamilyArtifact {
-    pair: FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>,
+pub(crate) struct TreemapFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>,
     title_theme: crate::treemap::TreemapTitleThemePlan,
     typography_theme: crate::treemap::TreemapTypographyThemePlan,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-requirement")]
-pub(crate) struct RequirementFamilyArtifact {
+pub(crate) struct RequirementFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        diagrams::requirement::RequirementDiagramRenderModel,
+        &'parsed diagrams::requirement::RequirementDiagramRenderModel,
         crate::requirement::RequirementPreparedArtifact,
     >,
     paint_theme: crate::requirement::RequirementPaintThemePlan,
@@ -2238,16 +2266,16 @@ pub(crate) struct RequirementFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-packet")]
-pub(crate) struct PacketFamilyArtifact {
-    pair: FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>,
+pub(crate) struct PacketFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>,
     typography_theme: crate::packet::PacketTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-packet")]
-impl PacketFamilyArtifact {
+impl<'parsed> PacketFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout> {
         &self.pair
     }
 
@@ -2257,11 +2285,11 @@ impl PacketFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-requirement")]
-impl RequirementFamilyArtifact {
+impl<'parsed> RequirementFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        diagrams::requirement::RequirementDiagramRenderModel,
+        &'parsed diagrams::requirement::RequirementDiagramRenderModel,
         crate::requirement::RequirementPreparedArtifact,
     > {
         &self.pair
@@ -2273,10 +2301,11 @@ impl RequirementFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-treemap")]
-impl TreemapFamilyArtifact {
+impl<'parsed> TreemapFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2290,10 +2319,10 @@ impl TreemapFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-radar")]
-impl RadarFamilyArtifact {
+impl<'parsed> RadarFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout> {
         &self.pair
     }
 
@@ -2328,7 +2357,7 @@ impl RadarFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-xychart")]
-impl XyChartFamilyArtifact {
+impl<'parsed> XyChartFamilyArtifact<'parsed> {
     pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
         &self.effect_evidence
     }
@@ -2338,7 +2367,8 @@ impl XyChartFamilyArtifact {
 
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2357,24 +2387,26 @@ impl XyChartFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-tree-view")]
-pub(crate) struct TreeViewFamilyArtifact {
-    pair: FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
+pub(crate) struct TreeViewFamilyArtifact<'parsed> {
+    pair:
+        FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
     theme: crate::tree_view::TreeViewThemePlan,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-mindmap")]
-pub(crate) struct MindmapFamilyArtifact {
-    pair: FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
+pub(crate) struct MindmapFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
     node_palette: crate::mindmap::MindmapNodePalettePlan,
     prepared_labels: crate::mindmap::MindmapPreparedLabels,
 }
 
 #[cfg(feature = "diagram-mindmap")]
-impl MindmapFamilyArtifact {
+impl<'parsed> MindmapFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2389,16 +2421,16 @@ impl MindmapFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-er")]
-pub(crate) struct ErFamilyArtifact {
-    pair: FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>,
+pub(crate) struct ErFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::er::ErDiagramRenderModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
 }
 
 #[cfg(feature = "diagram-er")]
-impl ErFamilyArtifact {
+impl<'parsed> ErFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::er::ErDiagramRenderModel, ErDiagramLayout> {
         &self.pair
     }
 
@@ -2408,10 +2440,10 @@ impl ErFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-pie")]
-impl PieFamilyArtifact {
+impl<'parsed> PieFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::pie::PieDiagramRenderModel, PieDiagramLayout> {
         &self.pair
     }
 
@@ -2421,14 +2453,15 @@ impl PieFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-timeline")]
-impl TimelineFamilyArtifact {
+impl<'parsed> TimelineFamilyArtifact<'parsed> {
     pub(crate) const fn text_paint(&self) -> &crate::timeline::TimelineTextPaintPlan {
         &self.text_paint
     }
 
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2442,10 +2475,11 @@ impl TimelineFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-tree-view")]
-impl TreeViewFamilyArtifact {
+impl<'parsed> TreeViewFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2455,10 +2489,10 @@ impl TreeViewFamilyArtifact {
 }
 
 #[cfg(feature = "diagram-gantt")]
-impl GanttFamilyArtifact {
+impl<'parsed> GanttFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout> {
         &self.pair
     }
 
@@ -2469,17 +2503,17 @@ impl GanttFamilyArtifact {
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-state")]
-pub(crate) struct StateFamilyArtifact {
-    pair: FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
+pub(crate) struct StateFamilyArtifact<'parsed> {
+    pair: FamilyPair<&'parsed diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
 }
 
 #[cfg(feature = "diagram-state")]
-impl StateFamilyArtifact {
+impl<'parsed> StateFamilyArtifact<'parsed> {
     pub(crate) fn pair(
         &self,
-    ) -> &FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::state::StateDiagramRenderModel, StateDiagramLayout> {
         &self.pair
     }
 
@@ -2495,9 +2529,9 @@ impl StateFamilyArtifact {
 #[cfg(feature = "layout-cytoscape")]
 #[derive(Debug)]
 #[cfg(feature = "diagram-architecture")]
-pub(crate) struct ArchitectureFamilyArtifact {
+pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        diagrams::architecture::ArchitectureDiagramRenderModel,
+        &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
         ArchitectureDiagramLayout,
     >,
     group_theme: crate::architecture::ArchitectureGroupThemePlan,
@@ -2505,11 +2539,11 @@ pub(crate) struct ArchitectureFamilyArtifact {
 
 #[cfg(feature = "layout-cytoscape")]
 #[cfg(feature = "diagram-architecture")]
-impl ArchitectureFamilyArtifact {
+impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        diagrams::architecture::ArchitectureDiagramRenderModel,
+        &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
         ArchitectureDiagramLayout,
     > {
         &self.pair
@@ -2521,97 +2555,97 @@ impl ArchitectureFamilyArtifact {
 }
 
 #[derive(Debug)]
-pub(crate) enum BuiltinFamilyArtifact {
+pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     #[cfg(feature = "diagram-agentflow")]
     Agentflow {
-        semantic: Box<diagrams::agentflow::AgentflowDiagramRenderModel>,
-        flow: Box<FlowchartFamilyArtifact<FlowchartLayout>>,
+        semantic: &'parsed diagrams::agentflow::AgentflowDiagramRenderModel,
+        flow: Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>,
     },
-    Error(Box<ErrorFamilyArtifact>),
+    Error(Box<ErrorFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-mindmap")]
-    Mindmap(Box<MindmapFamilyArtifact>),
+    Mindmap(Box<MindmapFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-state")]
-    State(Box<StateFamilyArtifact>),
+    State(Box<StateFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-sequence")]
     Sequence(
         Box<
             FamilyPair<
-                diagrams::sequence::SequenceDiagramRenderModel,
+                &'parsed diagrams::sequence::SequenceDiagramRenderModel,
                 crate::sequence::SequencePreparedArtifact,
             >,
         >,
     ),
     #[cfg(feature = "diagram-zenuml")]
-    Zenuml(Box<ZenumlFamilyArtifact>),
+    Zenuml(Box<ZenumlFamilyArtifact<'parsed>>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
+    Flowchart(Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
+    Swimlane(Box<FlowchartFamilyArtifact<'parsed, SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     #[cfg(feature = "diagram-architecture")]
-    Architecture(Box<ArchitectureFamilyArtifact>),
+    Architecture(Box<ArchitectureFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-class")]
-    Class(Box<ClassFamilyArtifact>),
+    Class(Box<ClassFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-c4")]
-    C4(Box<C4FamilyArtifact>),
+    C4(Box<C4FamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-cynefin")]
-    Cynefin(Box<CynefinFamilyArtifact>),
+    Cynefin(Box<CynefinFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-wardley")]
-    Wardley(Box<WardleyFamilyArtifact>),
+    Wardley(Box<WardleyFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-railroad")]
-    Railroad(Box<RailroadFamilyArtifact>),
+    Railroad(Box<RailroadFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-kanban")]
     Kanban(
         Box<
             FamilyPair<
-                diagrams::kanban::KanbanDiagramRenderModel,
+                &'parsed diagrams::kanban::KanbanDiagramRenderModel,
                 crate::kanban::KanbanPreparedArtifact,
             >,
         >,
     ),
     #[cfg(feature = "diagram-gantt")]
-    Gantt(Box<GanttFamilyArtifact>),
+    Gantt(Box<GanttFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-pie")]
-    Pie(Box<PieFamilyArtifact>),
+    Pie(Box<PieFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-packet")]
-    Packet(Box<PacketFamilyArtifact>),
+    Packet(Box<PacketFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-timeline")]
-    Timeline(Box<TimelineFamilyArtifact>),
+    Timeline(Box<TimelineFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-journey")]
-    Journey(Box<JourneyFamilyArtifact>),
+    Journey(Box<JourneyFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-requirement")]
-    Requirement(Box<RequirementFamilyArtifact>),
+    Requirement(Box<RequirementFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-sankey")]
-    Sankey(Box<SankeyFamilyArtifact>),
+    Sankey(Box<SankeyFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-radar")]
-    Radar(Box<RadarFamilyArtifact>),
+    Radar(Box<RadarFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-info")]
-    Info(Box<InfoFamilyArtifact>),
+    Info(Box<InfoFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-treemap")]
-    Treemap(Box<TreemapFamilyArtifact>),
+    Treemap(Box<TreemapFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-block")]
-    Block(Box<BlockFamilyArtifact>),
+    Block(Box<BlockFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-er")]
-    Er(Box<ErFamilyArtifact>),
+    Er(Box<ErFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-quadrant-chart")]
-    QuadrantChart(Box<QuadrantChartFamilyArtifact>),
+    QuadrantChart(Box<QuadrantChartFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-xychart")]
-    XyChart(Box<XyChartFamilyArtifact>),
+    XyChart(Box<XyChartFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-git-graph")]
-    GitGraph(Box<GitGraphFamilyArtifact>),
+    GitGraph(Box<GitGraphFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-tree-view")]
-    TreeView(Box<TreeViewFamilyArtifact>),
+    TreeView(Box<TreeViewFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-ishikawa")]
-    Ishikawa(Box<IshikawaFamilyArtifact>),
+    Ishikawa(Box<IshikawaFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-event-modeling")]
-    EventModeling(Box<EventModelingFamilyArtifact>),
+    EventModeling(Box<EventModelingFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-venn")]
-    Venn(Box<VennFamilyArtifact>),
+    Venn(Box<VennFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-usecase")]
     Usecase(
         Box<
             FamilyPair<
-                diagrams::usecase::UsecaseDiagramRenderModel,
+                &'parsed diagrams::usecase::UsecaseDiagramRenderModel,
                 crate::usecase::UsecasePreparedArtifact,
             >,
         >,
@@ -2695,7 +2729,7 @@ enum LayoutProjection<'a> {
     ErrorDiagram(&'a ErrorDiagramLayout),
 }
 
-impl BuiltinFamilyArtifact {
+impl BuiltinFamilyArtifact<'_> {
     pub fn family_id(&self) -> DiagramFamilyId {
         match self {
             Self::Error(_) => DiagramFamilyId::ERROR,
@@ -2974,78 +3008,83 @@ impl BuiltinFamilyArtifact {
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
-    ) -> merman_core::Result<ManagedSemanticJson> {
+        control: &merman_core::OperationControl,
+    ) -> Result<ManagedSemanticJson> {
+        let control = control.for_phase(OperationPhase::Semantic);
+        control.checkpoint()?;
         match self {
             #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow { semantic, .. } => semantic.compatibility_json(metadata),
-            Self::Error(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Agentflow { semantic, .. } => semantic
+                .compatibility_json_controlled(metadata, &control)?
+                .map_err(Error::SemanticProjection),
+            Self::Error(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-mindmap")]
-            Self::Mindmap(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Mindmap(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-state")]
-            Self::State(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::State(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-sequence")]
-            Self::Sequence(pair) => pair.compatibility_json(metadata),
+            Self::Sequence(pair) => pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-zenuml")]
-            Self::Zenuml(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Zenuml(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "layout-cytoscape")]
             #[cfg(feature = "diagram-architecture")]
-            Self::Architecture(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Architecture(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-class")]
-            Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Class(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-c4")]
-            Self::C4(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::C4(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-cynefin")]
-            Self::Cynefin(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Cynefin(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-wardley")]
-            Self::Wardley(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Wardley(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-railroad")]
-            Self::Railroad(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Railroad(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-kanban")]
-            Self::Kanban(pair) => pair.compatibility_json(metadata),
+            Self::Kanban(pair) => pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-gantt")]
-            Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-pie")]
-            Self::Pie(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Pie(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-packet")]
-            Self::Packet(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Packet(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-timeline")]
-            Self::Timeline(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Timeline(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-journey")]
-            Self::Journey(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Journey(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-requirement")]
-            Self::Requirement(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Requirement(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-sankey")]
-            Self::Sankey(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Sankey(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-radar")]
-            Self::Radar(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Radar(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-info")]
-            Self::Info(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Info(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-treemap")]
-            Self::Treemap(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Treemap(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-block")]
-            Self::Block(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Block(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-er")]
-            Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::Er(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-quadrant-chart")]
-            Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-xychart")]
-            Self::XyChart(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::XyChart(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::GitGraph(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-tree-view")]
-            Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata),
+            Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-ishikawa")]
-            Self::Ishikawa(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Ishikawa(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-event-modeling")]
-            Self::EventModeling(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::EventModeling(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-venn")]
-            Self::Venn(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Venn(artifact) => artifact.pair().compatibility_json(metadata, &control),
             #[cfg(feature = "diagram-usecase")]
-            Self::Usecase(pair) => pair.compatibility_json(metadata),
+            Self::Usecase(pair) => pair.compatibility_json(metadata, &control),
         }
     }
 
@@ -3133,10 +3172,9 @@ impl BuiltinFamilyArtifact {
     }
 }
 
-pub struct FamilyRenderArtifact {
-    metadata: ParseMetadata,
-    compatibility_projection: OnceLock<std::result::Result<ManagedSemanticJson, String>>,
-    family: BuiltinFamilyArtifact,
+pub struct FamilyRenderArtifact<'parsed> {
+    metadata: &'parsed ParseMetadata,
+    family: BuiltinFamilyArtifact<'parsed>,
     required_capabilities: Vec<RenderCapability>,
     context: FamilyRenderContext,
 }
@@ -3259,6 +3297,7 @@ impl GanttTimeAxisDiagnostics {
 /// let forged: RenderedFamilySvg = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
 /// ```
 pub struct RenderedFamilySvg {
+    layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     svg: String,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
@@ -3295,11 +3334,17 @@ pub struct RenderedFamilySvg {
 /// ```
 #[must_use = "completed render output and its frozen report should be consumed together"]
 pub struct FamilyRenderCompletion<T> {
+    layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     output: T,
     report: FamilyRenderReport,
 }
 
 impl<T> FamilyRenderCompletion<T> {
+    /// Placement observations retained independently of theme and admission reports.
+    pub const fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
+        self.layout_adaptation
+    }
+
     pub const fn output(&self) -> &T {
         &self.output
     }
@@ -3460,6 +3505,7 @@ impl RenderedFamilySvg {
         }
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
+            layout_adaptation: self.layout_adaptation,
             svg,
             root_theme,
             style_report,
@@ -3512,6 +3558,7 @@ impl RenderedFamilySvg {
         let artifact = StandaloneSvgArtifact::finalize_exact(self.svg, pipeline, &self.session)?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(RenderedStandaloneSvg {
+            layout_adaptation: self.layout_adaptation,
             artifact,
             root_theme: self.root_theme,
             style_report: self.style_report,
@@ -3540,8 +3587,10 @@ impl RenderedFamilySvg {
             session,
             metadata: _,
             required_capabilities: _,
+            layout_adaptation,
         } = self;
         FamilyRenderCompletion {
+            layout_adaptation,
             output: svg,
             report: FamilyRenderReport::freeze(root_theme, style_report, session),
         }
@@ -3550,6 +3599,7 @@ impl RenderedFamilySvg {
 
 /// Renderer-owned family output after the terminal resvg compatibility finalizer.
 pub struct RenderedResvgCompatibleSvg {
+    layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     svg: ResvgCompatibleSvg,
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
@@ -3576,6 +3626,7 @@ impl RenderedResvgCompatibleSvg {
 
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
+            layout_adaptation: self.layout_adaptation,
             output: self.svg,
             report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
         }
@@ -3583,6 +3634,7 @@ impl RenderedResvgCompatibleSvg {
 
     fn into_standalone(self) -> RenderedStandaloneSvg {
         RenderedStandaloneSvg {
+            layout_adaptation: self.layout_adaptation,
             artifact: StandaloneSvgArtifact::from_resvg_compatible(self.svg),
             root_theme: self.root_theme,
             style_report: self.style_report,
@@ -3593,6 +3645,7 @@ impl RenderedResvgCompatibleSvg {
 
 /// Renderer-owned family output paired with the exact standalone SVG terminal artifact.
 pub struct RenderedStandaloneSvg {
+    layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     artifact: StandaloneSvgArtifact,
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
@@ -3633,16 +3686,26 @@ impl RenderedStandaloneSvg {
 
     pub fn into_completion(self) -> FamilyRenderCompletion<StandaloneSvgArtifact> {
         FamilyRenderCompletion {
+            layout_adaptation: self.layout_adaptation,
             output: self.artifact,
             report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
         }
     }
 }
 
-impl FamilyRenderArtifact {
+impl<'parsed> FamilyRenderArtifact<'parsed> {
+    /// Width observations from the family placement that produced this artifact.
+    pub fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
+        match &self.family {
+            #[cfg(feature = "diagram-kanban")]
+            BuiltinFamilyArtifact::Kanban(pair) => pair.layout().layout_adaptation(),
+            _ => None,
+        }
+    }
+
     fn new(
-        metadata: ParseMetadata,
-        family: BuiltinFamilyArtifact,
+        metadata: &'parsed ParseMetadata,
+        family: BuiltinFamilyArtifact<'parsed>,
         context: FamilyRenderContext,
     ) -> Result<Self> {
         let actual_family = family.family_id();
@@ -3657,7 +3720,6 @@ impl FamilyRenderArtifact {
 
         Ok(Self {
             metadata,
-            compatibility_projection: OnceLock::new(),
             family,
             required_capabilities: Vec::new(),
             context,
@@ -3665,7 +3727,7 @@ impl FamilyRenderArtifact {
     }
 
     pub fn metadata(&self) -> &ParseMetadata {
-        &self.metadata
+        self.metadata
     }
 
     pub fn family_kind(&self) -> RenderFamilyKind {
@@ -3686,43 +3748,23 @@ impl FamilyRenderArtifact {
         }
     }
 
-    /// Builds the public layout projection from a compatibility JSON value produced by the
-    /// operation's semantic artifact.
+    /// Projects the semantic/layout envelope from this artifact's paired family owners.
     ///
-    /// The workspace facade computes compatibility JSON while it still owns the caller's
-    /// [`merman_core::OperationControl`]. Keeping that projection outside this renderer artifact
-    /// prevents a second, uncontrolled family projection and ensures semantic projection failures
-    /// retain the core error category at the facade boundary. The value is intentionally supplied
-    /// by the caller rather than revalidated here: it is paired with this artifact by the
-    /// canonical parse operation.
-    #[doc(hidden)]
-    pub fn layout_json_with_compatibility_json(
-        &self,
-        semantic: ManagedSemanticJson,
-    ) -> Result<ManagedSemanticJson> {
-        self.context.session().checkpoint(OperationPhase::Emit)?;
-        self.assemble_layout_json(semantic)
-    }
-
+    /// Callers cannot inject an unrelated semantic payload into the envelope.
+    ///
+    /// ```compile_fail,E0599
+    /// fn inject(
+    ///     artifact: &merman_render::family::FamilyRenderArtifact,
+    ///     semantic: merman_core::ManagedSemanticJson,
+    /// ) {
+    ///     let _ = artifact.layout_json_with_compatibility_json(semantic);
+    /// }
+    /// ```
     pub fn layout_json(&self) -> Result<ManagedSemanticJson> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let semantic = self
-            .compatibility_projection
-            .get_or_init(|| {
-                self.family
-                    .compatibility_json(&self.metadata)
-                    .map_err(|error| {
-                        format!(
-                            "failed to project {} compatibility JSON: {error}",
-                            self.family.family_id()
-                        )
-                    })
-            })
-            .as_ref()
-            .map_err(|message| Error::InvalidModel {
-                message: message.clone(),
-            })
-            .cloned()?;
+            .family
+            .compatibility_json(self.metadata, self.context.session().work_meter().control())?;
         self.assemble_layout_json(semantic)
     }
 
@@ -3753,6 +3795,12 @@ impl FamilyRenderArtifact {
                 .into_unmanaged_value(),
         );
 
+        if let Some(observation) = self.layout_adaptation() {
+            metadata.insert(
+                "layout_adaptation".to_owned(),
+                serde_json::to_value(observation)?,
+            );
+        }
         let mut projection = serde_json::Map::new();
         projection.insert("meta".to_string(), serde_json::Value::Object(metadata));
         projection.insert("semantic".to_string(), semantic.into_unmanaged_value());
@@ -3762,24 +3810,39 @@ impl FamilyRenderArtifact {
         Ok(projection)
     }
 
-    /// Post-paint edge geometry, recovered while emitting the diagram.
+    /// Returns occurrence-ordered edge paint geometry without serializing SVG.
     ///
-    /// `layout_json` reports `LayoutEdge::points` before the endpoints are clipped to the endpoint
-    /// shapes' ink. This returns the values that end up on screen, in the same layout coordinate
-    /// space, so a consumer no longer has to render a whole SVG and recover them from the
-    /// `data-points` attribute or edge-label transforms. Label positions are `None` for edges
-    /// without a positioned label.
-    ///
-    /// Consumes the artifact, exactly like [`Self::render_svg`], because it runs the same compute
-    /// pass. Returns an empty vector for families that do not route through the flowchart
-    /// renderer.
+    /// Points refine the layout routes with endpoint clipping and line hops. Labels use the
+    /// same prepared positioning decisions as SVG; no SVG byte budget is consumed.
     pub fn edge_geometry_json(self) -> Result<Vec<crate::model::EdgePaintGeometry>> {
-        let mut geometry = Vec::new();
-        self.render_svg_with_edge_geometry(
-            &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
-            Some(&mut geometry),
+        self.context.session().checkpoint(OperationPhase::Layout)?;
+        if self.context.session().portability_requirement()
+            == ThemePortabilityRequirement::RequirePortable
+        {
+            return Err(Error::PortabilityUnavailableForTarget {
+                target: "edge-geometry-json",
+            });
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        let projected_metadata = if matches!(&self.family, BuiltinFamilyArtifact::Agentflow { .. })
+        {
+            let mut metadata = self.metadata.clone();
+            metadata.effective_config =
+                project_agentflow_flowchart_config(&metadata.effective_config);
+            Some(metadata)
+        } else {
+            None
+        };
+        #[cfg(feature = "diagram-agentflow")]
+        let metadata = projected_metadata.as_ref().unwrap_or(self.metadata);
+        #[cfg(not(feature = "diagram-agentflow"))]
+        let metadata = self.metadata;
+        let geometry = crate::svg::edge_geometry_family_artifact(
+            &self.family,
+            metadata,
+            self.context.execution(),
         )?;
+        self.context.session().checkpoint(OperationPhase::Emit)?;
         Ok(geometry)
     }
 
@@ -3787,15 +3850,6 @@ impl FamilyRenderArtifact {
         self,
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
-    ) -> Result<RenderedFamilySvg> {
-        self.render_svg_with_edge_geometry(options, debug, None)
-    }
-
-    fn render_svg_with_edge_geometry(
-        self,
-        options: &SvgRenderOptions,
-        debug: &SvgDebugOptions,
-        edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
     ) -> Result<RenderedFamilySvg> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
@@ -3808,8 +3862,7 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let mut rendered =
-            render_family_artifact_svg(&self, options, render_debug, edge_paint_geometry)?;
+        let mut rendered = render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let filter_receipt = match &self.family {
@@ -3848,10 +3901,10 @@ impl FamilyRenderArtifact {
             )),
             _ => None,
         };
+        let layout_adaptation = self.layout_adaptation();
         let prepared_math_evidence = self.family.prepared_math_evidence();
         let Self {
             metadata,
-            compatibility_projection: _,
             family,
             required_capabilities,
             mut context,
@@ -3862,8 +3915,8 @@ impl FamilyRenderArtifact {
         }
         #[cfg(feature = "diagram-packet")]
         if let Some(outcome) = rendered.take_packet_theme_outcome() {
-            if merman_core::__private::theme_parse_mermaid_residual_count(&metadata) != 0 {
-                let evidence = merman_core::__private::theme_parse_evidence(&metadata);
+            if merman_core::__private::theme_parse_mermaid_residual_count(metadata) != 0 {
+                let evidence = merman_core::__private::theme_parse_evidence(metadata);
                 let consumptions = outcome.compatibility_consumptions(&evidence);
                 context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
             }
@@ -3911,12 +3964,13 @@ impl FamilyRenderArtifact {
         }
 
         Ok(RenderedFamilySvg {
+            layout_adaptation,
             svg,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,
             root_theme,
             style_report,
-            metadata,
+            metadata: metadata.clone(),
             required_capabilities,
             session,
         })
@@ -3939,7 +3993,6 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<crate::svg::RootThemeAppliedSvg> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
@@ -3955,7 +4008,7 @@ fn render_family_artifact_svg(
         None
     };
     #[cfg(feature = "diagram-agentflow")]
-    let metadata = projected_metadata.as_ref().unwrap_or(&artifact.metadata);
+    let metadata = projected_metadata.as_ref().unwrap_or(artifact.metadata);
     #[cfg(not(feature = "diagram-agentflow"))]
     let metadata = &artifact.metadata;
 
@@ -3975,7 +4028,6 @@ fn render_family_artifact_svg(
         execution,
         &options,
         debug,
-        edge_paint_geometry,
     )
 }
 
@@ -4075,25 +4127,26 @@ fn ensure_root_theme_portable(
 /// ```compile_fail
 /// use merman_render::family::FamilyPair;
 /// ```
-pub fn prepare(
-    parsed: ParsedDiagramRender,
+pub fn prepare<'parsed>(
+    parsed: &'parsed ParsedDiagramRender,
     options: &LayoutOptions,
     session: RenderSession,
-) -> Result<FamilyRenderArtifact> {
+) -> Result<FamilyRenderArtifact<'parsed>> {
     prepare_with_svg_label_preparation(parsed, options, session, FlowchartSvgLabelPreparation(true))
 }
 
 #[derive(Clone, Copy)]
 struct FlowchartSvgLabelPreparation(bool);
 
-fn prepare_with_svg_label_preparation(
-    parsed: ParsedDiagramRender,
+fn prepare_with_svg_label_preparation<'parsed>(
+    parsed: &'parsed ParsedDiagramRender,
     options: &LayoutOptions,
     session: RenderSession,
     svg_label_preparation: FlowchartSvgLabelPreparation,
-) -> Result<FamilyRenderArtifact> {
+) -> Result<FamilyRenderArtifact<'parsed>> {
     session.checkpoint(OperationPhase::Layout)?;
-    let plan = plan_render(&parsed, &session)?;
+    validate_layout_options(parsed, options)?;
+    let plan = plan_render(parsed, &session)?;
     plan.ensure_available()?;
     let required_capabilities = plan.required_capabilities().to_vec();
     let expected_family = plan.family_id();

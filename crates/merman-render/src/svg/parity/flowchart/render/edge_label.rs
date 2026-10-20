@@ -372,8 +372,8 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
-    edge_cache: &FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
-) -> crate::Result<Option<crate::model::LayoutPoint>> {
+    placements: &super::super::paint::FlowchartEdgeLabels,
+) -> crate::Result<()> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
     let label_text = ctx
@@ -457,7 +457,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let label_effect_id = label_effect.map(|_| {
         format!(
             "{}-theme-effect-label",
-            ctx.document_ids.edge(key).expect("prepared edge id")
+            ctx.document_ids().edge(key).expect("prepared edge id")
         )
     });
     let label_effect_emitted = std::cell::Cell::new(false);
@@ -512,36 +512,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         )
     };
 
-    fn fallback_midpoint(
-        le: &crate::model::LayoutEdge,
-        ctx: &FlowchartRenderCtx<'_>,
-        origin_x: f64,
-        origin_y: f64,
-    ) -> (f64, f64) {
-        let anchor = crate::model::LayoutPoint {
-            x: ctx.tx - origin_x,
-            y: ctx.ty - origin_y,
-        };
-        let points = le
-            .points
-            .iter()
-            .map(|point| crate::model::LayoutPoint {
-                x: point.x + ctx.tx - origin_x,
-                y: point.y + ctx.ty - origin_y,
-            })
-            .collect::<Vec<_>>();
-        let position = crate::svg::parity::edge_label_geometry::position_edge_label(
-            anchor, None, &points, "", true,
-        );
-        (position.x, position.y)
-    }
-
     if !ctx.edge_html_labels {
         if let Some(le) = ctx.layout_edges_by_key.get(&key) {
             if let Some(lbl) = le.label.as_ref() {
-                let position = resolve_flowchart_edge_label_position(
-                    ctx, key, le, lbl, origin_x, origin_y, edge_cache, false,
-                );
+                let position = placements
+                    .local_position(key, ctx, origin_x, origin_y)
+                    .unwrap_or(crate::model::LayoutPoint {
+                        x: lbl.x + ctx.tx - origin_x,
+                        y: lbl.y + ctx.ty - origin_y,
+                    });
                 let x = position.x;
                 let y = position.y;
 
@@ -613,7 +592,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             true,
                             label_box.background_width > 0.0 && label_box.background_height > 0.0,
                         )?;
-                        return Ok(Some(position));
+                        return Ok(());
                     }
                 } else {
                     let label_box = flowchart_svg_edge_label_box(
@@ -675,12 +654,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         true,
                         label_box.background_width > 0.0 && label_box.background_height > 0.0,
                     )?;
-                    return Ok(Some(position));
+                    return Ok(());
                 }
             }
 
             if !crate::flowchart::flowchart_label_text_is_empty_for_mode(&label_text_plain, false) {
-                let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+                let position = placements
+                    .local_position(key, ctx, origin_x, origin_y)
+                    .expect("visible fallback label is prepared");
+                let (x, y) = (position.x, position.y);
                 let metrics = ctx.measurer.measure_wrapped(
                     &label_text_plain,
                     edge_metrics_style.as_ref(),
@@ -749,7 +731,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     true,
                     label_box.background_width > 0.0 && label_box.background_height > 0.0,
                 )?;
-                return Ok(Some(crate::model::LayoutPoint { x, y }));
+                return Ok(());
             }
         }
 
@@ -761,7 +743,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
         record_label_emission(false, None, false, false)?;
-        return Ok(None);
+        return Ok(());
     }
 
     let label_html = if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
@@ -784,9 +766,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
     if let Some(le) = ctx.layout_edges_by_key.get(&key) {
         if let Some(lbl) = le.label.as_ref() {
-            let position = resolve_flowchart_edge_label_position(
-                ctx, key, le, lbl, origin_x, origin_y, edge_cache, false,
-            );
+            let position = placements
+                .local_position(key, ctx, origin_x, origin_y)
+                .unwrap_or(crate::model::LayoutPoint {
+                    x: lbl.x + ctx.tx - origin_x,
+                    y: lbl.y + ctx.ty - origin_y,
+                });
             let x = position.x;
             let y = position.y;
 
@@ -881,14 +866,17 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 true,
                 !background.is_empty() || (content.width > 0.0 && content.height > 0.0),
             )?;
-            return Ok(Some(position));
+            return Ok(());
         }
 
         if !crate::flowchart::flowchart_label_text_is_empty_for_mode(
             &label_text_plain,
             ctx.edge_html_labels,
         ) {
-            let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+            let position = placements
+                .local_position(key, ctx, origin_x, origin_y)
+                .expect("visible fallback label is prepared");
+            let (x, y) = (position.x, position.y);
             let has_inline_style_tags = if label_type == "markdown" {
                 false
             } else {
@@ -964,7 +952,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 true,
                 !background.is_empty() || (content.width > 0.0 && content.height > 0.0),
             )?;
-            return Ok(Some(crate::model::LayoutPoint { x, y }));
+            return Ok(());
         }
     }
 
@@ -976,7 +964,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         span_style_attr
     );
     record_label_emission(true, None, false, false)?;
-    Ok(None)
+    Ok(())
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
@@ -986,8 +974,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
-    edge_cache: &FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
-) -> crate::Result<Option<crate::model::LayoutPoint>> {
+    placements: &super::super::paint::FlowchartEdgeLabels,
+) -> crate::Result<()> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
     let label_text = ctx
@@ -1088,25 +1076,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
 
     let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) else {
         record_label_emission(false, None, None)?;
-        return Ok(None);
+        return Ok(());
     };
     let Some(label) = layout_edge.label.as_ref() else {
         record_label_emission(false, None, None)?;
-        return Ok(None);
+        return Ok(());
     };
 
     // Mermaid 12.2's common renderer uses resolveEdgeLabelPosition: preserve the
     // layout anchor unless insertEdge marks the returned path as updated.
-    let position = resolve_flowchart_edge_label_position(
-        ctx,
-        key,
-        layout_edge,
-        label,
-        origin_x,
-        origin_y,
-        edge_cache,
-        false,
-    );
+    let position = placements
+        .local_position(key, ctx, origin_x, origin_y)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "missing prepared Swimlane label position".to_owned(),
+        })?;
     let x = position.x;
     let y = position.y;
     let width = label.width.max(0.0);
@@ -1124,7 +1107,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         ctx.work_meter,
     )?;
     let edge_label_dom_id =
-        ctx.document_ids
+        ctx.document_ids()
             .synthetic_label(node_id)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Swimlane edge-label DOM id for `{node_id}`"),
@@ -1184,7 +1167,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             label_html,
         );
         record_label_emission(true, None, Some(&label_html))?;
-        return Ok(Some(position));
+        return Ok(());
     }
 
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
@@ -1204,7 +1187,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     write_flowchart_svg_label_plan(out, &prepared, true);
     out.push_str("</g></g></g>");
     record_label_emission(true, Some(&prepared), None)?;
-    Ok(Some(position))
+    Ok(())
 }
 
 fn weight_terminal_verified(
@@ -1329,7 +1312,6 @@ mod tests {
             d: d.to_string(),
             pb: None,
             data_points: points.clone(),
-            data_points_b64: String::new(),
             original_path_length: None,
             path_length: None,
             line_hop_applied: false,

@@ -14,52 +14,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 12.0 } else { p };
-    let w = (metrics.width + 2.0 * padding_x).max(0.0);
-    let h = (metrics.height + 2.0 * padding_y).max(0.0);
-    let wave_amplitude = if common.look_is_neo() {
-        h / 4.0
-    } else {
-        h / 8.0
-    };
-    let final_h = h + wave_amplitude;
-    let ext = (w / 2.0) * 0.1;
-
-    // Mermaid keeps the authored padding in the label transform while the shape uses
-    // look-specific axis padding. Convert that source transform to the local label wrapper base.
-    label.dx = -padding_x + p + ext / 2.0;
-    label.dy = -padding_y + p - wave_amplitude;
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((-w / 2.0 - ext, -final_h / 2.0));
-    points.push((-w / 2.0 - ext, final_h / 2.0));
-    points.extend(generate_full_sine_wave_points(
-        -w / 2.0 - ext,
-        final_h / 2.0,
-        w / 2.0 + ext,
-        final_h / 2.0,
-        wave_amplitude,
-        0.8,
-    ));
-    points.push((w / 2.0 + ext, -final_h / 2.0));
-    points.push((-w / 2.0 - ext, -final_h / 2.0));
-    points.push((-w / 2.0, -final_h / 2.0));
-    points.push((-w / 2.0, (final_h / 2.0) * 1.1));
-    points.push((-w / 2.0, -final_h / 2.0));
-
-    let path_data = super::super::geom::path_from_points(&points);
+    let (wave_amplitude, points, path_data) =
+        prepare_lined_wave_document_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -111,4 +67,68 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_lined_wave_document_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, Vec<(f64, f64)>, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + 2.0 * padding_y).max(0.0);
+    let wave_amplitude = if common.look_is_neo() {
+        h / 4.0
+    } else {
+        h / 8.0
+    };
+    let final_h = h + wave_amplitude;
+    let ext = (w / 2.0) * 0.1;
+
+    // Mermaid keeps the authored padding in the label transform while the shape uses
+    // look-specific axis padding. Convert that source transform to the local label wrapper base.
+    label.dx = -padding_x + p + ext / 2.0;
+    label.dy = -padding_y + p - wave_amplitude;
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push((-w / 2.0 - ext, -final_h / 2.0));
+    points.push((-w / 2.0 - ext, final_h / 2.0));
+    points.extend(generate_full_sine_wave_points(
+        -w / 2.0 - ext,
+        final_h / 2.0,
+        w / 2.0 + ext,
+        final_h / 2.0,
+        wave_amplitude,
+        0.8,
+    ));
+    points.push((w / 2.0 + ext, -final_h / 2.0));
+    points.push((-w / 2.0 - ext, -final_h / 2.0));
+    points.push((-w / 2.0, -final_h / 2.0));
+    points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+    points.push((-w / 2.0, -final_h / 2.0));
+
+    let path_data = super::super::geom::path_from_points(&points);
+    (wave_amplitude, points, path_data)
+}
+
+pub(super) fn advance_lined_wave_document_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, points, path_data) = prepare_lined_wave_document_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_polygon(common, &points, &path_data, target);
 }

@@ -561,15 +561,6 @@ impl RenderSemanticContext {
         }
     }
 
-    /// Consumes the context and returns Flowchart's parser-owned render facts.
-    #[doc(hidden)]
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub fn into_flowchart_render_context(
-        self,
-    ) -> crate::diagrams::flowchart::FlowchartRenderContext {
-        self.flowchart.unwrap_or_default()
-    }
-
     /// Borrows Flowchart's complete parser-owned render context.
     #[doc(hidden)]
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1374,16 +1365,10 @@ impl ParsedDiagramRender {
 
     /// Consumes the parsed diagram and returns its canonical metadata/model projection.
     ///
-    /// This intentionally omits parser-owned render context. Renderer integrations that need the
-    /// complete built-in render state should consume [`Self::into_render_parts`] instead.
+    /// This intentionally omits parser-owned render context. Renderer integrations borrow the
+    /// complete canonical object and its family-specific render-context accessors instead.
     pub fn into_parts(self) -> (ParseMetadata, RenderSemanticModel) {
         (self.meta, self.model)
-    }
-
-    /// Consumes the parsed diagram and includes parser-owned render context for renderer crates.
-    #[doc(hidden)]
-    pub fn into_render_parts(self) -> (ParseMetadata, RenderSemanticModel, RenderSemanticContext) {
-        (self.meta, self.model, self.context)
     }
 
     #[doc(hidden)]

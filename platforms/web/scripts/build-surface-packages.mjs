@@ -122,7 +122,7 @@ export function packageEntrySource(descriptor) {
     ...descriptor.runtimeExportNames.map((name) => `  ${name}: runtime_${name},`),
     "};",
     "",
-    "const runtime = bindSurfaceRuntime(loadMermanWasmModule, implementation, MERMAN_WASM_URL);",
+    `const runtime = bindSurfaceRuntime(loadMermanWasmModule, implementation, MERMAN_WASM_URL, ${JSON.stringify(descriptor.wasmExportNames)});`,
     "",
     "export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {",
     "  assertBrowserRuntime();",

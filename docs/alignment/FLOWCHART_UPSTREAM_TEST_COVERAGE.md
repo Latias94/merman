@@ -677,3 +677,17 @@ counter-intuitive and easy to break while refactoring:
 ## Deferred / intentionally not snapshotted
 
 - `parser/flow-huge.spec.js`: performance/stress coverage is deferred (headless functional parity is validated via smaller fixtures + unit tests).
+
+## Selected-runtime parser differential (Mermaid 12.2)
+
+`cargo run --locked -p xtask -- parser-differential --cases 256` supplements the historical fixture
+inventory above. The current selected source/package authority is
+[`tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json).
+The Flowchart lane reads the real generated parser and DB through `getDiagramFromText`, observing
+ordered nodes/edges, authored edge IDs and multiplicity, labels/types, classes/styles, subgraphs,
+links/tooltips/callback metadata and common accessibility fields. It compares decoded public labels,
+not private entity placeholders or generated DOM IDs. A separate public parse lane observes source
+configuration and directive/frontmatter acceptance. Exact inputs and identities survive replay and
+bounded reduction; runtime failures are distinct from grammar rejection. See
+[`docs/security/FUZZING.md`](../security/FUZZING.md#selected-mermaid-parser-differential) for scope and
+commands. Counts are bounded campaign evidence, not a claim of complete grammar coverage.

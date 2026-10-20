@@ -20,7 +20,7 @@ fn main() {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     let debug = SvgDebugOptions {
         include_edge_id_labels: true,

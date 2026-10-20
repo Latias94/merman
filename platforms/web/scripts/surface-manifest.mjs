@@ -52,7 +52,10 @@ const metadataWasmExportNames = [
 const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
+const mountRuntimeExportNames = ["mountDiagram"];
+
 const renderRuntimeExportNames = [
+  "prepareSource",
   "materializeTheme",
   "describeThemeSupport",
   "exportThemePreset",
@@ -74,6 +77,7 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "PreparedSource",
   "materializeTheme",
   "describeThemeSupport",
   "exportThemePreset",
@@ -214,6 +218,18 @@ export const surfaceModules = defineSurfaceModules([
     valueExportNames: ["createBrowserTextMeasurementSession"],
   },
   {
+    id: "mount",
+    specifier: "../runtime-mount.js",
+    owner: "render",
+    runtimeExportNames: mountRuntimeExportNames,
+  },
+  {
+    specifier: "../svg-dom.js",
+    owner: "render",
+    internalValueExportNames: ["prepareSvgDomCandidate", "publishSvgDomCandidate"],
+    exactValueExports: true,
+  },
+  {
     id: "editor",
     specifier: "../runtime-editor.js",
     owner: "editor",
@@ -317,6 +333,7 @@ const renderProfile = {
     ...lifecycleRuntimeExportNames,
     ...metadataRuntimeExportNames,
     ...renderRuntimeExportNames,
+    ...mountRuntimeExportNames,
   ],
   valueExportNames: [
     ...packageStableValueExportNames,
@@ -367,6 +384,7 @@ const runtimeProfiles = Object.freeze({
     runtimeExportNames: [
       ...analysisProfile.runtimeExportNames,
       ...renderRuntimeExportNames,
+    ...mountRuntimeExportNames,
       ...asciiRuntimeExportNames,
       ...editorRuntimeExportNames,
     ],

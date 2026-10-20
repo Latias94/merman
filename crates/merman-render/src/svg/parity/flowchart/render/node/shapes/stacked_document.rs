@@ -13,39 +13,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let geometry = crate::flowchart::flowchart_stacked_document_geometry(
-        metrics.width,
-        metrics.height,
-        ctx.node_padding,
-        common.look_is_neo(),
-    );
-    label.dx = geometry.label_dx;
-    label.dy = geometry.label_dy;
-    let outer_path = path_from_points(&geometry.outer_points);
-    let inner_path = path_from_points(&geometry.inner_points);
-
+    let (group_dy, outer_path, inner_path) = prepare_stacked_document_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let _ = write!(
             out,
             r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
-            fmt_display(geometry.group_dy),
+            fmt_display(group_dy),
             escape_xml_display(common.rough_group_style),
         );
     } else {
         let _ = write!(
             out,
             r#"<g class="basic label-container outer-path" transform="translate(0,{})">"#,
-            fmt_display(geometry.group_dy)
+            fmt_display(group_dy)
         );
     }
     let outer_paths = if common.look_is_hand_drawn() {
@@ -148,4 +128,45 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
         );
     }
     out.push_str("</g></g>");
+}
+
+fn prepare_stacked_document_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, String, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let geometry = crate::flowchart::flowchart_stacked_document_geometry(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        common.look_is_neo(),
+    );
+    label.dx = geometry.label_dx;
+    label.dy = geometry.label_dy;
+    let outer_path = path_from_points(&geometry.outer_points);
+    let inner_path = path_from_points(&geometry.inner_points);
+
+    (geometry.group_dy, outer_path, inner_path)
+}
+
+pub(super) fn advance_stacked_document_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, outer_path, inner_path) = prepare_stacked_document_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    for path in [&outer_path, &inner_path] {
+        let _ = super::super::helpers::prepare_node_path(common, path, target);
+    }
 }

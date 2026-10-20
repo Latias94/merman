@@ -113,7 +113,7 @@ fn try_render(
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin strict themed session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Flowchart Cluster theme")
         .render_svg(
             &SvgRenderOptions {

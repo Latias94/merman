@@ -1,5 +1,11 @@
 #![cfg(feature = "layout-cytoscape")]
 
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -26,7 +32,7 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
 
     artifact
         .render_svg(
@@ -204,7 +210,7 @@ fn prepare_mindmap_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Mindmap")
@@ -213,8 +219,7 @@ fn prepare_mindmap_with_theme_and_engine(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Mindmap session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed Mindmap")
+    (parsed, LayoutOptions::headless_svg_defaults(), session)
 }
 
 fn try_render_mindmap_with_theme_and_engine(
@@ -232,7 +237,7 @@ fn try_render_mindmap_with_theme_and_engine(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Mindmap session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -423,7 +428,7 @@ fn try_render_mindmap_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Mindmap resource-bound fixture")
         .expect("detect Mindmap resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
@@ -478,8 +483,7 @@ fn layout_mindmap_typed(
     parsed: &ParsedDiagramRender,
     session: RenderSession,
 ) -> MindmapDiagramLayout {
-    let artifact =
-        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize Mindmap layout");
     serde_json::from_value(projection["layout"]["MindmapDiagram"].clone())
         .expect("Mindmap layout projection")
@@ -688,7 +692,7 @@ fn render_mindmap_with_observed_font(
         .unwrap()
         .unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     assert!(
         probe.calls.load(std::sync::atomic::Ordering::Relaxed) > 0,
         "layout must use the supplied measurer"
@@ -779,7 +783,7 @@ fn mindmap_font_size_remains_unsupported_and_fails_closed() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Mindmap FontSize session");
-    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let error = match family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare strict Mindmap FontSize")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -1088,7 +1092,7 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict root-only Mindmap session");
-    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let error = match family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare strict root-only Mindmap")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -1502,7 +1506,7 @@ fn mindmap_edge_fill_is_explicitly_unsupported_without_a_dead_line_color_bridge(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Mindmap session");
-    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let error = match family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare strict Mindmap with unsupported Edge.fill")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -1856,13 +1860,16 @@ fn mindmap_palette_fails_closed_when_the_section_css_is_outside_the_color_limit(
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
         "themeVariables": { "THEME_COLOR_LIMIT": 1 }
     })));
-    let error =
-        match prepare_mindmap_with_theme_and_engine("mindmap\n  Root\n    Child\n", &theme, engine)
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        {
-            Ok(_) => panic!("Mindmap palette must not be verified without a branch CSS rule"),
-            Err(error) => error,
-        };
+    let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+        prepare_mindmap_with_theme_and_engine("mindmap\n  Root\n    Child\n", &theme, engine);
+
+    let error = match family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("Mindmap palette must not be verified without a branch CSS rule"),
+        Err(error) => error,
+    };
 
     assert_eq!(
         error.unverified_family_theme(),
@@ -1931,7 +1938,7 @@ fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
         ))
         .begin_session_with_theme(&theme)
         .expect("begin trusted raw-theme-CSS session");
-    let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Mindmap with raw theme CSS")
         .render_svg(
             &SvgRenderOptions {

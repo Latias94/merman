@@ -680,6 +680,44 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
+      - name: Resolve selected Mermaid parser source
+        id: parser-source
+        shell: python
+        run: |
+          import json, os, re
+          from pathlib import Path
+          selected = json.loads(Path("tools/upstreams/REPOS.lock.json").read_text(encoding="utf-8"))["repos"]["mermaid"]
+          commit = selected["commit"]
+          if not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("Invalid selected Mermaid commit")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"commit={commit}", file=output)
+      - name: Checkout selected Mermaid parser source
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mermaid-js/mermaid
+          ref: ${{ steps.parser-source.outputs.commit }}
+          path: repo-ref/mermaid
+          persist-credentials: false
+          sparse-checkout: |
+            packages/mermaid/src/Diagram.ts
+            packages/mermaid/src/mermaidAPI.ts
+            packages/mermaid/src/diagrams/flowchart/parser/flow.jison
+            packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
+            packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison
+          sparse-checkout-cone-mode: false
+      - name: Install selected parser oracle browser and dependencies
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
+        run: sudo env "PATH=$PATH" "PUPPETEER_CACHE_DIR=$PUPPETEER_CACHE_DIR" node tools/mermaid-cli/node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell --install-deps
+      - name: Test real parser oracle protocol
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
+        run: node --test tools/mermaid-cli/parser-oracle.test.mjs
+      - name: Replay and run bounded parser differential
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
+        run: cargo run --locked --release -p xtask -- parser-differential --cases 256
       - name: SVG DOM comparison suite
         run: cargo run --locked --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
       - name: Install root viewport oracle dependencies
@@ -698,6 +736,7 @@ jobs:
         with:
           name: svg-parity-diagnostics-${{ github.run_attempt }}
           path: |
+            target/parser-differential/
             target/root-viewport-diagnostic.json
             target/compare/*_report*.md
           if-no-files-found: ignore

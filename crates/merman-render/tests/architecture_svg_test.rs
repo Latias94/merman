@@ -1,5 +1,11 @@
 #![cfg(feature = "layout-cytoscape")]
 
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -117,17 +123,17 @@ fn render_architecture_text_with_engine_and_options(
     text: &str,
     options: &SvgRenderOptions,
 ) -> String {
-    prepare_architecture_text_with_engine(engine, text)
+    let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+        prepare_architecture_text_with_engine(engine, text);
+    family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+        .expect("prepare family fixture")
         .render_svg(options, &SvgDebugOptions::default())
         .expect("render SVG")
         .svg()
         .to_owned()
 }
 
-fn prepare_architecture_text_with_engine(
-    engine: &Engine,
-    text: &str,
-) -> family::FamilyRenderArtifact {
+fn prepare_architecture_text_with_engine(engine: &Engine, text: &str) -> FamilyFixture {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -136,7 +142,7 @@ fn prepare_architecture_text_with_engine(
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    family::prepare(parsed, &layout_options, session).expect("layout ok")
+    (parsed, layout_options.clone(), session)
 }
 
 fn architecture_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
@@ -167,7 +173,7 @@ fn prepare_architecture_with_theme_and_environment(
     theme: &DiagramTheme,
     engine: Engine,
     environment: RenderEnvironment,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Architecture")
@@ -176,8 +182,7 @@ fn prepare_architecture_with_theme_and_environment(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Architecture session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed Architecture")
+    (parsed, LayoutOptions::headless_svg_defaults(), session)
 }
 
 fn render_architecture_fixture(fixture_name: &str) -> String {
@@ -215,7 +220,7 @@ service worker(test:rocket)[Worker]
         .with_icon_registry(registry)
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare architecture");
     let svg = artifact
         .render_svg(
@@ -388,25 +393,29 @@ fn architecture_svg_handles_deep_group_chain() {
     let engine = Engine::new();
     for depth in [1, DEPTH] {
         let source = deep_group_chain_diagram(depth);
-        let artifact = prepare_architecture_text_with_engine(&engine, &source);
+        let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+            prepare_architecture_text_with_engine(&engine, &source);
         let options = SvgRenderOptions {
             diagram_id: Some("architecture-deep-groups".to_string()),
             ..Default::default()
         };
-        let handle = std::thread::Builder::new()
-            .name("architecture-deep-group-svg".to_string())
-            .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
-            .spawn(move || {
-                artifact
-                    .render_svg(&options, &SvgDebugOptions::default())
-                    .expect("render SVG")
-                    .svg()
-                    .to_owned()
-            })
-            .expect("spawn architecture deep group SVG test");
-        let svg = handle
-            .join()
-            .expect("architecture deep group SVG should finish without stack overflow");
+        let artifact = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+            .expect("prepare family fixture");
+        let svg = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("architecture-deep-group-svg".to_string())
+                .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
+                .spawn_scoped(scope, move || {
+                    artifact
+                        .render_svg(&options, &SvgDebugOptions::default())
+                        .expect("render SVG")
+                        .svg()
+                        .to_owned()
+                })
+                .expect("spawn architecture deep group SVG test")
+                .join()
+                .expect("architecture deep group SVG should finish without stack overflow")
+        });
 
         assert!(
             svg.contains(r#"id="architecture-deep-groups-service-leaf""#),
@@ -506,12 +515,15 @@ fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_d
             CanvasPaint::solid("#123456").expect("valid Architecture text fill"),
             variant,
         );
-        let artifact = prepare_architecture_with_theme_and_environment(
-            source,
-            &theme,
-            Engine::new(),
-            RenderEnvironment::deterministic(),
-        );
+        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+            prepare_architecture_with_theme_and_environment(
+                source,
+                &theme,
+                Engine::new(),
+                RenderEnvironment::deterministic(),
+            );
+        let artifact = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -700,7 +712,7 @@ fn architecture_layout_caches_service_child_bounds() {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Architecture artifact");
     let layout: ArchitectureDiagramLayout = serde_json::from_value(
         artifact.layout_json().expect("serialize layout")["layout"]["ArchitectureDiagram"].clone(),
@@ -754,14 +766,17 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
   service icon_text "Typed icon text" [Icon text title]
   api:R -[request]- L:icon_text
 "#;
-    let artifact = prepare_architecture_with_theme_and_environment(
-        source,
-        &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
-            "architecture": { "fontSize": 19 }
-        }))),
-        counting_architecture_environment(Arc::clone(&host)),
-    );
+    let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
+        prepare_architecture_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "architecture": { "fontSize": 19 }
+            }))),
+            counting_architecture_environment(Arc::clone(&host)),
+        );
+    let artifact = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
+        .expect("prepare family fixture");
 
     let layout_styles = host
         .styles
@@ -854,12 +869,15 @@ fn architecture_near_integer_font_size_uses_one_canonical_css_value() {
   service icon_text "Canonical icon text" [Icon text title]
   api:R -[request]- L:icon_text
 "#;
-    let artifact = prepare_architecture_with_theme_and_environment(
-        source,
-        &theme,
-        Engine::new(),
-        counting_architecture_environment(Arc::clone(&host)),
-    );
+    let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
+        prepare_architecture_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            counting_architecture_environment(Arc::clone(&host)),
+        );
+    let artifact = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
+        .expect("prepare family fixture");
 
     let rendered = artifact
         .render_svg(
@@ -912,8 +930,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let artifact = family::prepare(parsed.clone(), &layout_options, session)
-        .expect("prepare Architecture artifact");
+    let artifact =
+        family::prepare(&parsed, &layout_options, session).expect("prepare Architecture artifact");
     host.calls.store(0, Ordering::Relaxed);
     host.operations
         .lock()
@@ -987,7 +1005,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
     );
 
     let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parity_artifact = family::prepare(parsed, &layout_options, parity_session)
+    let parity_artifact = family::prepare(&parsed, &layout_options, parity_session)
         .expect("prepare parity Architecture artifact");
     let parity_rendered = parity_artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1017,7 +1035,7 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
             .expect("diagram detected");
-        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare Architecture artifact");
         let layout: ArchitectureDiagramLayout = serde_json::from_value(
             artifact.layout_json().expect("serialize layout")["layout"]["ArchitectureDiagram"]
@@ -1126,12 +1144,15 @@ fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only
                 )
                 .unwrap();
             let config = json!({"themeVariables":{owner:"#abcdef"}});
-            let artifact = prepare_architecture_with_theme_and_environment(
-                source,
-                &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(config)),
-                RenderEnvironment::deterministic(),
-            );
+            let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
+                prepare_architecture_with_theme_and_environment(
+                    source,
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    RenderEnvironment::deterministic(),
+                );
+            let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
+                .expect("prepare family fixture");
             let rendered = artifact
                 .render_svg(
                     &SvgRenderOptions {
@@ -1182,7 +1203,7 @@ fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
         .unwrap()
         .unwrap();
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::headless_svg_defaults(),
         environment.begin_session().unwrap(),
     )
@@ -1235,12 +1256,15 @@ fn architecture_requested_text_style_does_not_repeat_viewport_measurements() {
     ];
     for theme in themes {
         let host = Arc::new(CountingArchitectureHost::default());
-        let artifact = prepare_architecture_with_theme_and_environment(
-            source,
-            &theme,
-            Engine::new(),
-            counting_architecture_environment(Arc::clone(&host)),
-        );
+        let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
+            prepare_architecture_with_theme_and_environment(
+                source,
+                &theme,
+                Engine::new(),
+                counting_architecture_environment(Arc::clone(&host)),
+            );
+        let artifact = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
+            .expect("prepare family fixture");
         host.operations.lock().unwrap().clear();
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1292,7 +1316,7 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .unwrap();
-    let prepared = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session);
+    let prepared = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session);
     let result = prepared.and_then(|artifact| {
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     });

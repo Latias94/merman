@@ -56,7 +56,7 @@ pub(crate) const SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID: &str =
 pub const MAX_RESVG_TREE_DEPTH: usize = WASM_RESVG_TREE_DEPTH_HARD_CAP;
 
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
-const RENDER_RESOURCE_LIMIT_COUNT: usize = 6;
+const RENDER_RESOURCE_LIMIT_COUNT: usize = 7;
 pub const RESOURCE_LIMIT_COUNT: usize =
     merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
 
@@ -66,6 +66,7 @@ pub enum ResourceLimitPhase {
     LayoutModel,
     SvgOutput,
     SvgPostprocess,
+    GeometryOutput,
 }
 
 /// Stable reason why a resource check failed.
@@ -94,11 +95,12 @@ impl std::fmt::Display for ResourceLimitCause {
 }
 
 impl ResourceLimitPhase {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
         Self::Source,
         Self::LayoutModel,
         Self::SvgOutput,
         Self::SvgPostprocess,
+        Self::GeometryOutput,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -107,6 +109,7 @@ impl ResourceLimitPhase {
             Self::LayoutModel => "layout_model",
             Self::SvgOutput => "svg_output",
             Self::SvgPostprocess => "svg_postprocess",
+            Self::GeometryOutput => "geometry_output",
         }
     }
 
@@ -134,6 +137,7 @@ pub enum RenderResourceLimitId {
     MaxPreparedTextRetainedBytes,
     SvgBackendTreeNodes,
     SvgBackendTreeDepth,
+    MaxGeometryJsonBytes,
 }
 
 impl RenderResourceLimitId {
@@ -144,6 +148,7 @@ impl RenderResourceLimitId {
         Self::MaxPreparedTextRetainedBytes,
         Self::SvgBackendTreeNodes,
         Self::SvgBackendTreeDepth,
+        Self::MaxGeometryJsonBytes,
     ];
 
     const fn index(self) -> usize {
@@ -163,6 +168,8 @@ impl ResourceLimitId {
     pub const MaxModelItems: Self = Self::Input(InputResourceLimitId::MaxModelItems);
     pub const MaxModelTextBytes: Self = Self::Input(InputResourceLimitId::MaxModelTextBytes);
     pub const MaxModelNestingDepth: Self = Self::Input(InputResourceLimitId::MaxModelNestingDepth);
+    pub const MaxGeometryJsonBytes: Self =
+        Self::Render(RenderResourceLimitId::MaxGeometryJsonBytes);
     pub const MaxSvgBytes: Self = Self::Render(RenderResourceLimitId::MaxSvgBytes);
     pub const MaxSvgElements: Self = Self::Render(RenderResourceLimitId::MaxSvgElements);
     pub const MaxLayoutWorkUnits: Self = Self::Render(RenderResourceLimitId::MaxLayoutWorkUnits);
@@ -182,6 +189,7 @@ impl ResourceLimitId {
         Self::MaxSvgElements,
         Self::SvgBackendTreeNodes,
         Self::SvgBackendTreeDepth,
+        Self::MaxGeometryJsonBytes,
     ];
 
     pub fn from_stable_id(id: &str) -> Option<Self> {
@@ -290,6 +298,15 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         hard_cap: true,
         minimum_value: 1,
     },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxGeometryJsonBytes,
+        stable_id: "max_geometry_json_bytes",
+        phase: ResourceLimitPhase::GeometryOutput,
+        description: "Maximum encoded edge geometry JSON bytes",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 1,
+    },
 ];
 
 pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
@@ -303,6 +320,7 @@ pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[1],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[4],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[5],
+    RENDER_RESOURCE_LIMIT_DESCRIPTORS[6],
 ];
 
 const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
@@ -318,6 +336,7 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
     [Some(MAX_RESVG_TREE_NODES); RESOURCE_PROFILE_COUNT],
     [Some(MAX_RESVG_TREE_DEPTH); RESOURCE_PROFILE_COUNT],
+    [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
@@ -1204,6 +1223,34 @@ impl OperationWorkMeter {
                 }
             }
         }
+    }
+
+    pub(crate) fn preflight_geometry_json_bytes(
+        &self,
+        current: usize,
+        additional: usize,
+    ) -> Result<(), OperationWorkError> {
+        let phase = OperationPhase::Emit;
+        self.resource_checkpoint(phase)?;
+        let Some(actual) = current.checked_add(additional) else {
+            return Err(self.terminate_resource_error(
+                accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::GeometryOutput,
+                    RenderResourceLimitId::MaxGeometryJsonBytes,
+                ),
+                phase,
+                current,
+                additional,
+            ));
+        };
+        self.policy
+            .check_render_limit(
+                ResourceLimitPhase::GeometryOutput,
+                RenderResourceLimitId::MaxGeometryJsonBytes,
+                actual,
+            )
+            .map_err(|error| self.terminate_resource_error(error, phase, current, additional))
     }
 
     /// Checks an absolute SVG byte projection without consuming the cumulative icon reservation.

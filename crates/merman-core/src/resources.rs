@@ -413,10 +413,18 @@ impl InputResourcePolicy {
     }
 
     pub fn check_source_bytes(&self, source: &str) -> Result<(), InputResourceLimitExceeded> {
+        self.check_source_byte_count(source.len())
+    }
+
+    /// Checks the original byte length of an immutable prepared source.
+    pub fn check_source_byte_count(
+        &self,
+        source_bytes: usize,
+    ) -> Result<(), InputResourceLimitExceeded> {
         self.check_limit(
             InputResourceLimitPhase::Source,
             InputResourceLimitId::MaxSourceBytes,
-            source.len(),
+            source_bytes,
         )
     }
 
@@ -435,11 +443,7 @@ impl InputResourcePolicy {
         &self,
         parsed: &ParsedDiagramRender,
     ) -> Result<(), InputResourceLimitExceeded> {
-        let mut complexity = ModelComplexity::from_render_model(parsed.model());
-        complexity.text_bytes = complexity
-            .text_bytes
-            .saturating_add(parsed.retained_render_context_bytes());
-        self.check_model_complexity(complexity)
+        self.check_model_complexity(ModelComplexity::from_parsed_render(parsed))
     }
 
     pub fn check_model_complexity(
@@ -587,6 +591,15 @@ impl ModelComplexity {
             text_bytes,
             nesting_depth,
         }
+    }
+
+    /// Counts canonical semantics and their paired parser-owned rendering text.
+    pub fn from_parsed_render(parsed: &ParsedDiagramRender) -> Self {
+        let mut complexity = Self::from_render_model(parsed.model());
+        complexity.text_bytes = complexity
+            .text_bytes
+            .saturating_add(parsed.retained_render_context_bytes());
+        complexity
     }
 
     pub fn from_render_model(model: &RenderSemanticModel) -> Self {

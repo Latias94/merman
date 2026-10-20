@@ -118,6 +118,7 @@ pub struct BindingOperationMetadataContract {
     fields: &'static [BindingJsonFieldContract],
     output_plans: &'static [BindingOutputPlanContract],
     theme_execution_evidence_versions: &'static [BindingThemeExecutionEvidenceContract],
+    layout_adaptation_fields: &'static [BindingJsonFieldContract],
     additional_fields_policy: &'static str,
     unknown_output_plan_policy: &'static str,
     unknown_theme_execution_evidence_policy: &'static str,
@@ -143,6 +144,11 @@ impl BindingOperationMetadataContract {
     #[must_use]
     pub const fn output_plans(&self) -> &'static [BindingOutputPlanContract] {
         self.output_plans
+    }
+
+    #[must_use]
+    pub const fn layout_adaptation_fields(&self) -> &'static [BindingJsonFieldContract] {
+        self.layout_adaptation_fields
     }
 
     #[must_use]
@@ -180,7 +186,15 @@ const TOP_LEVEL_FIELDS: &[BindingJsonFieldContract] = &[
     field("runtime_policy", "string", true, None, true),
     field("byte_length", "unsigned-integer", true, Some(64), false),
     field("output_plan", "object", false, None, true),
+    field("layout_adaptation", "object", false, None, true),
     field("theme_execution_evidence", "object", false, None, true),
+];
+
+const LAYOUT_ADAPTATION_FIELDS: &[BindingJsonFieldContract] = &[
+    field("mode", "string", true, None, true),
+    field("requested_width", "number", true, None, false),
+    field("actual_width", "number", true, None, false),
+    field("overflowed", "boolean", true, None, false),
 ];
 
 const THEME_EXECUTION_EVIDENCE_V1_FIELDS: &[BindingJsonFieldContract] = &[
@@ -289,6 +303,7 @@ const OPERATION_METADATA_CONTRACT: BindingOperationMetadataContract =
         fields: TOP_LEVEL_FIELDS,
         output_plans: OUTPUT_PLANS,
         theme_execution_evidence_versions: THEME_EXECUTION_EVIDENCE_VERSIONS,
+        layout_adaptation_fields: LAYOUT_ADAPTATION_FIELDS,
         additional_fields_policy: "preserve",
         unknown_output_plan_policy: "preserve",
         unknown_theme_execution_evidence_policy: "preserve",

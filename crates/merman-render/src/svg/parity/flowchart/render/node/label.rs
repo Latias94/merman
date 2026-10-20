@@ -335,7 +335,7 @@ fn render_flowchart_node_label_with_wrapper(
     let effect_id = effect.map(|_| {
         format!(
             "{}-theme-effect-label",
-            ctx.document_ids
+            ctx.document_ids()
                 .node(common.node_id)
                 .expect("prepared node id")
         )

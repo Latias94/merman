@@ -937,6 +937,7 @@ pub(crate) struct AsciiThemeOptionsJson {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LayoutOptionsJson {
+    pub(crate) adaptation: Option<String>,
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
     pub(crate) screen_available_width: Option<f64>,
@@ -1641,6 +1642,26 @@ fn parse_request_overlay_for_contract(
 
 #[cfg(feature = "svg")]
 impl BindingRequestOverlay {
+    pub(crate) fn validate_prepared_output(&self) -> Result<(), BindingError> {
+        if let Self::Override {
+            normalized_wire, ..
+        } = self
+        {
+            let fields = normalized_wire
+                .as_object()
+                .expect("request overlay is normalized");
+            if let Some(key) = fields
+                .keys()
+                .find(|key| !matches!(key.as_str(), "version" | "environment" | "layout" | "svg"))
+            {
+                return Err(BindingError::invalid_options_json(format!(
+                    "prepared output cannot set `{key}`; prepare a new source to change parse configuration or theme"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) const fn theme_overlay(&self) -> BindingThemeOverlay {
         match self {
             Self::Unchanged => BindingThemeOverlay::Inherit,
@@ -1661,6 +1682,32 @@ impl BindingRequestOverlay {
 }
 
 impl BaseBindingOptions {
+    #[cfg(feature = "svg")]
+    pub(crate) fn prepared_output_defaults(
+        &self,
+        artifact: &ValidatedArtifactContract,
+    ) -> Result<(BindingOptions, Self), BindingError> {
+        let mut normalized = self.normalized_wire.as_ref().clone();
+        let fields = normalized
+            .as_object_mut()
+            .expect("base options are normalized objects");
+        fields.retain(|key, _| {
+            matches!(
+                key.as_str(),
+                "version" | "resources" | "environment" | "layout" | "svg"
+            )
+        });
+        let options = parse_options_value_for_contract(&normalized, artifact)?;
+        Ok((
+            options,
+            Self {
+                normalized_wire: Arc::new(normalized),
+                resource_ceiling: self.resource_ceiling.clone(),
+                theme_resource_ceiling: self.theme_resource_ceiling.clone(),
+            },
+        ))
+    }
+
     #[cfg(feature = "svg")]
     pub(crate) fn theme_resource_policy(&self) -> &merman::svg::ThemeResourcePolicy {
         &self.theme_resource_ceiling

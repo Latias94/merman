@@ -265,7 +265,7 @@ fn try_render_family_with_environment(
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin strict inherited text-family session");
-    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()

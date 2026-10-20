@@ -8,11 +8,164 @@ use merman_render::model::FlowchartLayout;
 use merman_render::text::{TextMeasurer, WrapMode};
 use std::path::PathBuf;
 
+#[path = "support/generated_graphs.rs"]
+mod generated_graphs;
+
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected Flowchart render model");
     };
     model
+}
+
+#[test]
+fn generated_dagre_rectangular_graphs_preserve_topology_geometry_and_determinism() {
+    use generated_graphs::{DIRECTIONS, SEEDS, Topology, generate};
+    for seed in SEEDS {
+        for direction in DIRECTIONS {
+            for topology in [
+                Topology::Dag,
+                Topology::NestedDag,
+                Topology::ParallelDag,
+                Topology::Cycle,
+            ] {
+                let graph = generate(seed, direction, topology, false);
+                let source = &graph.source;
+                let layout = std::panic::catch_unwind(|| layout_dagre_flowchart(source))
+                    .unwrap_or_else(|_| {
+                        panic!("generated Dagre seed={seed} topology={topology:?}\n{source}")
+                    });
+                let finite = |values: &[f64]| values.iter().all(|value| value.is_finite());
+                assert_eq!(
+                    layout.nodes.iter().filter(|node| !node.is_cluster).count(),
+                    graph.leaves.len(),
+                    "seed={seed}\n{source}"
+                );
+                let node = |id: &str| {
+                    layout
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == id)
+                        .unwrap_or_else(|| panic!("missing {id}, seed={seed}\n{source}"))
+                };
+                for (id, _) in &graph.leaves {
+                    let node = node(id);
+                    assert!(
+                        finite(&[node.x, node.y, node.width, node.height])
+                            && node.width > 0.0
+                            && node.height > 0.0,
+                        "{id}, seed={seed}\n{source}"
+                    );
+                }
+                let bounds = layout.bounds.as_ref().expect("nonempty graph bounds");
+                assert!(
+                    finite(&[bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y])
+                        && bounds.min_x < bounds.max_x
+                        && bounds.min_y < bounds.max_y,
+                    "seed={seed}\n{source}"
+                );
+                assert_eq!(
+                    layout.clusters.len(),
+                    graph.groups.len(),
+                    "seed={seed}\n{source}"
+                );
+                for (id, parent_id) in &graph.groups {
+                    let cluster = layout
+                        .clusters
+                        .iter()
+                        .find(|cluster| &cluster.id == id)
+                        .unwrap_or_else(|| panic!("missing cluster {id}\n{source}"));
+                    assert!(
+                        finite(&[cluster.x, cluster.y, cluster.width, cluster.height])
+                            && cluster.width > 0.0
+                            && cluster.height > 0.0,
+                        "seed={seed}\n{source}"
+                    );
+                    for (leaf_id, parent) in &graph.leaves {
+                        if parent.as_ref() == Some(id) {
+                            assert!(
+                                rect_contains(
+                                    rect_from_cluster(cluster),
+                                    rect_from_node(node(leaf_id)),
+                                    1e-6
+                                ),
+                                "{id} must contain {leaf_id}, seed={seed}\n{source}"
+                            );
+                        }
+                    }
+                    if let Some(parent_id) = parent_id {
+                        let parent = layout
+                            .clusters
+                            .iter()
+                            .find(|cluster| &cluster.id == parent_id)
+                            .expect("declared parent cluster");
+                        assert!(
+                            rect_contains(
+                                rect_from_cluster(parent),
+                                rect_from_cluster(cluster),
+                                1e-6
+                            ),
+                            "{parent_id} must contain {id}, seed={seed}\n{source}"
+                        );
+                    }
+                }
+                if !matches!(topology, Topology::Cycle) {
+                    for (index, (left_id, left_parent)) in graph.leaves.iter().enumerate() {
+                        for (right_id, right_parent) in &graph.leaves[index + 1..] {
+                            if left_parent != right_parent {
+                                continue;
+                            }
+                            let a = rect_from_node(node(left_id));
+                            let b = rect_from_node(node(right_id));
+                            assert!(
+                                a.2 <= b.0 + 1e-6
+                                    || b.2 <= a.0 + 1e-6
+                                    || a.3 <= b.1 + 1e-6
+                                    || b.3 <= a.1 + 1e-6,
+                                "siblings {left_id}/{right_id} overlap, seed={seed}\n{source}"
+                            );
+                        }
+                    }
+                }
+                let mut endpoints = layout
+                    .edges
+                    .iter()
+                    .map(|edge| (edge.from.clone(), edge.to.clone()))
+                    .collect::<Vec<_>>();
+                let mut expected = graph.edges.clone();
+                endpoints.sort();
+                expected.sort();
+                assert_eq!(
+                    endpoints, expected,
+                    "edge multiplicity and endpoints, seed={seed}\n{source}"
+                );
+                for edge in &layout.edges {
+                    assert!(
+                        edge.points.len() >= 2
+                            && edge.points.iter().all(|point| finite(&[point.x, point.y])),
+                        "route {}, seed={seed}\n{source}",
+                        edge.id
+                    );
+                }
+                for pair in graph.chain.windows(2) {
+                    let (from, to) = (node(&pair[0]), node(&pair[1]));
+                    let ordered = match direction {
+                        "TB" => from.y < to.y,
+                        "BT" => from.y > to.y,
+                        "LR" => from.x < to.x,
+                        "RL" => from.x > to.x,
+                        _ => unreachable!(),
+                    };
+                    assert!(ordered, "chain direction, seed={seed}\n{source}");
+                }
+                assert_eq!(
+                    serde_json::to_value(&layout).unwrap(),
+                    serde_json::to_value(layout_dagre_flowchart(source)).unwrap(),
+                    "nondeterministic Dagre seed={seed}\n{source}"
+                );
+            }
+        }
+    }
 }
 
 fn layout_flowchart_render_model(
@@ -25,7 +178,7 @@ fn layout_flowchart_render_model(
         .map_err(|error| Error::InvalidModel {
             message: format!("render session: {error}"),
         })?;
-    let artifact = family::prepare(parsed.clone(), options, session)?;
+    let artifact = family::prepare(parsed, options, session)?;
     let projection = artifact.layout_json()?;
     serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
         .map_err(merman_render::Error::from)

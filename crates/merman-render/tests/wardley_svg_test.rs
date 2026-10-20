@@ -61,7 +61,7 @@ fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String 
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("Wardley render session starts");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("Wardley family prepares");
     assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
 
@@ -92,7 +92,7 @@ fn try_render_wardley_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("Wardley render session starts");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
 
     let rendered = artifact.render_svg(
@@ -125,7 +125,7 @@ fn try_render_wardley_with_theme(
         .expect("parse themed Wardley")
         .expect("detect themed Wardley");
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let projection = artifact.layout_json()?;
     let layout = projection["layout"]["WardleyDiagram"].clone();
     let rendered = artifact.render_svg(

@@ -30,7 +30,7 @@ fn render(source: &str, layout: &str) -> (FlowchartLayout, String) {
     .expect("parse diagram")
     .expect("detect flowchart");
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )

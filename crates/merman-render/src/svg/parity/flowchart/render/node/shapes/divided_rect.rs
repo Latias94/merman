@@ -13,38 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_divided_rect(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid draws the polygon using `h` and then the rendered bbox expands to
-    // `out_h = h + rectOffset` where `rectOffset = h * 0.2`, i.e. `out_h = 1.2*h`.
-    let out_w = common.layout_node.width.max(1.0);
-    let out_h = common.layout_node.height.max(1.0);
-    let h = out_h / 1.2;
-    let w = out_w;
-    let rect_offset = h * 0.2;
-    let x = -w / 2.0;
-    let y = -h / 2.0 - rect_offset / 2.0;
-
-    // Mermaid's labelHelper transform retains the authored node padding even when Neo uses
-    // fixed shape padding. Convert that source transform to the local centered-label wrapper.
-    let authored_padding = ctx.node_padding;
-    let shape_padding = if common.look_is_neo() {
-        16.0
-    } else {
-        authored_padding
-    };
-    let padding_delta = (authored_padding - shape_padding) / 2.0;
-    label.dx = padding_delta;
-    label.dy = padding_delta + rect_offset / 2.0;
-
-    let pts: Vec<(f64, f64)> = vec![
-        (x, y + rect_offset),
-        (-x, y + rect_offset),
-        (-x, -y),
-        (x, -y),
-        (x, y),
-        (-x, y),
-        (-x, y + rect_offset),
-    ];
-    let path_data = path_from_points(&pts);
+    let (pts, path_data) = prepare_divided_rect_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -86,4 +55,54 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_divided_rect(
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_divided_rect_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) -> (Vec<(f64, f64)>, String) {
+    // Mermaid draws the polygon using `h` and then the rendered bbox expands to
+    // `out_h = h + rectOffset` where `rectOffset = h * 0.2`, i.e. `out_h = 1.2*h`.
+    let out_w = common.layout_node.width.max(1.0);
+    let out_h = common.layout_node.height.max(1.0);
+    let h = out_h / 1.2;
+    let w = out_w;
+    let rect_offset = h * 0.2;
+    let x = -w / 2.0;
+    let y = -h / 2.0 - rect_offset / 2.0;
+
+    // Mermaid's labelHelper transform retains the authored node padding even when Neo uses
+    // fixed shape padding. Convert that source transform to the local centered-label wrapper.
+    let authored_padding = ctx.node_padding;
+    let shape_padding = if common.look_is_neo() {
+        16.0
+    } else {
+        authored_padding
+    };
+    let padding_delta = (authored_padding - shape_padding) / 2.0;
+    label.dx = padding_delta;
+    label.dy = padding_delta + rect_offset / 2.0;
+
+    let pts: Vec<(f64, f64)> = vec![
+        (x, y + rect_offset),
+        (-x, y + rect_offset),
+        (-x, -y),
+        (x, -y),
+        (x, y),
+        (-x, y),
+        (-x, y + rect_offset),
+    ];
+    let path_data = path_from_points(&pts);
+    (pts, path_data)
+}
+
+pub(super) fn advance_divided_rect_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (pts, path_data) = prepare_divided_rect_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_polygon(common, &pts, &path_data, target);
 }

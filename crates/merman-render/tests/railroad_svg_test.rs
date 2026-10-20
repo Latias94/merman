@@ -44,7 +44,7 @@ fn render_railroad_with_id(site_config: Value, diagram_id: &str) -> (String, Val
         .expect("railroad diagram is detected");
     let effective_config = parsed.metadata().effective_config.as_value().clone();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("railroad layout succeeds");
     let rendered = artifact
         .render_svg(
@@ -68,7 +68,7 @@ fn try_render_railroad_with_policy(policy: RenderResourcePolicy) -> merman_rende
         .with_resource_policy(policy)
         .begin_session()
         .expect("railroad resource-bound render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("railroad-bounded".to_string()),
@@ -174,7 +174,7 @@ fn try_render_railroad_source_with_theme(
         .expect("parse themed Railroad")
         .expect("detect themed Railroad");
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let projection = artifact.layout_json()?;
     let layout = serde_json::from_value(projection["layout"]["RailroadDiagram"].clone())
         .expect("Railroad layout projection");
@@ -1239,7 +1239,7 @@ fn railroad_dialect_combinations_preserve_source_branches_in_actual_reference_sv
             .unwrap();
         assert_eq!(parsed.metadata().diagram_type, diagram_type);
         let artifact = family::prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::headless_svg_defaults(),
             RenderEnvironment::deterministic().begin_session().unwrap(),
         )

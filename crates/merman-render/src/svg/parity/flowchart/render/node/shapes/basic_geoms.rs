@@ -27,13 +27,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
         // RoughJS normalizes this path to a left-edge hachure start. `roughr` is start-point
         // sensitive for this diamond, so feed the same polygon from the left vertex to keep the
         // hand-drawn silhouette centered instead of visually skewing into a parallelogram.
-        let rough_points = [
-            (0.0, -h / 2.0),
-            (w / 2.0, 0.0),
-            (w, -h / 2.0),
-            (w / 2.0, -h),
-        ];
-        let path_data = path_from_points(&rough_points);
+        let path_data = diamond_path(w, h);
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
@@ -232,4 +226,99 @@ fn write_rough_circle_paths(
             escape_attr(common.stroke_dasharray),
         );
     }
+}
+
+fn diamond_path(w: f64, h: f64) -> String {
+    let rough_points = [
+        (0.0, -h / 2.0),
+        (w / 2.0, 0.0),
+        (w, -h / 2.0),
+        (w / 2.0, -h),
+    ];
+    path_from_points(&rough_points)
+}
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+) -> crate::Result<()> {
+    use super::super::roughjs::{
+        RoughGeometryTarget, roughjs_prepare_hachure_paths_for_svg_path,
+        roughjs_prepare_paths_for_circle_with_roughness,
+    };
+    use crate::flowchart::FlowchartShape;
+    if !common.look_is_hand_drawn() {
+        return Ok(());
+    }
+    match FlowchartShape::resolve(common.shape)? {
+        FlowchartShape::Diamond => {
+            let path = diamond_path(
+                common.layout_node.width.max(1.0),
+                common.layout_node.height.max(1.0),
+            );
+            let _ = roughjs_prepare_hachure_paths_for_svg_path(
+                RoughGeometryTarget::Query,
+                &path,
+                common.stroke_width,
+                common.stroke_dasharray,
+                FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
+                FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
+                FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
+                common.hand_drawn_seed,
+            );
+        }
+        FlowchartShape::Circle => {
+            let diameter = common
+                .layout_node
+                .width
+                .max(1.0)
+                .min(common.layout_node.height.max(1.0))
+                .max(1.0);
+            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+                RoughGeometryTarget::Query,
+                diameter,
+                common.stroke_width,
+                common.stroke_dasharray,
+                true,
+                0.7,
+                common.work_meter,
+                common.hand_drawn_seed,
+            );
+        }
+        FlowchartShape::DoubleCircle => {
+            let geometry = crate::flowchart::DoubleCircleGeometry::from_outer_diameter(
+                common.layout_node.width.min(common.layout_node.height),
+                common.look_is_neo(),
+            );
+            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+                RoughGeometryTarget::Query,
+                geometry.outer_radius * 2.0,
+                2.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                common.work_meter,
+                common.hand_drawn_seed,
+            );
+            ctx.work_meter
+                .checkpoint(merman_core::OperationPhase::Layout)
+                .map_err(crate::Error::from)?;
+            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+                RoughGeometryTarget::Query,
+                geometry.inner_radius * 2.0,
+                1.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                common.work_meter,
+                common.hand_drawn_seed,
+            );
+            ctx.work_meter
+                .checkpoint(merman_core::OperationPhase::Layout)
+                .map_err(crate::Error::from)?;
+        }
+        _ => {}
+    }
+    Ok(())
 }

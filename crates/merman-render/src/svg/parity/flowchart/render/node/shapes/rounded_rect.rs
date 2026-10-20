@@ -156,3 +156,31 @@ fn rounded_rect_path_data(width: f64, height: f64, radius: &serde_json::Value) -
         fmt_display(y),
     )
 }
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    if !ctx.compatibility.rounded_rect_radius_truthy {
+        return super::process::advance_rough_geometry(common);
+    }
+    let path = rounded_rect_path_data(
+        common.layout_node.width.max(1.0),
+        common.layout_node.height.max(1.0),
+        &ctx.compatibility.rounded_rect_radius,
+    );
+    let _ = super::super::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
+        super::super::roughjs::RoughGeometryTarget::Query,
+        &path,
+        common.stroke_width,
+        common.stroke_dasharray,
+        FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
+        FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
+        FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
+}

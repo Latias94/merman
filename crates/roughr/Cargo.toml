@@ -63,6 +63,9 @@ features = ["std"]
 version = "0.10.3"
 optional = true
 
+[dependencies.ryu-js]
+version = "1.0.3"
+
 [dependencies.svgtypes]
 version = "0.16.1"
 

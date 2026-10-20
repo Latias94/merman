@@ -271,7 +271,13 @@ impl KanbanDb {
         let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
         match spec.ty {
             NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => {
-                padding *= 2;
+                padding = padding.checked_mul(2).ok_or_else(|| {
+                    Error::diagram_parse_exact(
+                        "kanban",
+                        "node padding exceeds the supported integer range",
+                        span,
+                    )
+                })?;
             }
             _ => {}
         }

@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 use futures::executor::block_on;
 mod common;
 
@@ -53,7 +59,7 @@ fn layout_flowchart_render_model(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
-    let artifact = family::prepare(parsed, options, session)?;
+    let artifact = family::prepare(&parsed, options, session)?;
     let projection = artifact.layout_json()?;
     serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
         .map_err(merman_render::Error::from)
@@ -65,7 +71,7 @@ fn render_flowchart_artifact(
     session: RenderSession,
     svg_options: &SvgRenderOptions,
 ) -> merman_render::Result<String> {
-    let artifact = family::prepare(parsed, layout_options, session)?;
+    let artifact = family::prepare(&parsed, layout_options, session)?;
     let rendered = artifact.render_svg(svg_options, &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
 }
@@ -250,10 +256,7 @@ fn node_label_fill_theme(family: DiagramFamilyId, color: &str) -> DiagramTheme {
         .expect("compile Flowchart NodeLabel fill theme")
 }
 
-fn prepare_flowchart_family_with_theme(
-    source: &str,
-    theme: &DiagramTheme,
-) -> family::FamilyRenderArtifact {
+fn prepare_flowchart_family_with_theme(source: &str, theme: &DiagramTheme) -> FamilyFixture {
     prepare_flowchart_family_with_theme_and_portability(
         source,
         theme,
@@ -265,7 +268,7 @@ fn prepare_flowchart_family_with_theme_and_portability(
     source: &str,
     theme: &DiagramTheme,
     portability: ThemePortabilityRequirement,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     prepare_flowchart_family_with_theme_engine_and_portability(
         source,
         theme,
@@ -279,7 +282,7 @@ fn prepare_flowchart_family_with_theme_engine_and_portability(
     theme: &DiagramTheme,
     engine: Engine,
     portability: ThemePortabilityRequirement,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     let parsed = block_on(
         merman_render::__private::install_parse_compatibility(theme, engine)
             .parse_diagram_for_render_model(source, ParseOptions::default()),
@@ -290,8 +293,7 @@ fn prepare_flowchart_family_with_theme_engine_and_portability(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Flowchart session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Flowchart family")
+    (parsed, LayoutOptions::default(), session)
 }
 
 fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
@@ -578,7 +580,7 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
         .expect("fixture has an edge")
         .id
         .clone();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare flowchart artifact");
     let collector = FlowchartEdgeTraceCollector::default();
     let debug =
@@ -617,7 +619,7 @@ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
         .begin_session()
         .expect("create successful session");
     let successful_artifact =
-        family::prepare(parsed, &LayoutOptions::default(), successful_session)
+        family::prepare(&parsed, &LayoutOptions::default(), successful_session)
             .expect("prepare successful artifact");
     let successful_svg = successful_artifact
         .render_svg(&SvgRenderOptions::default(), &debug)
@@ -639,7 +641,7 @@ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
         block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
             .expect("parse succeeds")
             .expect("detects flowchart");
-    let failing_artifact = family::prepare(parsed, &LayoutOptions::default(), failing_session)
+    let failing_artifact = family::prepare(&parsed, &LayoutOptions::default(), failing_session)
         .expect("prepare failing artifact");
     assert!(
         failing_artifact
@@ -677,7 +679,7 @@ fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
         .with_resource_policy(policy)
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare public Flowchart artifact");
 
     let error = match artifact.render_svg(
@@ -918,7 +920,7 @@ class Lane huge
             .expect("parse Swimlane source")
             .expect("detect Swimlane diagram");
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic()
             .begin_session()
@@ -2575,7 +2577,10 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths(
             3.25,
         ),
     ] {
-        let rendered = prepare_flowchart_family_with_theme(source, theme)
+        let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
+            prepare_flowchart_family_with_theme(source, theme);
+        let rendered = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render {case} typed edge stroke width: {error}"));
         let document = roxmltree::Document::parse(rendered.svg())
@@ -2624,7 +2629,10 @@ fn flowchart_source_stroke_width_does_not_inherit_suppressed_typed_paint_bounds(
             "---\nconfig:\n  layout: {backend}\n  flowchart:\n    diagramPadding: 0\n---\nflowchart LR\nA --- B\nlinkStyle 0 stroke-width:7px\n"
         );
         let control = render_flowchart_svg_from_text(&source);
-        let themed = prepare_flowchart_family_with_theme(&source, &theme)
+        let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
+            prepare_flowchart_family_with_theme(&source, &theme);
+        let themed = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("source stroke width supersedes typed width");
         assert_eq!(
@@ -2641,19 +2649,18 @@ fn flowchart_source_stroke_width_does_not_inherit_suppressed_typed_paint_bounds(
 fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_relayout() {
     const STROKE_WIDTH: f32 = 160.0;
 
-    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+    fn prepare_control(source: &str) -> FamilyFixture {
         let parsed =
             block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
                 .expect("parse control Flowchart family")
                 .expect("detect control Flowchart family");
-        family::prepare(
+        (
             parsed,
-            &LayoutOptions::default(),
+            LayoutOptions::default(),
             RenderEnvironment::deterministic()
                 .begin_session()
                 .expect("begin control Flowchart session"),
         )
-        .expect("prepare control Flowchart family")
     }
 
     let theme = edge_stroke_width_theme(STROKE_WIDTH);
@@ -2669,7 +2676,9 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_r
             "SwimlaneDiagram",
         ),
     ] {
-        let control = prepare_control(source);
+        let (fixture_parsed_26, fixture_layout_26, fixture_session_26) = prepare_control(source);
+        let control = family::prepare(&fixture_parsed_26, &fixture_layout_26, fixture_session_26)
+            .expect("prepare family fixture");
         let control_layout = control
             .layout_json()
             .unwrap_or_else(|error| panic!("project control {family_name} layout: {error}"));
@@ -2677,7 +2686,10 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_r
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render control {family_name} SVG: {error}"));
 
-        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let (fixture_parsed_8, fixture_layout_8, fixture_session_8) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let themed = family::prepare(&fixture_parsed_8, &fixture_layout_8, fixture_session_8)
+            .expect("prepare family fixture");
         let themed_layout = themed
             .layout_json()
             .unwrap_or_else(|error| panic!("project themed {family_name} layout: {error}"));
@@ -2732,14 +2744,17 @@ fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_val
             Some(".edge-thickness-normal{stroke-width:9px;}"),
         ),
     ] {
-        let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
-            source,
-            &theme,
-            engine,
-            ThemePortabilityRequirement::RequirePortable,
-        )
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap_or_else(|error| panic!("render {case} edge stroke-width precedence: {error}"));
+        let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+            prepare_flowchart_family_with_theme_engine_and_portability(
+                source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+        let rendered = family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+            .expect("prepare family fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {case} edge stroke-width precedence: {error}"));
         let document = roxmltree::Document::parse(rendered.svg())
             .unwrap_or_else(|error| panic!("valid {case} SVG: {error}"));
         let edge = document
@@ -2783,7 +2798,10 @@ fn flowchart_and_swimlane_source_label_color_supersedes_typed_fill_without_resid
         ),
     ] {
         let theme = node_label_fill_theme(family, "#ef4444");
-        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+        let (fixture_parsed_9, fixture_layout_9, fixture_session_9) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let rendered = family::prepare(&fixture_parsed_9, &fixture_layout_9, fixture_session_9)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| {
                 panic!("source-owned {family} NodeLabel fill must remain portable: {error}")
@@ -2915,19 +2933,22 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
             let theme = node_label_fill_theme(family, "#ef4444");
             let engine =
                 Engine::new().with_site_config(MermaidConfig::from_value(case.config.clone()));
-            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
-                source,
-                &theme,
-                engine,
-                ThemePortabilityRequirement::RequirePortable,
-            )
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap_or_else(|error| {
-                panic!(
-                    "{} {family} NodeLabel fill must remain portable: {error}",
-                    case.name
-                )
-            });
+            let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+                prepare_flowchart_family_with_theme_engine_and_portability(
+                    source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+            let rendered = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+                .expect("prepare family fixture")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} {family} NodeLabel fill must remain portable: {error}",
+                        case.name
+                    )
+                });
             let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
             let node = document
                 .descendants()
@@ -2994,13 +3015,16 @@ fn flowchart_cleared_edge_stroke_width_remains_an_explicit_geometry_residual() {
             ))),
         )
         .expect("compile cleared edge stroke-width theme");
-    let rendered = prepare_flowchart_family_with_theme_and_portability(
-        "flowchart LR\nA --> B\n",
-        &theme,
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("best-effort cleared edge stroke width");
+    let (fixture_parsed_28, fixture_layout_28, fixture_session_28) =
+        prepare_flowchart_family_with_theme_and_portability(
+            "flowchart LR\nA --> B\n",
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        );
+    let rendered = family::prepare(&fixture_parsed_28, &fixture_layout_28, fixture_session_28)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort cleared edge stroke width");
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 0);
@@ -3011,13 +3035,16 @@ fn flowchart_cleared_edge_stroke_width_remains_an_explicit_geometry_residual() {
 #[test]
 fn flowchart_hand_drawn_edge_stroke_width_is_a_fail_closed_residual() {
     let theme = edge_stroke_width_theme(2.5);
-    let rendered = prepare_flowchart_family_with_theme_and_portability(
-        "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n",
-        &theme,
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("best-effort hand-drawn edge stroke width");
+    let (fixture_parsed_29, fixture_layout_29, fixture_session_29) =
+        prepare_flowchart_family_with_theme_and_portability(
+            "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n",
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        );
+    let rendered = family::prepare(&fixture_parsed_29, &fixture_layout_29, fixture_session_29)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort hand-drawn edge stroke width");
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid hand-drawn Flowchart SVG");
     let style = document
@@ -4908,7 +4935,7 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
                 .unwrap()
                 .unwrap();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let layout: FlowchartLayout = serde_json::from_value(
                 artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
             )
@@ -5308,19 +5335,18 @@ fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content
         left: 11.0,
     };
 
-    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+    fn prepare_control(source: &str) -> FamilyFixture {
         let parsed =
             block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
                 .expect("parse control Flowchart family")
                 .expect("detect control Flowchart family");
-        family::prepare(
+        (
             parsed,
-            &LayoutOptions::default(),
+            LayoutOptions::default(),
             RenderEnvironment::deterministic()
                 .begin_session()
                 .expect("begin control Flowchart session"),
         )
-        .expect("prepare control Flowchart family")
     }
 
     fn parse_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
@@ -5425,12 +5451,17 @@ fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content
             "SwimlaneDiagram",
         ),
     ] {
-        let control = prepare_control(source);
+        let (fixture_parsed_27, fixture_layout_27, fixture_session_27) = prepare_control(source);
+        let control = family::prepare(&fixture_parsed_27, &fixture_layout_27, fixture_session_27)
+            .expect("prepare family fixture");
         let control_projection = control.layout_json().expect("control layout projection");
         let control_svg = control
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render control SVG");
-        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let (fixture_parsed_10, fixture_layout_10, fixture_session_10) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let themed = family::prepare(&fixture_parsed_10, &fixture_layout_10, fixture_session_10)
+            .expect("prepare family fixture");
         let themed_projection = themed.layout_json().expect("themed layout projection");
         let themed_svg = themed
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -5602,7 +5633,10 @@ A padded@-->|edge label padding| B
             "SwimlaneDiagram",
         ),
     ] {
-        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let (fixture_parsed_11, fixture_layout_11, fixture_session_11) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let themed = family::prepare(&fixture_parsed_11, &fixture_layout_11, fixture_session_11)
+            .expect("prepare family fixture");
         let projection = themed.layout_json().expect("themed layout projection");
         let (total_width, total_height) = if layout_key == "FlowchartV2" {
             let layout: FlowchartLayout =
@@ -5717,7 +5751,7 @@ A padded@-->|edge label padding| B
             .expect("parse control ELK Flowchart")
             .expect("detect control ELK Flowchart");
     let control = family::prepare(
-        control_parsed,
+        &control_parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic()
             .begin_session()
@@ -5738,7 +5772,10 @@ A padded@-->|edge label padding| B
         left: 11.0,
     };
     let theme = edge_label_padding_theme(padding);
-    let themed = prepare_flowchart_family_with_theme(source, &theme);
+    let (fixture_parsed_12, fixture_layout_12, fixture_session_12) =
+        prepare_flowchart_family_with_theme(source, &theme);
+    let themed = family::prepare(&fixture_parsed_12, &fixture_layout_12, fixture_session_12)
+        .expect("prepare family fixture");
     let themed_projection = themed.layout_json().expect("themed ELK layout projection");
     let themed_layout: FlowchartLayout =
         serde_json::from_value(themed_projection["layout"]["FlowchartV2"].clone())
@@ -6845,7 +6882,7 @@ fn flowchart_elk_root_algorithms_execute_and_paint_edges() {
             plan.required_capabilities(),
             &[merman_render::RenderCapability::LayoutElk]
         );
-        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let layout: FlowchartLayout = serde_json::from_value(
             artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
         )
@@ -7372,14 +7409,17 @@ fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
                     }
                     let theme = flowchart_title_theme([rule]);
                     let render = |theme: &DiagramTheme, engine| {
-                        prepare_flowchart_family_with_theme_engine_and_portability(
-                            &source,
-                            theme,
-                            engine,
-                            ThemePortabilityRequirement::RequirePortable,
-                        )
-                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                        .expect("portable cluster title")
+                        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+                            prepare_flowchart_family_with_theme_engine_and_portability(
+                                &source,
+                                theme,
+                                engine,
+                                ThemePortabilityRequirement::RequirePortable,
+                            );
+                        family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
+                            .expect("prepare family fixture")
+                            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                            .expect("portable cluster title")
                     };
                     let typed = render(&theme, Engine::new());
                     let legacy = render(&baseline, Engine::new().with_site_config(MermaidConfig::from_value(
@@ -7444,18 +7484,24 @@ fn flowchart_title_evidence_tracks_cluster_occurrences_and_property_winners() {
         ),
     ] {
         let theme = flowchart_title_theme(rules);
-        let rendered = prepare_flowchart_family_with_theme_and_portability(
-            source,
-            &theme,
-            ThemePortabilityRequirement::BestEffort,
-        )
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
+        let (fixture_parsed_30, fixture_layout_30, fixture_session_30) =
+            prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            );
+        let rendered = family::prepare(&fixture_parsed_30, &fixture_layout_30, fixture_session_30)
+            .expect("prepare family fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.not_applicable_count(), not_applicable);
         assert_eq!(evidence.theme_residual_count(), residual);
-        let strict = prepare_flowchart_family_with_theme(source, &theme)
+        let (fixture_parsed_13, fixture_layout_13, fixture_session_13) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let strict = family::prepare(&fixture_parsed_13, &fixture_layout_13, fixture_session_13)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
         assert_eq!(strict.is_err(), residual != 0);
     }
@@ -7476,14 +7522,17 @@ fn flowchart_title_fill_preserves_configuration_and_html_source_ownership() {
             } else {
                 Engine::new()
             };
-            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
-                &source,
-                &theme,
-                engine,
-                ThemePortabilityRequirement::RequirePortable,
-            )
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
+            let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
+                prepare_flowchart_family_with_theme_engine_and_portability(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+            let rendered = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
+                .expect("prepare family fixture")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             // SVG cluster labels do not emit the local label_style color; HTML spans do.
@@ -7507,13 +7556,16 @@ fn flowchart_title_transparency_and_clear_have_distinct_evidence() {
         let mut patch = ThemeStylePatch::default();
         patch.paint.fill = fill;
         let theme = flowchart_title_theme([ThemeRule::new(ThemeTarget::Title, patch)]);
-        let rendered = prepare_flowchart_family_with_theme_and_portability(
-            source,
-            &theme,
-            ThemePortabilityRequirement::BestEffort,
-        )
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
+        let (fixture_parsed_31, fixture_layout_31, fixture_session_31) =
+            prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            );
+        let rendered = family::prepare(&fixture_parsed_31, &fixture_layout_31, fixture_session_31)
+            .expect("prepare family fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
         if !clear {
             assert!(
                 rendered
@@ -7536,7 +7588,10 @@ fn flowchart_title_fill_yields_to_assigned_class_tspan_color() {
             "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nclassDef ink color:#123456\nstyle Group color:#abcdef\nclass Group ink\n",
             if swimlane { "  layout: swimlane\n" } else { "" }
         );
-        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+        let (fixture_parsed_14, fixture_layout_14, fixture_session_14) =
+            prepare_flowchart_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&fixture_parsed_14, &fixture_layout_14, fixture_session_14)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
         assert!(
@@ -7576,9 +7631,13 @@ fn flowchart_and_swimlane_generic_text_fill_has_typed_terminal_evidence() {
                         rule = rule.with_variant(ThemeVariant::Default);
                     }
                     let theme = flowchart_title_theme([rule]);
-                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
-                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                        .expect("generic text paint must have direct terminal evidence");
+                    let (fixture_parsed_15, fixture_layout_15, fixture_session_15) =
+                        prepare_flowchart_family_with_theme(&source, &theme);
+                    let rendered =
+                        family::prepare(&fixture_parsed_15, &fixture_layout_15, fixture_session_15)
+                            .expect("prepare family fixture")
+                            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                            .expect("generic text paint must have direct terminal evidence");
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     for label in ["Alpha", "Beta", "Advance", "Group title", "Diagram title"] {
                         let element = document
@@ -7642,7 +7701,10 @@ fn flowchart_generic_text_fill_shadowed_by_role_winners_is_not_applicable() {
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
         ),
     ]);
-    let rendered = prepare_flowchart_family_with_theme(source, &theme)
+    let (fixture_parsed_16, fixture_layout_16, fixture_session_16) =
+        prepare_flowchart_family_with_theme(source, &theme);
+    let rendered = family::prepare(&fixture_parsed_16, &fixture_layout_16, fixture_session_16)
+        .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("unused generic fallback must not block strict rendering");
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -7676,20 +7738,26 @@ fn flowchart_generic_text_fill_keeps_unconsumed_sibling_and_ordinal_residuals() 
         ],
     ] {
         let theme = flowchart_title_theme(rules);
-        let rendered = prepare_flowchart_family_with_theme_and_portability(
-            source,
-            &theme,
-            ThemePortabilityRequirement::BestEffort,
-        )
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
+        let (fixture_parsed_32, fixture_layout_32, fixture_session_32) =
+            prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            );
+        let rendered = family::prepare(&fixture_parsed_32, &fixture_layout_32, fixture_session_32)
+            .expect("prepare family fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert!(
             evidence.theme_residual_count() > 0,
             "unconsumed text facets must remain residual"
         );
-        let strict = prepare_flowchart_family_with_theme(source, &theme)
+        let (fixture_parsed_17, fixture_layout_17, fixture_session_17) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let strict = family::prepare(&fixture_parsed_17, &fixture_layout_17, fixture_session_17)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
         assert!(strict.is_err());
     }
@@ -7709,10 +7777,12 @@ fn flowchart_generic_text_fill_overwritten_ordinal_is_not_applicable() {
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
         ),
     ]);
-    let rendered =
-        prepare_flowchart_family_with_theme("flowchart TD\nA[Alpha] --> B[Beta]\n", &theme)
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .expect("fully overwritten ordinal must not block generic text paint");
+    let (fixture_parsed_18, fixture_layout_18, fixture_session_18) =
+        prepare_flowchart_family_with_theme("flowchart TD\nA[Alpha] --> B[Beta]\n", &theme);
+    let rendered = family::prepare(&fixture_parsed_18, &fixture_layout_18, fixture_session_18)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("fully overwritten ordinal must not block generic text paint");
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -7732,13 +7802,16 @@ fn flowchart_generic_text_uses_the_emitted_markdown_edge_color_owner() {
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
         ),
     ]);
-    let rendered = prepare_flowchart_family_with_theme_and_portability(
-        source,
-        &theme,
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .unwrap();
+    let (fixture_parsed_33, fixture_layout_33, fixture_session_33) =
+        prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        );
+    let rendered = family::prepare(&fixture_parsed_33, &fixture_layout_33, fixture_session_33)
+        .expect("prepare family fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let edge_label = document
         .descendants()
@@ -7779,9 +7852,13 @@ fn flowchart_and_swimlane_edge_label_background_fill_has_typed_terminal_evidence
                         rule = rule.with_variant(ThemeVariant::Default);
                     }
                     let theme = flowchart_title_theme([rule]);
-                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
-                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                        .expect("edge label background must have direct terminal evidence");
+                    let (fixture_parsed_19, fixture_layout_19, fixture_session_19) =
+                        prepare_flowchart_family_with_theme(&source, &theme);
+                    let rendered =
+                        family::prepare(&fixture_parsed_19, &fixture_layout_19, fixture_session_19)
+                            .expect("prepare family fixture")
+                            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                            .expect("edge label background must have direct terminal evidence");
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     let label = document
                         .descendants()
@@ -7894,18 +7971,26 @@ fn flowchart_and_swimlane_background_unconsumed_sibling_and_ordinal_remain_resid
             ],
         ] {
             let theme = flowchart_title_theme(rules);
-            let rendered = prepare_flowchart_family_with_theme_and_portability(
-                source,
-                &theme,
-                ThemePortabilityRequirement::BestEffort,
-            )
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
+            let (fixture_parsed_34, fixture_layout_34, fixture_session_34) =
+                prepare_flowchart_family_with_theme_and_portability(
+                    source,
+                    &theme,
+                    ThemePortabilityRequirement::BestEffort,
+                );
+            let rendered =
+                family::prepare(&fixture_parsed_34, &fixture_layout_34, fixture_session_34)
+                    .expect("prepare family fixture")
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert!(evidence.theme_residual_count() > 0, "source={source}");
-            let strict = prepare_flowchart_family_with_theme(source, &theme)
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+            let (fixture_parsed_20, fixture_layout_20, fixture_session_20) =
+                prepare_flowchart_family_with_theme(source, &theme);
+            let strict =
+                family::prepare(&fixture_parsed_20, &fixture_layout_20, fixture_session_20)
+                    .expect("prepare family fixture")
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
             assert!(strict.is_err());
         }
     }
@@ -7928,14 +8013,17 @@ fn flowchart_background_requires_a_real_terminal_and_respects_config_owner() {
             ),
         ] {
             let source = format!("{prefix}{source}");
-            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
-                &source,
-                &theme,
-                engine,
-                ThemePortabilityRequirement::RequirePortable,
-            )
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
+            let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
+                prepare_flowchart_family_with_theme_engine_and_portability(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+            let rendered = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
+                .expect("prepare family fixture")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 0, "source={source}");
@@ -7955,7 +8043,10 @@ fn flowchart_background_covers_special_node_labels_without_an_edge() {
         "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label', form: 'square' }\n",
         "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label' }\n",
     ] {
-        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+        let (fixture_parsed_21, fixture_layout_21, fixture_session_21) =
+            prepare_flowchart_family_with_theme(source, &theme);
+        let rendered = family::prepare(&fixture_parsed_21, &fixture_layout_21, fixture_session_21)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
         assert!(rendered.svg().contains("labelBkg"));
@@ -7981,7 +8072,10 @@ fn flowchart_background_overwritten_ordinal_is_not_applicable() {
     let theme = flowchart_title_theme([ordinal, winner]);
     for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
         let source = format!("{prefix}flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n");
-        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+        let (fixture_parsed_22, fixture_layout_22, fixture_session_22) =
+            prepare_flowchart_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&fixture_parsed_22, &fixture_layout_22, fixture_session_22)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("overwritten ordinal must not block the static transparent winner");
         let evidence =
@@ -8007,7 +8101,10 @@ fn brutalist_preset_emits_ordinal_accents_and_preserves_source_fill() {
         if source_override {
             source.push_str("style N2 fill:#123456\n");
         }
-        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+        let (fixture_parsed_23, fixture_layout_23, fixture_session_23) =
+            prepare_flowchart_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&fixture_parsed_23, &fixture_layout_23, fixture_session_23)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("Brutalist ordinal node fills must be portable");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -8075,9 +8172,13 @@ fn flowchart_family_ordinal_transparent_fill_preserves_other_node_fills() {
                 .with_ordinal(ordinal),
             ]);
             let source = format!("{family} LR\nA[Alpha] --> B[Beta] --> C[Gamma]\n");
-            let rendered = prepare_flowchart_family_with_theme(&source, &theme)
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .expect("ordinal transparent node fills must be portable");
+            let (fixture_parsed_24, fixture_layout_24, fixture_session_24) =
+                prepare_flowchart_family_with_theme(&source, &theme);
+            let rendered =
+                family::prepare(&fixture_parsed_24, &fixture_layout_24, fixture_session_24)
+                    .expect("prepare family fixture")
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("ordinal transparent node fills must be portable");
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             for (id, expected) in [("A", "#123456"), ("B", "none"), ("C", "#123456")] {
                 let node = document
@@ -8218,7 +8319,7 @@ fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout: FlowchartLayout =
         serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
             .unwrap();
@@ -8359,7 +8460,7 @@ fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
             .expect("parse ok")
             .expect("diagram detected");
             let artifact = family::prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::default(),
                 RenderEnvironment::deterministic().begin_session().unwrap(),
             )
@@ -8606,7 +8707,10 @@ fn flowchart_important_html_color_inheritance_is_portable_for_generic_text_fill(
         let source = format!(
             "---\nconfig:\n  htmlLabels: true\n  flowchart:\n    htmlLabels: true\n---\nflowchart TD\nA[\"<span class='host' style='color:{value} !important'>Alpha</span>\"]\n"
         );
-        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+        let (fixture_parsed_25, fixture_layout_25, fixture_session_25) =
+            prepare_flowchart_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&fixture_parsed_25, &fixture_layout_25, fixture_session_25)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("important inheritance proves theme paint reach");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -8628,13 +8732,13 @@ fn flowchart_important_html_color_inheritance_is_portable_for_generic_text_fill(
 #[test]
 fn flowchart_hand_drawn_icon_circle_preserves_emit_resource_failures() {
     let source = "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 7\n---\nflowchart LR\nC@{ icon: \"missing:icon\", form: \"circle\" }\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
     let prepare = |policy| {
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
-            .unwrap()
-            .unwrap();
         family::prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             RenderEnvironment::deterministic()
                 .with_resource_policy(policy)
@@ -8703,14 +8807,18 @@ fn flowchart_elk_collapsed_projection_preserves_theme_font_and_edge_padding() {
                     ))),
             )
             .unwrap();
-        prepare_flowchart_family_with_theme_and_portability(
-            source,
-            &theme,
-            ThemePortabilityRequirement::BestEffort,
-        )
+        let (fixture_parsed_35, fixture_layout_35, fixture_session_35) =
+            prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            );
+        (fixture_parsed_35, fixture_layout_35, fixture_session_35)
     };
-    let small = prepare(16.0, 0.0);
-    let large = prepare(64.0, 9.0);
+    let (small_parsed, small_options, small_session) = prepare(16.0, 0.0);
+    let (large_parsed, large_options, large_session) = prepare(64.0, 9.0);
+    let small = family::prepare(&small_parsed, &small_options, small_session).unwrap();
+    let large = family::prepare(&large_parsed, &large_options, large_session).unwrap();
     let layout = |artifact: &family::FamilyRenderArtifact| -> FlowchartLayout {
         serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
             .unwrap()
@@ -8756,7 +8864,10 @@ fn flowchart_elk_collapsed_projection_preserves_theme_font_and_edge_padding() {
         .label
         .as_ref()
         .unwrap();
-    let no_padding = layout(&prepare(64.0, 0.0));
+    let (no_padding_parsed, no_padding_options, no_padding_session) = prepare(64.0, 0.0);
+    let no_padding_artifact =
+        family::prepare(&no_padding_parsed, &no_padding_options, no_padding_session).unwrap();
+    let no_padding = layout(&no_padding_artifact);
     let no_padding_label = no_padding
         .edges
         .iter()

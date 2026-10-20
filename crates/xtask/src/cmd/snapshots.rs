@@ -269,7 +269,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 continue;
             }
         };
-        let artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
+        let artifact = match merman_render::family::prepare(&parsed, &layout_opts, session) {
             Ok(v) => v,
             Err(merman_render::Error::UnsupportedDiagram { .. }) => {
                 // Layout snapshots are only defined for renderable built-in families. Skip

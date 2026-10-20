@@ -1276,6 +1276,21 @@ impl<'a> ParsePipeline<'a> {
                 }
             }
         };
+        // Public parse metadata follows upstream source authority. Rendering separately retains
+        // Merman's hardened secure keys and presentation-value admission.
+        let upstream_defaults = crate::generated::upstream_default_config();
+        let authored_authority = if self
+            .engine
+            .initialization_inputs
+            .as_value()
+            .get("secure")
+            .is_some()
+        {
+            &self.engine.initialization_inputs
+        } else {
+            &upstream_defaults
+        };
+        let source_config = authored_authority.authored_source_overrides(pre.config, control)?;
         let effective_config = match config.finalize(self.engine, &diagram_type, control)? {
             Ok(config) => config,
             Err(error) => return Ok(Err(error)),
@@ -1303,7 +1318,7 @@ impl<'a> ParsePipeline<'a> {
             pre.source,
             ParseMetadata {
                 diagram_type,
-                config: pre.config,
+                config: source_config,
                 effective_config,
                 title,
             },

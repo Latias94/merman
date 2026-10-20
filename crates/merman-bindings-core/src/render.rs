@@ -22,11 +22,49 @@ pub(crate) struct CachedRenderEngine {
     plan: RenderRequestPlan,
 }
 
+#[derive(Clone)]
 pub(crate) struct RenderOperationConfig {
     plan: request::RenderOperationConfig,
 }
 
 impl CachedRenderEngine {
+    pub(crate) fn prepare_source(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<merman::PreparedSource, BindingError> {
+        self.plan.prepare_source(source_text(source)?, control)
+    }
+
+    pub(crate) fn runtime_policy(&self) -> merman::runtime::RuntimePolicy {
+        self.plan.runtime_policy()
+    }
+
+    pub(crate) fn render_prepared_output(
+        &self,
+        source: &merman::PreparedSource,
+        operation: crate::OperationKey,
+        control: merman::OperationControl,
+        include_metadata: bool,
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let input = request::RenderInput::Prepared(source);
+        match operation {
+            crate::OperationKey::Svg => {
+                self.plan
+                    .render_svg_output(input, control, include_metadata)
+            }
+            crate::OperationKey::LayoutJson => self
+                .plan
+                .layout_json(input, control)
+                .map(crate::operation::BindingOperationOutput::plain),
+            crate::OperationKey::EdgeGeometryJson => self
+                .plan
+                .edge_geometry_json(input, control)
+                .map(crate::operation::BindingOperationOutput::plain),
+            _ => unreachable!("prepared output is a supported graphical operation"),
+        }
+    }
+
     pub(crate) fn render_svg_output(
         &self,
         source: &[u8],
@@ -34,8 +72,11 @@ impl CachedRenderEngine {
         include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan
-            .render_svg_output(source, control, include_metadata)
+        self.plan.render_svg_output(
+            request::RenderInput::Source(source),
+            control,
+            include_metadata,
+        )
     }
 
     pub(crate) fn layout_json(
@@ -44,7 +85,8 @@ impl CachedRenderEngine {
         control: merman::OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.layout_json(source, control)
+        self.plan
+            .layout_json(request::RenderInput::Source(source), control)
     }
 
     pub(crate) fn edge_geometry_json(
@@ -53,7 +95,8 @@ impl CachedRenderEngine {
         control: merman::OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.edge_geometry_json(source, control)
+        self.plan
+            .edge_geometry_json(request::RenderInput::Source(source), control)
     }
 
     pub(crate) fn svg_plan_json(

@@ -24,7 +24,7 @@ fn bench_architecture_stress(c: &mut Criterion) {
         ..SvgRenderOptions::default()
     };
     merman_render::family::prepare(
-        parsed.clone(),
+        &parsed,
         &layout,
         environment.begin_session().expect("render session"),
     )
@@ -43,7 +43,7 @@ fn bench_architecture_stress(c: &mut Criterion) {
                 (0..200)
                     .map(|_| {
                         merman_render::family::prepare(
-                            parsed.clone(),
+                            &parsed,
                             &layout,
                             environment.begin_session().expect("render session"),
                         )

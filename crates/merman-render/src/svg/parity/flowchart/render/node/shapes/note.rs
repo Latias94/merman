@@ -12,10 +12,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let x = -w / 2.0;
-    let y = -h / 2.0;
+    let (w, h, x, y) = note_geometry(common);
 
     let note_fill = &ctx.compatibility.note_fill;
     let note_stroke = &ctx.compatibility.note_stroke;
@@ -99,5 +96,35 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
             fmt(w),
             fmt(h)
         );
+    }
+}
+
+fn note_geometry(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64, f64, f64) {
+    let w = common.layout_node.width.max(1.0);
+    let h = common.layout_node.height.max(1.0);
+    let x = -w / 2.0;
+    let y = -h / 2.0;
+
+    (w, h, x, y)
+}
+
+pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
+    let (w, h, x, y) = note_geometry(common);
+    if common.look_is_hand_drawn() {
+        let path = format!("M{} {} H{} V{} H{} Z", x, y, x + w, y + h, x);
+        let _ = super::super::helpers::prepare_node_path(
+            common,
+            &path,
+            super::super::roughjs::RoughGeometryTarget::Query,
+        );
+    } else {
+        let _ = crate::svg::parity::roughjs_common::roughjs_rect_operations(RoughRectSpec {
+            x,
+            y,
+            w,
+            h,
+            stroke_width: common.stroke_width,
+            randomness: common.hand_drawn_seed,
+        });
     }
 }

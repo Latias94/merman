@@ -11,7 +11,7 @@ fn render_state(config: &str, source: &str) -> String {
         .expect("parse State")
         .expect("State diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout State")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render State")

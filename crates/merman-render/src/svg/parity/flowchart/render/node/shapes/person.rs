@@ -13,36 +13,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding.max(0.0);
-    let w = (metrics.width + 2.0 * p)
-        .max(common.layout_node.width.max(0.0))
-        .max(100.0);
-    let head_radius = (w * 0.23).clamp(16.0, 56.0);
-    let overlap = head_radius * 0.27;
-    let body_height = (metrics.height + 2.0 * p)
-        .max((common.layout_node.height - (2.0 * head_radius - overlap)).max(0.0));
-    let body_radius = (w * 0.177).min(body_height * 0.45);
-    let total_height = body_height + 2.0 * head_radius - overlap;
-    let top = -total_height / 2.0;
-    let body_top = top + 2.0 * head_radius - overlap;
-    let body_path = path_from_points(&rounded_rect_points(
-        -w / 2.0,
-        body_top,
-        w,
-        body_height,
-        body_radius,
-    ));
-    let head_center_y = top + head_radius;
-
+    let (w, head_radius, body_height, body_radius, body_top, body_path, head_center_y) =
+        prepare_person_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
         let _ = write!(
             out,
@@ -134,4 +106,72 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
 
     let body_center_y = body_top + body_height / 2.0;
     label.dy = body_center_y;
+}
+
+fn prepare_person_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (f64, f64, f64, f64, f64, String, f64) {
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding.max(0.0);
+    let w = (metrics.width + 2.0 * p)
+        .max(common.layout_node.width.max(0.0))
+        .max(100.0);
+    let head_radius = (w * 0.23).clamp(16.0, 56.0);
+    let overlap = head_radius * 0.27;
+    let body_height = (metrics.height + 2.0 * p)
+        .max((common.layout_node.height - (2.0 * head_radius - overlap)).max(0.0));
+    let body_radius = (w * 0.177).min(body_height * 0.45);
+    let total_height = body_height + 2.0 * head_radius - overlap;
+    let top = -total_height / 2.0;
+    let body_top = top + 2.0 * head_radius - overlap;
+    let body_path = path_from_points(&rounded_rect_points(
+        -w / 2.0,
+        body_top,
+        w,
+        body_height,
+        body_radius,
+    ));
+    let head_center_y = top + head_radius;
+
+    (
+        w,
+        head_radius,
+        body_height,
+        body_radius,
+        body_top,
+        body_path,
+        head_center_y,
+    )
+}
+
+pub(super) fn advance_person_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, head_radius, _, _, _, body_path, _) = prepare_person_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &body_path, target);
+    let _ = super::super::roughjs::roughjs_prepare_paths_for_circle(
+        target,
+        head_radius * 2.0,
+        common.stroke_width,
+        common.stroke_dasharray,
+        true,
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
 }

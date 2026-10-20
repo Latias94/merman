@@ -23,12 +23,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     origin_x: f64,
     origin_y: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-    edge_cache: &mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
+    edge_cache: &FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
 ) -> crate::Result<()> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
     let edge_dom_id = ctx
-        .document_ids
+        .document_ids()
         .edge(key)
         .ok_or_else(|| crate::Error::InvalidModel {
             message: format!(
@@ -124,7 +124,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         g
     };
     let d = geom.d.as_str();
-    let data_points_b64 = geom.data_points_b64.as_str();
+    scratch.json.clear();
+    json_stringify_points_into(&mut scratch.json, &geom.data_points, &mut scratch.ryu);
+    let data_points_b64 = base64::engine::general_purpose::STANDARD.encode(scratch.json.as_bytes());
     let neo_edge_mask = if data_look.is_neo()
         && !animation.is_active()
         && let Some(path_length) = flowchart_neo_edge_path_length(geom, edge)
@@ -138,16 +140,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     } else {
         None
     };
-    let rough_d = if hand_drawn && !geom.line_hop_applied {
-        super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
-            d,
-            0.3,
-            &ctx.hand_drawn_seed,
-        )
-    } else {
-        None
-    };
-    let d = rough_d.as_deref().unwrap_or(d);
+    let d = geom.emitted_d_for_label.as_deref().unwrap_or(d);
 
     scratch.edge_class_attr.clear();
     css::write_flowchart_edge_class_attr(&mut scratch.edge_class_attr, edge, animation);
@@ -157,7 +150,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     scratch.edge_marker_attrs.clear();
     marker_plan.push_edge_marker_attributes_for(
         &mut scratch.edge_marker_attrs,
-        ctx.document_ids.marker_scope(),
+        ctx.document_ids().marker_scope(),
         ctx.diagram_type,
         key,
         ctx.work_meter,
@@ -182,7 +175,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         edge_dom_id,
         edge,
         d,
-        data_points_b64,
+        data_points_b64: &data_points_b64,
         data_look,
         hand_drawn,
         emitted_styles,
@@ -211,7 +204,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         },
         emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
         ctx.edge_stroke_config_override,
-        ctx.document_ids.marker_scope(),
+        ctx.document_ids().marker_scope(),
         ctx.diagram_type,
         ctx.work_meter,
     )?;
@@ -243,13 +236,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             &source_residuals,
             ctx.work_meter,
         )?;
-    }
-    if let Some(emitted_d_for_label) = rough_d
-        && let Some(cache_entry) = edge_cache.get_mut(&key)
-        && (cache_entry.origin_x - origin_x).abs() <= 1e-9
-        && (cache_entry.origin_y - origin_y).abs() <= 1e-9
-    {
-        cache_entry.geom.emitted_d_for_label = Some(emitted_d_for_label);
     }
     Ok(())
 }

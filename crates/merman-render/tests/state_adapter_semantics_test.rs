@@ -11,7 +11,7 @@ fn render(source: &str, config: serde_json::Value) -> String {
         .expect("parse State")
         .expect("State diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render State")

@@ -62,7 +62,9 @@ pub use parity::*;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
-pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use parity::{
+    RootThemeAppliedSvg, edge_geometry_family_artifact, render_builtin_family_artifact,
+};
 pub(crate) use pipeline::SvgPostprocessExecution;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,

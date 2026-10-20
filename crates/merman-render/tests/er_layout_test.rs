@@ -17,7 +17,7 @@ fn layout_er(text: &str) -> ErDiagramLayout {
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("ER layout");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
@@ -214,7 +214,7 @@ fn er_elk_layout_materializes_compound_subgraphs_and_svg_groups() {
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("ER layout");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");
     let layout: ErDiagramLayout =
         serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("layout");

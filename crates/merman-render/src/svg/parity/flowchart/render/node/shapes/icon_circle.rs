@@ -13,37 +13,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
-    // Port of Mermaid `iconCircle.ts` (`icon-shape default`). A populated nested icon SVG has an
-    // explicit square viewport, while an empty icon group has a zero-sized browser `getBBox()`.
+    let (top_label, icon_size, label_bbox_w, label_bbox_h, diameter, outer_w, outer_h, icon_dy) =
+        prepare_icon_circle_geometry(ctx, common, label);
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
-    let has_label = !label.text.is_empty();
-    let label_padding = if has_label { 8.0 } else { 0.0 };
-    let top_label = common.node_pos == Some("t");
-
-    let asset_h = common.node_asset_height.unwrap_or(48.0);
-    let asset_w = common.node_asset_width.unwrap_or(48.0);
-    let icon_size = asset_h.max(asset_w);
-
-    let mut metrics = common
-        .label_emission
-        .metrics(ctx, Some(common.layout_node), label);
-    if !has_label {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
-
-    let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
-    let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-    let icon_bbox_size = if icon_name.is_some() { icon_size } else { 0.0 };
-    let diameter = icon_bbox_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0;
-    let outer_w = diameter.max(label_bbox_w);
-    let outer_h = diameter + label_bbox_h + label_padding;
-    let icon_dy = if top_label {
-        label_bbox_h / 2.0 + label_padding / 2.0
-    } else {
-        -label_bbox_h / 2.0 - label_padding / 2.0
-    };
-
     let (fill_d, stroke_d) =
         match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_circle(
@@ -149,4 +121,77 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
         out.push_str("</a>");
     }
     Ok(label_receipt)
+}
+
+fn prepare_icon_circle_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (bool, f64, f64, f64, f64, f64, f64, f64) {
+    // Port of Mermaid `iconCircle.ts` (`icon-shape default`). A populated nested icon SVG has an
+    // explicit square viewport, while an empty icon group has a zero-sized browser `getBBox()`.
+    let has_label = !label.text.is_empty();
+    let label_padding = if has_label { 8.0 } else { 0.0 };
+    let top_label = common.node_pos == Some("t");
+
+    let asset_h = common.node_asset_height.unwrap_or(48.0);
+    let asset_w = common.node_asset_width.unwrap_or(48.0);
+    let icon_size = asset_h.max(asset_w);
+
+    let mut metrics = common.label_metrics(ctx, label);
+    if !has_label {
+        metrics.width = 0.0;
+        metrics.height = 0.0;
+    }
+
+    let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
+    let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+    let diameter = icon_frame_diameter(common);
+    let outer_w = diameter.max(label_bbox_w);
+    let outer_h = diameter + label_bbox_h + label_padding;
+    let icon_dy = if top_label {
+        label_bbox_h / 2.0 + label_padding / 2.0
+    } else {
+        -label_bbox_h / 2.0 - label_padding / 2.0
+    };
+
+    (
+        top_label,
+        icon_size,
+        label_bbox_w,
+        label_bbox_h,
+        diameter,
+        outer_w,
+        outer_h,
+        icon_dy,
+    )
+}
+
+pub(super) fn advance_rough_geometry(
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    _label: &super::super::FlowchartNodeLabelState<'_>,
+) {
+    let diameter = icon_frame_diameter(common);
+    let _ = super::super::roughjs::roughjs_prepare_paths_for_circle(
+        super::super::roughjs::RoughGeometryTarget::Query,
+        diameter,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.look_is_hand_drawn(),
+        common.work_meter,
+        common.hand_drawn_seed,
+    );
+}
+
+fn icon_frame_diameter(common: &super::super::FlowchartNodeGeometry<'_>) -> f64 {
+    let icon_size = if common.node_icon.is_some_and(|s| !s.trim().is_empty()) {
+        common
+            .node_asset_height
+            .unwrap_or(48.0)
+            .max(common.node_asset_width.unwrap_or(48.0))
+    } else {
+        0.0
+    };
+    icon_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0
 }

@@ -79,6 +79,8 @@ enum XtaskError {
     DebugSvgFailed(String),
     #[error("upstream svg generation failed:\n{0}")]
     UpstreamSvgFailed(String),
+    #[error("parser differential failed:\n{0}")]
+    ParserDifferential(String),
     #[error("svg compare failed:\n{0}")]
     SvgCompareFailed(String),
 }
@@ -110,6 +112,9 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-playground-example-catalog");
     println!("  verify-playground-ascii-capabilities");
     println!("  verify-mermaid-reference");
+    println!(
+        "  parser-differential [--cases N --seed N --timeout-seconds N | --replay PATH | --minimize PATH]"
+    );
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
     println!("  verify-lalrpop-parsers");
@@ -233,6 +238,7 @@ fn main() -> Result<(), XtaskError> {
             cmd::verify_playground_ascii_capabilities(args.collect())
         }
         "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
+        "parser-differential" => cmd::parser_differential::run(args.collect()),
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
         "verify-text-measurement-protocol" => cmd::verify_text_measurement_protocol(args.collect()),
         "verify-native-abi" => cmd::verify_native_abi(args.collect()),

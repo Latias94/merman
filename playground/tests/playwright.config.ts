@@ -54,7 +54,7 @@ export default defineConfig({
     },
     {
       name: "chromium-mobile-interactions",
-      testMatch: /mobile\.interactions\.spec\.ts/u,
+      testMatch: [/mobile\.interactions\.spec\.ts/u, /mounted-diagram\.spec\.ts/u],
       use: {
         ...devices["Pixel 7"],
         permissions: ["clipboard-read", "clipboard-write"],

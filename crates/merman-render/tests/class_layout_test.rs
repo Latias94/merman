@@ -29,7 +29,7 @@ fn layout_class_with_dagre(text: &str, environment: &RenderEnvironment) -> Class
     let parsed = parse_class(text);
     let session = environment.begin_session().unwrap();
     let artifact =
-        family::prepare(parsed, &LayoutOptions::default(), session).expect("Dagre class layout");
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("Dagre class layout");
     let projection = artifact.layout_json().expect("Class layout projection");
     serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).expect("Class layout")
 }
@@ -818,7 +818,7 @@ fn class_non_layered_short_terminal_fallback_reports_the_source_error() {
     let parsed = parse_class(source);
     let environment = RenderEnvironment::deterministic();
     let session = environment.begin_session().unwrap();
-    let error = family::prepare(parsed, &LayoutOptions::default(), session)
+    let error = family::prepare(&parsed, &LayoutOptions::default(), session)
         .err()
         .expect("Mermaid rejects terminal samples longer than the non-layered route");
     assert!(

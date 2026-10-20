@@ -216,7 +216,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         }
     }
     let lane_dom_id =
-        ctx.document_ids
+        ctx.document_ids()
             .lane(&lane.id)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Swimlane DOM id for lane `{}`", lane.id),

@@ -19,7 +19,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 
 All public browser packages use one lockstep version. Version `0.9.1` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
 
-This checkout also documents unreleased compiled-theme APIs and Web transport API `6`.
+This checkout also documents unreleased compiled-theme, prepared-source and adaptive Kanban APIs with Web transport API `8`.
 Published `0.9.1` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
 matching artifacts. See the [release boundary](../../docs/release/README.md#merman-091).
 
@@ -54,6 +54,86 @@ renderSvgToElement(target, `flowchart TD
 
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
+
+## Reuse a parsed source
+
+Source builds of `@mermanjs/web` and `@mermanjs/web-render` expose `prepareSource()`:
+
+```ts
+import { initMerman, prepareSource } from "@mermanjs/web-render";
+
+await initMerman();
+const prepared = prepareSource("flowchart LR\nA[Start] --> B[Done]");
+try {
+  const svg = prepared.renderSvg({
+    layout: { container_width: 640 },
+    timeout_ms: 250,
+  });
+  const layout = JSON.parse(prepared.layoutJson());
+} finally {
+  prepared.dispose();
+}
+```
+
+The snapshot freezes successful semantics, effective configuration, parse settings, the existing
+compiled theme binding, and parse-time dates or generated IDs. Prepare again to change those
+facts. Each output has fresh cancellation, deadline and resource admission; a failed output does
+not poison the snapshot. Layout options keep each diagram family's existing meaning.
+
+Use `renderSvgResult()` on the snapshot for execution metadata, or `edgeGeometryJson()` for
+edge geometry. All four output methods have `WithTextMeasurer` variants that accept the measurer
+for that call. Keep `environment.text_measurement` omitted when selecting a host measurer;
+the existing explicit-selector conflict also applies to defaults supplied during preparation.
+The wrapper stays bound to its creating WASM runtime. Dispose is idempotent and
+invalidates the wrapper immediately; disposal inside a measurement callback frees Rust data after
+the active call returns. Calls after disposal fail explicitly. Semantic JSON is an export, not a
+serialized snapshot format. Analysis, editor and ASCII packages do not expose `prepareSource()`.
+
+## Maintain a mounted diagram
+
+Source builds of the full and render packages expose `mountDiagram()`:
+
+```ts
+const mounted = mountDiagram(target, kanbanSource, {
+  outputOptions: { layout: { adaptation: "fit-width" }, timeout_ms: 250 },
+  onError: (error) => console.error(error),
+});
+mounted.update(nextSource);
+mounted.refresh();
+mounted.destroy();
+```
+
+`source` is the newest requested source. `result` is the last successfully published SVG and its
+metadata; `error` records the latest failure, and `status` is `pending`, `rendering`, `ready`,
+`failed`, or `destroyed`. Failed updates retain the last good DOM. A callback failure after
+publication also leaves that successful drawing in place. `destroy()` releases snapshots,
+measurement probes and listeners while leaving published DOM in place; it is idempotent.
+
+`prepareOptions` supplies typed parse inputs and output defaults. `outputOptions` supplies fresh
+redraw settings. Unchanged source and exactly encoded preparation options reuse the snapshot;
+width and font refreshes do not reparse it. `update(source)` keeps the current options, while
+`update(source, options)` replaces them completely. Inputs are captured during the call, so later
+mutation of the supplied objects does not alter a queued redraw. The mount owns `svg.diagram_id`
+and assigns each mount a unique namespace, including across package instances.
+
+Fit-width is explicit and currently supports Kanban. Resize notifications use the target's content
+width and preserve whole columns; inspect `result.metadata.layout_adaptation` for actual width
+and overflow. A disconnected, zero-width or CSS-hidden target defers preparation and rendering while retaining
+the newest request. Reconnecting requires a size notification or explicit `refresh()`.
+A CSS visibility change with unchanged dimensions requires `refresh()`; `display: none` becoming
+measurable is observed through its actual size change.
+
+Measurement remains deterministic unless `textMeasurement: "browser"` or a host callback is
+selected. Browser measurement uses the target Document's probes and refreshes after font loading.
+Do not combine a host/browser measurer with an explicit `environment.text_measurement` selector;
+the existing binding admission reports that conflict. Arbitrary external typography changes need
+an explicit refresh. After adopting the target into another Document, call `refresh()` to rebind
+its observers, font listeners and probes. No global DOM observer discovers arbitrary adoption.
+
+Each package instance keeps at most one controller per target; remounting destroys its prior
+controller. Scheduled work and reentrant callbacks cannot publish superseded results. The mount
+uses the same SVG source, actual-root, navigation and base-URI admission as the one-shot helpers.
+Keep `renderSvgToElement()` for a single publication without a retained lifecycle.
 
 ## Choose a preset for a diagram
 
@@ -201,22 +281,21 @@ contract.
 
 ## Deadlines and cancellation
 
-The current source-branch browser transport API is `6`, reported by `transportApiVersion()` and
-the runtime catalog. API 6 replaces `presentationCatalog()` with `themeCatalog()` and adds the
-theme-authoring exports. Replace the package facade, generated glue, and WASM together;
-`initMerman()` rejects a different transport epoch before publishing the module.
+The current source-branch browser transport API is `8`, reported by `transportApiVersion()` and
+the runtime catalog. API 8 adds the required layout-adaptation capability-plan field and ordinary
+width/overflow observations. API 7 added the render-capable `PreparedSource` class; API 6 introduced
+`themeCatalog()` and the theme-authoring exports. Replace the package facade, generated glue and
+WASM together. Initialization rejects a different transport epoch or a missing required export
+before publishing the module.
 
-Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
-field in their options JSON. Because this field is not part of the shared binding-options schema,
-pass it through the public functions' JSON-string form:
+SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
+Other transport-dispatched one-shot operations accept this field through their JSON-string options.
+The transport removes it before shared binding-option validation:
 
 ```ts
 const svg = renderSvg(
   source,
-  JSON.stringify({
-    timeout_ms: 250,
-    resources: { profile: "interactive" },
-  })
+  { timeout_ms: 250, resources: { profile: "interactive" } }
 );
 ```
 

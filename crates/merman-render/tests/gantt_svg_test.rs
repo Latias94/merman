@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -44,7 +50,7 @@ fn layout_gantt_from_text_with_environment(
     let mut options = LayoutOptions::default();
     options.container_width = container_width;
     let session = environment.begin_session().expect("render session");
-    let artifact = family::prepare(parsed, &options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &options, session).expect("layout ok");
     let projection = artifact.layout_json().expect("Gantt layout projection");
     serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).expect("Gantt layout")
 }
@@ -129,10 +135,7 @@ fn gantt_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
         .expect("compile Gantt font stack theme")
 }
 
-fn prepare_gantt_family_with_theme(
-    text: &str,
-    theme: &DiagramTheme,
-) -> family::FamilyRenderArtifact {
+fn prepare_gantt_family_with_theme(text: &str, theme: &DiagramTheme) -> FamilyFixture {
     prepare_gantt_family_with_theme_and_engine(text, theme, Engine::new())
 }
 
@@ -140,16 +143,15 @@ fn prepare_gantt_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
     engine: Engine,
-) -> family::FamilyRenderArtifact {
+) -> FamilyFixture {
     try_prepare_gantt_family_with_theme_and_engine(text, theme, engine)
-        .expect("prepare themed Gantt artifact")
 }
 
 fn try_prepare_gantt_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
     engine: Engine,
-) -> merman_render::Result<family::FamilyRenderArtifact> {
+) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse themed Gantt diagram")
@@ -162,11 +164,14 @@ fn try_prepare_gantt_family_with_theme_and_engine(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Gantt session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
+    (parsed, LayoutOptions::default(), session)
 }
 
 fn render_gantt_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
-    prepare_gantt_family_with_theme(text, theme)
+    let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+        prepare_gantt_family_with_theme(text, theme);
+    family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+        .expect("prepare family fixture")
         .render_svg(
             &SvgRenderOptions {
                 diagram_id: Some("gantt-config".to_string()),
@@ -286,7 +291,10 @@ Radius task: radius-task, 2024-01-01, 1d
     );
 
     let theme = gantt_task_radius_theme(Specified::Value(7.0));
-    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let artifact = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+        .expect("prepare family fixture");
     let projection = artifact
         .layout_json()
         .expect("themed Gantt layout projection");
@@ -333,7 +341,10 @@ fn gantt_static_task_fill_reaches_every_terminal_state_and_shape() {
         (CanvasPaint::Transparent, "transparent"),
     ] {
         let theme = gantt_task_fill_theme(fill);
-        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+            prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let artifact = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -403,7 +414,10 @@ fn gantt_static_task_stroke_reaches_every_terminal_state_and_shape() {
         (CanvasPaint::Transparent, "transparent"),
     ] {
         let theme = gantt_task_stroke_theme(stroke);
-        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
+            prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let artifact = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -460,8 +474,10 @@ fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
             "critBorderColor": "#444444"
         }
     })));
-    let artifact =
+    let (fixture_parsed_20, fixture_layout_20, fixture_session_20) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let artifact = family::prepare(&fixture_parsed_20, &fixture_layout_20, fixture_session_20)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -524,7 +540,10 @@ fn gantt_warning_stroke_reaches_today_and_vertical_terminals() {
     let theme = gantt_warning_stroke_theme(
         CanvasPaint::solid("#d97706").expect("valid Gantt warning stroke"),
     );
-    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let artifact = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -600,7 +619,10 @@ fn gantt_warning_stroke_is_not_applicable_without_warning_terminals() {
     let theme = gantt_warning_stroke_theme(
         CanvasPaint::solid("#d97706").expect("valid Gantt warning stroke"),
     );
-    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Gantt without warning terminals");
@@ -629,7 +651,10 @@ fn gantt_warning_stroke_preserves_the_ordinary_task_stroke_for_non_vertical_task
         )
         .with_variant(ThemeVariant::Warning),
     ]);
-    let rendered = prepare_gantt_family_with_theme(source, &theme)
+    let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let rendered = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
+        .expect("prepare family fixture")
         .render_svg(
             &SvgRenderOptions {
                 diagram_id: Some("gantt-warning-mixed".to_string()),
@@ -687,7 +712,10 @@ fn gantt_warning_stroke_does_not_require_ordinary_stroke_on_vertical_only_diagra
         )
         .with_variant(ThemeVariant::Warning),
     ]);
-    let rendered = prepare_gantt_family_with_theme(source, &theme)
+    let (fixture_parsed_8, fixture_layout_8, fixture_session_8) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let rendered = family::prepare(&fixture_parsed_8, &fixture_layout_8, fixture_session_8)
+        .expect("prepare family fixture")
         .render_svg(
             &SvgRenderOptions {
                 diagram_id: Some("gantt-warning-vertical-only".to_string()),
@@ -726,7 +754,10 @@ fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {"vertLineColor": "#15803d"}
     })));
-    let rendered = prepare_gantt_family_with_theme_and_engine(source, &theme, engine)
+    let (fixture_parsed_21, fixture_layout_21, fixture_session_21) =
+        prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
+    let rendered = family::prepare(&fixture_parsed_21, &fixture_layout_21, fixture_session_21)
+        .expect("prepare family fixture")
         .render_svg(
             &SvgRenderOptions {
                 diagram_id: Some("gantt-warning-source-owned".to_string()),
@@ -778,7 +809,10 @@ fn gantt_warning_stroke_detects_source_owned_comma_delimited_today_marker() {
         let theme = gantt_warning_stroke_theme(
             CanvasPaint::solid("#d97706").expect("valid warning stroke"),
         );
-        let rendered = prepare_gantt_family_with_theme(&source, &theme)
+        let (fixture_parsed_9, fixture_layout_9, fixture_session_9) =
+            prepare_gantt_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&fixture_parsed_9, &fixture_layout_9, fixture_session_9)
+            .expect("prepare family fixture")
             .render_svg(
                 &SvgRenderOptions {
                     diagram_id: Some("gantt-warning-comma-marker".to_string()),
@@ -822,7 +856,10 @@ fn gantt_ordinary_stroke_respects_config_owned_vertical_color() {
         let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "themeVariables": {"vertLineColor": "#15803d"}
         })));
-        let rendered = prepare_gantt_family_with_theme_and_engine(&source, &theme, engine)
+        let (fixture_parsed_22, fixture_layout_22, fixture_session_22) =
+            prepare_gantt_family_with_theme_and_engine(&source, &theme, engine);
+        let rendered = family::prepare(&fixture_parsed_22, &fixture_layout_22, fixture_session_22)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -877,7 +914,10 @@ fn gantt_task_stroke_stays_bound_to_semantic_state_after_date_sorting() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "activeTaskBorderColor": "#abcdef" }
     })));
-    let artifact = prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
+    let (fixture_parsed_23, fixture_layout_23, fixture_session_23) =
+        prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
+    let artifact = family::prepare(&fixture_parsed_23, &fixture_layout_23, fixture_session_23)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -1014,18 +1054,21 @@ fn gantt_title_fill_requires_a_visible_title_terminal() {
         CanvasPaint::solid("#123456").expect("valid title fill"),
         None,
     );
-    let rendered = prepare_gantt_family_with_theme(
-        "gantt\ndateFormat YYYY-MM-DD\nTask: task, 2024-01-01, 1d",
-        &theme,
-    )
-    .render_svg(
-        &SvgRenderOptions {
-            diagram_id: Some("gantt-config".to_string()),
-            ..SvgRenderOptions::default()
-        },
-        &SvgDebugOptions::default(),
-    )
-    .expect("render Gantt without visible title terminal");
+    let (fixture_parsed_10, fixture_layout_10, fixture_session_10) =
+        prepare_gantt_family_with_theme(
+            "gantt\ndateFormat YYYY-MM-DD\nTask: task, 2024-01-01, 1d",
+            &theme,
+        );
+    let rendered = family::prepare(&fixture_parsed_10, &fixture_layout_10, fixture_session_10)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Gantt without visible title terminal");
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
@@ -1070,22 +1113,25 @@ fn gantt_text_fill_reaches_grid_and_ordinary_task_label_css() {
             && node.text() == Some("Default")
     }));
 
-    let completion = prepare_gantt_family_with_theme(
-        GANTT_TASK_FILL_SOURCE,
-        &gantt_text_fill_theme(
-            CanvasPaint::solid(text_fill).expect("valid Gantt text fill"),
-            None,
-        ),
-    )
-    .render_svg(
-        &SvgRenderOptions {
-            diagram_id: Some("gantt-config".to_string()),
-            ..SvgRenderOptions::default()
-        },
-        &SvgDebugOptions::default(),
-    )
-    .expect("render typed Gantt text fill")
-    .into_completion();
+    let (fixture_parsed_11, fixture_layout_11, fixture_session_11) =
+        prepare_gantt_family_with_theme(
+            GANTT_TASK_FILL_SOURCE,
+            &gantt_text_fill_theme(
+                CanvasPaint::solid(text_fill).expect("valid Gantt text fill"),
+                None,
+            ),
+        );
+    let completion = family::prepare(&fixture_parsed_11, &fixture_layout_11, fixture_session_11)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render typed Gantt text fill")
+        .into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.accounted_count(), 1);
@@ -1103,16 +1149,18 @@ fn gantt_text_fill_preserves_independent_source_ownership() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "textColor": "#abcdef" }
     })));
-    let rendered =
-        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some("gantt-config".to_string()),
-                    ..SvgRenderOptions::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .expect("render mixed source-owned Gantt text fill");
+    let (fixture_parsed_24, fixture_layout_24, fixture_session_24) =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let rendered = family::prepare(&fixture_parsed_24, &fixture_layout_24, fixture_session_24)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render mixed source-owned Gantt text fill");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid mixed Gantt SVG XML");
     let stylesheet = document
         .descendants()
@@ -1151,16 +1199,18 @@ fn gantt_text_fill_preserves_task_text_source_ownership() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "taskTextColor": "#fedcba" }
     })));
-    let rendered =
-        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some("gantt-config".to_string()),
-                    ..SvgRenderOptions::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .expect("render task-text source-owned Gantt text fill");
+    let (fixture_parsed_25, fixture_layout_25, fixture_session_25) =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let rendered = family::prepare(&fixture_parsed_25, &fixture_layout_25, fixture_session_25)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render task-text source-owned Gantt text fill");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Gantt SVG XML");
     let stylesheet = document
         .descendants()
@@ -1200,16 +1250,18 @@ fn gantt_text_fill_is_not_applicable_when_both_source_tokens_own_terminals() {
             "taskTextColor": "#fedcba"
         }
     })));
-    let rendered =
-        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some("gantt-config".to_string()),
-                    ..SvgRenderOptions::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .expect("render fully source-owned Gantt text fill");
+    let (fixture_parsed_26, fixture_layout_26, fixture_session_26) =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let rendered = family::prepare(&fixture_parsed_26, &fixture_layout_26, fixture_session_26)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render fully source-owned Gantt text fill");
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
@@ -1226,21 +1278,24 @@ fn gantt_site_font_family_outranks_typed_font_stack() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "gantt": {"fontFamily": "Site Gantt Font"}
     })));
-    let svg = prepare_gantt_family_with_theme_and_engine(
-        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
-        &theme,
-        engine,
-    )
-    .render_svg(
-        &SvgRenderOptions {
-            diagram_id: Some("gantt-config".to_string()),
-            ..SvgRenderOptions::default()
-        },
-        &SvgDebugOptions::default(),
-    )
-    .expect("render site-owned Gantt font stack")
-    .svg()
-    .to_owned();
+    let (fixture_parsed_27, fixture_layout_27, fixture_session_27) =
+        prepare_gantt_family_with_theme_and_engine(
+            "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
+            &theme,
+            engine,
+        );
+    let svg = family::prepare(&fixture_parsed_27, &fixture_layout_27, fixture_session_27)
+        .expect("prepare family fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render site-owned Gantt font stack")
+        .svg()
+        .to_owned();
     let document = roxmltree::Document::parse(&svg).expect("valid site-owned Gantt SVG XML");
     let stylesheet = document
         .descendants()
@@ -1265,8 +1320,10 @@ fn gantt_final_mermaid_fill_keys_own_their_states_independently() {
             "critBkgColor": "#444444"
         }
     })));
-    let artifact =
+    let (fixture_parsed_28, fixture_layout_28, fixture_session_28) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let artifact = family::prepare(&fixture_parsed_28, &fixture_layout_28, fixture_session_28)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -1359,8 +1416,10 @@ fn gantt_each_final_mermaid_fill_key_suppresses_only_its_terminal_states() {
         let engine = Engine::new().with_site_config(MermaidConfig::from_value(
             serde_json::json!({ "themeVariables": { (key): source_fill } }),
         ));
-        let artifact =
+        let (fixture_parsed_29, fixture_layout_29, fixture_session_29) =
             prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+        let artifact = family::prepare(&fixture_parsed_29, &fixture_layout_29, fixture_session_29)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -1395,7 +1454,10 @@ fn gantt_task_fill_is_not_applicable_without_task_rects() {
     let theme = gantt_task_fill_theme(
         CanvasPaint::solid("#123456").expect("valid empty-domain Gantt task fill"),
     );
-    let artifact = prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let (fixture_parsed_12, fixture_layout_12, fixture_session_12) =
+        prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let artifact = family::prepare(&fixture_parsed_12, &fixture_layout_12, fixture_session_12)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render empty Gantt task domain");
@@ -1458,7 +1520,10 @@ fn gantt_task_fill_supports_variant_and_rejects_ordinal_clear_gradient_and_patte
     for (variant, expected_ids) in GANTT_TASK_VARIANT_TERMINALS {
         let theme =
             gantt_task_rule_theme(ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
-        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let (fixture_parsed_13, fixture_layout_13, fixture_session_13) =
+            prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let artifact = family::prepare(&fixture_parsed_13, &fixture_layout_13, fixture_session_13)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -1489,14 +1554,16 @@ fn gantt_task_fill_supports_variant_and_rejects_ordinal_clear_gradient_and_patte
 
     for rule in unsupported_cases {
         let theme = gantt_task_rule_theme(rule);
-        let result = try_prepare_gantt_family_with_theme_and_engine(
-            GANTT_TASK_FILL_SOURCE,
-            &theme,
-            Engine::new(),
-        )
-        .and_then(|artifact| {
-            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        });
+        let (fixture_parsed_31, fixture_layout_31, fixture_session_31) =
+            try_prepare_gantt_family_with_theme_and_engine(
+                GANTT_TASK_FILL_SOURCE,
+                &theme,
+                Engine::new(),
+            );
+        let result = family::prepare(&fixture_parsed_31, &fixture_layout_31, fixture_session_31)
+            .and_then(|artifact| {
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            });
         let error = match result {
             Ok(_) => panic!("unsupported Gantt task fill routes must fail closed"),
             Err(error) => error,
@@ -1556,7 +1623,10 @@ fn gantt_task_stroke_supports_variant_and_rejects_ordinal_clear_gradient_and_pat
     for (variant, expected_ids) in GANTT_TASK_VARIANT_TERMINALS {
         let theme =
             gantt_task_rule_theme(ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
-        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let (fixture_parsed_14, fixture_layout_14, fixture_session_14) =
+            prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let artifact = family::prepare(&fixture_parsed_14, &fixture_layout_14, fixture_session_14)
+            .expect("prepare family fixture");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
@@ -1587,14 +1657,16 @@ fn gantt_task_stroke_supports_variant_and_rejects_ordinal_clear_gradient_and_pat
 
     for rule in unsupported_cases {
         let theme = gantt_task_rule_theme(rule);
-        let result = try_prepare_gantt_family_with_theme_and_engine(
-            GANTT_TASK_FILL_SOURCE,
-            &theme,
-            Engine::new(),
-        )
-        .and_then(|artifact| {
-            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        });
+        let (fixture_parsed_32, fixture_layout_32, fixture_session_32) =
+            try_prepare_gantt_family_with_theme_and_engine(
+                GANTT_TASK_FILL_SOURCE,
+                &theme,
+                Engine::new(),
+            );
+        let result = family::prepare(&fixture_parsed_32, &fixture_layout_32, fixture_session_32)
+            .and_then(|artifact| {
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            });
         let error = match result {
             Ok(_) => panic!("unsupported Gantt task stroke routes must fail closed"),
             Err(error) => error,
@@ -1611,7 +1683,10 @@ fn gantt_task_stroke_is_not_applicable_without_task_rects() {
     let theme = gantt_task_stroke_theme(
         CanvasPaint::solid("#654321").expect("valid empty-domain Gantt task stroke"),
     );
-    let artifact = prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let (fixture_parsed_15, fixture_layout_15, fixture_session_15) =
+        prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let artifact = family::prepare(&fixture_parsed_15, &fixture_layout_15, fixture_session_15)
+        .expect("prepare family fixture");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render empty Gantt task domain");
@@ -1661,12 +1736,16 @@ fn gantt_task_radius_rejects_unsupported_selector_and_mixed_geometry() {
 
     for rule in rules {
         let theme = gantt_task_rule_theme(rule);
-        let error = match prepare_gantt_family_with_theme(source, &theme)
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        {
-            Ok(_) => panic!("unsupported Gantt task theme routes must fail closed"),
-            Err(error) => error,
-        };
+        let (fixture_parsed_16, fixture_layout_16, fixture_session_16) =
+            prepare_gantt_family_with_theme(source, &theme);
+        let error =
+            match family::prepare(&fixture_parsed_16, &fixture_layout_16, fixture_session_16)
+                .expect("prepare family fixture")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Ok(_) => panic!("unsupported Gantt task theme routes must fail closed"),
+                Err(error) => error,
+            };
         assert_eq!(
             error.unverified_family_theme(),
             Some((merman_render::DiagramFamilyId::GANTT, 1))
@@ -1705,7 +1784,10 @@ fn gantt_task_variant_radius_routes_fail_closed_for_matching_task_states() {
             .with_variant(variant),
         );
 
-        let error = prepare_gantt_family_with_theme(&source, &theme)
+        let (fixture_parsed_17, fixture_layout_17, fixture_session_17) =
+            prepare_gantt_family_with_theme(&source, &theme);
+        let error = family::prepare(&fixture_parsed_17, &fixture_layout_17, fixture_session_17)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .err()
             .expect("a matching unsupported task variant must remain residual");
@@ -1735,7 +1817,10 @@ fn gantt_task_variant_override_does_not_reuse_unqualified_geometry() {
         ThemeRule::new(ThemeTarget::Task, radius_style(7.0)),
         ThemeRule::new(ThemeTarget::Task, radius_style(11.0)).with_variant(ThemeVariant::Active),
     ]);
-    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let (fixture_parsed_18, fixture_layout_18, fixture_session_18) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let artifact = family::prepare(&fixture_parsed_18, &fixture_layout_18, fixture_session_18)
+        .expect("prepare family fixture");
     let projection = artifact.layout_json().expect("Gantt layout projection");
     let layout: GanttDiagramLayout =
         serde_json::from_value(projection["layout"]["GanttDiagram"].clone())
@@ -1772,7 +1857,10 @@ fn gantt_task_radius_stays_bound_to_semantic_occurrence_after_date_sorting() {
         ThemeRule::new(ThemeTarget::Task, radius_style(7.0)),
         ThemeRule::new(ThemeTarget::Task, radius_style(11.0)).with_variant(ThemeVariant::Active),
     ]);
-    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let (fixture_parsed_19, fixture_layout_19, fixture_session_19) =
+        prepare_gantt_family_with_theme(source, &theme);
+    let artifact = family::prepare(&fixture_parsed_19, &fixture_layout_19, fixture_session_19)
+        .expect("prepare family fixture");
     let projection = artifact.layout_json().expect("Gantt layout projection");
     let layout: GanttDiagramLayout =
         serde_json::from_value(projection["layout"]["GanttDiagram"].clone())
@@ -1910,7 +1998,7 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
     )
     .expect("parse ok")
     .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     artifact
         .render_svg(
             &SvgRenderOptions {
@@ -1941,7 +2029,7 @@ fn try_render_gantt_svg_with_resource_policy(
     )
     .expect("parse Gantt resource-bound fixture")
     .expect("detect Gantt resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("gantt-bounded".to_string()),
@@ -2244,16 +2332,18 @@ fn gantt_compound_critical_strokes_have_independent_config_ownership() {
         let engine = Engine::new().with_site_config(MermaidConfig::from_value(
             serde_json::json!({"themeVariables":variables}),
         ));
-        let rendered =
-            prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
-                .render_svg(
-                    &SvgRenderOptions {
-                        diagram_id: Some("gantt-config".into()),
-                        ..Default::default()
-                    },
-                    &SvgDebugOptions::default(),
-                )
-                .unwrap();
+        let (fixture_parsed_30, fixture_layout_30, fixture_session_30) =
+            prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+        let rendered = family::prepare(&fixture_parsed_30, &fixture_layout_30, fixture_session_30)
+            .expect("prepare family fixture")
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap();
         let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
         assert_eq!(terminals.len(), 8);
         for (id, _, stroke) in terminals {

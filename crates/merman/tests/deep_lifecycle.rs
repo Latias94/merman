@@ -240,6 +240,49 @@ fn integrated_facade_lifecycle_child() {
                 };
                 assert_eq!(&replayed, limit);
                 marker(started, "budget-terminal", "done");
+            } else if case.starts_with("native-style-") {
+                #[cfg(feature = "native-fonts")]
+                {
+                    let family = case.strip_prefix("native-style-").unwrap();
+                    let mut source = nested_source(family, 3_000, false);
+                    if family == "state" {
+                        source.push_str("style leaf word-spacing:2px\n");
+                    } else {
+                        source =
+                            source.replacen("leaf\n", "leaf\nstyle leaf word-spacing:2px\n", 1);
+                    }
+                    let fonts = merman::svg::export::NativeFontOptions::default()
+                        .with_font_file(
+                            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                                .join("../merman-export/tests/fonts/Cousine-Regular.ttf"),
+                        )
+                        .load(&OperationControl::new())
+                        .unwrap();
+                    let request = merman::SvgRequest {
+                        environment: merman::SvgEnvironment::deterministic()
+                            .with_native_font_context(fonts)
+                            .unwrap(),
+                        ..Default::default()
+                    };
+                    let error = Renderer::new()
+                        .with_resource_policy(merman::resources::InputResourcePolicy::for_profile(
+                            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+                        ))
+                        .render(merman::RenderRequest::svg(
+                            &source,
+                            OperationControl::new(),
+                            request,
+                        ))
+                        .unwrap_err();
+                    assert!(
+                        matches!(error, merman::RenderError::NativeFont(_)),
+                        "{error}"
+                    );
+                    assert!(error.to_string().contains("word-spacing"), "{error}");
+                    marker(started, "deep-native-declaration-admission", "done");
+                }
+                #[cfg(not(feature = "native-fonts"))]
+                panic!("native lifecycle case requires native-fonts");
             } else if case == "repeated-id-targets" {
                 let source = nested_source("flowchart", 3_000, true);
                 let renderer = Renderer::new().with_parse_options(ParseOptions::strict());
@@ -393,6 +436,18 @@ fn deep_state_budget_rejection_preserves_terminal_and_cleanup() {
 #[test]
 fn deep_block_budget_rejection_preserves_terminal_and_cleanup() {
     run_integrated_facade_case("budget-block");
+}
+
+#[cfg(all(feature = "native-fonts", feature = "diagram-state"))]
+#[test]
+fn deep_state_native_admission_rejects_declared_geometry_without_projection() {
+    run_integrated_facade_case("native-style-state");
+}
+
+#[cfg(all(feature = "native-fonts", feature = "diagram-block"))]
+#[test]
+fn deep_block_native_admission_rejects_declared_geometry_without_projection() {
+    run_integrated_facade_case("native-style-block");
 }
 
 #[test]

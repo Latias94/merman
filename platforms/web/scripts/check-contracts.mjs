@@ -40,8 +40,10 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-const wasmGlueExports = new Set(["default", "EditorSession", "initSync", "start"]);
+const wasmGlueExports = new Set(["default", "EditorSession", "PreparedSource", "initSync", "start"]);
 const runtimeWrapperOnlyExports = new Set([
+  "mountDiagram",
+  "prepareSource",
   "createEditorSession",
   "initMerman",
   "getMerman",
@@ -70,6 +72,7 @@ const stablePublicTypes = new Set([
 ]);
 
 const rawWasmExports = contract.exportedValueNames(fullWasmTypes);
+const rawPreparedSourceProperties = contract.exportedTypePropertyNames(fullWasmTypes, "PreparedSource");
 const rawEditorSessionProperties = contract.exportedTypePropertyNames(
   fullWasmTypes,
   "EditorSession",
@@ -121,6 +124,7 @@ const requiredTypeProperties = new Map([
     ],
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
+  ["BrowserPreparedSource", ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
   ["EditorResourceOptions", ["profile", "limits"]],
   [
@@ -228,6 +232,11 @@ const requiredTypePropertyAnnotations = [
 
 let failed = false;
 failed ||= reportMissing(
+  "check-contracts: wasm-bindgen PreparedSource is missing retained outputs",
+  ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "free"].filter(name => !rawPreparedSourceProperties.has(name)),
+);
+
+failed ||= reportMissing(
   "check-contracts: root public API is missing public catalog values",
   difference(catalogValueExports, publicValueExports),
 );
@@ -323,6 +332,7 @@ const runtimeStateProperties = contract.exportedTypePropertyNames(
   "MermanRuntimeState",
 );
 const expectedRuntimeStateProperties = new Set([
+  "requiredWasmExports",
   "defaultLoader",
   "wasmModule",
   "initPromise",

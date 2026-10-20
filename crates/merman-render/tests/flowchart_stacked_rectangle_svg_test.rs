@@ -11,7 +11,7 @@ fn layout_flowchart_render_model(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
-    let artifact = family::prepare(parsed, options, session)?;
+    let artifact = family::prepare(&parsed, options, session)?;
     let projection = artifact.layout_json()?;
     serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
         .map_err(merman_render::Error::from)
@@ -22,7 +22,7 @@ fn render_flowchart_artifact(
     layout_options: &LayoutOptions,
     session: RenderSession,
 ) -> merman_render::Result<String> {
-    let artifact = family::prepare(parsed, layout_options, session)?;
+    let artifact = family::prepare(&parsed, layout_options, session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())

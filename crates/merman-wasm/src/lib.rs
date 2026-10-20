@@ -19,6 +19,11 @@ use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use std::{cell::RefCell, sync::Arc};
 
+#[cfg(feature = "svg")]
+mod render_source;
+#[cfg(feature = "svg")]
+pub use render_source::WasmPreparedSource;
+
 #[cfg(feature = "editor")]
 mod editor_language;
 
@@ -889,7 +894,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 6);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 8);
     }
 
     #[cfg(feature = "ascii")]
@@ -1766,6 +1771,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "all-diagrams")]
     #[test]
     fn family_capabilities_expose_the_unique_catalog() {
         let capabilities = merman_bindings_core::diagram_family_capabilities();

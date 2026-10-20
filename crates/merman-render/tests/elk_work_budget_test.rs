@@ -15,5 +15,5 @@ fn public_flowchart_documentation_fixture_fits_interactive_elk_budget() {
         .unwrap()
         .unwrap();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
 }

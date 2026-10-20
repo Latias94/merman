@@ -43,6 +43,8 @@ export interface ParseOptions {
 }
 
 export interface LayoutOptions {
+  /** Explicit whole-column packing, currently supported by Kanban only. */
+  adaptation?: "none" | "fit-width";
   container_width?: number;
   container_height?: number;
   screen_available_width?: number;
@@ -891,6 +893,8 @@ interface AsciiBindingFields {
 export type AsciiBindingOptions = CommonBindingOptions & AsciiBindingFields;
 
 interface SvgBindingFields {
+  /** Relative deadline for this Web/WASM operation, in milliseconds. */
+  timeout_ms?: number;
   theme?: DiagramThemeSelection | null;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
@@ -898,6 +902,49 @@ interface SvgBindingFields {
 }
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
+
+/** Redraw settings for frozen parse facts. Prepare again to change configuration or theme. */
+export type PreparedSourceOutputOptions = BindingVersionOptions & {
+  /** Relative deadline for this output, in milliseconds. */
+  timeout_ms?: number;
+  resources?: ResourceOptions;
+  environment?: RenderEnvironmentOptions;
+  layout?: LayoutOptions;
+  svg?: SvgOptions;
+};
+
+export type HostTextMeasurerPreparedSourceOutputOptions = Omit<PreparedSourceOutputOptions, "environment"> & {
+  environment?: Omit<RenderEnvironmentOptions, "text_measurement">;
+};
+
+export interface BrowserPreparedSource {
+  renderSvg(options?: PreparedSourceOutputOptions | string): string;
+  renderSvgResult(options?: PreparedSourceOutputOptions | string): SvgRenderResult;
+  layoutJson(options?: PreparedSourceOutputOptions | string): string;
+  edgeGeometryJson(options?: PreparedSourceOutputOptions | string): string;
+  renderSvgWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string;
+  renderSvgResultWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): SvgRenderResult;
+  layoutJsonWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string;
+  edgeGeometryJsonWithTextMeasurer(measurer: HostTextMeasurer, options?: HostTextMeasurerPreparedSourceOutputOptions | string): string;
+  dispose(): void;
+}
+
+export interface WasmPreparedSourceBinding {
+  renderSvg(optionsJson?: string | null): string;
+  renderSvgResult(optionsJson?: string | null): SvgRenderResult;
+  layoutJson(optionsJson?: string | null): string;
+  edgeGeometryJson(optionsJson?: string | null): string;
+  renderSvgWithTextMeasurer(optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  renderSvgResultWithTextMeasurer(optionsJson: string | null | undefined, measurer: HostTextMeasurer): SvgRenderResult;
+  layoutJsonWithTextMeasurer(optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  edgeGeometryJsonWithTextMeasurer(optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  free(): void;
+}
+
+export interface WasmPreparedSourceConstructor {
+  new (source: string, optionsJson?: string | null): WasmPreparedSourceBinding;
+}
+
 
 export type ThemeResourceLimitId =
   | "max_theme_encoded_bytes"
@@ -1254,6 +1301,14 @@ export type ThemeExecutionEvidence =
   | ThemeExecutionEvidenceV1
   | { version: number; [key: string]: unknown };
 
+/** Actual family placement width, before SVG viewport scaling. */
+export interface LayoutAdaptationObservation {
+  mode: "fit-width";
+  requested_width: number;
+  actual_width: number;
+  overflowed: boolean;
+}
+
 /** Existing binding metadata for the exact SVG returned by the same execution. */
 export interface SvgRenderMetadata {
   version: 1;
@@ -1262,6 +1317,7 @@ export interface SvgRenderMetadata {
   runtime_policy: string;
   byte_length: number;
   theme_execution_evidence: ThemeExecutionEvidence;
+  layout_adaptation?: LayoutAdaptationObservation;
   [key: string]: unknown;
 }
 
@@ -1282,6 +1338,7 @@ export interface SvgPlanResult {
   diagram_type: string;
   required_capability_ids: string[];
   missing_capability_ids: string[];
+  supported_layout_adaptation_ids: ("none" | "fit-width")[];
   ready: boolean;
 }
 
@@ -1542,6 +1599,7 @@ export interface MermanWasmModuleBase {
 
 export interface MermanWasmModule extends MermanWasmModuleBase {
   EditorSession?: WasmEditorSessionConstructor;
+  PreparedSource?: WasmPreparedSourceConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
@@ -1691,3 +1749,29 @@ export interface MermanInitOptions<
 export type MermanInitInput<Module extends MermanWasmModuleBase = MermanWasmModule> =
   | MermanWasmLoader<Module>
   | MermanInitOptions<Module>;
+/** A persistent mount keeps its last successful drawing when a newer request fails. */
+export type MountedDiagramStatus = "pending" | "rendering" | "ready" | "failed" | "destroyed";
+
+export interface MountDiagramOptions {
+  /** Frozen parse inputs and output defaults. Changing these options prepares a new snapshot. */
+  prepareOptions?: SvgBindingOptions & { svg?: Omit<SvgOptions, "diagram_id"> & { diagram_id?: never } };
+  /** Fresh redraw settings. The mount owns svg.diagram_id and fit-width container_width. */
+  outputOptions?: Omit<PreparedSourceOutputOptions, "svg"> & { svg?: Omit<SvgOptions, "diagram_id"> & { diagram_id?: never } };
+  /** Browser measurement is opt-in; a supplied callback uses the existing host provider. */
+  textMeasurement?: "deterministic" | "browser" | HostTextMeasurer;
+  onRender?: (result: SvgRenderResult, mount: MountedDiagram) => void;
+  onError?: (error: unknown, mount: MountedDiagram) => void;
+}
+
+export interface MountedDiagram {
+  readonly source: string;
+  readonly result: SvgRenderResult | null;
+  readonly error: unknown;
+  readonly status: MountedDiagramStatus;
+  /** Omitted options retain the current options; supplied options replace them completely. */
+  update(source: string, options?: MountDiagramOptions): void;
+  /** Refresh after external typography changes or adoption into another Document. */
+  refresh(): void;
+  /** Releases resources and leaves the last published DOM in place. Idempotent. */
+  destroy(): void;
+}

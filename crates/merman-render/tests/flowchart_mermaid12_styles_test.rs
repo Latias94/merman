@@ -11,7 +11,7 @@ fn render(source: &str) -> String {
         .expect("parse Flowchart")
         .expect("Flowchart diagram");
     family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::headless_svg_defaults(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
     )

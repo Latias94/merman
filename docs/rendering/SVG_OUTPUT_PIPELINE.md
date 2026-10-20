@@ -27,6 +27,15 @@ boundaries. Explicit readable/native conversion performs the parsing its consume
 pipeline. Native export checks reference expansion and target allocations before its backend runs.
 Browser publication retains the Web package's DOM admission and mount checks.
 
+Native-font typography admission inspects canonical typed declaration owners; it does not expand
+compatibility JSON to discover styles. Layout JSON projects its semantic payload from the exact
+family artifact owning that layout, under the active operation control.
+
+Edge geometry is a separate output. Flowchart-family route and label decisions are shared with
+SVG, but geometry queries do not serialize a document or run SVG postprocessing/admission.
+Use the [geometry resource contract](../integration/RESOURCE_POLICY.md#edge-geometry-budgets) for
+encoded-byte limits; SVG portability evidence is unavailable for a geometry-only target.
+
 `max_svg_elements` bounds admitted XML cardinality and reference-expanded work at SVG input,
 postprocessing and native-conversion boundaries. It is not an emitted-element counter on ordinary
 renderer-owned parity output, nor a browser-wide expansion guarantee. Backend tree hard caps remain

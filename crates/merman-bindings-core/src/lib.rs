@@ -65,6 +65,8 @@ pub use common::{
     enforce_options_json_byte_len,
 };
 pub use engine::BindingEngine;
+#[cfg(feature = "svg")]
+pub use engine::BindingPreparedSource;
 pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
     BindingEngineAdmissionMode, BindingOperationAdmission,
@@ -88,8 +90,8 @@ pub use metadata::{
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
-    BindingAsciiOutputPlan, BindingOperationKind, BindingOperationMetadata,
-    BindingOperationRequest, BindingOperationResult, BindingOutputPlan,
+    BindingAsciiOutputPlan, BindingLayoutAdaptationObservation, BindingOperationKind,
+    BindingOperationMetadata, BindingOperationRequest, BindingOperationResult, BindingOutputPlan,
     BindingPdfFilterImageOutputPlan, BindingRasterOutputPlan, BindingUnknownOutputPlan,
     compiled_operation_kind_ids, execute_once,
 };

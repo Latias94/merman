@@ -17,7 +17,7 @@ fn render(source: &str, backend: &str) -> (Value, String) {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare State");
     let layout = artifact.layout_json().expect("layout")["layout"]["StateDiagramV2"].clone();
     let svg = artifact
@@ -296,7 +296,7 @@ fn state_elk_subpixel_label_width_changes_route_topology() {
             .unwrap()
             .unwrap();
         let artifact = family::prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::headless_svg_defaults(),
             environment.begin_session().unwrap(),
         )
@@ -410,7 +410,7 @@ fn state_elk_terminal_guard_preserves_browser_reserved_label_lane() {
             .unwrap()
             .unwrap();
         family::prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::headless_svg_defaults(),
             environment.begin_session().unwrap(),
         )
@@ -587,7 +587,7 @@ fn state_elk_compound_routes_with_controlled_browser_measurements() {
             ParseOptions::strict(),
         ).unwrap().unwrap();
     let artifact = family::prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::headless_svg_defaults(),
         environment.begin_session().unwrap(),
     )
@@ -737,7 +737,7 @@ fn state_elk_remaining_routes_with_controlled_browser_measurements() {
             .unwrap()
             .unwrap();
         let artifact = family::prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::headless_svg_defaults(),
             environment.begin_session().unwrap(),
         )

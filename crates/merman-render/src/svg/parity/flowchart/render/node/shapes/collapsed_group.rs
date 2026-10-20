@@ -54,23 +54,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> CollapsedGroupGeometry {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let padding = 8.0;
-    let width = (metrics.width + padding * 2.0)
-        .max(MIN_WIDTH)
-        .max(common.layout_node.width.max(0.0));
-    let height = (metrics.height + SEPARATOR_GAP + INDICATOR_ROW_HEIGHT + padding * 2.0)
-        .max(common.layout_node.height.max(0.0));
-    let left = -width / 2.0;
-    let top = -height / 2.0;
+    let (metrics, padding, width, height, left, top) = collapsed_group_geometry(ctx, common, label);
     let is_agentflow_flow = ctx.diagram_type == "agentflow";
     let (radius, fill, border, stroke_width, class) = if is_agentflow_flow {
         (
@@ -191,4 +175,48 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_in
             escape_attr(&border),
         );
     }
+}
+
+fn collapsed_group_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::text::TextMetrics, f64, f64, f64, f64, f64) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let padding = 8.0;
+    let width = (metrics.width + padding * 2.0)
+        .max(MIN_WIDTH)
+        .max(common.layout_node.width.max(0.0));
+    let height = (metrics.height + SEPARATOR_GAP + INDICATOR_ROW_HEIGHT + padding * 2.0)
+        .max(common.layout_node.height.max(0.0));
+    let left = -width / 2.0;
+    let top = -height / 2.0;
+    (metrics, padding, width, height, left, top)
+}
+
+pub(super) fn advance_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) {
+    if !common.look_is_hand_drawn() {
+        return;
+    }
+    let (_, _, w, h, x, y) = collapsed_group_geometry(ctx, common, label);
+    let agentflow = ctx.diagram_type == "agentflow";
+    let path = rounded_rect_path_d(x, y, w, h, if agentflow { 10.0 } else { RADIUS });
+    let _ = super::super::roughjs::roughjs_prepare_paths_for_svg_path_single_set(
+        &path,
+        if agentflow { 0.75 } else { common.stroke_width },
+        common.stroke_dasharray,
+        common.hand_drawn_seed,
+    );
 }

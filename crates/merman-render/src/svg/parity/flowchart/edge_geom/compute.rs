@@ -405,22 +405,10 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         });
     }
 
-    scratch.json.clear();
-    json_stringify_points_into(
-        &mut scratch.json,
-        points_for_data_points.as_slice(),
-        &mut scratch.ryu,
-    );
-    let mut data_points_b64 =
-        String::with_capacity(base64::encoded_len(scratch.json.len(), true).unwrap_or_default());
-    base64::engine::general_purpose::STANDARD
-        .encode_string(scratch.json.as_bytes(), &mut data_points_b64);
-
     Some(FlowchartEdgePathGeom {
         d,
         pb,
         data_points: points_for_data_points.clone(),
-        data_points_b64,
         original_path_length: path_length,
         path_length,
         line_hop_applied: false,

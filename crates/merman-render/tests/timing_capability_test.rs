@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    merman_render::LayoutOptions,
+    merman_render::environment::RenderSession,
+);
+
 #[cfg(feature = "system-timing")]
 use merman_core::runtime::RuntimePolicy;
 use merman_core::{Engine, ParseOptions};
@@ -25,13 +31,12 @@ fn supported_sources() -> &'static [&'static str] {
     ]
 }
 
-fn prepare(source: &str, session: RenderSession) -> family::FamilyRenderArtifact {
+fn prepare(source: &str, session: RenderSession) -> FamilyFixture {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse source")
         .expect("detect diagram");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare family artifact")
+    (parsed, LayoutOptions::headless_svg_defaults(), session)
 }
 
 #[test]
@@ -40,7 +45,9 @@ fn deterministic_sessions_reject_requested_svg_timing_for_supported_entry_shapes
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("deterministic render session");
-        let error = match prepare(source, session)
+        let (fixture_parsed_1, fixture_layout_1, fixture_session_1) = prepare(source, session);
+        let error = match family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &timing_debug_options())
         {
             Ok(_) => panic!("timing diagnostics unexpectedly rendered for {source:?}"),
@@ -72,7 +79,9 @@ fn explicitly_enabled_system_timing_session_can_emit_svg_diagnostics() {
             .expect("session exposes operation timing authority");
         let _elapsed = timing.start().elapsed();
 
-        let rendered = prepare(source, session)
+        let (fixture_parsed_2, fixture_layout_2, fixture_session_2) = prepare(source, session);
+        let rendered = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+            .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &timing_debug_options())
             .expect("timing-enabled SVG render");
 
@@ -96,10 +105,15 @@ fn unused_system_timing_authority_does_not_change_svg_output() {
         .begin_session()
         .expect("timed render session");
 
-    let deterministic = prepare(source, deterministic_session)
+    let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+        prepare(source, deterministic_session);
+    let deterministic = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
+        .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("deterministic SVG render");
-    let timed = prepare(source, timed_session)
+    let (fixture_parsed_4, fixture_layout_4, fixture_session_4) = prepare(source, timed_session);
+    let timed = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
+        .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("timing-capable SVG render");
 

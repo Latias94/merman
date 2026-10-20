@@ -153,6 +153,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "open_value": true
     },
     {
+      "name": "layout_adaptation",
+      "json_type": "object",
+      "required": false,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
       "name": "theme_execution_evidence",
       "json_type": "object",
       "required": false,
@@ -500,6 +507,36 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "max_id_utf8_bytes": 128,
       "max_target_reason_ids": 32,
       "target_reason_ids_unique": true
+    }
+  ],
+  "layout_adaptation_fields": [
+    {
+      "name": "mode",
+      "json_type": "string",
+      "required": true,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
+      "name": "requested_width",
+      "json_type": "number",
+      "required": true,
+      "integer_width_bits": null,
+      "open_value": false
+    },
+    {
+      "name": "actual_width",
+      "json_type": "number",
+      "required": true,
+      "integer_width_bits": null,
+      "open_value": false
+    },
+    {
+      "name": "overflowed",
+      "json_type": "boolean",
+      "required": true,
+      "integer_width_bits": null,
+      "open_value": false
     }
   ],
   "additional_fields_policy": "preserve",

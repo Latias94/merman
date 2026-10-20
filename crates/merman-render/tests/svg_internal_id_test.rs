@@ -40,7 +40,7 @@ fn render_svg_from_text_with_engine_and_environment(
     .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
     artifact
         .render_svg(options, &SvgDebugOptions::default())
         .expect("render svg")

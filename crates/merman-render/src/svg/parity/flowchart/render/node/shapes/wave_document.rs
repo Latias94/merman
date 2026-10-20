@@ -14,49 +14,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let p = ctx.node_padding;
-    let padding_x = if common.look_is_neo() { 16.0 } else { p };
-    let padding_y = if common.look_is_neo() { 12.0 } else { p };
-    // Mermaid creates this shape once during the DOM-backed measurement pass, then Dagre uses the
-    // resulting `getBBox()` as `node.width/height`. Re-feeding those bbox dimensions into our
-    // separate render pass would inflate the wave geometry a second time.
-    let w = (metrics.width + 2.0 * padding_x).max(0.0);
-    let h = (metrics.height + 2.0 * padding_y).max(0.0);
-    let wave_amplitude = if common.look_is_neo() {
-        h / 4.0
-    } else {
-        h / 8.0
-    };
-    let final_h = h + wave_amplitude;
-
-    // Mermaid keeps a minimum width (14px) for wave edged rectangles.
-    let min_width = 14.0;
-    let extra_w = ((min_width - w).max(0.0)) / 2.0;
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((-w / 2.0 - extra_w, final_h / 2.0));
-    points.extend(generate_full_sine_wave_points(
-        -w / 2.0 - extra_w,
-        final_h / 2.0,
-        w / 2.0 + extra_w,
-        final_h / 2.0,
-        wave_amplitude,
-        0.8,
-    ));
-    points.push((w / 2.0 + extra_w, -final_h / 2.0));
-    points.push((-w / 2.0 - extra_w, -final_h / 2.0));
-
-    let path_data = path_from_points(&points);
+    let (metrics, p, w, h, wave_amplitude, path_data) =
+        prepare_wave_document_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -114,4 +73,65 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     // Mirror Mermaid `waveEdgedRectangle.ts` label placement.
     label.dx = -w / 2.0 + p + metrics.width / 2.0;
     label.dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
+}
+
+fn prepare_wave_document_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (crate::text::TextMetrics, f64, f64, f64, f64, String) {
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    // Mermaid creates this shape once during the DOM-backed measurement pass, then Dagre uses the
+    // resulting `getBBox()` as `node.width/height`. Re-feeding those bbox dimensions into our
+    // separate render pass would inflate the wave geometry a second time.
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + 2.0 * padding_y).max(0.0);
+    let wave_amplitude = if common.look_is_neo() {
+        h / 4.0
+    } else {
+        h / 8.0
+    };
+    let final_h = h + wave_amplitude;
+
+    // Mermaid keeps a minimum width (14px) for wave edged rectangles.
+    let min_width = 14.0;
+    let extra_w = ((min_width - w).max(0.0)) / 2.0;
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push((-w / 2.0 - extra_w, final_h / 2.0));
+    points.extend(generate_full_sine_wave_points(
+        -w / 2.0 - extra_w,
+        final_h / 2.0,
+        w / 2.0 + extra_w,
+        final_h / 2.0,
+        wave_amplitude,
+        0.8,
+    ));
+    points.push((w / 2.0 + extra_w, -final_h / 2.0));
+    points.push((-w / 2.0 - extra_w, -final_h / 2.0));
+
+    let path_data = path_from_points(&points);
+    (metrics, p, w, h, wave_amplitude, path_data)
+}
+
+pub(super) fn advance_wave_document_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (_, _, _, _, _, path_data) = prepare_wave_document_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

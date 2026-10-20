@@ -189,7 +189,7 @@ fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json:
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render svg")
@@ -278,7 +278,7 @@ fn try_render_treemap_with_theme_requirement(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Treemap session");
-    family::prepare(parsed, &LayoutOptions::default(), session)?
+    family::prepare(&parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
@@ -294,7 +294,7 @@ fn try_render_treemap_svg_with_resource_policy(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Treemap resource-bound fixture")
         .expect("detect Treemap resource-bound fixture");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
@@ -671,7 +671,7 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
             ))
             .begin_session_with_theme(&theme)
             .unwrap();
-        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -1172,7 +1172,7 @@ title Typed treemap
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Treemap session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed Treemap");
     host.reset();
 
@@ -1229,7 +1229,7 @@ classDef leafFont font-family:"Leaf\,Face"\,serif,font-size:18px,font-style:ital
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Treemap session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare class-styled Treemap");
     host.reset();
 
@@ -1333,7 +1333,7 @@ title Config-sized title
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Treemap session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare config-sized Treemap title");
     host.reset();
 
@@ -1398,7 +1398,7 @@ title Dynamic title
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable Treemap session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare source-filtered Treemap");
     host.reset();
     let rendered = artifact
@@ -1612,7 +1612,7 @@ fn treemap_huge_source_font_finishes_height_fitting() {
         ))
         .begin_session()
         .unwrap();
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
@@ -1659,7 +1659,7 @@ fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit
         ))
         .begin_session()
         .unwrap();
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("bounded width fitting must finish");
@@ -1689,7 +1689,7 @@ treemap
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin Treemap session");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session)
+    let error = match family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Treemap")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -1800,7 +1800,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render svg")
@@ -1828,7 +1828,7 @@ fn treemap_deep_chain_projects_and_renders_flat_model() {
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("flat deep Treemap layout");
     let projection = artifact
         .layout_json()
@@ -1870,7 +1870,7 @@ title Routed title
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     host.calls.store(0, Ordering::Relaxed);
 
     let rendered = artifact
@@ -1917,8 +1917,9 @@ title Routed title
         .expect("parse ok")
         .expect("diagram detected");
     let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
-        .expect("parity layout");
+    let parity_artifact =
+        family::prepare(&parity_parsed, &LayoutOptions::default(), parity_session)
+            .expect("parity layout");
     let parity_svg = parity_artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("parity SVG")

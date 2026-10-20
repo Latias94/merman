@@ -1127,13 +1127,37 @@ pub(crate) fn with_test_svg_execution<T>(
     run(&execution)
 }
 
+pub(crate) fn edge_geometry_family_artifact(
+    family: &crate::family::BuiltinFamilyArtifact,
+    metadata: &merman_core::ParseMetadata,
+    family_execution: FamilyExecutionView<'_>,
+) -> Result<Vec<crate::model::EdgePaintGeometry>> {
+    let request = SvgRenderOptions::default();
+    let debug = SvgDebugOptions::default();
+    let execution = SvgExecution::new(&request, &debug, family_execution)?;
+    match family {
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        crate::family::BuiltinFamilyArtifact::Flowchart(artifact) => {
+            flowchart::flowchart_edge_geometry(artifact, metadata, &execution)
+        }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        crate::family::BuiltinFamilyArtifact::Swimlane(artifact) => {
+            flowchart::swimlane_edge_geometry(artifact, metadata, &execution)
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        crate::family::BuiltinFamilyArtifact::Agentflow { flow, .. } => {
+            flowchart::flowchart_edge_geometry(flow, metadata, &execution)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<RootThemeAppliedSvg> {
     let execution = SvgExecution::new(options, debug, family_execution)?;
     let mut family_theme_evidence = None;
@@ -1143,7 +1167,6 @@ pub(crate) fn render_builtin_family_artifact(
         family,
         metadata,
         &execution,
-        edge_paint_geometry,
         &mut family_theme_evidence,
         #[cfg(feature = "diagram-packet")]
         &mut packet_theme_outcome,
@@ -1234,7 +1257,6 @@ fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
-    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
     family_theme_evidence: &mut Option<crate::family::FamilyThemeEvidence>,
     #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
         crate::packet::PacketThemeOutcome,
@@ -1268,23 +1290,17 @@ fn render_builtin_family_artifact_raw(
             })
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        BuiltinFamilyArtifact::Flowchart(artifact) => flowchart::render_flowchart_svg_artifact(
-            artifact,
-            metadata,
-            options,
-            edge_paint_geometry,
-        ),
+        BuiltinFamilyArtifact::Flowchart(artifact) => {
+            flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
+        }
         #[cfg(feature = "diagram-agentflow")]
         BuiltinFamilyArtifact::Agentflow { flow, .. } => {
-            flowchart::render_flowchart_svg_artifact(flow, metadata, options, edge_paint_geometry)
+            flowchart::render_flowchart_svg_artifact(flow, metadata, options)
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        BuiltinFamilyArtifact::Swimlane(artifact) => flowchart::render_swimlane_svg_artifact(
-            artifact,
-            metadata,
-            options,
-            edge_paint_geometry,
-        ),
+        BuiltinFamilyArtifact::Swimlane(artifact) => {
+            flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
+        }
         #[cfg(feature = "diagram-cynefin")]
         BuiltinFamilyArtifact::Cynefin(artifact) => cynefin::render_cynefin_diagram_svg_model(
             artifact.pair().layout(),

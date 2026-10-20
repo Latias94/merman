@@ -15,6 +15,7 @@ mod label;
 mod label_effect;
 mod node_effect;
 mod node_inventory;
+mod paint;
 pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes};
 mod render;
 mod render_config;
@@ -71,9 +72,9 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 // Entry points (split from parity.rs).
 
 mod svg_emit;
-pub(super) use svg_emit::render_flowchart_svg_artifact;
+pub(super) use svg_emit::{flowchart_edge_geometry, render_flowchart_svg_artifact};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(super) use swimlane::render_swimlane_svg_artifact;
+pub(super) use swimlane::{render_swimlane_svg_artifact, swimlane_edge_geometry};
 
 #[cfg(all(test, feature = "layout-elk"))]
 mod browser_measurement_tests;

@@ -54,6 +54,29 @@ struct EdgePresentation {
 }
 
 impl AgentflowPresentation {
+    /// Borrows the canonical CSS declaration lists without building a Flowchart model.
+    #[doc(hidden)]
+    pub fn declaration_styles(&self) -> impl Iterator<Item = &[String]> {
+        self.class_defs
+            .values()
+            .map(Vec::as_slice)
+            .chain(self.nodes.values().map(|node| node.styles.as_slice()))
+            .chain(self.edges.values().map(|edge| edge.styles.as_slice()))
+            .chain(self.edge_defaults.iter().map(|edge| edge.style.as_slice()))
+    }
+
+    pub(super) fn node_label_type(&self, id: &str) -> Option<&str> {
+        self.nodes
+            .get(id)
+            .map(|node| node.label_type.as_deref().unwrap_or("text"))
+    }
+
+    pub(super) fn edge_label_type(&self, id: &str) -> Option<&str> {
+        self.edges
+            .get(id)
+            .and_then(|edge| edge.label_type.as_deref())
+    }
+
     pub(super) fn add_edge(&mut self, id: &str, label_type: Option<&str>) {
         self.edges.entry(id.to_string()).or_default().label_type =
             Some(label_type.unwrap_or("text").to_string());
@@ -89,10 +112,7 @@ impl AgentflowPresentation {
             .collect();
         for node in &mut model.nodes {
             if let Some(presentation) = self.nodes.get(&node.id) {
-                node.label_type = presentation
-                    .label_type
-                    .clone()
-                    .or_else(|| Some("text".into()));
+                node.label_type = self.node_label_type(&node.id).map(str::to_owned);
                 node.classes.extend(presentation.classes.iter().cloned());
                 node.styles = presentation.styles.clone();
                 node.link = presentation.link.clone();
@@ -102,7 +122,7 @@ impl AgentflowPresentation {
         }
         for edge in &mut model.edges {
             if let Some(presentation) = self.edges.get(&edge.id) {
-                edge.label_type = presentation.label_type.clone();
+                edge.label_type = self.edge_label_type(&edge.id).map(str::to_owned);
                 edge.classes = presentation.classes.clone();
                 edge.style = presentation.styles.clone();
                 edge.interpolate = presentation.interpolate.clone();

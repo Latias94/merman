@@ -88,10 +88,10 @@ A `Renderer` stores defaults. Each `RenderRequest` describes one independent ope
 | `RenderRequest` | Borrows the source and selects a target, overrides, and control | One operation |
 | `OperationControl` | Carries cooperative cancellation and an optional deadline | One operation; clone it for the cancelling task or thread |
 | `SemanticArtifact` | Pairs the parsed render model with its operation context | Inspect it, then consume it into one output target |
+| `PreparedSource` (current source) | Shares frozen parse facts across independently controlled outputs | Retain while the same source/configuration needs new layout or measurement |
 
-The quick start is the one-shot form: create a renderer, issue one request, and drop it. Merman does
-not hide this behind a separate source-to-SVG helper; one-shot and repeated work both use
-`Renderer::render()`.
+The quick start is the one-shot form: create a renderer, issue one request, and drop it. Reusing
+that renderer for different sources uses the same `Renderer::render()` operation.
 
 For a batch or service, keep one configured `Renderer` when inputs share parse options, runtime
 policy, site config, or resource limits. It shares settings, not parsed state: every call parses its
@@ -105,6 +105,14 @@ session.
 The self-contained [Rust examples] cover these cases: [`render_svg.rs`] is one-shot,
 [`render_many.rs`] reuses a configured renderer, and [`embed_multiple_svgs.rs`] assigns stable IDs
 for a shared document.
+
+For redraws of unchanged source, current source builds also expose `Renderer::prepare_source()`
+and `render_prepared()`. They reuse canonical semantics while each output receives fresh controls,
+budgets, runtime state and layout. Parse-affecting changes require a new preparation. See the
+[redraw example](crates/merman/examples/redraw_prepared.rs) and
+[development migration](docs/migrations/render-reuse-host-integration.md). Rendering-capable Web
+packages provide [prepared sources and persistent mounts](platforms/web/README.md#reuse-a-parsed-source)
+for width/font refreshes and safe publication.
 
 ## Output targets
 

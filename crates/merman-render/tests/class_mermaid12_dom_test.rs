@@ -14,7 +14,7 @@ fn render_class_with_id(text: &str, diagram_id: &str) -> String {
         .expect("parse Class")
         .expect("Class diagram");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout Class")
         .render_svg(
             &SvgRenderOptions {

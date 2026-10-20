@@ -14,7 +14,7 @@ fn render(source: &str, config: MermaidConfig) -> (ManagedSemanticJson, String) 
         .expect("parse metadata regression fixture")
         .expect("detect metadata regression fixture");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = artifact.layout_json().unwrap();
     let rendered = artifact
         .render_svg(

@@ -284,6 +284,10 @@ pub(super) struct UpstreamSvgRenderProbe {
 }
 
 impl UpstreamSvgRenderProbe {
+    pub(super) fn runtime_artifact_path(&self) -> &Path {
+        &self.runtime_artifact_path
+    }
+
     fn runtime_packages(&self) -> [(&str, &Path, &str); 4] {
         let roots = &self.runtime_package_roots;
         let runtime = &self.render_environment.mermaid_runtime;
@@ -2985,7 +2989,7 @@ fn render_family_fixture_svg(
         .begin_session()
         .map_err(|err| format!("render session failed: {err}"))?;
     let artifact =
-        merman_render::family::prepare(parsed, &merman_render::LayoutOptions::default(), session)
+        merman_render::family::prepare(&parsed, &merman_render::LayoutOptions::default(), session)
             .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
 
     if artifact.family_id() != expected_family {

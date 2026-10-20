@@ -3,6 +3,10 @@
 This guide covers Rust embedding with Merman `0.9.0`, retaining Mermaid `12.1.0` compatibility from 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
 Compiled-theme authoring remains experimental and requires a matching artifact.
 
+For current development builds, the [prepared rendering migration](../migrations/render-reuse-host-integration.md)
+adds reusable parsed sources, borrowed low-level family preparation and independent geometry
+budgets. Those APIs are newer than the published versions described above.
+
 ## Select languages, outputs, and layout backends
 
 Choose these independently. `diagram-*` selects built-in languages and their implementations; `svg` selects SVG output; `layout-*` selects optional layout engines and implies `svg`. A layout feature does not select a language, and a language feature does not select an optional layout engine. This keeps parser-only users and applications with small allowlists from acquiring unrelated implementations.
@@ -49,6 +53,21 @@ fn render_for_host(
 Reuse the configured `Renderer` across calls when site configuration and defaults are shared; construct a fresh request and operation control for each operation. Clone the operation control for the task that cancels it. Return or classify parse errors, cancellation, resource exhaustion, and missing capabilities separately. A successful `None` means no diagram was detected, not that a failed operation was ignored.
 
 `SvgPipeline::resvg_safe()` prepares SVG for the supported resvg/usvg path, including conversion of HTML labels. The CSS override postprocessor is useful when the host deliberately supplies final styles; omit it when those overrides are not part of the integration. Give co-located SVGs IDs that remain unique after `sanitize_svg_id()` normalization. A resvg-compatible artifact does not authorize arbitrary browser navigation or host DOM insertion; browser hosts should use the owning browser admission APIs.
+
+## Redraw unchanged source in development builds
+
+Use `Renderer::prepare_source(PrepareSourceRequest::new(source, control))` once and
+`Renderer::render_prepared(&prepared, target, fresh_control)` for each output. The
+[complete example](../../crates/merman/examples/redraw_prepared.rs) changes layout width without
+reparsing. Preparation freezes semantics, effective configuration and parse-time dates/IDs; prepare
+again when those inputs must change. Each output has fresh cancellation, input admission, layout
+work and output runtime state. A failed redraw does not poison another redraw.
+
+Changing `SvgRequest.layout` or measurement services starts another layout; a prepared source is
+not a layout cache. Completed results own their public data after the snapshot is dropped.
+Use `RenderedDocument` instead when reusing one completed SVG across graphical exports.
+The [migration reference](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust)
+also covers `prepare(&parsed, ...)`, artifact lifetimes and the removed arbitrary-JSON layout handoff.
 
 ## Example: an editor with a family allowlist
 

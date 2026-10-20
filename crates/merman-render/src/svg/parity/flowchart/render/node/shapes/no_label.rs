@@ -64,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids.drop_shadow_small(),
+                ctx.document_ids().drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
                 ctx.compatibility.small_state_shadow,
@@ -89,7 +89,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<g class="outer-path""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids.drop_shadow_small(),
+                ctx.document_ids().drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
                 ctx.compatibility.small_state_shadow,
@@ -123,11 +123,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         "fork" | "join" => {
             // Mermaid inflates Dagre dimensions after `updateNodeBounds(...)` but does not
             // re-render the bar at the inflated size. Render the canonical shape dimensions.
-            let (w, h) = if common.layout_node.width >= common.layout_node.height {
-                (70.0, 10.0)
-            } else {
-                (10.0, 70.0)
-            };
+            let (w, h) = fork_dimensions(common);
             let line_color = &ctx.compatibility.line_color;
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -188,19 +184,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         "bolt" | "com-link" | "lightning-bolt" => {
             // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
             // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
-            let width = common.layout_node.width.max(35.0);
-            let height = (common.layout_node.height / 2.0).max(35.0);
-            let gap = 7.0;
-
-            let points: Vec<(f64, f64)> = vec![
-                (width, 0.0),
-                (0.0, height + gap / 2.0),
-                (width - 2.0 * gap, height + gap / 2.0),
-                (0.0, 2.0 * height),
-                (width, height - gap / 2.0),
-                (2.0 * gap, height - gap / 2.0),
-            ];
-            let path_data = path_from_points(&points);
+            let (width, height, path_data) = bolt_geometry(common);
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
@@ -268,24 +252,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 })
                 .unwrap_or_else(|| "M0,0".into());
 
-            // Port of Mermaid `createLine(r)` in `crossedCircle.ts`.
-            let x_axis_45 = (std::f64::consts::PI / 4.0).cos();
-            let y_axis_45 = (std::f64::consts::PI / 4.0).sin();
-            let point_q1 = (radius * x_axis_45, radius * y_axis_45);
-            let point_q2 = (-radius * x_axis_45, radius * y_axis_45);
-            let point_q3 = (-radius * x_axis_45, -radius * y_axis_45);
-            let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
-            let line_path = format!(
-                "M {},{} L {},{} M {},{} L {},{}",
-                point_q2.0,
-                point_q2.1,
-                point_q4.0,
-                point_q4.1,
-                point_q1.0,
-                point_q1.1,
-                point_q3.0,
-                point_q3.1
-            );
+            let line_path = crossed_circle_line_path(radius);
             let (line_fill_d, line_stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
@@ -384,5 +351,102 @@ mod small_state_shadow_tests {
             out,
             r#" style="filter:url(#allocated-shadow);fill:#123456 !important;stroke:#654321 !important""#
         );
+    }
+}
+
+fn fork_dimensions(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64) {
+    let (w, h) = if common.layout_node.width >= common.layout_node.height {
+        (70.0, 10.0)
+    } else {
+        (10.0, 70.0)
+    };
+    (w, h)
+}
+
+fn bolt_geometry(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64, String) {
+    let width = common.layout_node.width.max(35.0);
+    let height = (common.layout_node.height / 2.0).max(35.0);
+    let gap = 7.0;
+
+    let points: Vec<(f64, f64)> = vec![
+        (width, 0.0),
+        (0.0, height + gap / 2.0),
+        (width - 2.0 * gap, height + gap / 2.0),
+        (0.0, 2.0 * height),
+        (width, height - gap / 2.0),
+        (2.0 * gap, height - gap / 2.0),
+    ];
+    let path_data = path_from_points(&points);
+    (width, height, path_data)
+}
+
+fn crossed_circle_line_path(radius: f64) -> String {
+    // Port of Mermaid `createLine(r)` in `crossedCircle.ts`.
+    let x_axis_45 = (std::f64::consts::PI / 4.0).cos();
+    let y_axis_45 = (std::f64::consts::PI / 4.0).sin();
+    let point_q1 = (radius * x_axis_45, radius * y_axis_45);
+    let point_q2 = (-radius * x_axis_45, radius * y_axis_45);
+    let point_q3 = (-radius * x_axis_45, -radius * y_axis_45);
+    let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
+    let line_path = format!(
+        "M {},{} L {},{} M {},{} L {},{}",
+        point_q2.0,
+        point_q2.1,
+        point_q4.0,
+        point_q4.1,
+        point_q1.0,
+        point_q1.1,
+        point_q3.0,
+        point_q3.1
+    );
+    line_path
+}
+
+pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
+    use super::super::roughjs::roughjs_prepare_paths_for_svg_path;
+    use crate::flowchart::FlowchartShape;
+    use crate::svg::parity::roughjs_common::{roughjs_circle_operations, roughjs_rect_operations};
+    match FlowchartShape::resolve(common.shape) {
+        Ok(FlowchartShape::Anchor) => {
+            let _ = roughjs_circle_operations(2.0, common.hand_drawn_seed);
+        }
+        Ok(FlowchartShape::FramedCircle) => {
+            let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
+            let _ = roughjs_circle_operations(5.0, common.hand_drawn_seed);
+        }
+        Ok(FlowchartShape::ForkJoin) => {
+            let (w, h) = fork_dimensions(common);
+            let _ = roughjs_rect_operations(RoughRectSpec {
+                x: -w / 2.0,
+                y: -h / 2.0,
+                w,
+                h,
+                stroke_width: common.stroke_width,
+                randomness: common.hand_drawn_seed,
+            });
+        }
+        Ok(FlowchartShape::LightningBolt) => {
+            let (_, _, path) = bolt_geometry(common);
+            let _ = roughjs_prepare_paths_for_svg_path(
+                &path,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            );
+        }
+        Ok(FlowchartShape::FilledCircle) => {
+            let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
+        }
+        Ok(FlowchartShape::CrossedCircle) => {
+            let r = crate::flowchart::CROSSED_CIRCLE_RADIUS;
+            let _ = roughjs_circle_operations(r * 2.0, common.hand_drawn_seed);
+            let _ = roughjs_prepare_paths_for_svg_path(
+                &crossed_circle_line_path(r),
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            );
+        }
+        _ => {}
     }
 }

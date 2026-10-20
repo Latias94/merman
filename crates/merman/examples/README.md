@@ -255,3 +255,21 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
   --stage render \
   --seconds 20
 ```
+
+## Redraw a prepared source
+
+Run `cargo run -p merman --example redraw_prepared` to parse once and render at two widths.
+`Renderer::prepare_source(PrepareSourceRequest)` returns an immutable `PreparedSource` whose clones
+share canonical typed semantics. It retains effective configuration, parse options, the existing
+compiled theme binding and the actual parse-time runtime context. Implicit Gantt dates and generated
+IDs stay fixed until a new preparation.
+
+`Renderer::render_prepared(&source, target, control)` uses the current renderer's output runtime and
+fresh cancellation, deadline, work ledger and admission. Its explicit input policy wins over target
+input defaults; `render_prepared_with_resource_policy` overrides it for one output. Parse settings,
+source configuration and theme selection belong to preparation. Completed SVGs, documents, layout
+projections and geometry own their public data and remain valid after the source is dropped.
+
+The low-level `merman_render::family::prepare` now borrows `&ParsedDiagramRender`; keep that parse
+owner alive until the family artifact finishes. Layout, render session and derived Agentflow working
+views remain owned by the operation. Completed outputs have no semantic lifetime parameter.

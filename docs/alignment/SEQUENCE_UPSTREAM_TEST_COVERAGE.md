@@ -178,3 +178,17 @@ Additional imported blocks (complex / type variants / frames):
 - comments + advanced menu syntax:
   - `fixtures/sequence/upstream_docs_sequencediagram_comments_069.mmd`
   - `fixtures/sequence/upstream_docs_sequencediagram_advanced_menu_syntax_080.mmd`
+
+## Selected-runtime parser differential (Mermaid 12.2)
+
+`cargo run --locked -p xtask -- parser-differential --cases 256` supplements the historical fixture
+inventory above using the selected source/package authority in
+[`tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json).
+The Sequence lane reads real actor order/descriptions/types/properties/links, ordered signal/control/
+note/activation records, boxes, create/destroy declaration anchors and common accessibility fields.
+It excludes generated message IDs and private renderer caches. Notes are observed through the actual
+public message records; the DB does not expose a `getNotes` method. Directive/frontmatter acceptance
+and returned configuration run through the separate public parse lane. Replay retains exact source
+bytes and selected identities; bounded reduction preserves the mismatch class. See
+[`docs/security/FUZZING.md`](../security/FUZZING.md#selected-mermaid-parser-differential) for commands
+and the bounded scope. This does not certify browser geometry or complete grammar coverage.

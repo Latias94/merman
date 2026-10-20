@@ -1,3 +1,9 @@
+type FamilyFixture = (
+    merman_core::ParsedDiagramRender,
+    LayoutOptions,
+    RenderSession,
+);
+
 use super::*;
 use crate::RenderCapability;
 use crate::diagram_theme::{
@@ -288,24 +294,18 @@ S[Start] --> M((Circle))
 M -->|back| S
 "#;
 
-    let geometry = prepare(
-        parse_flowchart(source),
-        &LayoutOptions::default(),
-        session(),
-    )
-    .expect("prepare flowchart")
-    .edge_geometry_json()
-    .expect("edge geometry json");
-    let svg = prepare(
-        parse_flowchart(source),
-        &LayoutOptions::default(),
-        session(),
-    )
-    .expect("prepare flowchart")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render flowchart")
-    .svg()
-    .to_owned();
+    let canonical_1 = parse_flowchart(source);
+    let geometry = prepare(&canonical_1, &LayoutOptions::default(), session())
+        .expect("prepare flowchart")
+        .edge_geometry_json()
+        .expect("edge geometry json");
+    let canonical_2 = parse_flowchart(source);
+    let svg = prepare(&canonical_2, &LayoutOptions::default(), session())
+        .expect("prepare flowchart")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render flowchart")
+        .svg()
+        .to_owned();
 
     let from_svg = decode_data_points(&svg);
     assert!(
@@ -339,14 +339,11 @@ M -->|back| S
 
     // The clipped polyline must differ from the layout polyline here, otherwise this test
     // would be asserting equality of two things that were never different.
-    let layout = prepare(
-        parse_flowchart(source),
-        &LayoutOptions::default(),
-        session(),
-    )
-    .expect("prepare flowchart")
-    .layout_json()
-    .expect("layout json");
+    let canonical_3 = parse_flowchart(source);
+    let layout = prepare(&canonical_3, &LayoutOptions::default(), session())
+        .expect("prepare flowchart")
+        .layout_json()
+        .expect("layout json");
     let layout_edges = layout["layout"]["FlowchartV2"]["edges"]
         .as_array()
         .expect("layout edges");
@@ -380,22 +377,16 @@ flowchart LR
 X L_A_B_0@-->|first owner| Y
 A -->|second owner| B
 "#;
-    let geometry = prepare(
-        parse_flowchart(source),
-        &LayoutOptions::default(),
-        session(),
-    )
-    .expect("prepare duplicate edge geometry")
-    .edge_geometry_json()
-    .expect("duplicate edge geometry");
-    let svg = prepare(
-        parse_flowchart(source),
-        &LayoutOptions::default(),
-        session(),
-    )
-    .expect("prepare duplicate edge SVG")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render duplicate edge SVG");
+    let canonical_4 = parse_flowchart(source);
+    let geometry = prepare(&canonical_4, &LayoutOptions::default(), session())
+        .expect("prepare duplicate edge geometry")
+        .edge_geometry_json()
+        .expect("duplicate edge geometry");
+    let canonical_5 = parse_flowchart(source);
+    let svg = prepare(&canonical_5, &LayoutOptions::default(), session())
+        .expect("prepare duplicate edge SVG")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render duplicate edge SVG");
     let from_svg = decode_data_points(svg.svg());
     assert_eq!(geometry.len(), 2);
     assert_eq!(from_svg.len(), 2);
@@ -850,7 +841,7 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
         .begin_session_with_theme(&theme)
         .expect("begin strict portable session");
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => {
             panic!("strict low-level rendering must reject explicit Mermaid compatibility")
         }
@@ -929,7 +920,7 @@ fn family_theme_plan_tracks_the_authoritative_family() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
             .expect("begin themed render session");
-        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let resolved_theme = artifact
             .context
             .resolved_theme()
@@ -962,7 +953,7 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed render session");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed family SVG");
@@ -1065,7 +1056,7 @@ fn solid_root_layer_is_applied_by_terminal_svg_completion() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("root theme should not stop layout")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed SVG");
@@ -1113,7 +1104,7 @@ fn solid_root_base_is_applied_by_terminal_svg_completion() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("solid canvas should not stop layout")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed SVG");
@@ -1149,7 +1140,7 @@ fn explicit_transparent_root_base_clears_the_mermaid_white_background() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin transparent themed session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("transparent canvas should not stop layout")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render transparent themed SVG");
@@ -1184,7 +1175,7 @@ fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed render session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed family")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed SVG")
@@ -1235,7 +1226,7 @@ fn strict_root_theme_is_rechecked_after_svg_postprocessing() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict themed render session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare themed family")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("initial root consumer proves the canvas");
@@ -1265,7 +1256,7 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
             .expect("begin themed render session");
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare themed Flowchart")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("initial Node consumer proves typed paint")
@@ -1367,7 +1358,7 @@ fn unsupported_root_pattern_residual_survives_terminal_svg_completion() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("best-effort root residual should not stop layout")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render best-effort SVG");
@@ -1404,7 +1395,7 @@ fn root_theme_evidence_preserves_distinct_layers_with_equal_capabilities() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare layered canvas")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render layered SVG");
@@ -1495,7 +1486,7 @@ fn require_portable_accepts_a_root_layer_proved_by_the_svg_consumer() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("strict root theme should reach the real SVG consumer")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("proved root layer should satisfy strict portability");
@@ -1530,7 +1521,7 @@ fn require_portable_rejects_an_unsupported_root_pattern_after_svg_consumption() 
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable session");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("strict root theme should reach the real SVG consumer");
 
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1574,7 +1565,7 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let artifact = prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("typed Flowchart paint must reach SVG emission");
     let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
         panic!("expected Flowchart artifact");
@@ -1632,7 +1623,7 @@ fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("typed Swimlane paint must reach SVG emission")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("emitted typed Swimlane paint must satisfy strict portability");
@@ -1689,7 +1680,7 @@ fn require_portable_accepts_explicit_default_flowchart_family_node_paint() {
                 .unwrap()
                 .expect("Flowchart-family source should produce a render model");
             let rendered = prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::default(),
                 crate::environment::RenderEnvironment::deterministic()
                     .with_theme_portability_requirement(
@@ -1746,7 +1737,7 @@ fn flowchart_source_paint_override_does_not_claim_typed_application() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("source-overridden typed paint remains evaluable")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("source-overridden typed paint is not a portability residual");
@@ -1799,7 +1790,7 @@ fn flowchart_single_source_paint_override_keeps_other_typed_channel_applied() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("single source override remains evaluable")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("the surviving typed stroke should satisfy strict portability");
@@ -1830,7 +1821,7 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable render session");
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("source paint precedence is evaluated during SVG emission")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("admitted source precedence must remain portable")
@@ -1861,8 +1852,9 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
             .unwrap()
             .expect("dynamic source paint should produce a render model")
     };
+    let canonical_6 = parse_dynamic();
     let dynamic = prepare(
-        parse_dynamic(),
+        &canonical_6,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -1889,7 +1881,8 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict session");
-    let artifact = prepare(parse_dynamic(), &LayoutOptions::default(), strict_session)
+    let canonical_7 = parse_dynamic();
+    let artifact = prepare(&canonical_7, &LayoutOptions::default(), strict_session)
         .expect("dynamic source verification waits for SVG emission");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -1926,7 +1919,7 @@ fn flowchart_explicit_mermaid_config_owns_typed_node_paint_precedence() {
             .begin_session_with_theme(&theme)
             .expect("begin strict render session");
 
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare explicit Mermaid config")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("explicit Mermaid config should supersede typed Node paint");
@@ -1965,7 +1958,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emiss
             .unwrap()
             .expect("Flowchart source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2006,7 +1999,7 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
             .unwrap()
             .expect("Flowchart source should produce a render model");
         prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2085,8 +2078,9 @@ A[Alpha]
                     .unwrap()
                     .expect("Flowchart source should produce a render model")
             };
+            let canonical_8 = parse();
             let rendered = prepare(
-                parse(),
+                &canonical_8,
                 &LayoutOptions::default(),
                 crate::environment::RenderEnvironment::deterministic()
                     .begin_session_with_theme(&theme)
@@ -2106,8 +2100,9 @@ A[Alpha]
                 "{property}: {source}"
             );
 
+            let canonical_9 = parse();
             let artifact = prepare(
-                parse(),
+                &canonical_9,
                 &LayoutOptions::default(),
                 crate::environment::RenderEnvironment::deterministic()
                     .with_theme_portability_requirement(
@@ -2148,7 +2143,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_dasharray_after_e
             .unwrap()
             .expect("Flowchart source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2191,7 +2186,7 @@ fn flowchart_source_owns_node_stroke_dasharray_precedence() {
         .unwrap()
         .expect("Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2237,7 +2232,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_radius_after_emission() 
             .unwrap()
             .expect("Flowchart source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2282,7 +2277,7 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
             .unwrap()
             .expect("Flowchart source should produce a render model");
         prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2353,7 +2348,7 @@ fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
         )
         .unwrap()
         .expect("Flowchart source should produce a render model");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session())
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare default Flowchart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render default Flowchart");
@@ -2397,7 +2392,7 @@ A["<span style='font-size:31px'>Alpha</span>"]
         .unwrap()
         .expect("Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -2477,7 +2472,7 @@ end
             .unwrap_or_else(|error| panic!("parse {origin} Sequence base typography: {error}"))
             .unwrap_or_else(|| panic!("detect {origin} Sequence base typography"));
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2538,7 +2533,7 @@ fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
         .expect("parse oversized Sequence base typography source")
         .expect("detect oversized Sequence base typography source");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -2584,8 +2579,9 @@ A[Alpha]
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_10 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_10,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -2612,8 +2608,9 @@ A[Alpha]
         FamilyThemeResidualReason::UnsupportedTypography
     );
 
+    let canonical_11 = parse();
     let strict_result = prepare(
-        parse(),
+        &canonical_11,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2655,7 +2652,7 @@ fn flowchart_explicit_primary_color_owns_derived_main_background() {
         .begin_session_with_theme(&theme)
         .expect("begin strict render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare derived Mermaid config")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("derived Mermaid main background should supersede typed Node paint");
@@ -2708,7 +2705,7 @@ fn flowchart_theme_recipe_mermaid_config_owns_typed_node_paint_precedence() {
         .begin_session_with_theme(&theme)
         .expect("begin render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare recipe compatibility precedence")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("best-effort compatibility output");
@@ -2737,8 +2734,9 @@ fn flowchart_source_paint_residual_is_independent_from_theme_channel() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_12 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_12,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -2764,8 +2762,9 @@ fn flowchart_source_paint_residual_is_independent_from_theme_channel() {
         Some("fill")
     );
 
+    let canonical_13 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_13,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2808,8 +2807,9 @@ A[Alpha]
                 .unwrap()
                 .expect("Flowchart source should produce a render model")
         };
+        let canonical_14 = parse();
         let rendered = prepare(
-            parse(),
+            &canonical_14,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .begin_session_with_theme(&theme)
@@ -2833,7 +2833,8 @@ A[Alpha]
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable render session");
-        let artifact = prepare(parse(), &LayoutOptions::default(), session)
+        let canonical_15 = parse();
+        let artifact = prepare(&canonical_15, &LayoutOptions::default(), session)
             .expect("concrete paint support must be decided during SVG emission");
 
         let error =
@@ -2865,7 +2866,7 @@ fn flowchart_start_node_proves_direct_typed_paint_emission() {
         .unwrap()
         .expect("Flowchart start source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -2935,7 +2936,7 @@ note for A "note"
             .unwrap()
             .expect("Class source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3025,7 +3026,7 @@ A o-- B
             .unwrap()
             .expect("Class precedence source should produce a render model");
         prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3125,8 +3126,9 @@ fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
                 .unwrap()
                 .expect("Class source should produce a render model")
         };
+        let canonical_16 = parse();
         let rendered = prepare(
-            parse(),
+            &canonical_16,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .begin_session_with_theme(&theme)
@@ -3152,8 +3154,9 @@ fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
             FamilyThemeResidualReason::UnsupportedGeometry
         );
 
+        let canonical_17 = parse();
         let artifact = prepare(
-            parse(),
+            &canonical_17,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3193,7 +3196,7 @@ note for A "note"
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
             .expect("Class source should produce a render model");
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Class byte-stability fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render Class byte-stability fixture")
@@ -3238,7 +3241,7 @@ G ..> H
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
             .expect("Class source should produce a render model");
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Class paint-bounds fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render Class paint-bounds fixture")
@@ -3294,7 +3297,7 @@ fn class_relation_theme_is_not_applicable_without_relations() {
         .unwrap()
         .expect("Class source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3354,7 +3357,7 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
             .unwrap()
             .expect("Class ordinal source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .begin_session_with_theme(&theme)
@@ -3399,7 +3402,7 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
         .unwrap()
         .expect("Class exact ordinal source should produce a render model");
     let artifact = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3440,8 +3443,9 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
             .expect("Class Node source should produce a render model")
     };
 
+    let canonical_18 = parse("classDiagram\nclass A\n");
     let rendered = prepare(
-        parse("classDiagram\nclass A\n"),
+        &canonical_18,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -3462,8 +3466,9 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         FamilyThemeResidualReason::UnsupportedGeometry
     );
 
+    let canonical_19 = parse("classDiagram\nclass A\n");
     let artifact = prepare(
-        parse("classDiagram\nclass A\n"),
+        &canonical_19,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3481,8 +3486,9 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         Some((DiagramFamilyId::CLASS, 1))
     );
 
+    let canonical_20 = parse("classDiagram\n");
     let empty = prepare(
-        parse("classDiagram\n"),
+        &canonical_20,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3531,7 +3537,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         .unwrap()
         .expect("superseded Class Node source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&superseded_theme)
@@ -3579,7 +3585,7 @@ fn class_mixed_direct_width_and_scalar_paint_share_terminal_evidence() {
             .unwrap()
             .unwrap();
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(requirement)
@@ -3611,7 +3617,7 @@ fn flowchart_common_style_node_preserves_best_effort_paint_and_source_precedence
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
             .expect("begin Flowchart choice render session");
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Flowchart choice")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     };
@@ -3664,8 +3670,9 @@ fn flowchart_unemitted_source_paint_cannot_hide_theme_residual() {
                 .expect("Flowchart source should produce a render model")
         };
 
+        let canonical_21 = parse();
         let rendered = prepare(
-            parse(),
+            &canonical_21,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .begin_session_with_theme(&theme)
@@ -3688,8 +3695,9 @@ fn flowchart_unemitted_source_paint_cannot_hide_theme_residual() {
             FamilyThemeResidualReason::UnsupportedPaint
         );
 
+        let canonical_22 = parse();
         let artifact = prepare(
-            parse(),
+            &canonical_22,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3730,7 +3738,7 @@ fn flowchart_generated_default_class_css_is_a_real_start_paint_surface() {
         .begin_session_with_theme(&theme)
         .expect("begin strict render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("generated default class paint is decided during SVG emission")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("static generated class paint should remain portable");
@@ -3765,7 +3773,7 @@ fn flowchart_start_uses_the_generated_css_winner_that_reaches_its_wrapper() {
         .begin_session_with_theme(&theme)
         .expect("begin strict render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("generated CSS winner is decided during SVG emission")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("the reachable static default class remains portable");
@@ -3797,8 +3805,9 @@ fn flowchart_anchor_dynamic_generated_css_is_fail_closed() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_23 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_23,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -3818,8 +3827,9 @@ fn flowchart_anchor_dynamic_generated_css_is_fail_closed() {
         rendered.style_report().residuals()
     );
 
+    let canonical_24 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_24,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3850,7 +3860,7 @@ fn flowchart_generated_css_emits_important_once() {
         )
         .unwrap()
         .expect("Flowchart source should produce a render model");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session())
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare important fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render important fixture");
@@ -3873,8 +3883,9 @@ fn flowchart_direct_class_style_outranks_generated_class_css() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_25 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_25,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -3897,8 +3908,9 @@ fn flowchart_direct_class_style_outranks_generated_class_css() {
             .is_empty()
     );
 
+    let canonical_26 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_26,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -3933,7 +3945,7 @@ fn flowchart_hand_drawn_keeps_dynamic_source_paint_in_the_render_transport() {
         .begin_session()
         .expect("begin render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare hand-drawn Flowchart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("best-effort output should retain the dynamic paint transport");
@@ -3981,8 +3993,9 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_27 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_27,
         &LayoutOptions::default(),
         environment()
             .begin_session_with_theme(&theme)
@@ -4004,8 +4017,9 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
     );
     assert!(rendered.style_report().output_mutated());
 
+    let canonical_28 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_28,
         &LayoutOptions::default(),
         environment()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4061,7 +4075,7 @@ fn raw_theme_css_rejects_strict_output_when_typed_rules_are_not_applicable() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict render session");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("raw theme CSS mutation is observed after SVG emission");
 
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -4091,8 +4105,9 @@ fn flowchart_emitted_dynamic_shape_property_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_29 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_29,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4113,8 +4128,9 @@ fn flowchart_emitted_dynamic_shape_property_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_30 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_30,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4150,8 +4166,9 @@ fn flowchart_edge_dynamic_shape_style_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_31 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_31,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4179,8 +4196,9 @@ fn flowchart_edge_dynamic_shape_style_is_a_source_residual() {
         residual.owner_id() == "L_A_B_0" && residual.raw().contains("stroke:var(--marker)")
     }));
 
+    let canonical_32 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_32,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4214,8 +4232,9 @@ fn flowchart_assigned_class_marker_style_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_33 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_33,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4233,8 +4252,9 @@ fn flowchart_assigned_class_marker_style_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_34 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_34,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4268,8 +4288,9 @@ fn flowchart_invalid_assigned_edge_class_declaration_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_35 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_35,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4300,8 +4321,9 @@ fn flowchart_invalid_assigned_edge_class_declaration_is_a_source_residual() {
         FamilyStyleResidualReason::InvalidDeclaration
     );
 
+    let canonical_36 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_36,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4334,8 +4356,9 @@ fn flowchart_edge_label_invalid_typography_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_37 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_37,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4353,8 +4376,9 @@ fn flowchart_edge_label_invalid_typography_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_38 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_38,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4390,12 +4414,13 @@ A -->|"<span class='host-label' style='color:var(--accent)'>Label</span>"| B
 B --> C
 linkStyle 1 font-weight:banana
 "#;
+    let canonical_39 = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
     let rendered = prepare(
-        theme
-            .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .expect("Flowchart source should produce a render model"),
+        &canonical_39,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4437,8 +4462,9 @@ fn flowchart_cluster_dynamic_shape_style_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_40 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_40,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4460,8 +4486,9 @@ fn flowchart_cluster_dynamic_shape_style_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::UnsupportedProperty
     }));
 
+    let canonical_41 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_41,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4519,7 +4546,7 @@ style Lane fill:#f8fafc,stroke:#ef4444,stroke-width:2px,stroke-dasharray:4 2
             .unwrap()
             .expect("hand-drawn cluster source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4573,12 +4600,13 @@ B
 end
 style Empty font-weight:banana
 "#;
+    let canonical_42 = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
     let rendered = prepare(
-        theme
-            .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .expect("Flowchart source should produce a render model"),
+        &canonical_42,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4627,8 +4655,9 @@ fn swimlane_cluster_dynamic_shape_style_is_a_source_residual() {
             .expect("Swimlane source should produce a render model")
     };
 
+    let canonical_43 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_43,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4651,8 +4680,9 @@ fn swimlane_cluster_dynamic_shape_style_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_44 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_44,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4704,12 +4734,13 @@ B
 end
 style Empty font-weight:banana
 "#;
+    let canonical_45 = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .expect("Swimlane source should produce a render model");
     let rendered = prepare(
-        theme
-            .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .expect("Swimlane source should produce a render model"),
+        &canonical_45,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4758,7 +4789,7 @@ fn swimlane_empty_edge_label_still_records_emitted_shape_style() {
         .expect("Swimlane source should produce a render model");
 
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4790,8 +4821,9 @@ fn flowchart_dynamic_label_typography_is_a_source_residual() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_46 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_46,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4807,8 +4839,9 @@ fn flowchart_dynamic_label_typography_is_a_source_residual() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_47 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_47,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4844,8 +4877,9 @@ fn flowchart_icon_label_typography_is_emitted_and_residualized() {
             .expect("Flowchart source should produce a render model")
     };
 
+    let canonical_48 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_48,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4862,8 +4896,9 @@ fn flowchart_icon_label_typography_is_emitted_and_residualized() {
             && residual.reason() == FamilyStyleResidualReason::InvalidValue
     }));
 
+    let canonical_49 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_49,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4903,7 +4938,7 @@ fn flowchart_empty_subgraph_consumes_typed_node_paint() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("empty subgraph theme must reach SVG emission")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("emitted empty subgraph paint must satisfy strict portability");
@@ -4943,8 +4978,9 @@ fn flowchart_icon_without_asset_retains_unemitted_fill_as_residual() {
             .expect("Flowchart icon source should produce a render model")
     };
 
+    let canonical_50 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_50,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -4976,7 +5012,8 @@ fn flowchart_icon_without_asset_retains_unemitted_fill_as_residual() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict render session");
-    let artifact = prepare(parse(), &LayoutOptions::default(), strict_session)
+    let canonical_51 = parse();
+    let artifact = prepare(&canonical_51, &LayoutOptions::default(), strict_session)
         .expect("strict verification must wait for icon emission");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -5020,8 +5057,9 @@ fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
             .unwrap()
             .expect("Flowchart source should produce a render model")
     };
+    let canonical_52 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_52,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -5040,7 +5078,8 @@ fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
-    let artifact = prepare(parse(), &LayoutOptions::default(), session)
+    let canonical_53 = parse();
+    let artifact = prepare(&canonical_53, &LayoutOptions::default(), session)
         .expect("Flowchart theme verification must wait for SVG emission");
 
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -5089,7 +5128,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_ordinal_palette_after_sv
             .unwrap()
             .expect("source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5161,7 +5200,8 @@ fn require_portable_accepts_flowchart_ordinal_rule_when_a_node_matches() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
-    let rendered = prepare(parse(), &LayoutOptions::default(), session)
+    let canonical_54 = parse();
+    let rendered = prepare(&canonical_54, &LayoutOptions::default(), session)
         .expect("ordinal verification must wait for SVG emission")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("matching Flowchart ordinal rule must satisfy strict portability");
@@ -5196,7 +5236,7 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let artifact = prepare(parsed, &LayoutOptions::default(), session)
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("typed Flowchart edge stroke must reach SVG emission");
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -5235,7 +5275,7 @@ fn require_portable_accepts_swimlane_transparent_edge_stroke_after_svg_emission(
         .unwrap()
         .expect("Swimlane source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5288,7 +5328,7 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
                 .unwrap()
                 .expect("Flowchart-family source should produce a render model");
             let rendered = prepare(
-                parsed,
+                &parsed,
                 &LayoutOptions::default(),
                 crate::environment::RenderEnvironment::deterministic()
                     .with_theme_portability_requirement(
@@ -5333,7 +5373,7 @@ fn require_portable_accepts_flowchart_and_swimlane_edge_dasharray_after_svg_emis
             .unwrap()
             .expect("Flowchart source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5375,7 +5415,7 @@ fn flowchart_edge_source_dasharray_owns_typed_precedence() {
         .unwrap()
         .expect("Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5417,7 +5457,7 @@ fn flowchart_neo_edge_dasharray_is_the_terminal_style_winner() {
             .unwrap()
             .expect("Neo Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5477,8 +5517,9 @@ fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
             .unwrap()
             .expect("hand-drawn Flowchart source should produce a render model")
     };
+    let canonical_55 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_55,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -5495,8 +5536,9 @@ fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
         FamilyThemeResidualReason::UnsupportedGeometry
     );
 
+    let canonical_56 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_56,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5528,7 +5570,7 @@ fn elk_flowchart_reuses_the_typed_edge_dasharray_writer() {
         .unwrap()
         .expect("ELK Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5587,7 +5629,7 @@ fn flowchart_edge_source_and_explicit_line_color_own_typed_precedence() {
             .unwrap()
             .expect("Flowchart source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5651,7 +5693,7 @@ fn flowchart_hand_drawn_class_stroke_does_not_shadow_typed_edge_stroke() {
             .unwrap()
             .expect("hand-drawn Flowchart source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -5703,7 +5745,7 @@ fn require_portable_accepts_sequence_actor_fill_after_svg_emission() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5757,7 +5799,7 @@ fn require_portable_accepts_sequence_actor_stroke_after_svg_emission() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5830,7 +5872,7 @@ fn require_portable_accepts_sequence_lifeline_scalar_paint_after_actor_line_emis
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5896,7 +5938,7 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emis
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5948,7 +5990,7 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_clear_after_baseline_
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6017,7 +6059,7 @@ fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6129,7 +6171,7 @@ Alice->>Bob: Hello
             "{case} must retain actorLineColor ownership"
         );
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6199,8 +6241,9 @@ fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission
             .unwrap()
             .expect("Sequence source should produce a render model")
     };
+    let canonical_57 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_57,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -6220,8 +6263,9 @@ fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission
         }]
     );
 
+    let canonical_58 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_58,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6280,7 +6324,7 @@ fn require_portable_accepts_sequence_message_scalar_paints_after_line_emission()
                 .unwrap()
                 .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6354,7 +6398,7 @@ fn sequence_message_stroke_winner_marks_shadowed_fill_not_applicable() {
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6422,7 +6466,7 @@ fn sequence_message_stroke_rule_without_a_terminal_line_is_not_applicable() {
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6525,7 +6569,7 @@ Alice->>Bob: Hello
             "{case} must retain signalColor ownership"
         );
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6647,7 +6691,7 @@ Alice->>Bob: Hello
             "{case} signalColor ownership must follow the selected source"
         );
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6740,8 +6784,9 @@ fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
             .unwrap()
             .expect("Sequence source should produce a render model")
     };
+    let canonical_59 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_59,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -6761,8 +6806,9 @@ fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
         }]
     );
 
+    let canonical_60 = parse();
     let artifact = prepare(
-        parse(),
+        &canonical_60,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6819,7 +6865,7 @@ fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
                 .unwrap()
                 .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6891,7 +6937,7 @@ fn sequence_note_rule_without_a_terminal_note_rect_is_not_applicable() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -6959,7 +7005,7 @@ fn require_portable_accepts_sequence_activation_scalar_paints_after_rect_emissio
                 .unwrap()
                 .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7022,7 +7068,7 @@ fn sequence_activation_rule_without_a_terminal_rect_is_not_applicable() {
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7095,7 +7141,7 @@ fn sequence_explicit_activation_and_note_paints_own_precedence_over_typed_paints
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7175,7 +7221,7 @@ fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7235,7 +7281,7 @@ fn sequence_actor_stroke_with_unhandled_shapes_fails_closed() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable Sequence session");
-        let artifact = prepare(parsed, &LayoutOptions::default(), strict)
+        let artifact = prepare(&parsed, &LayoutOptions::default(), strict)
             .expect("strict verification must wait for terminal SVG evidence");
         let error =
             match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
@@ -7276,7 +7322,7 @@ fn sequence_actor_stroke_tracks_every_css_covered_shape() {
             .unwrap()
             .expect("Sequence source should produce a render model");
         let rendered = prepare(
-            parsed,
+            &parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7335,13 +7381,10 @@ fn sequence_actor_stroke_transparent_paint_is_signed_only_for_covered_shapes() {
             .expect("begin strict portable Sequence session")
     };
 
-    let rendered = prepare(
-            parse(
-                "sequenceDiagram\nparticipant Alice@{\"type\":\"queue\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
-            ),
-            &LayoutOptions::default(),
-            strict(),
-        )
+    let canonical_61 = parse(
+        "sequenceDiagram\nparticipant Alice@{\"type\":\"queue\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+    );
+    let rendered = prepare(&canonical_61, &LayoutOptions::default(), strict())
         .expect("transparent actor stroke should wait for terminal SVG evidence")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("queue should consume the transparent typed actor stroke");
@@ -7355,13 +7398,10 @@ fn sequence_actor_stroke_transparent_paint_is_signed_only_for_covered_shapes() {
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
 
-    let artifact = prepare(
-            parse(
-                "sequenceDiagram\nparticipant Alice@{\"type\":\"control\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
-            ),
-            &LayoutOptions::default(),
-            strict(),
-        )
+    let canonical_62 = parse(
+        "sequenceDiagram\nparticipant Alice@{\"type\":\"control\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+    );
+    let artifact = prepare(&canonical_62, &LayoutOptions::default(), strict())
         .expect("control stroke verification must wait for terminal SVG evidence");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -7399,7 +7439,7 @@ fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() 
         .unwrap()
         .expect("autonumbered Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7469,7 +7509,7 @@ fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7531,8 +7571,9 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
             .unwrap()
             .expect("Sequence source should produce a render model")
     };
+    let canonical_63 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_63,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -7556,7 +7597,8 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Sequence session");
-    let artifact = prepare(parse(), &LayoutOptions::default(), strict)
+    let canonical_64 = parse();
+    let artifact = prepare(&canonical_64, &LayoutOptions::default(), strict)
         .expect("strict verification waits for terminal SVG evidence");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -7582,8 +7624,9 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
             .unwrap()
             .expect("configured Sequence source should produce a render model")
     };
+    let canonical_65 = configured_parse();
     let configured = prepare(
-        configured_parse(),
+        &canonical_65,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7633,8 +7676,9 @@ Alice->>Bob: Hello
             .unwrap()
             .expect("Sequence source should produce a render model")
     };
+    let canonical_66 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_66,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -7675,7 +7719,8 @@ Alice->>Bob: Hello
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Sequence session");
-    let artifact = prepare(parse(), &LayoutOptions::default(), strict)
+    let canonical_67 = parse();
+    let artifact = prepare(&canonical_67, &LayoutOptions::default(), strict)
         .expect("strict verification must wait for terminal SVG evidence");
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
@@ -7726,7 +7771,7 @@ fn sequence_actor_fill_tracks_actor_man_css_and_inline_precedence() {
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict Sequence session");
-        let artifact = prepare(parsed, &LayoutOptions::default(), strict)
+        let artifact = prepare(&parsed, &LayoutOptions::default(), strict)
             .expect("strict verification must wait for terminal SVG evidence");
         let result = artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
 
@@ -7780,7 +7825,7 @@ fn sequence_actor_fill_accounts_for_rules_without_matching_actors() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -7868,8 +7913,9 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
             .expect("begin bounded Sequence session")
     };
 
+    let canonical_68 = parse();
     let unbounded = prepare(
-        parse(),
+        &canonical_68,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -7882,12 +7928,13 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     // Ordinal selection now belongs to preparation. Compared with the same static rules,
     // two actor visits and two scans of three rules are charged once before any SVG output.
     let control_theme = build_theme(false);
+    let canonical_69 = control_theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .expect("parse static Sequence control");
     let control = prepare(
-        control_theme
-            .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .expect("parse static Sequence control"),
+        &canonical_69,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&control_theme)
@@ -7898,8 +7945,9 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
         exact_limit - control.context.session.work_meter().used(),
         2 + 3 * 2
     );
+    let canonical_70 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_70,
         &LayoutOptions::default(),
         environment_with_limit(exact_limit),
     )
@@ -7935,8 +7983,9 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     );
 
     let short_limit = exact_limit - 1;
+    let canonical_71 = parse();
     let error = match prepare(
-        parse(),
+        &canonical_71,
         &LayoutOptions::default(),
         environment_with_limit(short_limit),
     ) {
@@ -7988,7 +8037,7 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
         .unwrap()
         .expect("Sequence source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8034,7 +8083,7 @@ fn state_style_residual_survives_terminal_svg_completion() {
             )
             .unwrap()
             .expect("State source should produce a render model");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session())
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("best-effort State preparation")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render State SVG");
@@ -8089,7 +8138,7 @@ fn state_ordinal_palette_is_applied_by_an_observed_state_binding() {
         .unwrap()
         .expect("State source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8148,7 +8197,7 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         ..SvgDebugOptions::default()
     };
     let node_rendered = prepare(
-        node_parsed,
+        &node_parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&node_theme)
@@ -8209,7 +8258,7 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         ..SvgDebugOptions::default()
     };
     let edge_rendered = prepare(
-        edge_parsed,
+        &edge_parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&edge_theme)
@@ -8258,7 +8307,7 @@ fn require_portable_rechecks_state_theme_after_debug_visibility_filter() {
         .unwrap()
         .expect("State source should produce a render model");
     let artifact = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -8304,7 +8353,7 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
         .unwrap()
         .expect("State source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8403,7 +8452,7 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
             ))
             .begin_session_with_theme(&theme)
             .unwrap();
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
@@ -8483,7 +8532,7 @@ fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
         .unwrap()
         .expect("State source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8538,7 +8587,7 @@ fn state_rule_without_a_matching_document_target_is_not_applicable() {
         .unwrap()
         .expect("State source should produce a render model");
     let rendered = prepare(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8607,8 +8656,9 @@ fn require_portable_rejects_state_semantic_residual_before_layout() {
             .unwrap()
             .expect("State source should produce a render model")
     };
+    let canonical_72 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_72,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8638,7 +8688,8 @@ fn require_portable_rejects_state_semantic_residual_before_layout() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let error = match prepare(parse(), &LayoutOptions::default(), session) {
+    let canonical_73 = parse();
+    let error = match prepare(&canonical_73, &LayoutOptions::default(), session) {
         Ok(_) => panic!("strict portability must reject a State semantic residual"),
         Err(error) => error,
     };
@@ -8666,8 +8717,9 @@ fn require_portable_rejects_state_style_residual_before_layout() {
                 .unwrap()
                 .expect("State source should produce a render model")
     };
+    let canonical_74 = parse();
     let rendered = prepare(
-        parse(),
+        &canonical_74,
         &LayoutOptions::default(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
@@ -8687,7 +8739,8 @@ fn require_portable_rejects_state_style_residual_before_layout() {
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
 
-    let error = match prepare(parse(), &LayoutOptions::default(), session) {
+    let canonical_75 = parse();
+    let error = match prepare(&canonical_75, &LayoutOptions::default(), session) {
         Ok(_) => panic!("strict portability must reject an unverified State style"),
         Err(error) => error,
     };
@@ -8721,7 +8774,7 @@ fn parsed_theme_binding_must_match_render_session_theme() {
         .begin_session_with_theme(&render_theme)
         .expect("render session should start");
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => panic!("a parsed artifact must not cross theme sessions"),
         Err(error) => error,
     };
@@ -8755,7 +8808,7 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
             .begin_session_with_theme(&theme)
             .expect("render session should start");
 
-        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+        let error = match prepare(&parsed, &LayoutOptions::default(), session) {
             Ok(_) => panic!("compatibility config is part of the parse binding"),
             Err(error) => error,
         };
@@ -8781,7 +8834,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
         .begin_session()
         .expect("unthemed render session should start");
     assert!(matches!(
-        prepare(themed_parse, &LayoutOptions::default(), unthemed_session),
+        prepare(&themed_parse, &LayoutOptions::default(), unthemed_session),
         Err(Error::ThemeParseBindingMismatch)
     ));
 
@@ -8796,7 +8849,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
         .begin_session_with_theme(&theme)
         .expect("themed render session should start");
     assert!(matches!(
-        prepare(unthemed_parse, &LayoutOptions::default(), themed_session),
+        prepare(&unthemed_parse, &LayoutOptions::default(), themed_session),
         Err(Error::ThemeParseBindingMismatch)
     ));
 
@@ -8810,7 +8863,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
     let unthemed_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("unthemed render session should start");
-    prepare(unthemed_parse, &LayoutOptions::default(), unthemed_session)
+    prepare(&unthemed_parse, &LayoutOptions::default(), unthemed_session)
         .expect("unthemed parses remain valid in unthemed sessions");
 }
 
@@ -8848,7 +8901,7 @@ fn equivalent_theme_instances_retain_selected_family_typed_evidence() {
         .begin_session_with_theme(&render_theme)
         .expect("equivalent render session should start");
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("equivalent theme should retain the typed route")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("equivalent theme should retain emitted typed evidence");
@@ -8876,7 +8929,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         .unwrap()
         .expect("flowchart source should produce a render model");
     let swimlane = super::preparation::prepare_non_class_render(
-        flowchart,
+        &flowchart,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
         FlowchartSvgLabelPreparation(true),
@@ -8892,7 +8945,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         .unwrap()
         .expect("configured Swimlane source should produce a render model");
     let flowchart = super::preparation::prepare_non_class_render(
-        configured_swimlane,
+        &configured_swimlane,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
         FlowchartSvgLabelPreparation(true),
@@ -8909,7 +8962,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
         .expect("flowchart source should produce a render model");
 
     let error = match super::preparation::prepare_non_class_render(
-        parsed,
+        &parsed,
         &LayoutOptions::default(),
         FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
         FlowchartSvgLabelPreparation(true),
@@ -8930,7 +8983,7 @@ fn family_artifact_rejects_planned_family_drift() {
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     let FamilyRenderArtifact {
         metadata, family, ..
     } = artifact;
@@ -8956,7 +9009,7 @@ fn unthemed_family_completion_has_no_theme_identity() {
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     assert!(artifact.context.resolved_theme().is_none());
 
     let rendered = artifact
@@ -9130,7 +9183,7 @@ style A font-size:10px
         ))
         .begin_session()
         .expect("Flowchart important typography session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Flowchart important typography")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Flowchart important typography");
@@ -9159,7 +9212,7 @@ style A font-size:10px
 #[cfg(feature = "layout-cytoscape")]
 fn prepare_mindmap_with_host_limit(
     max_layout_work_units: Option<usize>,
-) -> (Result<FamilyRenderArtifact>, Arc<SidecarRecordingHost>) {
+) -> (FamilyFixture, Arc<SidecarRecordingHost>) {
     let source = "mindmap\n  Root\n    First child\n    Second child\n";
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -9182,7 +9235,7 @@ fn prepare_mindmap_with_host_limit(
         environment = environment.with_resource_policy(policy);
     }
     let session = environment.begin_session().expect("render session");
-    (prepare(parsed, &LayoutOptions::default(), session), host)
+    ((parsed, LayoutOptions::default(), session), host)
 }
 
 #[test]
@@ -9200,7 +9253,7 @@ A -->|control label| B
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare public flowchart artifact");
     let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
         panic!("expected Flowchart family artifact");
@@ -9231,7 +9284,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare flowchart family artifact");
 
     let rendered_svg = {
@@ -9308,7 +9361,6 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             &artifact,
             &SvgRenderOptions::default(),
             &SvgDebugOptions::default(),
-            None,
         )
         .expect("render self-loop SVG");
         assert!(
@@ -9365,7 +9417,7 @@ linkStyle 0 font-size:12px,font-style:italic
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
         .expect("detect Swimlane");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Swimlane family artifact");
 
     let rendered_svg = {
@@ -9437,7 +9489,6 @@ linkStyle 0 font-size:12px,font-style:italic
             &artifact,
             &SvgRenderOptions::default(),
             &SvgDebugOptions::default(),
-            None,
         )
         .expect("render Swimlane SVG");
         assert!(
@@ -9468,10 +9519,7 @@ linkStyle 0 font-size:12px,font-style:italic
     );
 }
 
-fn prepare_with_model_item_limit(
-    source: &str,
-    max_model_items: usize,
-) -> Result<FamilyRenderArtifact> {
+fn prepare_with_model_item_limit(source: &str, max_model_items: usize) -> FamilyFixture {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
@@ -9487,13 +9535,10 @@ fn prepare_with_model_item_limit(
         )
         .begin_session()
         .unwrap();
-    prepare(parsed, &LayoutOptions::default(), session)
+    (parsed, LayoutOptions::default(), session)
 }
 
-fn prepare_with_layout_work_limit(
-    source: &str,
-    max_layout_work_units: usize,
-) -> Result<FamilyRenderArtifact> {
+fn prepare_with_layout_work_limit(source: &str, max_layout_work_units: usize) -> FamilyFixture {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
@@ -9509,10 +9554,10 @@ fn prepare_with_layout_work_limit(
         )
         .begin_session()
         .unwrap();
-    prepare(parsed, &LayoutOptions::default(), session)
+    (parsed, LayoutOptions::default(), session)
 }
 
-fn prepare_with_unbounded_layout_work(source: &str) -> Result<FamilyRenderArtifact> {
+fn prepare_with_unbounded_layout_work(source: &str) -> FamilyFixture {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
@@ -9521,7 +9566,7 @@ fn prepare_with_unbounded_layout_work(source: &str) -> Result<FamilyRenderArtifa
         .with_resource_policy(crate::resources::RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .unwrap();
-    prepare(parsed, &LayoutOptions::default(), session)
+    (parsed, LayoutOptions::default(), session)
 }
 
 fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
@@ -9595,7 +9640,7 @@ fn session_report_accounts_for_every_metered_layout_family() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .unwrap()
             .expect("the layout-work fixture should produce a render model");
-        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
         assert_eq!(artifact.family_id(), expected_family);
         assert!(
@@ -9623,17 +9668,23 @@ fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
     ];
 
     for (source, expected_family) in cases {
-        let unbounded = prepare_with_unbounded_layout_work(source).unwrap();
+        let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
+            prepare_with_unbounded_layout_work(source);
+        let unbounded = prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1).unwrap();
         assert_eq!(unbounded.family_id(), expected_family);
         let exact = unbounded.context.session.report().layout_work_units();
         assert!(exact > 0, "{expected_family} must report layout work");
         let expected_layout = unbounded.layout_json().unwrap();
 
-        let bounded = prepare_with_layout_work_limit(source, exact).unwrap();
+        let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+            prepare_with_layout_work_limit(source, exact);
+        let bounded = prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2).unwrap();
         assert_eq!(bounded.context.session.report().layout_work_units(), exact);
         assert_eq!(bounded.layout_json().unwrap(), expected_layout);
 
-        let error = match prepare_with_layout_work_limit(source, exact - 1) {
+        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
+            prepare_with_layout_work_limit(source, exact - 1);
+        let error = match prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3) {
             Ok(_) => panic!("{expected_family} exact minus one unexpectedly succeeded"),
             Err(error) => error,
         };
@@ -9648,7 +9699,9 @@ fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
 #[cfg(feature = "layout-cytoscape")]
 #[test]
 fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary() {
-    let (unbounded_result, unbounded_host) = prepare_mindmap_with_host_limit(None);
+    let ((unbounded_parsed, unbounded_options, unbounded_session), unbounded_host) =
+        prepare_mindmap_with_host_limit(None);
+    let unbounded_result = prepare(&unbounded_parsed, &unbounded_options, unbounded_session);
     let unbounded = unbounded_result.expect("unbounded COSE mindmap");
     let exact = unbounded.context.session.report().layout_work_units();
     assert!(
@@ -9659,7 +9712,9 @@ fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary()
     let unbounded_trace = unbounded_host.snapshot();
     assert!(!unbounded_trace.is_empty());
 
-    let (exact_result, exact_host) = prepare_mindmap_with_host_limit(Some(exact));
+    let ((exact_parsed, exact_options, exact_session), exact_host) =
+        prepare_mindmap_with_host_limit(Some(exact));
+    let exact_result = prepare(&exact_parsed, &exact_options, exact_session);
     let exact_artifact = exact_result.expect("exact COSE budget");
     assert_eq!(
         exact_artifact.context.session.report().layout_work_units(),
@@ -9671,7 +9726,9 @@ fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary()
     );
     assert_eq!(exact_host.snapshot(), unbounded_trace);
 
-    let (short_result, _short_host) = prepare_mindmap_with_host_limit(Some(exact - 1));
+    let ((short_parsed, short_options, short_session), _short_host) =
+        prepare_mindmap_with_host_limit(Some(exact - 1));
+    let short_result = prepare(&short_parsed, &short_options, short_session);
     let error = match short_result {
         Ok(_) => panic!("exact minus one must reject COSE work"),
         Err(error) => error,
@@ -9682,7 +9739,9 @@ fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary()
     assert_eq!(limit.limit, "max_layout_work_units");
     assert_eq!(limit.max, exact - 1);
 
-    let (early_result, early_host) = prepare_mindmap_with_host_limit(Some(1));
+    let ((early_parsed, early_options, early_session), early_host) =
+        prepare_mindmap_with_host_limit(Some(1));
+    let early_result = prepare(&early_parsed, &early_options, early_session);
     assert!(matches!(early_result, Err(Error::ResourceLimitExceeded(_))));
     assert!(
         early_host.snapshot().is_empty(),
@@ -9709,7 +9768,7 @@ system - satisfies -> req1
         )
         .unwrap()
         .expect("Requirement source should produce a render model");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     let projection = artifact.layout_json().unwrap();
     let layout = &projection["layout"]["RequirementDiagram"];
     let fields = layout
@@ -9775,7 +9834,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Flowchart")
         .expect("detect Flowchart");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Flowchart family artifact");
 
     let owners = {
@@ -9857,7 +9916,6 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
-        None,
     )
     .expect("render Flowchart SVG");
 
@@ -9938,7 +9996,7 @@ end
         .begin_session()
         .expect("begin Swimlane math session");
     let artifact =
-        prepare(parsed, &LayoutOptions::default(), session).expect("prepare Swimlane math title");
+        prepare(&parsed, &LayoutOptions::default(), session).expect("prepare Swimlane math title");
 
     let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
         panic!("expected Swimlane family artifact");
@@ -9961,7 +10019,6 @@ end
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
-        None,
     )
     .expect("render Swimlane math title");
     assert_eq!(
@@ -10001,7 +10058,7 @@ D --> P
         )
         .expect("parse Flowchart")
         .expect("detect Flowchart");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Flowchart family artifact");
     let operation_count =
         |artifact: &FamilyRenderArtifact,
@@ -10053,7 +10110,6 @@ D --> P
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
-        None,
     )
     .expect("render Flowchart SVG");
 
@@ -10103,7 +10159,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
         )
         .expect("parse Swimlane")
         .expect("detect Swimlane");
-    let artifact = prepare(parsed, &LayoutOptions::default(), session())
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Swimlane family artifact");
 
     let (owner, hits_before, source_plans_before) = {
@@ -10148,7 +10204,6 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
-        None,
     )
     .expect("render Swimlane SVG");
 
@@ -10189,7 +10244,7 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse Flowchart family")
             .expect("detect Flowchart family");
-        let artifact = prepare(parsed, &LayoutOptions::default(), session())
+        let artifact = prepare(&parsed, &LayoutOptions::default(), session())
             .expect("prepare Flowchart family artifact");
         let projection = artifact.layout_json().expect("project public layout JSON");
         let layout = &projection["layout"][variant];
@@ -10223,7 +10278,7 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
 }
 
 #[test]
-fn layout_json_can_reuse_the_caller_owned_compatibility_projection() {
+fn layout_json_projects_its_paired_semantics_and_layout() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
             "treemap\ntitle Product Map\n\"Root\"\n  \"Leaf\": 42\n",
@@ -10234,28 +10289,68 @@ fn layout_json_can_reuse_the_caller_owned_compatibility_projection() {
     let compatibility = parsed
         .model()
         .compatibility_json(parsed.metadata())
-        .expect("project Treemap compatibility JSON");
+        .unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+    let projected = artifact.layout_json().unwrap();
+    assert_eq!(projected["semantic"], compatibility);
+    assert_eq!(projected["meta"]["diagram_type"], "treemap");
+    assert!(projected["layout"]["TreemapDiagram"].is_object());
+    assert_eq!(artifact.layout_json().unwrap(), projected);
+}
 
-    let from_supplied = prepare(parsed.clone(), &LayoutOptions::default(), session())
-        .expect("prepare Treemap family artifact")
-        .layout_json_with_compatibility_json(compatibility.clone())
-        .expect("assemble layout JSON from supplied semantic projection");
-    let from_family = prepare(parsed, &LayoutOptions::default(), session())
-        .expect("prepare second Treemap family artifact")
-        .layout_json()
-        .expect("assemble layout JSON from family projection");
+#[test]
+fn layout_json_observes_cancellation_inside_the_owned_semantic_projection() {
+    let control = merman_core::OperationControl::new();
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let canonical_76 = parse_flowchart("flowchart LR\nA-->B");
+    let artifact = prepare(&canonical_76, &LayoutOptions::default(), session).unwrap();
+    control.cancel_after_checkpoints(1);
+    let Error::Cancelled(cancelled) = artifact.layout_json().unwrap_err() else {
+        panic!("projection cancellation must keep its category");
+    };
+    assert_eq!(cancelled.phase, OperationPhase::Semantic);
+}
 
-    assert_eq!(from_supplied, from_family);
-    assert_eq!(from_supplied["semantic"], compatibility);
+#[cfg(feature = "diagram-block")]
+#[test]
+fn layout_json_preserves_the_original_owned_projection_error() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let (_, RenderSemanticModel::Block(mut invalid_model)) = parsed.clone().into_parts() else {
+        panic!("Block model");
+    };
+    invalid_model.blocks_flat[0].children.push(usize::MAX);
+    let mut artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+    let BuiltinFamilyArtifact::Block(block) = &mut artifact.family else {
+        panic!("Block artifact");
+    };
+    block.pair.semantic = &invalid_model;
+    let Error::SemanticProjection(merman_core::Error::DiagramParse {
+        diagram_type,
+        diagnostic,
+    }) = artifact.layout_json().unwrap_err()
+    else {
+        panic!("the core projection diagnostic must remain structured");
+    };
+    assert_eq!(diagram_type, "block");
+    assert!(diagnostic.message().contains("invalid Block child index"));
 }
 
 #[test]
 fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
     let source = "flowchart TD\nA --> B";
-    let artifact = prepare_with_model_item_limit(source, 3).unwrap();
+    let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
+        prepare_with_model_item_limit(source, 3);
+    let artifact = prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6).unwrap();
     assert_eq!(artifact.family_id(), DiagramFamilyId::FLOWCHART);
 
-    let error = match prepare_with_model_item_limit(source, 2) {
+    let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
+        prepare_with_model_item_limit(source, 2);
+    let error = match prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7) {
         Err(error) => error,
         Ok(_) => panic!("flowchart above the node limit unexpectedly rendered"),
     };
@@ -10265,10 +10360,14 @@ fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
 #[test]
 fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
     let source = "swimlane-beta LR\nA --> B";
-    let artifact = prepare_with_model_item_limit(source, 3).unwrap();
+    let (fixture_parsed_8, fixture_layout_8, fixture_session_8) =
+        prepare_with_model_item_limit(source, 3);
+    let artifact = prepare(&fixture_parsed_8, &fixture_layout_8, fixture_session_8).unwrap();
     assert_eq!(artifact.family_id(), DiagramFamilyId::SWIMLANE);
 
-    let error = match prepare_with_model_item_limit(source, 2) {
+    let (fixture_parsed_9, fixture_layout_9, fixture_session_9) =
+        prepare_with_model_item_limit(source, 2);
+    let error = match prepare(&fixture_parsed_9, &fixture_layout_9, fixture_session_9) {
         Err(error) => error,
         Ok(_) => panic!("swimlane above the node limit unexpectedly rendered"),
     };
@@ -10278,10 +10377,14 @@ fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
 #[test]
 fn swimlane_rejects_pairwise_routing_work_before_layout() {
     let source = "swimlane-beta LR\nA --> B\nB --> C";
-    let artifact = prepare_with_layout_work_limit(source, 1_000).unwrap();
+    let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
+        prepare_with_layout_work_limit(source, 1_000);
+    let artifact = prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4).unwrap();
     assert_eq!(artifact.family_id(), DiagramFamilyId::SWIMLANE);
 
-    let error = match prepare_with_layout_work_limit(source, 1) {
+    let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
+        prepare_with_layout_work_limit(source, 1);
+    let error = match prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5) {
         Err(error) => error,
         Ok(_) => panic!("swimlane above the layout work limit unexpectedly rendered"),
     };
@@ -10312,7 +10415,7 @@ fn mindmap_node_limit_is_checked_before_layout_allocation_or_backend_dispatch() 
         .begin_session()
         .unwrap();
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Err(error) => error,
         Ok(_) => panic!("mindmap above the node limit unexpectedly reached layout"),
     };
@@ -10348,7 +10451,7 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
                 .contains(&RenderCapability::Math),
             "encoded dollar entities remain ordinary createText input: {source}"
         );
-        prepare(parsed, &LayoutOptions::default(), session)
+        prepare(&parsed, &LayoutOptions::default(), session)
             .expect("encoded dollar entities must not require a Math renderer");
     }
 
@@ -10413,7 +10516,7 @@ fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
         plan.missing_capabilities()
             .contains(&RenderCapability::Math)
     );
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Err(error) => error,
         Ok(_) => panic!("constrained math unexpectedly reached opaque backend dispatch"),
     };
@@ -10476,7 +10579,7 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Flowchart math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render compiled Flowchart math");
@@ -10523,7 +10626,7 @@ fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Flowchart math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render compiled Flowchart math");
@@ -10565,7 +10668,7 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Flowchart math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render compiled Flowchart math")
@@ -10604,7 +10707,7 @@ fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs
             .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
             .begin_session()
             .unwrap();
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare {diagram_type} math: {error}"))
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render {diagram_type} math: {error}"));
@@ -10635,7 +10738,7 @@ fn compiled_flowchart_unmatched_math_delimiter_remains_plain_in_resvg() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Flowchart unmatched delimiter")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Flowchart unmatched delimiter");
@@ -10664,7 +10767,7 @@ fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Sequence math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render compiled Sequence math");
@@ -10709,7 +10812,7 @@ fn compiled_sequence_unmatched_math_delimiter_remains_plain_in_resvg() {
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence unmatched delimiter")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence unmatched delimiter");
@@ -10738,7 +10841,7 @@ fn compiled_sequence_mixed_math_with_unmatched_delimiter_stays_native_unavailabl
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence mixed math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence mixed math");
@@ -10774,7 +10877,7 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Sequence actor-man math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render compiled Sequence actor-man math");
@@ -10845,7 +10948,7 @@ fn compiled_sequence_multiline_participant_math_expands_each_terminal_actor_box(
         .with_compiled_math_renderer()
         .begin_session()
         .unwrap();
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare multiline Sequence participant math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render multiline Sequence participant math");
@@ -10942,7 +11045,7 @@ fn compiled_class_and_mindmap_math_fail_closed_until_their_native_projection_is_
             .with_compiled_math_renderer()
             .begin_session()
             .unwrap();
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        let rendered = prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap_or_else(|error| panic!("prepare {diagram_type} math: {error}"))
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render {diagram_type} math: {error}"));
@@ -10998,7 +11101,7 @@ mindmap
     );
     assert!(!plan.is_ready());
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Err(error) => error,
         Ok(_) => panic!("mindmap math label unexpectedly rendered without a math backend"),
     };
@@ -11030,7 +11133,7 @@ fn mindmap_svg_text_does_not_require_a_math_renderer() {
             .required_capabilities()
             .contains(&RenderCapability::Math)
     );
-    let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
@@ -11094,7 +11197,7 @@ mindmap
     assert!(plan.missing_capabilities().is_empty());
     assert!(plan.is_ready());
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
@@ -11127,7 +11230,7 @@ class Formula["$$x^2$$"]
     );
     assert!(!plan.is_ready());
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session) {
         Err(error) => error,
         Ok(_) => panic!("Class math label unexpectedly rendered without a math backend"),
     };
@@ -11191,7 +11294,7 @@ class Formula["$$x^2$$"]
     assert!(plan.missing_capabilities().is_empty());
     assert!(plan.is_ready());
 
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
@@ -11208,7 +11311,7 @@ fn render_class_math(source: &str) -> String {
         .with_math_renderer(std::sync::Arc::new(ClassMathRenderer))
         .begin_session()
         .unwrap();
-    prepare(parsed, &LayoutOptions::default(), session)
+    prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap()
@@ -11289,10 +11392,14 @@ $$interface$$ ()-- Formula
 #[test]
 fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
     let source = "flowchart-elk TD\nA --> B";
-    let artifact = prepare_with_model_item_limit(source, 3).unwrap();
+    let (fixture_parsed_10, fixture_layout_10, fixture_session_10) =
+        prepare_with_model_item_limit(source, 3);
+    let artifact = prepare(&fixture_parsed_10, &fixture_layout_10, fixture_session_10).unwrap();
     assert_eq!(artifact.family_id(), DiagramFamilyId::FLOWCHART);
 
-    let error = match prepare_with_model_item_limit(source, 2) {
+    let (fixture_parsed_11, fixture_layout_11, fixture_session_11) =
+        prepare_with_model_item_limit(source, 2);
+    let error = match prepare(&fixture_parsed_11, &fixture_layout_11, fixture_session_11) {
         Err(error) => error,
         Ok(_) => panic!("ELK flowchart above the node limit unexpectedly rendered"),
     };
@@ -11314,7 +11421,7 @@ fn custom_semantic_json_is_explicitly_non_renderable() {
         .unwrap()
         .unwrap();
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session()) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session()) {
         Err(error) => error,
         Ok(_) => panic!("custom JSON unexpectedly produced a built-in artifact"),
     };
@@ -11346,7 +11453,7 @@ fn custom_render_overlay_cannot_masquerade_as_a_builtin_family() {
         .unwrap()
         .unwrap();
 
-    let error = match prepare(parsed, &LayoutOptions::default(), session()) {
+    let error = match prepare(&parsed, &LayoutOptions::default(), session()) {
         Err(error) => error,
         Ok(_) => panic!("custom JSON unexpectedly produced a built-in artifact"),
     };
@@ -11384,7 +11491,7 @@ Second: second,after first,2ms
         )
         .unwrap()
         .unwrap();
-    let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
     assert_eq!(artifact.family_id(), DiagramFamilyId::GANTT);
     let diagnostics = artifact
@@ -11409,7 +11516,7 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
         .parse_diagram_for_render_model_sync("flowchart TD\nA -->", ParseOptions::lenient())
         .unwrap()
         .unwrap();
-    let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
     assert_eq!(artifact.family_id(), DiagramFamilyId::ERROR);
     let rendered = artifact
@@ -11608,9 +11715,13 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
             TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
         );
     let session = environment.begin_session().expect("render session");
-    let artifact =
-        prepare_with_svg_label_preparation(parsed, &LayoutOptions::default(), session, preparation)
-            .expect("prepare flowchart artifact");
+    let artifact = prepare_with_svg_label_preparation(
+        &parsed,
+        &LayoutOptions::default(),
+        session,
+        preparation,
+    )
+    .expect("prepare flowchart artifact");
     let indexed_sidecar = match &artifact.family {
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(flowchart) => {
@@ -11821,7 +11932,7 @@ fn family_layout_stops_host_measurement_after_callback_cancellation() {
         .begin_session_with_control(control)
         .expect("begin render session");
 
-    let result = prepare(parsed, &LayoutOptions::default(), session);
+    let result = prepare(&parsed, &LayoutOptions::default(), session);
     let Err(Error::Cancelled(cancelled)) = result else {
         panic!("family preparation must surface callback cancellation");
     };
@@ -11901,7 +12012,7 @@ fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
         .begin_session()
         .expect("begin render session");
     let artifact =
-        prepare(parsed, &LayoutOptions::default(), session).expect("prepare info diagram");
+        prepare(&parsed, &LayoutOptions::default(), session).expect("prepare info diagram");
     let error = match artifact.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.clone()),
@@ -11935,7 +12046,7 @@ fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_control(control.clone())
         .expect("begin render session");
-    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare info diagram")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render info diagram");
@@ -11972,24 +12083,18 @@ fn edge_geometry_json_label_positions_match_emitted_positions() {
     ];
 
     for (case, source, expected_edges) in cases {
-        let geometry = prepare(
-            parse_flowchart(source),
-            &LayoutOptions::default(),
-            session(),
-        )
-        .expect("prepare flowchart")
-        .edge_geometry_json()
-        .expect("edge geometry json");
-        let svg = prepare(
-            parse_flowchart(source),
-            &LayoutOptions::default(),
-            session(),
-        )
-        .expect("prepare flowchart")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render flowchart")
-        .svg()
-        .to_owned();
+        let canonical_77 = parse_flowchart(source);
+        let geometry = prepare(&canonical_77, &LayoutOptions::default(), session())
+            .expect("prepare flowchart")
+            .edge_geometry_json()
+            .expect("edge geometry json");
+        let canonical_78 = parse_flowchart(source);
+        let svg = prepare(&canonical_78, &LayoutOptions::default(), session())
+            .expect("prepare flowchart")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render flowchart")
+            .svg()
+            .to_owned();
         let rendered = decode_edge_label_positions(&svg);
         let positions: Vec<_> = geometry
             .iter()
@@ -12033,6 +12138,253 @@ fn edge_geometry_json_label_positions_match_emitted_positions() {
                     "{case}: y delta for {left_id} -> {right_id} differs between geometry and SVG"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
+    for source in [
+        "flowchart LR\nA --> B",
+        "stateDiagram-v2\n[*] --> Active",
+        "block-beta\nA",
+        "treemap-beta\n\"Root\"\n    \"Leaf\": 1",
+        "ishikawa-beta\nEffect\n  Cause",
+        "agentflow-beta\nA --> B",
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        for _ in 0..2 {
+            let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+            assert!(std::ptr::eq(artifact.metadata(), parsed.metadata()));
+            match (&artifact.family, parsed.model()) {
+                (BuiltinFamilyArtifact::Flowchart(flow), RenderSemanticModel::Flowchart(model)) => {
+                    assert!(std::ptr::eq(flow.pair().semantic(), model));
+                    assert!(std::ptr::eq(
+                        flow.render_context(),
+                        parsed.flowchart_render_context().unwrap()
+                    ));
+                }
+                (BuiltinFamilyArtifact::State(value), RenderSemanticModel::State(model)) => {
+                    assert!(std::ptr::eq(value.pair().semantic(), model))
+                }
+                (BuiltinFamilyArtifact::Block(value), RenderSemanticModel::Block(model)) => {
+                    assert!(std::ptr::eq(value.pair().semantic(), model))
+                }
+                (BuiltinFamilyArtifact::Treemap(value), RenderSemanticModel::Treemap(model)) => {
+                    assert!(std::ptr::eq(value.pair().semantic(), model))
+                }
+                (BuiltinFamilyArtifact::Ishikawa(value), RenderSemanticModel::Ishikawa(model)) => {
+                    assert!(std::ptr::eq(value.pair().semantic(), model))
+                }
+                (
+                    BuiltinFamilyArtifact::Agentflow { semantic, flow },
+                    RenderSemanticModel::Agentflow(model),
+                ) => {
+                    assert!(std::ptr::eq(*semantic, model));
+                    assert!(matches!(flow.pair.semantic, std::borrow::Cow::Owned(_)));
+                }
+                _ => panic!("unexpected family for {source}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn edge_geometry_json_family_cases_match_actual_svg_coordinates() {
+    let cases = [
+        (
+            "dagre_nested",
+            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nflowchart LR\nsubgraph Outer\n direction TB\n A((Circle)) -->|inner| B{Diamond}\nend\nB -->|outer| C[End]",
+        ),
+        (
+            "elk_parallel",
+            "---\nconfig:\n  layout: elk\n  htmlLabels: false\n---\nflowchart LR\nA((Circle)) -->|one| B{Diamond}\nA -->|two| B\nB --> C[End]",
+        ),
+        (
+            "hand_drawn",
+            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: 7\n---\nflowchart LR\nA((Circle)) -->|one| B[End]\nB -->|back| A",
+        ),
+        (
+            "fallback_rough_nested",
+            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: -1\n---\nflowchart LR\nsubgraph Group\n direction TB\n A((Circle)) -->|inner| B[End]\nend\nX -->|outer| Y\nY --> Group",
+        ),
+        (
+            "fallback_uint32_zero_nested",
+            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: 4294967296\n---\nflowchart LR\nsubgraph Group\n direction TB\n A((Circle)) -->|inner| B[End]\nend\nX -->|outer| Y\nY --> Group",
+        ),
+        (
+            "swimlane_nested",
+            "---\nconfig:\n  htmlLabels: false\n---\nswimlane-beta LR\nsubgraph Outer\n subgraph Inner\n A((Circle)) -->|inner| B{Diamond}\n end\nend\nB -->|outer| C[End]",
+        ),
+        (
+            "empty_labels",
+            "---\nconfig:\n  htmlLabels: false\n  layout: elk\n---\nflowchart LR\nA -->| | B\nB --> C",
+        ),
+        ("agentflow", "agentflow-beta\nA -->|label| B"),
+    ];
+    fn transform(node: crate::xml_dom::Node<'_, '_>) -> (f64, f64) {
+        node.ancestors()
+            .filter_map(|ancestor| {
+                ancestor
+                    .attribute("transform")
+                    .and_then(|value| value.strip_prefix("translate("))
+                    .and_then(|value| value.strip_suffix(')'))
+                    .and_then(|value| value.split_once(','))
+                    .and_then(|(x, y)| {
+                        Some((x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?))
+                    })
+            })
+            .fold((0.0, 0.0), |sum, point| (sum.0 + point.0, sum.1 + point.1))
+    }
+    fn root<'a, 'input: 'a>(
+        node: crate::xml_dom::Node<'a, 'input>,
+    ) -> Option<crate::xml_dom::Node<'a, 'input>> {
+        node.ancestors()
+            .find(|ancestor| ancestor.attribute("class") == Some("root"))
+    }
+    fn layout_offset(node: crate::xml_dom::Node<'_, '_>, nodes: &[Value]) -> (f64, f64) {
+        let Some(root_node) = root(node) else {
+            return (0.0, 0.0);
+        };
+        // Recursive roots include a Mermaid wrapper translation beyond layout coordinates.
+        // Recover that root-local translation from an actual emitted node and public layout.
+        for candidate in root_node.descendants().filter(|candidate| {
+            candidate.attribute("data-et") == Some("node") && root(*candidate) == Some(root_node)
+        }) {
+            let Some(layout) = nodes
+                .iter()
+                .find(|layout| layout["id"].as_str() == candidate.attribute("data-id"))
+            else {
+                continue;
+            };
+            let actual = transform(candidate);
+            return (
+                layout["x"].as_f64().unwrap() - actual.0,
+                layout["y"].as_f64().unwrap() - actual.1,
+            );
+        }
+        (0.0, 0.0)
+    }
+    for (case, source) in cases {
+        let parsed = parse_flowchart(source);
+        let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+        let layout = artifact.layout_json().unwrap();
+        let nodes = layout["layout"]
+            .as_object()
+            .unwrap()
+            .values()
+            .find_map(|family| family.get("nodes").and_then(Value::as_array))
+            .expect("flowchart layout nodes");
+        let geometry = artifact.edge_geometry_json().unwrap();
+        let svg = prepare(&parsed, &LayoutOptions::default(), session())
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = crate::xml_dom::Document::parse(svg.svg()).unwrap();
+        let paths: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-points").is_some())
+            .collect();
+        let points = decode_data_points(svg.svg());
+        for edge in geometry.iter().filter(|edge| edge.points.is_some()) {
+            let (index, (_, points)) = points
+                .iter()
+                .enumerate()
+                .find(|(_, (id, _))| id == &edge.id)
+                .expect("actual SVG path");
+            let offset = layout_offset(paths[index], nodes);
+            let origin = transform(paths[index]);
+            let actual = edge.points.as_ref().unwrap();
+            assert_eq!(actual.len(), points.len(), "{case}");
+            for (actual, expected) in actual.iter().zip(points.iter()) {
+                assert!(
+                    (actual.x - expected.0 - origin.0 - offset.0).abs() < 1e-5
+                        && (actual.y - expected.1 - origin.1 - offset.1).abs() < 1e-5,
+                    "{case}: {} geometry({}, {}) SVG({}, {})",
+                    edge.id,
+                    actual.x,
+                    actual.y,
+                    expected.0 + origin.0 + offset.0,
+                    expected.1 + origin.1 + offset.1
+                );
+            }
+        }
+        let mut labels = std::collections::HashMap::new();
+        for node in document.descendants().filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "edgeLabel")
+                })
+        }) {
+            let Some(label) = node
+                .descendants()
+                .find(|child| child.attribute("data-id").is_some())
+            else {
+                continue;
+            };
+            let mut position = transform(node);
+            let offset = layout_offset(node, nodes);
+            position.0 += offset.0;
+            position.1 += offset.1;
+            let has_position = node.attribute("transform").is_some();
+            if has_position {
+                labels.insert(label.attribute("data-id").unwrap().to_owned(), position);
+            }
+        }
+        for edge in geometry {
+            if let Some((x, y)) = labels.get(&edge.id) {
+                let actual = edge
+                    .label_position
+                    .unwrap_or_else(|| panic!("{case}: missing {}", edge.id));
+                assert!(
+                    (actual.x - x).abs() < 1e-5 && (actual.y - y).abs() < 1e-5,
+                    "{case}: {} actual({}, {}) SVG({x}, {y})",
+                    edge.id,
+                    actual.x,
+                    actual.y
+                );
+            } else {
+                assert!(
+                    edge.label_position.is_none(),
+                    "{case}: {} has no positioned SVG label",
+                    edge.id
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn edge_geometry_rejects_portability_after_observing_the_session_terminal() {
+    let parsed = parse_flowchart("flowchart LR\nA --> B");
+    for cancelled in [false, true] {
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        if cancelled {
+            control.cancel();
+        }
+        let result = artifact.edge_geometry_json();
+        if cancelled {
+            assert!(matches!(result, Err(Error::Cancelled(_))), "{result:?}");
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    Err(Error::PortabilityUnavailableForTarget {
+                        target: "edge-geometry-json"
+                    })
+                ),
+                "{result:?}"
+            );
         }
     }
 }

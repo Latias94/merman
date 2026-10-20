@@ -78,7 +78,7 @@ fn try_render_swimlane_cluster(
         .begin_session_with_theme(theme)
         .expect("begin themed Swimlane session");
 
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Swimlane")
         .render_svg(
             &SvgRenderOptions {

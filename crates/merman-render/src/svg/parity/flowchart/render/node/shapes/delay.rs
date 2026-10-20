@@ -14,23 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-
-    let geometry = crate::flowchart::DelayGeometry::from_label(
-        metrics.width,
-        metrics.height,
-        ctx.node_padding,
-        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
-    );
-    let path_data = path_from_points(&geometry.points);
+    let (path_data,) = prepare_delay_geometry(ctx, common, label);
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
@@ -81,4 +65,39 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
         escape_attr(common.stroke_dasharray),
         escape_attr(common.style),
     );
+}
+
+fn prepare_delay_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+) -> (String,) {
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        common.node_id,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+
+    let geometry = crate::flowchart::DelayGeometry::from_label(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    );
+    let path_data = path_from_points(&geometry.points);
+    (path_data,)
+}
+
+pub(super) fn advance_delay_rough_geometry(
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeGeometry<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
+) {
+    let (path_data,) = prepare_delay_geometry(ctx, common, label);
+    let target = super::super::roughjs::RoughGeometryTarget::Query;
+    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
 }

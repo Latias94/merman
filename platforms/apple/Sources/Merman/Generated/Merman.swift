@@ -4129,6 +4129,7 @@ public enum MermanResourceOverrideId: Equatable, Hashable {
     case maxAsciiGraphemeBytes
     case maxAsciiNestingDepth
     case maxPreparedTextRetainedBytes
+    case maxGeometryJsonBytes
 
 
 
@@ -4195,6 +4196,8 @@ public struct FfiConverterTypeMermanResourceOverrideId: FfiConverterRustBuffer {
         case 22: return .maxAsciiNestingDepth
 
         case 23: return .maxPreparedTextRetainedBytes
+
+        case 24: return .maxGeometryJsonBytes
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4294,6 +4297,10 @@ public struct FfiConverterTypeMermanResourceOverrideId: FfiConverterRustBuffer {
 
         case .maxPreparedTextRetainedBytes:
             writeInt(&buf, Int32(23))
+
+
+        case .maxGeometryJsonBytes:
+            writeInt(&buf, Int32(24))
 
         }
     }

@@ -26,8 +26,8 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
         b.iter(|| {
             for _ in 0..50usize {
                 let session = environment.begin_session().expect("render session");
-                let artifact = family::prepare(black_box(parsed.clone()), &layout_options, session)
-                    .expect("prepare");
+                let artifact =
+                    family::prepare(black_box(&parsed), &layout_options, session).expect("prepare");
                 black_box(artifact.family_id());
             }
         });

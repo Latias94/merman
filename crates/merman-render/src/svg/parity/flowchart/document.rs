@@ -8,7 +8,7 @@ pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub diagram_id: SvgDiagramId<'a>,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
-    pub document_ids: &'a FlowchartDocumentIds<'a>,
+    pub document_ids: &'a FlowchartDocumentIds,
     pub use_max_width: bool,
     pub diagram_padding: f64,
     pub source_paint_bounds: Option<crate::model::Bounds>,
@@ -24,7 +24,7 @@ pub(super) struct FlowchartSvgDocument<'a> {
     use_max_width: bool,
     root_viewport: root_svg::RootViewportContext<'a>,
     root_spec: root_svg::RootViewportSpec,
-    document_ids: &'a FlowchartDocumentIds<'a>,
+    document_ids: &'a FlowchartDocumentIds,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
 }
