@@ -3,15 +3,31 @@ use super::super::*;
 pub(super) fn write_sequence_css(
     mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
-    prepared: &crate::sequence::SequencePreparedCss,
+    prepared: &crate::sequence::SequencePreparedArtifact,
 ) -> Result<()> {
     out.checkpoint()?;
     // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = diagram_id;
-    let theme = prepared.raw.as_ref();
-    let font = prepared.font.as_str();
-    let font_size_css = prepared.font_size.as_str();
+    let typography = prepared.typography();
+    let theme = typography.compat_binding();
+    let terminal = prepared.terminal_theme();
+    let activation = prepared.activation_theme();
+    let css = prepared.css();
+    let font = if css.typed_font {
+        typography.base_font_family_css()
+    } else {
+        &theme.font_family
+    };
+    let root_font = if css.typed_font {
+        typography.base_font_family_css()
+    } else {
+        &theme.root_font_family
+    };
+    let font_size_css = css
+        .font_size_override
+        .as_deref()
+        .unwrap_or(&theme.font_size_css);
     let text_color = theme.text_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
@@ -60,25 +76,57 @@ pub(super) fn write_sequence_css(
     let activation_border = theme.activation_border.as_str();
     let node_border = theme.node_border.as_str();
     let label_box_filter = scoped_drop_shadow(id, theme.label_box_filter.as_str());
-    let final_actor_fill = prepared.actor_fill.as_str();
-    let final_actor_stroke = prepared.actor_stroke.as_str();
-    let final_lifeline_stroke = prepared.lifeline_stroke.as_str();
-    let final_message_stroke = prepared.message_stroke.as_str();
-    let message_width = prepared.message_width.as_str();
-    let final_sequence_number_fill = prepared.number_fill.as_str();
-    let final_keyword_fill = prepared.keyword_fill.as_str();
-    let final_keyword_stroke = prepared.keyword_stroke.as_str();
-    let final_note_fill = prepared.note_fill.as_str();
-    let final_note_stroke = prepared.note_stroke.as_str();
+    let final_actor_fill = terminal
+        .actor
+        .typed_fill
+        .as_deref()
+        .unwrap_or(&theme.actor_fill);
+    let final_actor_stroke = terminal
+        .actor
+        .typed_stroke
+        .as_deref()
+        .unwrap_or(&theme.actor_border);
+    let final_lifeline_stroke = terminal
+        .lifeline
+        .typed_stroke
+        .as_deref()
+        .unwrap_or(&theme.actor_line);
+    let final_message_stroke = terminal
+        .message
+        .typed_stroke
+        .as_deref()
+        .unwrap_or(&theme.signal_color);
+    let message_width = css.message_width_override.as_deref().unwrap_or("1.5");
+    let final_sequence_number_fill = terminal
+        .number
+        .typed_fill()
+        .unwrap_or(&theme.sequence_number);
+    let final_keyword_fill = terminal
+        .keyword
+        .typed_fill
+        .as_deref()
+        .unwrap_or(&theme.label_box_fill);
+    let final_keyword_stroke = terminal
+        .keyword
+        .typed_stroke
+        .as_deref()
+        .unwrap_or(&theme.label_box_border);
+    let final_note_fill = terminal
+        .note
+        .typed_fill
+        .as_deref()
+        .unwrap_or(&theme.note_fill);
+    let final_note_stroke = terminal
+        .note
+        .typed_stroke
+        .as_deref()
+        .unwrap_or(&theme.note_border);
     let _ = write!(
         &mut out,
         r#"#{} .actor{{stroke:{};fill:{};stroke-width:{};}}"#,
         id, final_actor_stroke, final_actor_fill, stroke_width
     );
-    let actor_text_fill = prepared.text
-        [crate::sequence::SequenceTextSurface::ParticipantLabel.index()]
-    .baseline_declaration
-    .as_str();
+    let actor_text_fill = css.actor_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} rect.actor.outer-path[data-look="neo"]{{filter:{};}}#{} rect.note[data-look="neo"]{{stroke:{};fill:{};filter:{};}}"#,
@@ -89,7 +137,7 @@ pub(super) fn write_sequence_css(
         r#"#{} text.actor>tspan{{{}stroke:none;}}"#,
         id, actor_text_fill
     );
-    if let Some(width) = &prepared.lifeline_width {
+    if let Some(width) = &css.lifeline_width {
         let _ = write!(
             &mut out,
             r#"#{} .actor-line{{stroke:{};stroke-width:{}px;}}"#,
@@ -137,10 +185,7 @@ pub(super) fn write_sequence_css(
         r#"#{} .sequenceNumber,#{} .sequenceNumber>tspan{{fill:{};}}"#,
         id, id, final_sequence_number_fill
     );
-    let message_text_fill = prepared.text
-        [crate::sequence::SequenceTextSurface::MessageLabel.index()]
-    .baseline_declaration
-    .as_str();
+    let message_text_fill = css.message_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .messageText{{{}stroke:none;}}"#,
@@ -151,28 +196,19 @@ pub(super) fn write_sequence_css(
         r#"#{} .labelBox{{stroke:{};fill:{};filter:{};}}"#,
         id, final_keyword_stroke, final_keyword_fill, label_box_filter
     );
-    let label_text_fill = prepared.text
-        [crate::sequence::SequenceTextSurface::ControlKeyword.index()]
-    .baseline_declaration
-    .as_str();
+    let label_text_fill = css.label_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .labelText,#{} .labelText>tspan{{{}stroke:none;}}"#,
         id, id, label_text_fill
     );
-    let loop_text_fill = prepared.text
-        [crate::sequence::SequenceTextSurface::ControlPrimaryTitle.index()]
-    .baseline_declaration
-    .as_str();
+    let loop_text_fill = css.loop_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .loopText,#{} .loopText>tspan{{{}stroke:none;}}"#,
         id, id, loop_text_fill
     );
-    let section_title_fill = prepared.text
-        [crate::sequence::SequenceTextSurface::ControlSectionTitle.index()]
-    .baseline_declaration
-    .as_str();
+    let section_title_fill = css.section_title_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .sectionTitle,#{} .sectionTitle>tspan{{{}stroke:none;}}"#,
@@ -182,7 +218,11 @@ pub(super) fn write_sequence_css(
         &mut out,
         r#"#{} .loopLine{{stroke-width:2px;stroke-dasharray:2,2;stroke:{};fill:{};}}"#,
         id,
-        prepared.frame_stroke.as_str(),
+        terminal
+            .frame
+            .typed_stroke
+            .as_deref()
+            .unwrap_or(&theme.label_box_border),
         label_box_border
     );
     let _ = write!(
@@ -190,9 +230,7 @@ pub(super) fn write_sequence_css(
         r#"#{} .note{{stroke:{};fill:{};}}"#,
         id, final_note_stroke, final_note_fill
     );
-    let note_text_fill = prepared.text[crate::sequence::SequenceTextSurface::NoteLabel.index()]
-        .baseline_declaration
-        .as_str();
+    let note_text_fill = css.note_text_fill.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .noteText,#{} .noteText>tspan{{{}stroke:none;}}"#,
@@ -223,37 +261,35 @@ pub(super) fn write_sequence_css(
         r#"#{} .actor-man circle,#{} line{{fill:{};stroke-width:2px;}}"#,
         id, id, actor_fill
     );
-    if prepared.typed_actor_fill {
-        let typed_actor_fill = prepared.actor_fill.as_str();
+    if let Some(typed_actor_fill) = &terminal.actor.typed_fill {
         let _ = write!(
             &mut out,
             r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
             id, id, id, id, typed_actor_fill
         );
     }
-    if prepared.typed_actor_stroke {
-        let typed_actor_stroke = prepared.actor_stroke.as_str();
+    if let Some(typed_actor_stroke) = &terminal.actor.typed_stroke {
         let _ = write!(
             &mut out,
             r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
             id, id, id, id, typed_actor_stroke
         );
     }
-    if let Some(typed_activation_fill) = &prepared.activation_fill_override {
+    if let Some(typed_activation_fill) = &activation.typed_fill {
         let _ = write!(
             &mut out,
             r#"#{} .activation0,#{} .activation1,#{} .activation2{{fill:{};}}"#,
             id, id, id, typed_activation_fill
         );
     }
-    if let Some(typed_activation_stroke) = &prepared.activation_stroke_override {
+    if let Some(typed_activation_stroke) = &activation.typed_stroke {
         let _ = write!(
             &mut out,
             r#"#{} .activation0,#{} .activation1,#{} .activation2{{stroke:{};}}"#,
             id, id, id, typed_activation_stroke
         );
     }
-    for group in &prepared.text_groups {
+    for group in &css.text_groups {
         write_sequence_text_surface_css_group(&mut out, &id, &group.declarations, &group.surfaces);
     }
     let _ = write!(
@@ -261,11 +297,7 @@ pub(super) fn write_sequence_css(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
-    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
-        out,
-        id,
-        prepared.root_font.as_str(),
-    )?;
+    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(out, id, root_font)?;
     out.checkpoint()?;
     Ok(())
 }
@@ -299,7 +331,7 @@ mod tests {
     fn prepared_css(
         config: &serde_json::Value,
         rules: &[(ThemeTarget, ThemeStylePatch)],
-    ) -> crate::sequence::SequencePreparedCss {
+    ) -> crate::sequence::SequencePreparedArtifact {
         let theme = (!rules.is_empty()).then(|| {
             let styles = rules
                 .iter()
@@ -323,7 +355,7 @@ mod tests {
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let prepared = crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+        crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
             &merman_core::MermaidConfig::from_value(config.clone()),
@@ -332,8 +364,7 @@ mod tests {
             None,
             meter,
         )
-        .unwrap();
-        prepared.css().clone()
+        .unwrap()
     }
 
     fn sequence_css_with_rules(
@@ -435,9 +466,9 @@ mod tests {
             )
         });
         let binding = prepared_css(&json!({}), &rules);
-        assert_eq!(binding.text_groups.len(), 4);
+        assert_eq!(binding.css().text_groups.len(), 4);
         assert_eq!(
-            binding.text_groups[0].surfaces,
+            binding.css().text_groups[0].surfaces,
             vec![
                 crate::sequence::SequenceTextSurface::ParticipantLabel,
                 crate::sequence::SequenceTextSurface::BoxTitle,
@@ -539,6 +570,7 @@ mod tests {
     fn sequence_css_honors_mermaid_12_theme_options() {
         let cfg = json!({
             "look": "neo",
+            "fontFamily": "Courier, monospace",
             "sequence": {"noteFontWeight": 700},
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
@@ -572,6 +604,7 @@ mod tests {
         let css = sequence_css("seq", &cfg);
 
         assert!(css.contains(r#"#seq{font-family:Inter,Arial;font-size:16px;fill:#abc001;}"#));
+        assert!(css.ends_with("#seq :root{--mermaid-font-family:Courier,monospace;}"));
         assert!(css.contains(
             r#"#seq .error-icon{fill:#100000;}#seq .error-text{fill:#ffeeee;stroke:#ffeeee;}"#
         ));
@@ -770,8 +803,35 @@ mod tests {
         assert!(css.contains(
             r#"#seq .activation0,#seq .activation1,#seq .activation2{fill:#dc2626;}#seq .activation0,#seq .activation1,#seq .activation2{stroke:#2563eb;}"#
         ));
+        let baseline = css
+            .find("#seq .activation2{fill:#dddddd;stroke:#cccccc;}")
+            .unwrap();
+        let fill_override = css
+            .find("#seq .activation0,#seq .activation1,#seq .activation2{fill:#dc2626;}")
+            .unwrap();
+        let stroke_override = css
+            .find("#seq .activation0,#seq .activation1,#seq .activation2{stroke:#2563eb;}")
+            .unwrap();
+        assert!(baseline < fill_override && fill_override < stroke_override);
         assert!(!css.contains(r#"#seq .note{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
+    }
+
+    #[test]
+    fn sequence_loop_typed_stroke_keeps_the_raw_border_fill() {
+        let css = sequence_css_with_rules(
+            "seq",
+            &json!({"themeVariables": {"labelBoxBorderColor": "#cccccc"}}),
+            &[(
+                ThemeTarget::Loop,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+            )],
+        );
+
+        assert!(css.contains(
+            "#seq .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#2563eb;fill:#cccccc;}"
+        ));
+        assert!(css.contains("#seq .labelBox{stroke:#cccccc;"));
     }
 
     #[test]

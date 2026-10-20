@@ -482,7 +482,7 @@ pub(super) struct InfoCssParts {
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedCommonCss {
     font_family: String,
-    root_font_family: String,
+    root_font_family_override: Option<String>,
     font_size_css: String,
     normal_edge_stroke_width_css: String,
     text_color: String,
@@ -625,7 +625,8 @@ impl PreparedCommonCss {
         mut self,
         effective_config: &serde_json::Value,
     ) -> Self {
-        self.root_font_family = crate::config::config_root_font_family_css(effective_config);
+        self.root_font_family_override =
+            Some(crate::config::config_root_font_family_css(effective_config));
         self
     }
 
@@ -634,10 +635,9 @@ impl PreparedCommonCss {
         font_family: String,
         font_size_css: String,
     ) -> Self {
-        let root_font_family = font_family.clone();
         Self {
             font_family,
-            root_font_family,
+            root_font_family_override: None,
             font_size_css,
             normal_edge_stroke_width_css: mermaid_stroke_width_px(effective_config),
             text_color: theme_token(effective_config, "textColor", "#333"),
@@ -733,7 +733,14 @@ fn emit_prepared_common_root<'a>(
     let neo_stroke = NeoStroke { fragment_id, css };
     let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
     write_mermaid_common_neo_css_values(out, selector_id, &neo_stroke, &drop_shadow, css)?;
-    emit_mermaid_base_css_root_rule(out, selector_id, &values.root_font_family)
+    emit_mermaid_base_css_root_rule(
+        out,
+        selector_id,
+        values
+            .root_font_family_override
+            .as_deref()
+            .unwrap_or(&values.font_family),
+    )
 }
 
 pub(super) struct InfoCssWriter {
@@ -792,23 +799,23 @@ where
 
 /// Font-family values recorded at the successful writer events for the three inherited rules.
 #[derive(Debug)]
-pub(super) struct InheritedFontStackCssWrite {
-    root_font_family_css: Box<str>,
-    inherited_font_family_css: Box<str>,
-    root_variable_font_family_css: Box<str>,
+pub(super) struct InheritedFontStackCssWrite<'a> {
+    root_font_family_css: &'a str,
+    inherited_font_family_css: &'a str,
+    root_variable_font_family_css: &'a str,
 }
 
-impl InheritedFontStackCssWrite {
+impl InheritedFontStackCssWrite<'_> {
     pub(super) fn root_font_family_css(&self) -> &str {
-        &self.root_font_family_css
+        self.root_font_family_css
     }
 
     pub(super) fn inherited_font_family_css(&self) -> &str {
-        &self.inherited_font_family_css
+        self.inherited_font_family_css
     }
 
     pub(super) fn root_variable_font_family_css(&self) -> &str {
-        &self.root_variable_font_family_css
+        self.root_variable_font_family_css
     }
 }
 
@@ -816,22 +823,22 @@ impl InheritedFontStackCssWrite {
 ///
 /// The receipt values come from successful output writes. They deliberately do not inspect or
 /// reparse the emitted stylesheet.
-pub(super) fn write_prepared_info_css<I>(
+pub(super) fn write_prepared_info_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    values: &PreparedCommonCss,
-) -> Result<InheritedFontStackCssWrite>
+    values: &'a PreparedCommonCss,
+) -> Result<InheritedFontStackCssWrite<'a>>
 where
     I: SvgDiagramIdValue,
 {
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     values.write_prefix(out, selector_id)?;
-    let root_font_family_css = values.font_family.clone().into_boxed_str();
-    let inherited_font_family_css = values.font_family.clone().into_boxed_str();
+    let root_font_family_css = values.font_family.as_str();
+    let inherited_font_family_css = values.font_family.as_str();
 
     values.write_root(out, selector_id, fragment_id)?;
-    let root_variable_font_family_css = values.font_family.clone().into_boxed_str();
+    let root_variable_font_family_css = values.font_family.as_str();
 
     Ok(InheritedFontStackCssWrite {
         root_font_family_css,
@@ -937,43 +944,43 @@ where
 
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.
 #[derive(Debug, Default)]
-pub(super) struct PieCssEmission {
-    slice_stroke: Option<Box<str>>,
-    outer_stroke: Option<Box<str>>,
-    title_fill: Option<Box<str>>,
-    section_text_fill: Option<Box<str>>,
-    font_family: Option<Box<str>>,
+pub(super) struct PieCssEmission<'a> {
+    slice_stroke: Option<&'a str>,
+    outer_stroke: Option<&'a str>,
+    title_fill: Option<&'a str>,
+    section_text_fill: Option<&'a str>,
+    font_family: Option<&'a str>,
 }
 
-impl PieCssEmission {
+impl PieCssEmission<'_> {
     pub(super) fn slice_stroke(&self) -> Option<&str> {
-        self.slice_stroke.as_deref()
+        self.slice_stroke
     }
 
     pub(super) fn outer_stroke(&self) -> Option<&str> {
-        self.outer_stroke.as_deref()
+        self.outer_stroke
     }
 
     pub(super) fn title_fill(&self) -> Option<&str> {
-        self.title_fill.as_deref()
+        self.title_fill
     }
 
     pub(super) fn section_text_fill(&self) -> Option<&str> {
-        self.section_text_fill.as_deref()
+        self.section_text_fill
     }
 
     pub(super) fn font_family(&self) -> Option<&str> {
-        self.font_family.as_deref()
+        self.font_family
     }
 }
 
 #[cfg(feature = "diagram-pie")]
-pub(super) fn write_pie_css<I>(
+pub(super) fn write_pie_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    paint_plan: &crate::pie::PieThemePlan,
+    paint_plan: &'a crate::pie::PieThemePlan,
     slices_present: bool,
-) -> Result<PieCssEmission>
+) -> Result<PieCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
 {
@@ -1014,20 +1021,20 @@ where
         slice_stroke: paint_plan
             .slice_stroke_css()
             .filter(|_| slices_present)
-            .map(|_| values.slice_stroke.css(true).into()),
+            .map(|_| values.slice_stroke.css(true)),
         outer_stroke: paint_plan
             .outer_stroke_css()
             .filter(|_| slices_present)
-            .map(|_| values.outer_stroke.css(true).into()),
+            .map(|_| values.outer_stroke.css(true)),
         title_fill: paint_plan
             .title_fill_css()
-            .map(|_| values.title_text_color.clone().into()),
+            .map(|_| values.title_text_color.as_str()),
         section_text_fill: paint_plan
             .text_fill_css()
-            .map(|_| values.section_text_color.clone().into()),
+            .map(|_| values.section_text_color.as_str()),
         font_family: paint_plan
             .typography_requested()
-            .then(|| values.common.font_family().into()),
+            .then(|| values.common.font_family()),
     };
     Ok(emission)
 }
@@ -1052,29 +1059,29 @@ where
     treemap_css_with_title_fill_and_font_family(diagram_id, &typography).map(|(css, _, _)| css)
 }
 
-pub(super) struct TreemapTitleCssEmission {
+pub(super) struct TreemapTitleCssEmission<'a> {
     class: &'static str,
-    fill: Box<str>,
+    fill: &'a str,
 }
 
-impl TreemapTitleCssEmission {
+impl TreemapTitleCssEmission<'_> {
     pub(super) const fn class(&self) -> &'static str {
         self.class
     }
 
     pub(super) fn fill(&self) -> &str {
-        &self.fill
+        self.fill
     }
 }
 
 #[cfg(feature = "diagram-treemap")]
-pub(super) fn treemap_css_with_title_fill_and_font_family<I>(
+pub(super) fn treemap_css_with_title_fill_and_font_family<'a, I>(
     diagram_id: I,
-    typography_theme: &crate::treemap::TreemapTypographyThemePlan,
+    typography_theme: &'a crate::treemap::TreemapTypographyThemePlan,
 ) -> Result<(
     String,
-    TreemapTitleCssEmission,
-    crate::treemap::TreemapTypographyCssEmission,
+    TreemapTitleCssEmission<'a>,
+    crate::treemap::TreemapTypographyCssEmission<'a>,
 )>
 where
     I: SvgDiagramIdValue,
@@ -1118,7 +1125,7 @@ where
     );
     let title_emission = TreemapTitleCssEmission {
         class: title_class,
-        fill: title_fill.into(),
+        fill: title_fill,
     };
     let root_typography_emitted = theme
         .common

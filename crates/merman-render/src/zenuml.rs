@@ -94,10 +94,10 @@ impl ZenumlTypography {
         source_size * self.vertical_scale()
     }
 
-    pub(crate) fn css_family(&self) -> String {
+    pub(crate) fn css_family(&self) -> Cow<'_, str> {
         self.font_family.as_deref().map_or_else(
-            || "Helvetica,Verdana,serif".to_string(),
-            crate::config::normalize_css_font_family,
+            || Cow::Borrowed("Helvetica,Verdana,serif"),
+            |font_family| Cow::Owned(crate::config::normalize_css_font_family(font_family)),
         )
     }
 

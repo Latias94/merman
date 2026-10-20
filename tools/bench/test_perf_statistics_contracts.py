@@ -78,14 +78,14 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
                 ),
             ),
             (
-                "inconclusive",
+                "confirmed_non_regression",
                 self._bounds(
                     relative=(0.08, 0.07, 0.09),
                     absolute=(65_000.0, 55_000.0, 75_000.0),
                 ),
             ),
             (
-                "inconclusive",
+                "confirmed_non_regression",
                 self._bounds(
                     relative=(0.12, 0.11, 0.13),
                     absolute=(35_000.0, 25_000.0, 45_000.0),
@@ -143,14 +143,14 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
                 ),
             ),
             (
-                "inconclusive",
+                "confirmed_non_improvement",
                 self._bounds(
                     relative=(-0.08, -0.09, -0.07),
                     absolute=(-65_000.0, -75_000.0, -55_000.0),
                 ),
             ),
             (
-                "inconclusive",
+                "confirmed_non_improvement",
                 self._bounds(
                     relative=(-0.12, -0.13, -0.11),
                     absolute=(-35_000.0, -45_000.0, -25_000.0),
@@ -171,6 +171,56 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
                     ),
                     expected,
                 )
+
+    def test_joint_confirmation_boundaries_and_crossing_intervals(self) -> None:
+        cases = [
+            ("complement", (0.09, 0.08, 0.10), (1_300.0, 1_200.0, 1_400.0)),
+            ("complement", (0.12, 0.11, 0.13), (950.0, 900.0, 1_000.0)),
+            ("inconclusive", (0.11, 0.10, 0.12), (1_300.0, 1_200.0, 1_400.0)),
+            ("inconclusive", (0.12, 0.11, 0.13), (1_100.0, 1_000.0, 1_200.0)),
+            ("inconclusive", (0.12, 0.11, 0.13), (1_000.0, 900.0, 1_100.0)),
+            ("inconclusive", (0.10, 0.09, 0.11), (1_200.0, 1_100.0, 1_300.0)),
+        ]
+        for direction in ("regression", "improvement"):
+            for expected, relative, absolute in cases:
+                with self.subTest(direction=direction, relative=relative, absolute=absolute):
+                    if direction == "improvement":
+                        relative = (-relative[0], -relative[2], -relative[1])
+                        absolute = (-absolute[0], -absolute[2], -absolute[1])
+                    outcome = compare_self.classify_confirmation(
+                        self._bounds(relative=relative, absolute=absolute),
+                        relative_threshold=0.10,
+                        absolute_threshold_ns=1_000.0,
+                        direction=direction,
+                        evidence_mode="confirmation",
+                        pair_count=8,
+                        required_pairs=8,
+                    )
+                    if expected == "complement":
+                        expected = f"confirmed_non_{direction}"
+                    self.assertEqual(outcome, expected)
+
+    def test_single_metric_complement_cannot_bypass_confirmation_pair_requirements(self) -> None:
+        for direction in ("regression", "improvement"):
+            relative = (0.08, 0.07, 0.09)
+            absolute = (1_300.0, 1_200.0, 1_400.0)
+            if direction == "improvement":
+                relative = (-relative[0], -relative[2], -relative[1])
+                absolute = (-absolute[0], -absolute[2], -absolute[1])
+            for pair_count, required_pairs in ((7, 7), (8, 10)):
+                with self.subTest(direction=direction, pairs=pair_count, required=required_pairs):
+                    self.assertEqual(
+                        compare_self.classify_confirmation(
+                            self._bounds(relative=relative, absolute=absolute),
+                            relative_threshold=0.10,
+                            absolute_threshold_ns=1_000.0,
+                            direction=direction,
+                            evidence_mode="confirmation",
+                            pair_count=pair_count,
+                            required_pairs=required_pairs,
+                        ),
+                        "inconclusive",
+                    )
 
     def test_power_derived_pair_count_has_floor_even_rounding_and_cap_signal(self) -> None:
         floor = compare_self.required_pair_count(

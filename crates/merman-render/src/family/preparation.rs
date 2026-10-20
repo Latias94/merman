@@ -731,10 +731,9 @@ fn prepare_radar_family<'parsed>(
         execution.resolved_theme(),
         &meta.effective_config,
     );
-    let series_paint = crate::radar::RadarSeriesPaintPlan::resolve_with_binding(
+    let series_paint = crate::radar::RadarSeriesPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-        typography_theme.css_binding(),
         model,
         execution.work_meter_ref(),
     )?;

@@ -57,6 +57,7 @@ DEFAULT_MARKDOWN_OUT = "target/bench/self_comparison.md"
 DEFAULT_JSON_OUT = "target/bench/self_comparison.json"
 DECISION_GRADE_BOOTSTRAP_RESAMPLES = 10_000
 MAX_BOOTSTRAP_RESAMPLES = 100_000
+JOINT_PROTOCOL = "joint_non_regression_v1"
 
 
 @dataclass(frozen=True)
@@ -383,13 +384,13 @@ def classify_confirmation(
     if direction == "regression":
         if relative["lower"] > relative_threshold and absolute["lower"] > absolute_threshold_ns:
             return "confirmed_regression"
-        if relative["upper"] <= relative_threshold and absolute["upper"] <= absolute_threshold_ns:
+        if relative["upper"] <= relative_threshold or absolute["upper"] <= absolute_threshold_ns:
             return "confirmed_non_regression"
         return "inconclusive"
     if direction == "improvement":
         if relative["upper"] < -relative_threshold and absolute["upper"] < -absolute_threshold_ns:
             return "confirmed_improvement"
-        if relative["lower"] >= -relative_threshold and absolute["lower"] >= -absolute_threshold_ns:
+        if relative["lower"] >= -relative_threshold or absolute["lower"] >= -absolute_threshold_ns:
             return "confirmed_non_improvement"
         return "inconclusive"
     raise ValueError(f"unknown confirmation direction: {direction}")
@@ -411,6 +412,67 @@ def required_pair_count(
         scheduled_pairs=min(required, max_pairs),
         exceeds_cap=required > max_pairs,
     )
+
+
+def _joint_calibration_policy(
+    side_summaries: dict[str, dict[str, Any]], *, max_pairs: int
+) -> dict[str, Any]:
+    """Freeze one certificate using only A/A, without changing generic calibration."""
+    metrics: dict[str, Any] = {}
+    for metric, key, count_key in (
+        ("log_ratio", "log", "relative"),
+        ("absolute_ns", "absolute", "absolute"),
+    ):
+        reasons: list[str] = []
+        counts = []
+        for side in ("base", "head"):
+            summary = side_summaries[side]
+            if summary.get("status") == "contract_failure" or summary.get("complete_pairs") != summary.get("expected_pairs"):
+                reasons.append(f"{side}_incomplete_calibration")
+            for kind in ("identity", "order"):
+                if summary.get("checks", {}).get(f"{kind}_{key}_within_margin") is not True:
+                    reasons.append(f"{side}_{kind}_{key}_within_margin")
+            count = summary.get("required_pairs", {}).get(count_key, {}).get("required_pairs")
+            if type(count) is not int or count < 8 or count % 2:
+                reasons.append(f"{side}_invalid_required_pairs")
+            else:
+                counts.append(count)
+        required = max(counts) if len(counts) == 2 else None
+        if required is not None and required > max_pairs:
+            reasons.append("required_pairs_exceed_cap")
+        metrics[metric] = {"qualified": not reasons, "required_pairs": required, "reasons": reasons}
+    eligible = [metric for metric in metrics if metrics[metric]["qualified"]]
+    selected = min(eligible, key=lambda metric: metrics[metric]["required_pairs"]) if eligible else None
+    return {
+        "selected_metric": selected,
+        "eligible": selected is not None,
+        "metrics": metrics,
+        "required_pairs": metrics[selected]["required_pairs"] if selected else None,
+    }
+
+
+def _classify_joint_confirmation(
+    bounds: dict[str, Any], *, policy: dict[str, Any], pair_count: int,
+    fixed_pairs: int, relative_threshold: float, absolute_threshold_ns: float,
+) -> str:
+    if pair_count != fixed_pairs or pair_count < 8 or pair_count % 2:
+        return "inconclusive"
+    selected = policy["selected_metric"]
+    thresholds = {"log_ratio": relative_threshold, "absolute_ns": absolute_threshold_ns}
+    if selected is None:
+        return "inconclusive"
+    certificate = policy["metrics"][selected]
+    if not certificate["qualified"] or pair_count < certificate["required_pairs"]:
+        return "inconclusive"
+    if bounds[selected]["upper"] <= thresholds[selected]:
+        return "confirmed_non_regression"
+    if all(
+        metric["qualified"] and pair_count >= metric["required_pairs"]
+        and bounds[name]["lower"] > thresholds[name]
+        for name, metric in policy["metrics"].items()
+    ):
+        return "confirmed_regression"
+    return "inconclusive"
 
 
 def suite_exit_code(outcomes: Iterable[str]) -> int:
@@ -3046,6 +3108,8 @@ def _comparison_row(
     confidence_family_size: int = 2,
     forced_outcome: str | None = None,
     reason: str | None = None,
+    joint_policy: dict[str, Any] | None = None,
+    fixed_confirmation_pairs: int | None = None,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "benchmark": contract["head_benchmark"] or contract["base_benchmark"] or contract["name"],
@@ -3094,6 +3158,19 @@ def _comparison_row(
     row["base_ns"] = statistics.fmean(base_values)
     row["head_ns"] = statistics.fmean(head_values)
     row["bounds"] = _bounds_with_relative_percent(bounds)
+    if joint_policy is not None:
+        row["bounds"]["confidence_contract"] = {
+            "component_tail_error_rate": (1.0 - confidence_level) / confidence_family_size,
+            "family_size": confidence_family_size,
+            "multiplicity_adjustment": "bonferroni",
+            "coverage": "conditional_bootstrap_one_sided; not simultaneous two-tail coverage",
+        }
+        row["outcome"] = _classify_joint_confirmation(
+            bounds, policy=joint_policy, pair_count=len(pairs),
+            fixed_pairs=fixed_confirmation_pairs or 0,
+            relative_threshold=relative_threshold, absolute_threshold_ns=absolute_threshold_ns,
+        )
+        return row
     row["outcome"] = classify_confirmation(
         bounds,
         relative_threshold=relative_threshold,
@@ -3186,6 +3263,7 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     summary = report["summary"]
     method = report["method"]
+    joint = method.get("confirmation_protocol") == JOINT_PROTOCOL
     relative_threshold = method.get("relative_threshold_percent")
     relative_threshold_text = (
         f"+{relative_threshold:.2f}%"
@@ -3222,12 +3300,14 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- Evidence quality: `{method['evidence_quality']}`",
         f"- Comparable benchmarks: `{summary['comparable']}`",
         f"- Evidence mode: `{method['evidence_mode']}`",
+        f"- Confirmation protocol: `{method.get('confirmation_protocol', 'generic_v2')}`",
         f"- Preset: `{method['preset']}`",
         f"- Base label: `{report['comparison']['base_label']}`",
         f"- Head label: `{report['comparison']['head_label']}`",
         f"- Relative threshold: `{relative_threshold_text}`",
         f"- Absolute threshold: `{fmt_time(method.get('absolute_threshold_ns'))}`",
-        f"- Simultaneous confidence: `{simultaneous_confidence_text}`",
+        *( [f"- Joint decision family-wise error rate: `{method.get('decision_error_contract', {}).get('family_wise_error_rate', 'unavailable')}` (conditional bootstrap approximation; not simultaneous two-tail coverage)"]
+           if joint else [f"- Simultaneous confidence: `{simultaneous_confidence_text}`"] ),
         f"- Multiplicity adjustment: `{confidence_contract.get('multiplicity_adjustment', 'unavailable')}`",
         f"- Confidence family: `{confidence_contract.get('family_size', 'unavailable')}` components "
         f"at `{component_confidence_text}` each",
@@ -3281,6 +3361,20 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
             f"`{row['outcome']}` | `{row.get('improvement_outcome') or '-'}` |"
         )
     materiality = method.get("materiality_contract", {})
+    if joint:
+        contract = method.get("joint_non_regression_contract", {})
+        plan = contract.get("calibration_plan") or {}
+        lines.extend([
+            "", "## Joint Non-regression Certificates", "",
+            f"Fixed full-cohort confirmation pairs: `{contract.get('fixed_confirmation_pairs')}`.",
+            f"Pre-A/B plan: `{plan.get('path', 'unavailable')}`; SHA-256 `{plan.get('sha256', 'unavailable')}`.",
+            "", "| fixture | selected metric | relative qualified / required pairs | absolute qualified / required pairs |",
+            "|---|---|---|---|",
+        ])
+        for name, policy in contract.get("rows", {}).items():
+            relative = policy["metrics"]["log_ratio"]
+            absolute = policy["metrics"]["absolute_ns"]
+            lines.append(f"| `{name}` | `{policy['selected_metric']}` | `{relative['qualified']}` / {relative['required_pairs']} | `{absolute['qualified']}` / {absolute['required_pairs']} |")
     if materiality.get("mode") == "low_latency_public_operation":
         lines.extend([
             "", "## Low-latency Materiality", "",
@@ -3306,9 +3400,14 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
             "",
             "## Interpretation",
             "",
-            "Diagnostic results are advisory. Confirmation results use fresh balanced pairs, "
+            ("This protocol assesses joint non-regression only. The A/A-selected certificate is frozen "
+             "before a complete fresh balanced A/B schedule. Joint regression additionally needs both "
+             "qualified metrics and both sampling requirements. Improvement is not assessed; zero "
+             "confirmed improvements does not mean no improvement. A/A sample sizing is a heuristic, "
+             "not guaranteed power. Historical receipts are not reclassified."
+             if joint else "Diagnostic results are advisory. Confirmation results use fresh balanced pairs, "
             "paired one-sided confidence bounds, and both registered thresholds. Candidate "
-            "admission additionally requires the mirrored improvement result and non-performance gates.",
+            "admission additionally requires the mirrored improvement result and non-performance gates."),
             "",
         ]
     )
@@ -3316,6 +3415,18 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    if getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL:
+        if args.confidence_level != 0.95:
+            raise ContractViolation("joint_non_regression_v1 fixes --confidence-level at exactly 0.95")
+        if (args.evidence_mode != "confirmation" or args.discovery_only or args.allow_dirty
+                or args.low_latency_baseline_ns):
+            raise ContractViolation(
+                "joint_non_regression_v1 requires clean confirmation, without discovery-only or low-latency mode"
+            )
+        if args.relative_threshold_percent != 10.0 or _absolute_threshold_ns(args) != 1_000.0:
+            raise ContractViolation("joint_non_regression_v1 fixes thresholds at 10% and 1000 ns")
+        if args.calibration_pairs != 8:
+            raise ContractViolation("joint_non_regression_v1 requires exactly eight A/A pairs per runner")
     reuse_discovery = bool(getattr(args, "reuse_discovery_json", ""))
     reuse_digest = getattr(args, "reuse_discovery_sha256", "")
     if reuse_discovery and not re.fullmatch(r"[0-9a-f]{64}", reuse_digest):
@@ -3515,6 +3626,48 @@ def _same_existing_file(first: Path, second: Path) -> bool:
         ) from error
 
 
+def _joint_plan_path(json_path: Path) -> Path:
+    return json_path.with_name(json_path.stem + ".calibration-plan.json")
+
+
+def _guard_joint_plan_outputs(plan: Path, markdown: Path, report: Path, reuse: str) -> None:
+    for other in (markdown, report, *([Path(reuse)] if reuse else [])):
+        if plan.resolve() == other.resolve() or _same_existing_file(plan, other):
+            raise ContractViolation("calibration plan must be distinct from report outputs and discovery input")
+
+
+def _write_joint_plan(path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        key: report[key] for key in (
+            "comparison", "selection", "method", "environment", "harness", "recipes",
+            "runners", "fixtures", "calibration",
+        )
+    }
+    raw = (json.dumps(snapshot, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as output:
+        output.write(raw)
+    receipt = {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    if path.read_bytes() != raw:
+        raise ContractViolation("calibration plan changed before A/B")
+    return receipt
+
+
+def _joint_plan_verification_errors(method: dict[str, Any]) -> list[str]:
+    contract = method.get("joint_non_regression_contract")
+    if not isinstance(contract, dict) or contract.get("calibration_plan") is None:
+        return []
+    receipt = contract["calibration_plan"]
+    try:
+        path = Path(receipt["path"])
+        raw = path.read_bytes()
+        if path.is_symlink() or len(raw) != receipt["bytes"] or hashlib.sha256(raw).hexdigest() != receipt["sha256"]:
+            raise ContractViolation("calibration plan identity changed after freezing")
+    except Exception as error:
+        return [str(error)]
+    return []
+
+
 def _parse_features(value: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
 
@@ -3524,6 +3677,8 @@ def _absolute_threshold_ns(args: argparse.Namespace) -> float:
         return float(args.absolute_threshold_ns)
     if args.absolute_threshold_us is not None:
         return float(args.absolute_threshold_us) * 1_000.0
+    if getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL:
+        return 1_000.0
     return 50_000.0
 
 
@@ -3574,6 +3729,7 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
         "comparison": {"base_label": args.base_label, "head_label": args.head_label},
         "selection": {"suite": args.suite},
         "method": {
+            "confirmation_protocol": getattr(args, "confirmation_protocol", "generic_v2"),
             "preset": args.preset,
             "evidence_mode": args.evidence_mode,
             "evidence_quality": "pending",
@@ -3688,6 +3844,7 @@ def _shared_target_freeze_plan(
 
 
 def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> None:
+    joint = getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL
     low_latency = _low_latency_baselines(args)
     if low_latency:
         report["method"]["materiality_contract"] = {
@@ -3775,6 +3932,8 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         )
     if not contracts:
         raise ContractViolation("no benchmark fixtures were selected")
+    if joint and any(lane is None or lane.kind != "public" for lane in operation_lanes):
+        raise ContractViolation("joint_non_regression_v1 requires registered public operation lanes")
     if low_latency:
         for field in ("relative_threshold_percent", "relative_threshold_log",
                       "absolute_threshold_ns", "absolute_threshold_us"):
@@ -3867,7 +4026,7 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
     contracts = _complete_fixture_contracts(contracts, base=base, head=head)
     report["fixtures"] = contracts
     comparable = [item for item in contracts if item["coverage_status"] == "comparable"]
-    confidence_family_size = max(2, 2 * len(comparable))
+    confidence_family_size = max(2, 2 * len(contracts if joint else comparable))
     component_confidence_level = (
         1.0 - (1.0 - args.confidence_level) / confidence_family_size
     )
@@ -3878,6 +4037,24 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "multiplicity_adjustment": "bonferroni",
         "components": "two metrics per comparable benchmark",
     }
+    if joint:
+        report["method"]["confidence_contract"].pop("simultaneous_confidence_level")
+        report["method"]["confidence_contract"]["components"] = "two metrics per selected fixture"
+        report["method"]["confidence_contract"]["coverage"] = "conditional one-sided decision errors, not simultaneous two-tail coverage"
+        report["method"]["decision_error_contract"] = {
+            "protocol": JOINT_PROTOCOL, "family_wise_error_rate": 0.05,
+            "component_tail_error_rate": 0.05 / confidence_family_size,
+            "family_size": confidence_family_size, "coverage": "conditional_bootstrap",
+            "claim": "joint decision labels; not simultaneous two-tail interval coverage",
+        }
+        report["method"]["interval_contract"]["confirmation"] = "conditional paired-bootstrap one-sided joint decision bounds"
+        if len(comparable) != len(contracts) or any(
+            item.get("output_identity", {}).get("status") != "matched"
+            or any((item.get("output_identity", {}).get(side) or {}).get("output_kind") != "svg"
+                   for side in ("base", "head"))
+            for item in contracts
+        ):
+            _append_contract_error(report, "coverage", "joint protocol requires every selected fixture to have identical input and matched output")
     if low_latency:
         report["method"]["materiality_contract"]["calibration_confidence_family_size"] = (
             4 * confidence_family_size
@@ -4024,6 +4201,7 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         }
         required_by_row: dict[str, int] = {}
         low_latency_rows: dict[str, dict[str, Any]] = {}
+        joint_rows: dict[str, dict[str, Any]] = {}
         stable_rows: list[dict[str, Any]] = []
         for item in comparable:
             name = item["name"]
@@ -4044,7 +4222,19 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                         4 * confidence_family_size if low_latency else confidence_family_size
                     ),
                 )
+                if joint and calibration[side]["rows"][name].get("status") == "contract_failure":
+                    _append_contract_error(report, f"calibration_{side}:{name}", "incomplete joint A/A observations")
             side_summaries = [calibration[side]["rows"][name] for side in ("base", "head")]
+            if joint:
+                policy = _joint_calibration_policy(
+                    {side: calibration[side]["rows"][name] for side in ("base", "head")},
+                    max_pairs=args.max_pairs,
+                )
+                joint_rows[name] = policy
+                if policy["eligible"]:
+                    required_by_row[name] = policy["required_pairs"]
+                    stable_rows.append(item)
+                continue
             if low_latency:
                 policy = _low_latency_calibration(
                     baseline_ns=low_latency[name],
@@ -4084,8 +4274,19 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             report["method"]["materiality_contract"]["rows"] = low_latency_rows
             report["method"]["materiality_contract"]["fixed_confirmation_pairs"] = scheduled_pairs
         report["calibration"] = calibration
+        joint_ready = not joint or len(stable_rows) == len(contracts)
+        if joint:
+            report["method"]["joint_non_regression_contract"] = {
+                "version": 1, "rows": joint_rows,
+                "fixed_confirmation_pairs": scheduled_pairs if joint_ready else None,
+                "all_rows_eligible": joint_ready, "calibration_plan": None,
+                "sampling_count_contract": "A/A dispersion heuristic; not a guaranteed 80% power claim",
+            }
+            plan_path = _joint_plan_path(Path(args.json_out))
+            _guard_joint_plan_outputs(plan_path, Path(args.out), Path(args.json_out), args.reuse_discovery_json)
+            report["method"]["joint_non_regression_contract"]["calibration_plan"] = _write_joint_plan(plan_path, report)
         if (stable_rows and not report["contract_errors"]
-                and (not low_latency or len(stable_rows) == len(contracts))):
+                and joint_ready and (not low_latency or len(stable_rows) == len(contracts))):
             schedule = _run_ab_schedule(
                 base=base,
                 head=head,
@@ -4109,6 +4310,18 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             default=0,
         )
         report["raw_rounds"] = schedule["rounds"]
+        if joint and joint_ready and not report["contract_errors"]:
+            expected_orders = [
+                "AB" if (index % 2 == 0) == (args.start_side == "base") else "BA"
+                for index in range(scheduled_pairs)
+            ]
+            if schedule["errors"] or any(
+                len(schedule["rows"].get(item["name"], [])) != scheduled_pairs
+                or [pair.get("pair_index") for pair in schedule["rows"].get(item["name"], [])] != list(range(scheduled_pairs))
+                or [pair.get("order") for pair in schedule["rows"].get(item["name"], [])] != expected_orders
+                for item in contracts
+            ):
+                _append_contract_error(report, "confirmation_schedule", "joint protocol requires the complete fixed balanced cohort; prefixes cannot confirm")
         report["rows"] = []
         for item in contracts:
             name = item["name"]
@@ -4124,19 +4337,19 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 reason = base_aa["errors"].get(name) or head_aa["errors"].get(name)
             elif report["contract_errors"]:
                 forced = "contract_failure"
-                reason = (
-                    "confirmation sampling was globally blocked because another A/A runner "
-                    "observation failed the evidence contract"
-                )
+                reason = "the global evidence contract failed"
             elif name in schedule["errors"]:
                 forced = "contract_failure"
                 reason = schedule["errors"][name]
-            elif item not in stable_rows or (low_latency and len(stable_rows) != len(contracts)):
+            elif item not in stable_rows or not joint_ready or (low_latency and len(stable_rows) != len(contracts)):
                 forced = "inconclusive"
                 reasons: list[str] = []
                 if low_latency:
                     reasons = [f"{row}: {failure}" for row, policy in low_latency_rows.items()
                                for failure in policy["reasons"]]
+                elif joint:
+                    reasons = [f"{row}: no qualified certificate" for row, policy in joint_rows.items()
+                               if not policy["eligible"]]
                 else:
                     for side in ("base", "head"):
                         reasons.extend(calibration[side]["rows"][name].get("reasons", []))
@@ -4157,6 +4370,8 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                     confidence_family_size=confidence_family_size,
                     forced_outcome=forced,
                     reason=reason,
+                    joint_policy=joint_rows.get(name) if joint else None,
+                    fixed_confirmation_pairs=scheduled_pairs if joint else None,
                 )
             )
 
@@ -4169,6 +4384,7 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
     post_sampling_errors.extend(
         _discovery_reuse_verification_errors(report["method"])
     )
+    post_sampling_errors.extend(_joint_plan_verification_errors(report["method"]))
     for error in post_sampling_errors:
         _append_contract_error(report, "freeze_verification", error)
     if post_sampling_errors:
@@ -4242,6 +4458,10 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument(
         "--evidence-mode", choices=["diagnostic", "confirmation"], default="diagnostic"
     )
+    parser.add_argument(
+        "--confirmation-protocol", choices=["generic_v2", JOINT_PROTOCOL], default="generic_v2",
+        help="Joint v1 fixes 10 percent / 1000 ns thresholds and eight A/A pairs per runner; generic v2 remains the default.",
+    )
     parser.add_argument("--pairs", type=int, default=2, help="Diagnostic AB/BA pair count (1-4).")
     parser.add_argument("--calibration-pairs", type=int, default=8)
     parser.add_argument("--max-pairs", type=int, default=32)
@@ -4297,6 +4517,18 @@ def decision_grade_main(argv: list[str]) -> int:
         print(f"invalid performance evidence outputs: {error}", file=sys.stderr)
         return 2
 
+    joint = args.confirmation_protocol == JOINT_PROTOCOL
+    if joint:
+        args.out, args.json_out = str(markdown_path), str(json_path)
+        try:
+            plan_path = _joint_plan_path(json_path)
+            _guard_joint_plan_outputs(plan_path, markdown_path, json_path, args.reuse_discovery_json)
+            if plan_path.exists() or plan_path.is_symlink():
+                raise ContractViolation("calibration plan already exists; use fresh experiment output paths")
+        except ContractViolation as error:
+            print(f"invalid performance evidence outputs: {error}", file=sys.stderr)
+            return 2
+
     if args.reuse_discovery_json:
         reuse_path = Path(args.reuse_discovery_json).resolve()
         if reuse_path in (markdown_path, json_path) or (
@@ -4324,12 +4556,32 @@ def decision_grade_main(argv: list[str]) -> int:
         _append_contract_error(report, "orchestration", str(error))
 
     exit_code = _finalize_summary(report)
+    if joint:
+        try:
+            _guard_joint_plan_outputs(_joint_plan_path(json_path), markdown_path, json_path, args.reuse_discovery_json)
+        except ContractViolation as error:
+            print(f"refused to overwrite calibration plan: {error}", file=sys.stderr)
+            return 2
+        for error in _joint_plan_verification_errors(report["method"]):
+            _append_contract_error(report, "calibration_plan", error)
+        exit_code = _finalize_summary(report)
     try:
         write_json_report(json_path, report)
     except Exception as error:
         print(f"failed to write JSON performance evidence: {error}", file=sys.stderr)
         return 2
     print(f"Wrote: {json_path}")
+    if joint:
+        try:
+            _guard_joint_plan_outputs(_joint_plan_path(json_path), markdown_path, json_path, args.reuse_discovery_json)
+        except ContractViolation as error:
+            _append_contract_error(report, "report_projection", str(error))
+            _finalize_summary(report)
+            plan_path = _joint_plan_path(json_path)
+            if plan_path.resolve() != json_path.resolve() and not _same_existing_file(plan_path, json_path):
+                write_json_report(json_path, report)
+            print(f"refused to overwrite calibration plan: {error}", file=sys.stderr)
+            return 2
     try:
         outputs_collide = _same_existing_file(markdown_path, json_path)
     except ContractViolation as error:

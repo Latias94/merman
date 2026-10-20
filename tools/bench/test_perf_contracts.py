@@ -11,6 +11,7 @@ TEST_MODULES = (
     "test_perf_runner_contracts",
     "test_perf_recipe_contracts",
     "test_perf_statistics_contracts",
+    "test_perf_joint_protocol_contracts",
     "test_perf_report_contracts",
     "test_perf_workflow_contracts",
 )

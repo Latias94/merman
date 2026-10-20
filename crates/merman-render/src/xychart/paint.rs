@@ -92,7 +92,7 @@ impl TextPlacement {
 /// Role paint and typography retain author order and property-local source ownership.
 #[derive(Debug, Default)]
 pub(crate) struct XyChartPaintPlan {
-    terminals: Arc<BTreeMap<XyChartPaintTerminalId, PaintTerminal>>,
+    terminals: Option<Arc<BTreeMap<XyChartPaintTerminalId, PaintTerminal>>>,
     data_label_color: String,
     tick_opacity: Option<f32>,
     text_effects: BTreeMap<XyChartPaintTerminalId, XyChartTextEffect>,
@@ -464,7 +464,7 @@ impl XyChartPaintPlan {
                 _ => {}
             }
         }
-        self.terminals = Arc::new(terminals);
+        self.terminals = Some(Arc::new(terminals));
     }
 
     fn needs_terminal_receipt(&self) -> bool {
@@ -509,7 +509,7 @@ impl XyChartPaintPlan {
     }
 
     pub(crate) fn terminal_id(&self, id: XyChartPaintTerminalId) -> Option<XyChartPaintTerminalId> {
-        self.terminals.contains_key(&id).then_some(id)
+        self.terminals.as_ref()?.contains_key(&id).then_some(id)
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -517,10 +517,13 @@ impl XyChartPaintPlan {
         escape_xml: impl Fn(&str) -> String,
         diagram_id: &str,
     ) -> Option<XyChartPaintReceipt> {
-        self.needs_terminal_receipt().then(|| XyChartPaintReceipt {
-            owner: Arc::clone(&self.terminals),
-            expected: self
-                .terminals
+        if !self.needs_terminal_receipt() {
+            return None;
+        }
+        let terminals = self.terminals.as_ref()?;
+        Some(XyChartPaintReceipt {
+            owner: Arc::clone(terminals),
+            expected: terminals
                 .iter()
                 .map(|(&id, terminal)| {
                     (
@@ -545,9 +548,12 @@ impl XyChartPaintPlan {
     }
 
     pub(crate) fn record_terminal(&self, receipt: XyChartPaintReceipt) -> bool {
-        Arc::ptr_eq(&self.terminals, &receipt.owner)
+        let Some(terminals) = &self.terminals else {
+            return false;
+        };
+        Arc::ptr_eq(terminals, &receipt.owner)
             && receipt.valid
-            && receipt.seen.len() == self.terminals.len()
+            && receipt.seen.len() == terminals.len()
             && self.terminal_receipt.set(()).is_ok()
     }
 
@@ -1097,6 +1103,71 @@ mod tests {
     };
 
     #[test]
+    fn captured_empty_owner_remains_active_and_rejects_foreign_receipts() {
+        let typography = XyChartTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::default(),
+            &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
+        )
+        .unwrap();
+        let layout: XyChartDiagramLayout = serde_json::from_value(serde_json::json!({
+            "width": 700.0, "height": 500.0, "chartOrientation": "vertical",
+            "showDataLabel": false, "showDataLabelOutsideBar": false,
+            "labelData": [], "backgroundColor": "white", "drawables": []
+        }))
+        .unwrap();
+        let mut plan = XyChartPaintPlan::default();
+        assert!(plan.terminals.is_none());
+        assert!(
+            plan.terminal_id(XyChartPaintTerminalId::Text {
+                drawable: 0,
+                item: 0,
+            })
+            .is_none()
+        );
+        plan.pending.insert(
+            (ThemeTarget::Text, 0),
+            BTreeSet::from([ThemeCapability::SemanticRules]),
+        );
+        assert!(
+            plan.begin_terminal_receipt(|_| panic!("no captured owner"), "test")
+                .is_none()
+        );
+        let mut foreign = XyChartPaintPlan {
+            pending: plan.pending.clone(),
+            ..XyChartPaintPlan::default()
+        };
+        foreign.capture_terminals(&layout, &typography);
+        assert!(
+            !plan.record_terminal(
+                foreign
+                    .begin_terminal_receipt(|_| panic!("empty captured map"), "test")
+                    .unwrap()
+            )
+        );
+        plan.capture_terminals(&layout, &typography);
+        assert!(plan.terminals.as_ref().unwrap().is_empty());
+        assert!(
+            !plan.record_terminal(
+                foreign
+                    .begin_terminal_receipt(|_| panic!("empty captured map"), "test")
+                    .unwrap()
+            )
+        );
+        let receipt = plan
+            .begin_terminal_receipt(|_| panic!("empty captured map"), "test")
+            .unwrap();
+        assert!(receipt.expected.is_empty());
+        assert!(plan.record_terminal(receipt));
+        assert!(
+            !plan.record_terminal(
+                plan.begin_terminal_receipt(|_| panic!("empty captured map"), "test")
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
     fn source_owned_text_retains_no_receipt_payload_at_any_scale() {
         let theme = DiagramThemeCompiler::new()
             .compile(
@@ -1153,7 +1224,7 @@ mod tests {
                 &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
             )
             .unwrap();
-            assert!(plan.terminals.is_empty(), "source-owned count={count}");
+            assert!(plan.terminals.is_none(), "source-owned count={count}");
             assert!(
                 plan.begin_terminal_receipt(|_| panic!("no payload to escape"), "test")
                     .is_none()
@@ -1180,7 +1251,7 @@ mod tests {
                 &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
             )
             .unwrap();
-            assert_eq!(pending.terminals.len(), count);
+            assert_eq!(pending.terminals.as_ref().unwrap().len(), count);
             let receipt = pending
                 .begin_terminal_receipt(str::to_owned, "test")
                 .unwrap();
@@ -1188,6 +1259,8 @@ mod tests {
             assert!(
                 pending
                     .terminals
+                    .as_ref()
+                    .unwrap()
                     .values()
                     .all(|terminal| terminal.paint.as_ref() == "#123456")
             );

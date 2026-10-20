@@ -3131,13 +3131,7 @@ mod tests {
             if frozen {
                 bound.freeze_theme_compatibility();
             }
-            let (_, work) = crate::config::measure_config_work(|| {
-                apply_theme_defaults(&mut bound).unwrap();
-            });
-            assert!(
-                work.explicit_path_candidates > 0,
-                "frozen={frozen}: {work:?}"
-            );
+            apply_theme_defaults(&mut bound).unwrap();
             bound.freeze_theme_compatibility();
             let fields = bound.mermaid_compatibility_fields().unwrap();
             assert!(

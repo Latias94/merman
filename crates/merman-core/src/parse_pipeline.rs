@@ -100,7 +100,7 @@ impl OperationConfigBuilder {
             Err(error) => return Ok(Err(error)),
         };
         let source = if overrides.is_empty_object() {
-            MermaidConfig::empty_object()
+            overrides.clone()
         } else {
             let source = effective.source_filtered_overrides(overrides, control)?;
             effective.deep_merge_explicit(source.as_value());

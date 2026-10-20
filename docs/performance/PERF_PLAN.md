@@ -17,6 +17,359 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
+validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
+`e1707685fb8c9f587d0139899a5c5bc8cc148bf0`. All 8100 release tests pass (seven skipped),
+together with strict Clippy, 37 DOM entries, optimized full WASM including wasm-opt, 34 release
+theme acceptance tests and 245 Python performance contracts. All 13 serial command stages finish
+successfully and all 19,448 frozen non-documentation source hashes remain unchanged. Fresh DOM
+report copies and WASM input/artifact digests are archived with the ignored experiment records.
+This checkpoint integrates prepared redraw and persistent mounting while preserving theme
+ownership repairs. Historical allocation and v0.9.0 latency reports retain their original
+revisions; no new timing claim or all-family goal completion follows from this merge. The private
+probe migrations still require source revalidation and current exact error oracles before use.
+
+The [October 20 main-integration checkpoint](theme_main_integration_macos_2026-10-20.md)
+validates clean merge `9b4ff208f` of upstream `d249bb2dc`: 7651 release tests pass (seven skipped),
+strict Clippy and 37 DOM entries pass, optimized full WASM completes, 245 Python performance
+contracts pass, and 34 release theme acceptance tests pass. The independent public API boundary
+and complete-feature compiled pipeline discovery also pass (459 benchmarks, 459 receipts, seven
+lane groups). All 14 command stages reach successful terminal states. These are integration
+correctness checks; historical allocation and release-timing evidence retain their own revisions.
+The early review draft does not close the all-family goal or cross-platform qualification.
+Before another adjacent experiment, migrate the private harness's retired authoring API and
+specific input controls to the current theme design contract, preserving a retired/replacement
+mapping and obtaining new exact error oracles. The scoped-appearance repair remains unapplied.
+
+The [October 20 empty explicit-owner query checkpoint](empty_explicit_owner_query_macos_2026-10-20.md)
+skips temporary path construction when the explicit owner set is empty, while preserving outer
+Tracking/Frozen compatibility checks and the complete nonempty-set query. The preselected
+Flowchart / None primary saves 40 allocations and 1344 bytes per warmed render. All 418 catalog
+cells are stable and exact: 371 improve and 47 retain all four operation-growth metrics, with
+no increases. Of 504 jointly stable controls, 108 improve and 396 are unchanged; 141 variable
+controls remain inconclusive. All 645 output/report and independent ordered-measurer controls
+and 26 errors match. All 930 focused and 7651 full release tests pass (seven skipped), together
+with strict Clippy, 37 DOM entries, optimized full WASM and format/path checks. The independent
+terminal review verifies current DOM reports; experiment-local report copies were not archived.
+This is exact allocation/work removal, without a latency or release-convergence claim. Next
+integrate current upstream theme semantics and independently evaluate the remaining scoped
+appearance and ownership candidates. The all-family goal remains incomplete.
+
+The [October 20 post-initialization full confirmation](theme_v090_post_initialization_confirmation_macos_2026-10-20.md)
+compares clean `a6742779c` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
+and 304 fixed balanced A/B observations establish 15 within the joint budget, three regressions
+and one inconclusive scene, with zero evidence-contract failures. ZenUML remains +17.18% /
++3.443 us, Packet +27.18% / +2.203 us and Kanban +18.09% / +8.198 us. Class tiny now qualifies
+both A/A metrics but its relative bounds cross 10%, so it remains inconclusive. Six unqualified
+absolute certificates retain their precision failures and uncapped requirements; all 19 preselect
+the qualified relative certificate. Both actual sampled executables were archived before later
+native work. Earlier results retain their original heads and classifications. This release-range
+observation does not attribute latency changes to an individual repair or cover the typed request
+API. Continue independently registered ownership/query reductions; the all-family goal is incomplete.
+
+The [October 20 prepared compiled-theme initialization checkpoint](compiled_theme_initialization_macos_2026-10-20.md)
+reuses one lazily prepared initialization per compiled plan only when host overrides are exactly
+pristine. Host authority, deferred errors and per-installation detector journals retain their
+original behavior. The preselected Kanban / Editor Light primary saves 2695 allocations and
+602,095 allocated bytes per warmed render; all 380 themed catalog cells improve and the 38 None
+cells retain all four operation-growth metrics. All 645 saved SVG/report identities, independent
+ordered callback controls and 26 errors match; 503 jointly stable controls have 208 improvements,
+295 unchanged and no increases, with 142 variable controls retained as inconclusive. This trades
+per-request work for bounded plan retention: absolute process-live counters increase 175,285 to
+284,624 bytes in themed cells; the primary's absolute process peak increases 35,463 bytes despite
+its smaller operation peak growth. The constant None +12 bytes follow retained probe argument
+lengths and remain unadjusted in raw evidence. All 930 focused and 7651 full release tests pass
+(seven skipped), together with strict Clippy, 37 DOM entries, optimized full WASM and format/path
+checks. This is warmed allocation/work removal, with no cold-start, compilation, latency or
+v0.9.0 convergence claim. The separate post-initialization full19 confirmation above covers
+this clean revision and the preceding XHTML change. The all-family goal remains active.
+
+The [October 20 literal XHTML paragraph checkpoint](xhtml_plain_paragraph_macos_2026-10-20.md)
+recognizes a narrow, proven plain XML paragraph before constructing its wrapper and DOM. The
+original parser and all callers remain unchanged for every unproven input. The no-theme Kanban
+primary saves 84 allocations and 13,849 allocated bytes, with the same peak and retained growth.
+All 645 saved SVG/report/ordered-measurer controls and 26 errors match. Of 505 jointly stable
+controls, 33 improve and 472 retain all four metrics; 140 variable controls stay inconclusive.
+All 418 catalog cells are stable and exact within the warmup-metadata and five-saved-sample
+contracts: 66 improve across Flowchart, Class, ER, Kanban, Swimlane and Agentflow in all eleven
+modes, with 352 unchanged and no increases. Retained growth stays unchanged everywhere. All
+131 focused and 5,613 full release tests, strict Clippy, full DOM, optimized full WASM and
+format/diff checks pass. The baseline directory collision is preserved with its bounded
+completion amendment, without repeating successful samples. This is allocation/work removal,
+not a latency or release-convergence claim. Next evaluate the bounded ZenUML CSS assembly and
+Packet sink-dispatch hypotheses separately, and prepare immutable compiled-theme initialization
+owners while preserving dynamic journals, host overrides and deferred parse errors. The latest
+full19 scoreboard remains unchanged until a separately frozen confirmation; the all-family goal
+remains active.
+
+The [October 20 post-ownership full confirmation](theme_v090_post_ownership_confirmation_macos_2026-10-20.md)
+compares clean `9f8143a06` with v0.9.0 over all 19 preregistered same-SVG scenes. Fresh 608 A/A
+and 304 fixed balanced A/B observations establish 12 within the joint budget, three regressions
+and four inconclusive scenes, with zero evidence-contract failures. ZenUML remains +17.95% /
++3.584 us, Packet +28.66% / +2.310 us and Kanban +26.02% / +11.737 us. Class tiny cannot establish
+joint regression despite its displayed lower bounds: its absolute A/A certificate is unqualified.
+Eight failed absolute certificates retain their precision failures and uncapped sample requirements;
+all 19 preselect the qualified relative certificate. Earlier receipts remain unchanged, and this
+release-range observation does not attribute movement to an intermediate allocation patch. The
+full report, frozen plan, registration, reviews and execution identities have verified lossless
+archives. Next inspect the bounded stages and CPU samples from the same archived executables,
+then remove concrete redundant work without summing stage deltas or assigning the default gaps
+to compiled-theme initialization. Keep all 35 theme families in the independent catalog controls;
+the all-family goal remains active.
+
+The [October 20 Kanban bound-owner checkpoint](kanban_bound_paint_owner_macos_2026-10-20.md)
+removes the second task-decision array and copied typed strings, binding palette values in the
+existing owner at the original phase. Ten themed catalog cells each save five allocations and
+556 bytes. No-theme medium saves 16 allocated and peak bytes through the smaller boxed artifact,
+with the same allocation count. All 645 SVG/report/ordered-callback controls and 26 errors match.
+Of 503 jointly stable controls, two improve and 501 retain all four metrics; 142 variable rows
+remain inconclusive. All 418 catalog cells are stable and exact within their warmup-metadata and
+five saved sample contracts: eleven improve and 407 retain all four metrics. Retained growth is
+unchanged everywhere. All 87 focused and 5,613 full release tests, Clippy, full DOM, optimized
+full WASM, formatting and independent reviews pass. This is allocation/work removal without a
+clock or release-convergence claim. Next freeze the latest clean revision for a fresh full
+19-scene release confirmation, then use existing stages and bounded system CPU sampling to
+attribute remaining gaps. Keep unimplemented receipt and finite-fusion drafts separate until
+those observations support them; the all-family goal remains active.
+
+The [October 20 Pie CSS facts checkpoint](pie_css_facts_macos_2026-10-20.md) borrows five temporary
+success values from the existing immutable binding. Each of ten themed Pie catalog cells saves
+five allocations and 71 bytes; no-theme Pie is unchanged. All 645 SVG/report/ordered-callback
+controls and 26 errors match. All 504 jointly stable controls retain all four memory metrics;
+141 variable rows remain inconclusive. All 418 catalog cells are stable: ten improve and 408
+retain all four metrics, with exact warmup result metadata and all five saved sample SVG/report
+identities. Peak and retained growth are unchanged everywhere. All 75 focused and 5,613 full
+release tests, Clippy, full DOM, optimized full WASM, formatting and independent reviews pass.
+This is allocation/work removal without a latency or release-convergence claim. Next independently
+verify Kanban's duplicated bound-paint owner using its active typed catalog primary and retain
+no-theme controls unchanged; keep receipt and finite-geometry candidates separate.
+
+The [October 20 XY empty-owner checkpoint](xy_empty_paint_owner_macos_2026-10-20.md) defers its
+initial sized empty Arc until the existing active capture phase. Captured empty maps remain real
+owners with pointer identity and single completion. Default XY saves one allocation and 40 bytes,
+including 40 bytes of peak growth. All 645 SVG/report/ordered-callback controls and 26 errors match.
+Of 506 jointly stable rows, 25 improve and 481 stay unchanged; no memory metric increases and
+139 variable rows remain inconclusive. All 418 catalog cells are stable and exact, with eleven
+XY improvements and 407 unchanged. All 106 focused and 5,613 full release tests, Clippy, full DOM,
+optimized full WASM, formatting and independent reviews pass. This is allocation/work removal
+without latency or release-convergence claims. Next independently verify Pie's temporary CSS
+facts against the source-selected active typed catalog cell; retain no-theme as an unchanged
+control and keep receipt/palette/finite-geometry candidates separate.
+
+The [October 20 empty GitGraph palette checkpoint](gitgraph_empty_palette_css_macos_2026-10-20.md)
+skips pure CSS construction only when all eight assignments are absent. The caller's empty
+write/checkpoint remains. Default GitGraph saves one allocation and 16 bytes; its no-theme catalog
+cell saves one and 19 bytes due to the different fixed ID. All 645 SVG/report/ordered-callback
+controls and 26 errors match. Of 503 jointly stable rows, one improves and 502 stay unchanged;
+142 variable rows remain inconclusive. All 418 catalog cells are stable and exact: one improves,
+417 stay unchanged, including all ten active GitGraph presets. Peak/retained growth stay unchanged.
+All 121 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This is a small allocation/work reduction without a clock claim.
+Next independently verify the XY empty paint owner, preserving captured empty-map identity,
+foreign-receipt rejection and single completion; keep other typed owners and finite-check fusion
+separate and retain the unresolved release-distance goal.
+
+The [October 20 ZenUML font checkpoint](zenuml_default_font_owner_macos_2026-10-20.md) borrows
+the static CSS default while retaining owned normalization for every authored Some font.
+Both independent primaries save one allocation and 23 bytes. All 645 SVG/report/ordered-callback
+controls and 26 errors match. Of 504 jointly stable rows, 54 improve and 450 stay unchanged;
+all four memory metrics are nonincreasing, peak/retained growth stay unchanged and 141 variable
+rows remain inconclusive. All 418 catalog cells are stable and exact, with eleven ZenUML
+improvements and 407 unchanged. Real empty and quoted font controls retain all four metrics.
+All 49 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This removes a temporary owner, without quantifying its share of the
+3.561 us release difference or reclassifying latency. Next evaluate empty GitGraph palette CSS
+construction independently; retain the caller's empty write/checkpoint and all active palette
+behavior. XY paint, Pie CSS and the narrower ZenUML finite-check fusion remain separate candidates.
+
+The [October 20 shared root-font checkpoint](common_root_font_owner_macos_2026-10-20.md) removes
+the redundant initial font clone while retaining configured-root selection and explicit empty
+values. Info, Error and Kanban each save one allocation and 39 bytes; GitGraph saves two through
+construction and its existing subsequent clone. All 642 SVG/report/ordered-callback controls and
+26 errors match. Of 502 jointly stable rows, 201 improve and 301 stay unchanged, with no increase
+in any memory metric; 140 variable rows remain inconclusive. All 418 catalog cells are stable
+and exact: 209 cells across 19 families improve and 209 stay unchanged. Packet remains unchanged.
+All 708 focused and 5,612 full release tests, Clippy, full DOM, optimized full WASM, formatting and
+independent reviews pass. This is allocation/work removal, not release-distance attribution or
+latency admission. Next independently verify the ZenUML default CSS font owner, keeping its
+Some(empty)/normalization behavior and the finite-geometry fusion candidate separate.
+
+The [October 20 Quadrant checkpoint](quadrant_point_binding_macos_2026-10-20.md) removes the
+retained point-binding array and its independent traversal/settings projection. Borrowed source,
+class and prepared values flow into the necessary layout loop, with one final string copy.
+All three primaries save twelve allocations: default medium saves 384 bytes, empty authoring
+332 bytes and typed radius/fill 319 bytes. All 642 SVG/report/ordered-callback controls and 26
+errors match. Of 501 jointly stable rows, 35 improve and 466 stay unchanged; all four memory
+metrics are nonincreasing and 141 variable rows remain inconclusive. All 418 catalog cells are
+stable and exact, with eleven Quadrant improvements and 407 unchanged. Forty-five focused and
+5,612 full release tests pass, as do Clippy, full DOM, optimized full WASM, formatting and
+independent source/raw/report reviews. This removes duplicated ownership/work without a latency
+claim or historical release reclassification. Next independently measure the shared root-font
+owner, preserving separately configured and explicitly empty root values; keep the default
+GitGraph, XY paint, Pie CSS and ZenUML candidates separate.
+
+The [October 19 terminal receipt checkpoint](terminal_receipt_value_state_macos_2026-10-19.md)
+replaces copied Info/Error CSS observations with existing sticky comparison state and borrows
+Treemap's expected title fill. All three primaries save three allocations: Info/Error each save
+165 bytes and the active Treemap title saves 48 bytes. All 632 SVG/report/ordered-callback controls
+and 26 errors match. Of 492 jointly stable rows, 64 improve and 428 stay unchanged; no memory
+metric increases and 140 variable rows remain inconclusive. All 418 catalog cells are stable and
+exact, with 22 Info/Error improvements and 396 unchanged. Seven focused and 5,612 full release
+tests pass, as do Clippy, the full DOM gate, optimized full WASM and formatting checks. Independent
+source, raw-evidence and report reviews find no blocker. This is allocation/work removal, not
+a timing or release-convergence claim. Next independently measure Quadrant's duplicated point
+binding owners, retaining source/class/config precedence, exact tokens, all checkpoints and the
+full catalog; the remaining ZenUML font owner and finite-check fusion are separate candidates.
+
+The [October 19 full same-SVG joint confirmation](theme_v090_joint_confirmation_macos_2026-10-19.md)
+completes all 19 preregistered scenes against v0.9.0: 13 are within the joint budget, three
+confirm regression and three remain inconclusive. Both runners complete eight fresh A/A pairs;
+the frozen relative certificates select eight balanced full-cohort A/B pairs. All 912 observations
+retain matching output postflights, and final runner/source identities pass with zero contract
+failures. Zenuml remains +17.81%/+3.56 us, Packet +27.51%/+2.23 us and Kanban +27.58%/+12.44 us.
+Class tiny, Sankey and Wardley cross the relative threshold and remain inconclusive. Seven failed
+absolute certificates retain their uncapped requirements; qualified relative certificates can
+still establish joint non-regression. Compressed raw observations and the pre-A/B plan are
+archived with digests. This is a release observation, not individual-change attribution or
+candidate admission. Next independently measure the registered Info/Error/Treemap terminal
+receipt state candidate, followed by the reviewed ownership queue; keep all-family convergence
+active and the 57 changed-SVG scenes plus 418 catalog cells separate from these release ratios.
+
+The opt-in [joint release confirmation protocol](BENCHMARKING.md#statistics-and-decisions)
+now implements the independently reviewed, preregistered `joint_non_regression_v1` method.
+Both runners complete eight fresh A/A pairs; one qualified metric is selected before A/B, and
+the entire same-SVG public cohort must complete its fixed balanced schedule. An exclusive
+pre-A/B calibration plan records the full scope and identities. The protocol fixes 95% confidence
+and the 10%/1000 ns budget, reports conditional decision error rather than simultaneous coverage
+of all interval endpoints, and never assesses improvement or candidate admission. All 149
+performance contracts, 16 baseline-manifest tests, 51 native-memory contracts and 29 driver
+contracts pass; independent source and report reviews find no remaining blocker. No new timing
+or historical reclassification is part of this tooling change. The separately preregistered
+fresh full-cohort experiment is reported above; changed-output rows and typed catalog controls
+remain separate evidence.
+
+The comparison helper now implements the documented joint complement: either qualified regression
+upper bound below its threshold proves non-regression, with the mirrored rule for non-improvement.
+Positive regression/improvement still needs both strict bounds. Synthetic contracts reproduce
+nine failures before the two-line fix; all 89 statistics/runner/report tests pass afterward,
+including equality, crossing intervals, sample-count guards and unchanged dual-metric A/A gates.
+This is a method correction, not new timing or historical receipt reclassification. Generic A/A
+still imposes the stronger two-metric precision prerequisite. Next independently review and
+preregister a versioned release joint-convergence protocol before collecting fresh full-scope
+v0.9.0 A/A and A/B; retain the separate terminal receipt ownership candidate.
+
+The [October 19 empty source-config checkpoint](empty_source_config_owner_macos_2026-10-19.md)
+reuses the existing source handle where private consumers only read an empty JSON value. All
+632 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.
+Among 491 jointly stable rows, 459 save four allocations and 240 bytes, 32 nonempty-source rows
+stay unchanged and none regress; 141 variable rows remain inconclusive. All 418 catalog cells
+are stable, exact and improve by four allocations/240 bytes. Expanded core/public/renderer tests,
+Clippy, minimal core features, full DOM and optimized full WASM pass. This removes fresh owner
+construction and its extra destruction stack, without a clock claim. Next correct the benchmark
+classifier's joint complement independently, then simplify terminal receipt value ownership;
+new release calibration must preserve old observations and the complete family scope.
+
+The [October 19 Treemap CSS checkpoint](treemap_css_receipt_macos_2026-10-19.md) borrows four
+intermediate success values from the immutable prepared plan. All 632 successful controls retain
+exact SVG/reports/ordered measurer traces, and 26 errors match. Among 490 jointly stable rows,
+55 Treemap controls improve and none regress; the same 142 variable rows remain inconclusive.
+Default medium saves four allocations and 51 bytes. All 418 catalog cells are stable and exact:
+eleven Treemap cells improve and 407 stay unchanged. Renderer tests, Clippy, full DOM and optimized
+full WASM build pass. This removes theme-refactor ownership without a clock claim. Next test the
+shared empty source-config owner, then Info/Error and Treemap title terminal state; preserve
+configuration metadata semantics, each proof state machine and successful completion uniqueness.
+
+The [October 19 Sequence foreground checkpoint](sequence_foreground_owner_macos_2026-10-19.md)
+borrows final raw/typed colors, retains the existing source decisions and removes an unconsumed
+BoxTitle declaration. All 584 successful controls retain exact SVG/reports/ordered measurer traces,
+and 26 errors match. Among 442 jointly stable rows, 95 Sequence controls improve and none regress;
+142 variable rows remain inconclusive. Default medium saves sixteen allocations and 550 bytes;
+the combined typed control saves twenty-one and 563 bytes. All 418 catalog cells are stable and
+exact, with eleven Sequence improvements and 407 unchanged. Renderer tests, Clippy, full DOM and
+optimized full WASM build pass. This removes ownership spanning math preparation and theme binding
+without a clock claim. Next evaluate Treemap's temporary CSS success values, then independently
+simplify Info/Error receipt state while retaining its completion uniqueness and proof semantics.
+
+The [October 19 shared CSS checkpoint](common_css_borrowed_receipt_macos_2026-10-19.md) borrows
+three successful font facts from their immutable prepared owner in Info/Error/Quadrant/XY. All
+584 successful controls retain exact SVG/reports/ordered measurer traces, and 26 errors match.
+Among 444 jointly stable rows, 102 improve by three allocations and 48–129 bytes, with no increase
+in any memory metric; 140 variable rows remain inconclusive. All 418 catalog cells are stable and
+exact: 44 affected cells improve and 374 remain unchanged. Renderer tests, Clippy, full DOM and
+optimized full WASM build pass. This deletes theme-refactor ownership without a latency claim.
+Next evaluate Treemap's temporary success values and Sequence's duplicate foreground owners as
+independent allocation experiments, preserving existing source facts and actual writer fragments.
+
+The [October 19 empty Sequence CSS checkpoint](sequence_empty_css_groups_macos_2026-10-19.md)
+skips empty declarations before constructing groups that were always discarded. All 488 successful
+controls retain exact SVG/reports/ordered measurer traces, and 26 inherited errors match. Among
+347 jointly stable rows, 34 no-theme Sequence rows each save ten allocations and 788 bytes, with
+unchanged peak and retained growth; 141 variable rows remain inconclusive. All 418 catalog cells
+are stable and exact; only no-theme Sequence improves and the other 417 cells are unchanged.
+Renderer tests, Clippy, full three-mode DOM and optimized full WASM build pass. This removes
+theme-refactor work without a latency claim. Next borrow the shared Info/Error/Quadrant/XY CSS
+success receipt from its existing prepared owner, then evaluate the independent Treemap receipt
+candidate. Release convergence and the remaining source-attribution gaps stay open.
+
+The [October 19 release SVG audit](theme_release_svg_audit_macos_2026-10-19.md) captures and
+independently replays all 76 public rendering fixtures across 35 logical families. All 152 raw
+files match frozen side-specific SHA/length/element identities; nineteen remain exact and
+fifty-seven changed. Every changed fixture now has a scoped difference inventory. A later source
+follow-up attributes five Flowchart edge/label cases to the Mermaid 12.2 label-aware terminal gate
+without a runtime rejection trace. Swimlane's 66 geometry fields reconcile with the newly applied
+minimum node width and existing LR formulas; eleven Mindmap solver centers remain independently
+unsolved. ID/order, native CSS, XML spelling and configured-owner differences stay explicit. No changed row is
+promoted to same-SVG or latency convergence. Next remove already empty Sequence CSS groups and
+borrow shared/Treemap CSS success facts from their existing owners, as independent allocation
+experiments. Full new typed presets still require a separate historical-function contract.
+
+The [October 19 bounded-output experiment](bounded_active_rejected_macos_2026-10-19.md) rejects
+the three-attribute active-state/cold-error candidate under its preregistered diagnostic screen.
+Two fixed public AB/BA pairs observe Packet −3.15%/−0.326 us and Kanban −4.98%/−2.824 us;
+neither clears both primary thresholds. No formal confirmation or integration followed. Machine
+code does remove the hot call, which is insufficient for admission. Next capture and reconcile
+all 76 tag/current public SVG outputs: nineteen exact and fifty-seven changed rows remain in
+scope, and the existing 418 new-preset cells do not establish legacy release equivalence.
+
+The [October 19 Sequence checkpoint](sequence_css_owner_macos_2026-10-19.md) removes duplicate
+default and typed CSS scalar owners by borrowing the existing immutable prepared artifact.
+All 488 successful controls retain exact SVG/reports/ordered measurer traces, and 26 inherited
+public errors match. Of 347 jointly stable memory rows, 95 improve and none regress; 141 variable
+rows remain inconclusive. All 418 catalog cells are stable and exact; eleven Sequence cells save
+13–14 allocations and 497–571 bytes, with the other 407 unchanged. Renderer tests, Clippy, full
+three-mode DOM and optimized full WASM build pass. This is allocation/work evidence. Next test
+the shared writer's successful-state check and cold error conversion with calibrated public
+timing; frozen machine code confirms an actual call and stack setup on the successful path.
+Sequence's seven foreground/declaration copies remain a separate ownership candidate.
+
+The [October 19 State checkpoint](state_terminal_owner_macos_2026-10-19.md) replaces the 104-cell
+owned terminal CSS table with fixed borrowed selection and 22 final-winner source bits. All forty
+surfaces, truthy/nullish fallbacks, gradient scoping and missing-pair behavior remain. All 402
+public outputs/reports/ordered measurer traces match; 262 jointly stable memory rows never
+regress, while 134 State and six Flowchart rows remain inconclusive. Twenty-six inherited public
+parse errors also match. All 418 catalog cells remain stable and exact; eleven State cells save
+149–173 allocations and 7,376–8,088 bytes each. Renderer tests, Clippy, full DOM and optimized full
+WASM build pass. Sequence's duplicate default and typed CSS owners are the next independent
+candidate; the shared writer's active-state branch still needs a calibrated latency experiment.
+
+The [October 19 Radar checkpoint](radar_series_owner_macos_2026-10-19.md) removes a duplicated
+12-color palette from the CSS binding and constructs it once in the final series plan. All 262
+successful public controls retain exact SVG/reports/ordered measurer traces, and 26 public parse
+errors remain identical. Across 256 jointly stable memory controls, 32 improve and none regress;
+six variable Flowchart controls remain inconclusive. All 418 catalog cells retain output and
+metadata; eleven Radar cells each save twelve allocations and 372–766 bytes. Renderer tests,
+Clippy, full three-mode DOM and optimized full WASM build pass. This removes source-backed theme
+ownership overhead without a latency claim. The next larger ownership candidate is State's
+materialized terminal paint table; preserve its distinct truthy/nullish fallbacks and source bits.
+
+The [October 19 Packet/Kanban stage attribution](packet_kanban_stages_macos_2026-10-19.md)
+retains six fixed diagnostic rows and four CPU profiles from the frozen release-comparison
+executables. Exact SVG emission still differs in cost; parse/layout projections differ and
+Kanban moved stylesheet work across stages, so stage deltas cannot be added or treated as new
+theme work. Current emission samples identify XML fragment handling and active-state error
+checks as bounded next experiments. The writer already uses bounded geometric growth; changing
+its exact reservation would risk the allocation bound. No new latency or convergence claim is made.
+
 The [October 19 TreeView checkpoint](treeview_optional_proof_macos_2026-10-19.md) removes source-tree
 and icon counting plus terminal theme proof work when no theme was requested. Some recipes,
 including empty and unsupported recipes, retain their original proof path. All 231 public controls
@@ -870,9 +1223,12 @@ cancellation and measurement callbacks. Engine borrowing, root style borrowing a
 root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
 in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
 compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
-fresh 19-scene same-SVG diagnostic still flags eight rows; attribute actual consumers before
-selecting the next repair. Keep configured duplicate CSS normalization as a separate policy/order
-candidate. Use fresh adjacent evidence and calibrated confirmation for latency claims; see the
+latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
+three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
+actual consumers before selecting further repairs. Empty explicit-owner queries now have an
+independent admitted allocation checkpoint. Keep absent scoped appearance paths, frozen path
+storage and duplicate normalized CSS-ID owners as separate candidates. Use fresh adjacent evidence
+and calibrated confirmation for latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
