@@ -144,6 +144,17 @@ fn css_root_scope_normalizes_selector_significant_ids_across_families() {
             "Ishikawa",
             "ishikawa-beta\n Root cause\n  Process\n   Slow step\n",
         ),
+        (
+            "Packet",
+            "packet-beta\n0-7: \"Header\"\n8-15: \"Payload\"\n",
+        ),
+        ("Cynefin", "cynefin-beta\ncomplex\n\"A\"\n"),
+        ("ER", "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n"),
+        ("GitGraph", "gitGraph\n  commit id: \"1\"\n"),
+        (
+            "Venn",
+            "venn-beta\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B[\"Shared\"]:3\n",
+        ),
     ] {
         assert_css_root_scope_normalizes_selector_significant_id_characters(family, source);
     }

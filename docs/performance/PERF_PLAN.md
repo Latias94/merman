@@ -17,6 +17,29 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 20 CSS identifier checkpoint](css_identifier_borrow_macos_2026-10-20.md) borrows
+unchanged identifiers inside the existing serializer. On the fresh `7e0582307` base, Packet medium /
+None saves one allocation and 19 bytes; all 418 catalog cells are stable, with 132 improvements,
+286 unchanged and no increases. All 645 SVG/report and ordered-measurer controls and 26 complete
+errors match. Full release nextest passes 8100 tests (seven skipped), with strict Clippy, 37 fresh
+archived DOM reports, optimized full WASM and 34 theme acceptance tests. A test-only formatting
+failure is preserved explicitly; all five final-format supplemental stages pass. Final source
+verification uses two explicit test-format overrides, preserving all other measured source and
+frozen inputs. This is allocation/work removal, without a latency claim. Refresh the full release
+comparison against the final clean revision after integrating main.
+
+The [October 20 scoped appearance checkpoint](scoped_appearance_path_macos_2026-10-20.md)
+defers scoped path construction until the existing scoped-assignment branch consumes it. On the
+fresh post-main base `88351fe6a`, Packet medium / None saves six allocations and 72 bytes; all
+418 catalog cells are stable, with 396 improvements, 22 unchanged and no increases. All 645
+SVG/report and ordered-measurer controls and 26 complete errors match. Current design inputs
+replace retired authoring controls explicitly; historical input equivalence is not claimed.
+All 8100 full release tests pass (seven skipped), together with strict Clippy, 37 archived DOM
+reports, optimized full WASM, 34 release theme acceptance tests and format/path checks. All 15
+serial stages finish successfully and all 15,303 frozen source hashes remain unchanged. This is
+allocation/work removal, without a timing or v0.9.0 convergence claim. CSS identifier ownership
+now has the separate admitted checkpoint above; release comparison still needs a fresh run.
+
 The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
 validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
 `e1707685fb8c9f587d0139899a5c5bc8cc148bf0`. All 8100 release tests pass (seven skipped),
@@ -39,7 +62,8 @@ correctness checks; historical allocation and release-timing evidence retain the
 The early review draft does not close the all-family goal or cross-platform qualification.
 Before another adjacent experiment, migrate the private harness's retired authoring API and
 specific input controls to the current theme design contract, preserving a retired/replacement
-mapping and obtaining new exact error oracles. The scoped-appearance repair remains unapplied.
+mapping and obtaining new exact error oracles. These requirements were completed for the later
+scoped-appearance checkpoint above.
 
 The [October 20 empty explicit-owner query checkpoint](empty_explicit_owner_query_macos_2026-10-20.md)
 skips temporary path construction when the explicit owner set is empty, while preserving outer
@@ -1226,9 +1250,13 @@ compiled-preset/default coverage cells preserve the frozen adjacent output/repor
 latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
 three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
 actual consumers before selecting further repairs. Empty explicit-owner queries now have an
-independent admitted allocation checkpoint. Keep absent scoped appearance paths, frozen path
-storage and duplicate normalized CSS-ID owners as separate candidates. Use fresh adjacent evidence
-and calibrated confirmation for latency claims; see the
+independent admitted allocation checkpoint. Absent scoped appearance paths now have a separate
+admitted checkpoint. Unchanged CSS identifiers now borrow from their existing serializer in an
+independent admitted checkpoint. Frozen path storage remains a separate candidate; a newly observed
+intermediate metadata clone has a source-backed consumer audit but no measured benefit. Refresh
+all 76 release output identities and collect fresh A/A plus fixed AB/BA for the prospectively
+selected exact-output cohort. Use fresh adjacent evidence and calibrated confirmation for latency
+claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
