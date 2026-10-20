@@ -176,6 +176,44 @@ a host can provide individually finite enormous widths whose later sums overflow
 status does not prove derived coordinates finite. A future fusion must preserve final-value
 coverage and the error position after existing host callbacks.
 
+## Safe literal serialization candidate: rejected
+
+A separate deployable candidate replaces repeated XML classification of compile-time ASCII CSS
+literals with a const-validated literal type. Dynamic values continue through the XML writer;
+original fragment boundaries, byte admission, scan observations, cancellation and first-failure
+semantics remain. It changes common CSS plus Packet and Kanban; ZenUML is a control. All 5241
+renderer release tests pass (five skipped), followed by two new writer-seam differential tests.
+The first test compile fails on a non-const `unwrap`; that failed attempt and its exact source
+reconstruction remain archived. The candidate runtime is unchanged by that test-only correction.
+
+A preregistered diagnostic completes 32 calls: four fixed balanced pairs for each of four scenes.
+The unchanged public full-rich E2E harness and both frozen executable identities are verified;
+all four SVG byte/hash receipts match. These are diagnostic estimates without fresh A/A.
+
+| Scene | Base mean (us) | Candidate mean (us) | Paired relative change | Mean delta (us) |
+| --- | ---: | ---: | ---: | ---: |
+| Kanban | 53.406 | 50.44775 | -5.539% | -2.95825 |
+| Packet | 10.256 | 10.0242 | -2.265% | -0.2318 |
+| ZenUML control | 23.37375 | 23.48175 | +0.464% | +0.108 |
+| Flowchart control | 1093.425 | 1100.250 | +0.619% | +6.825 |
+
+Kanban exceeds the registered 1 us absolute screen but fails its 10% relative screen, so the
+candidate is retired without formal continuation or a lowered threshold. The four owned source
+files were hash-checked, archived and returned to their exact pre-candidate bytes. The measured
+safe subset is much smaller than the earlier diagnostic intervention that bypassed the whole
+XML adapter; those experiments must not be treated as equivalent or their deltas added.
+
+The [candidate archive](evidence/generated-css-serialization-2026-10-21/manifest.json) retains
+registrations, complete candidate patch/source, build/test/driver logs, normalized observations,
+errors and independent review. The stock helper records per-process Criterion estimates and
+stdout hashes, rather than preserving 32 physical stdout files; independent reparsing of all
+Criterion text is unavailable. No formal v0.9.0 classification changes.
+
+The next all-family ownership candidate targets compiled-theme request sharing, local outcome-only
+plans and owner-maintained exact coverage. It is registered for public warm allocation/memory and
+behavior controls, with bounded cold-cache retention explicit. It is not an explanation of the
+remaining None Packet/ZenUML gap or an admitted latency improvement.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the

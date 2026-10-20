@@ -32,6 +32,15 @@ is parked because a pre-redraw release checkpoint already had similar Packet/Zen
 Next redesign these larger mechanisms with complete normal contracts, then obtain adjacent
 formal E2E evidence. The latest admitted release classification remains 14/2/3 on b9.
 
+The safe literal CSS candidate in the same root-cause report is retired: 32 fixed diagnostic
+calls give Kanban 53.406 to 50.44775 us (-5.539%, -2.95825 us), below its preregistered 10%
+relative screen despite passing 1 us. All four SVG identities match; 5241 renderer tests and
+two new seam controls pass. Full classification-bypass diagnostics did not predict this safe
+subset's materiality. Preserve the rejected patch and records; do not retain its new literal
+type/macro or lower the gate. Next implement the independently registered all-family ledger
+ownership repair for warm memory/work, retaining all source, terminal and error semantics and
+explicit bounded cold-cache state. It does not close the None release regressions.
+
 The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
 scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
 On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;
