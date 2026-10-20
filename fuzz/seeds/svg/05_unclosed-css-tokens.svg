@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <style>.safe{fill:#123456;content:"A\"B";font-family:'A\\'} .broken{stroke:blue;content:"}</style>
+  <style>.single{fill:green;content:'}</style>
+  <style>.escaped{fill:purple;content:"unfinished\"</style>
+  <style>.trailing{fill:orange;content:'unfinished\</style>
+  <style>.comment{fill:teal;content:red/*/</style>
+  <style>.url{fill:black;stroke:url(#paint\)</style>
+  <style>.safe-url{fill:url(#paint);content:"45deg"}</style>
+  <defs><linearGradient id="paint"><stop offset="0" stop-color="red"/></linearGradient></defs>
+  <rect width="10" height="10" style="fill:#123456;font-family:&quot;unfinished"/>
+</svg>

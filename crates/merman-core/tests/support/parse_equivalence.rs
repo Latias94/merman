@@ -1,9 +1,10 @@
 //! Shared assertions for stable parser contracts and the in-process parse fuzzer.
 
 use super::parse_api::{
-    Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl, ParseMetadata,
-    ParseOptions, ParsedDiagram, ParsedDiagramRender, Result, diagram_family_capabilities,
-    runtime::RuntimePolicy, time::CivilDate,
+    DiagramParseOutcome, DiagramParseSnapshot, Engine, Error, ManagedSemanticJson, MermaidConfig,
+    OperationControl, ParseMetadata, ParseOptions, ParsedDiagram, ParsedDiagramRender,
+    ParsedEditorFacts, Result, SourceSpan, diagram_family_capabilities, runtime::RuntimePolicy,
+    time::CivilDate,
 };
 
 pub fn deterministic_engine() -> Engine {
@@ -114,11 +115,132 @@ pub fn assert_parse_paths(engine: &Engine, source: &str) {
     let strict = engine.parse_diagram_sync(source, ParseOptions::strict());
     let strict_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
     assert_pair(&strict, &strict_typed, source);
+    if let Ok(Some(parsed)) = &strict {
+        let known = engine.parse_diagram_with_type_sync(
+            &parsed.meta.diagram_type,
+            source,
+            ParseOptions::strict(),
+        );
+        assert_pair(&known, &strict_typed, source);
+    }
     let lenient = engine.parse_diagram_sync(source, ParseOptions::lenient());
     let lenient_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::lenient());
     assert_pair(&lenient, &lenient_typed, source);
 
-    match (&strict, &lenient) {
+    assert_snapshot(&strict, engine.parse_diagram_snapshot_sync(source), source);
+    assert_modes(&strict, &lenient, source);
+}
+
+pub fn assert_known_type_parse_paths(engine: &Engine, diagram_type: &str, source: &str) {
+    let strict = engine.parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict());
+    let typed = engine.parse_diagram_for_render_model_with_type_sync(
+        diagram_type,
+        source,
+        ParseOptions::strict(),
+    );
+    assert_pair(&strict, &typed, source);
+    let lenient =
+        engine.parse_diagram_with_type_sync(diagram_type, source, ParseOptions::lenient());
+    let lenient_typed = engine.parse_diagram_for_render_model_with_type_sync(
+        diagram_type,
+        source,
+        ParseOptions::lenient(),
+    );
+    assert_pair(&lenient, &lenient_typed, source);
+    assert_snapshot(
+        &strict,
+        engine.parse_diagram_snapshot_with_type_sync(diagram_type, source),
+        source,
+    );
+    assert_modes(&strict, &lenient, source);
+}
+
+fn assert_span(span: SourceSpan, source: &str) {
+    assert!(
+        span.start <= span.end && span.end <= source.len(),
+        "editor span outside source: {span:?}\n{source}"
+    );
+    assert!(
+        source.is_char_boundary(span.start) && source.is_char_boundary(span.end),
+        "editor span splits UTF-8: {span:?}\n{source}"
+    );
+}
+
+fn assert_snapshot(
+    semantic: &Result<Option<ParsedDiagram>>,
+    snapshot: Result<Option<DiagramParseSnapshot>>,
+    source: &str,
+) {
+    let snapshot = match snapshot {
+        Ok(Some(snapshot)) => snapshot,
+        Ok(None) => {
+            assert!(
+                matches!(semantic, Ok(None)),
+                "snapshot lost a diagram\n{source}"
+            );
+            return;
+        }
+        Err(error) => {
+            let Err(semantic) = semantic else {
+                panic!("snapshot failed after semantic acceptance: {error}\n{source}");
+            };
+            assert_error_category(semantic, &error, source);
+            return;
+        }
+    };
+    if let Some(capability) = diagram_family_capabilities()
+        .iter()
+        .find(|capability| capability.diagram_type == snapshot.metadata().diagram_type)
+        && capability.has_editor_parser
+    {
+        assert!(
+            matches!(snapshot.editor_facts(), ParsedEditorFacts::Available(_)),
+            "snapshot lost parser-backed editor facts: {source}"
+        );
+    }
+    if let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() {
+        for symbol in &facts.symbols {
+            assert_span(symbol.span, source);
+            assert_span(symbol.selection, source);
+        }
+        for diagnostic in &facts.diagnostics {
+            if let Some(span) = diagnostic.span {
+                assert_span(span, source);
+            }
+        }
+        for expected in &facts.expected_syntax {
+            assert_span(expected.span, source);
+        }
+    }
+    if let DiagramParseOutcome::Panicked(message) = snapshot.outcome() {
+        panic!("snapshot parser panicked: {message}\n{source}");
+    }
+    // Editor preprocessing deliberately recovers unfinished directive lines. Its own
+    // recovery receipt distinguishes that input policy from an actual parser divergence.
+    if snapshot.recovered_incomplete_directive() {
+        return;
+    }
+    match (semantic, snapshot.outcome()) {
+        (Ok(Some(parsed)), DiagramParseOutcome::Parsed { model, .. }) => {
+            assert_metadata(&parsed.meta, snapshot.metadata(), source);
+            assert_eq!(
+                &parsed.model, model,
+                "snapshot semantic projection: {source}"
+            );
+        }
+        (Err(semantic), DiagramParseOutcome::Failed(error)) => {
+            assert_error_category(semantic, error, source);
+        }
+        _ => panic!("snapshot acceptance differs from strict semantic parse\n{source}"),
+    }
+}
+
+fn assert_modes(
+    strict: &Result<Option<ParsedDiagram>>,
+    lenient: &Result<Option<ParsedDiagram>>,
+    source: &str,
+) {
+    match (strict, lenient) {
         (Ok(Some(strict)), Ok(Some(lenient))) => {
             assert_metadata(&strict.meta, &lenient.meta, source);
             assert_eq!(
@@ -137,8 +259,8 @@ pub fn assert_parse_paths(engine: &Engine, source: &str) {
         (Err(strict), Err(lenient)) => assert_error_category(strict, lenient, source),
         _ => panic!(
             "unexpected strict-to-lenient transition: strict={}, lenient={}\n{source}",
-            outcome(&strict),
-            outcome(&lenient)
+            outcome(strict),
+            outcome(lenient)
         ),
     }
 }

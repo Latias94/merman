@@ -463,3 +463,25 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
             .any(|item| item.name == "A" && item.role == EditorSemanticRole::Entity)
     );
 }
+
+#[cfg(feature = "diagram-pie")]
+#[test]
+fn pie_parse_failure_keeps_recovered_outline_and_completion_context() {
+    let harness = SnapshotHarness::new();
+    let source = "pie showData\n\"negative\": -1\n\"valid\": 2\n";
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/pie-recovered.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .expect("recoverable pie syntax remains available to editors");
+    let index = snapshot.fences()[0].text_index();
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    for name in ["negative", "valid"] {
+        assert!(outline_items(index).any(|item| item.name == name));
+    }
+    assert!(index.has_directive_prefix("showData"));
+    assert!(!index.expected_syntax().is_empty());
+}
