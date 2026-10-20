@@ -16,6 +16,8 @@ const SOURCE_FILES: &[&str] = &[
     "packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts",
     "packages/mermaid/src/Diagram.ts",
     "packages/mermaid/src/mermaidAPI.ts",
+    "packages/mermaid/src/preprocess.ts",
+    "packages/mermaid/src/diagram-api/comments.ts",
 ];
 const FIXTURES: &[(&str, &str)] = &[
     ("flowchart", "flowchart/basic.mmd"),
@@ -529,6 +531,119 @@ fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
     loose.id += "-loose";
     loose.site_config["securityLevel"] = "loose".into();
     cases.push(loose);
+    for keyword in [
+        "direction",
+        "click",
+        "default",
+        "call",
+        "href",
+        "accTitle",
+        "accDescr",
+        "LR",
+        "RL",
+        "TB",
+        "TD",
+        "BT",
+        "BR",
+        "v",
+        "end",
+        "graph",
+        "flowchart",
+        "flowchart-elk",
+        "swimlane-beta",
+        "subgraph",
+        "style",
+        "class",
+        "classDef",
+        "linkStyle",
+        "interpolate",
+        "_self",
+        "_blank",
+        "_parent",
+        "_top",
+    ] {
+        for suffix in ["%", "%%tail"] {
+            for lane in ["grammar", "public"] {
+                cases.push(base_case(
+                    format!("flow-percent-keyword-{keyword}-{suffix}-{lane}"),
+                    "flowchart",
+                    format!("flowchart TD\n{keyword}{suffix}-->B"),
+                    lane,
+                    "strict",
+                ));
+            }
+        }
+    }
+    for (id, source) in [
+        ("comment-line", "flowchart TD\nA-->B\n%% comment\nC-->D"),
+        ("comment-indent", "flowchart TD\n \t%% comment\nA-->B"),
+        ("comment-eof", "flowchart TD\nA-->B\n%% comment"),
+        ("comment-blank-body", "flowchart TD\n%% \nA-->B"),
+        ("percent-bare-eof", "flowchart TD\n%%"),
+        ("percent-bare-line", "flowchart TD\n%%\nA-->B"),
+        ("percent-bare-indent", "flowchart TD\n  %%\n"),
+        ("percent-id-start", "flowchart TD\n%-->B"),
+        ("percent-id-end", "flowchart TD\nA%-->B"),
+        ("percent-id-middle", "flowchart TD\nA%%B-->C"),
+        ("percent-inline-target", "flowchart TD\nA-->B%%tail"),
+        ("percent-direction-prefix", "flowchart TD\ndirection%-->B"),
+        ("percent-click-prefix", "flowchart TD\nclick%%tail-->B"),
+        ("percent-reserved-end", "flowchart TD\nend%-->B"),
+        ("percent-reserved-style", "flowchart TD\nstyle%-->B"),
+        ("percent-header-direction", "flowchart LR%\nA-->B"),
+        ("header-inline-node", "flowchart LR A-->B"),
+        ("header-space-semicolon", "flowchart LR ;A-->B"),
+        ("header-absent-direction-semicolon", "flowchart ;A-->B"),
+        (
+            "header-inline-direction-statement",
+            "flowchart direction LR\nA-->B",
+        ),
+        ("header-unicode-separator", "flowchart TD開始 --> B"),
+        ("header-br-direction", "flowchart BR\nA-->B"),
+        ("percent-inline-statement", "flowchart TD\nA-->B; %%tail"),
+        ("percent-inline-bare-statement", "flowchart TD\nA-->B; %%"),
+        ("comment-inline-spaced", "flowchart TD\nA-->B %% comment"),
+        (
+            "comment-inline-continued",
+            "flowchart TD\nA-->B %% comment\nC-->D",
+        ),
+        ("percent-inline-bare", "flowchart TD\nA-->B %%"),
+        (
+            "comment-inline-statement",
+            "flowchart TD\nA-->B; %% comment",
+        ),
+        ("comment-inline-header", "flowchart TD %% comment\nA-->B"),
+        ("percent-text", "flowchart TD\nA[100%% done]"),
+        ("percent-quoted", "flowchart TD\nA[\"100%% done\"]"),
+        ("percent-markdown", "flowchart TD\nA[\"`100%% done`\"]"),
+        ("percent-edge", "flowchart TD\nA-->|\"100%% done\"|B"),
+        (
+            "percent-markdown-edge",
+            "flowchart TD\nA-->|\"`100%% done`\"|B",
+        ),
+        (
+            "comment-quoted-line",
+            "flowchart TD\nA[\"first\n%% comment\nlast\"]",
+        ),
+        (
+            "comment-markdown-line",
+            "flowchart TD\nA[\"`first\n%% comment\nlast`\"]",
+        ),
+        (
+            "percent-crlf",
+            "flowchart TD\r\n%% 雪😀\r\n雪%-->B%%tail\r\n",
+        ),
+    ] {
+        for lane in ["grammar", "public"] {
+            cases.push(base_case(
+                format!("flow-{id}-{lane}"),
+                "flowchart",
+                source,
+                lane,
+                "strict",
+            ));
+        }
+    }
     for (id, family, source) in [
         (
             "frontmatter",
@@ -547,6 +662,16 @@ fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
         ),
         ("invalid-header", "flowchart", "flowchartwhat TD\n A-->B"),
         ("invalid-body", "sequence", "sequenceDiagram\n A->>"),
+        (
+            "percent-source-config",
+            "flowchart",
+            "---\nconfig:\n  flowchart:\n    htmlLabels: false\n---\n%%{init: {\"flowchart\":{\"curve\":\"linear\"}}}%%\n%% 雪😀\nflowchart TD\n雪%-->B%%tail",
+        ),
+        (
+            "percent-source-config-rejected",
+            "flowchart",
+            "---\nconfig:\n  flowchart:\n    htmlLabels: false\n---\n%%{init: {\"flowchart\":{\"curve\":\"linear\"}}}%%\n%% 雪😀\nflowchart TD\n雪%-->B %% comment",
+        ),
     ] {
         cases.push(base_case(id, family, source, "public", "strict"));
     }

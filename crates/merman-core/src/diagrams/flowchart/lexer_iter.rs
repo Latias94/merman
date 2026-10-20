@@ -30,16 +30,33 @@ impl<'input> Iterator for Lexer<'input> {
             self.allow_header_direction = false;
             return Some(Ok(sep));
         }
-        if let Some(sep) = self.lex_comment() {
+        if self.allow_header_direction {
+            if let Some(direction) = self.lex_direction() {
+                return Some(Ok(direction));
+            }
+            let start = self.pos;
+            let rest = &self.input[start..];
+            let value_len = rest
+                .find(|ch| ch == ';' || super::is_ecmascript_trim_char(ch))
+                .unwrap_or(rest.len());
+            // Keep the complete direction candidate available to editor replacements, but do
+            // not reinterpret any rejected header tail as body nodes during recovery.
+            self.pos += rest.find(['\n', ';']).unwrap_or(rest.len());
             self.allow_header_direction = false;
-            return Some(Ok(sep));
+            let span = crate::SourceSpan::new(start, start + value_len);
+            return Some(Err(LexError::with_span(
+                "invalid flowchart direction",
+                span,
+            )
+            .expecting(
+                crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+                span,
+            )));
         }
-        self.skip_ws();
-        if self.pos >= self.input.len() {
-            return None;
-        }
-
         let start = self.pos;
+        if let Some(error) = self.lex_reserved_token_error() {
+            return Some(Err(error));
+        }
         if let Some(tok) = self.lex_direction_stmt() {
             return Some(tok);
         }
@@ -61,22 +78,22 @@ impl<'input> Iterator for Lexer<'input> {
         if let Some(res) = self.lex_shape_data() {
             return Some(res);
         }
-        if self.starts_with_kw("flowchart-elk") {
+        if self.input[self.pos..].starts_with("flowchart-elk") {
             self.pos += "flowchart-elk".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwFlowchartElk, self.pos)));
         }
-        if self.starts_with_kw("swimlane-beta") {
+        if self.input[self.pos..].starts_with("swimlane-beta") {
             self.pos += "swimlane-beta".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwSwimlane, self.pos)));
         }
-        if self.starts_with_kw("flowchart") {
+        if self.input[self.pos..].starts_with("flowchart") {
             self.pos += "flowchart".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwFlowchart, self.pos)));
         }
-        if self.starts_with_kw("graph") {
+        if self.input[self.pos..].starts_with("graph") {
             self.pos += "graph".len();
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwGraph, self.pos)));
@@ -89,7 +106,16 @@ impl<'input> Iterator for Lexer<'input> {
             }
             return Some(Ok((start, Tok::KwSubgraph, keyword_end)));
         }
-        if self.starts_with_kw("end") {
+        // Mermaid's `end` rule alone has an ASCII word boundary; `endless` remains an id.
+        if self.input[self.pos..]
+            .strip_prefix("end")
+            .is_some_and(|rest| {
+                !rest
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            })
+        {
             self.pos += "end".len();
             return Some(Ok((start, Tok::KwEnd, self.pos)));
         }
@@ -97,11 +123,6 @@ impl<'input> Iterator for Lexer<'input> {
         if let Some(tok) = self.lex_style_sep() {
             return Some(Ok(tok));
         }
-
-        if let Some(tok) = self.lex_direction() {
-            return Some(Ok(tok));
-        }
-        self.allow_header_direction = false;
 
         if let Some(res) = self.lex_node_label() {
             return Some(res);
@@ -131,6 +152,26 @@ impl<'input> Iterator for Lexer<'input> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percent_markers_remain_identifier_tokens() {
+        let source = "% %A A% A%%B %% %%tail\nC";
+        let tokens = Lexer::new(source)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("percent identifiers must tokenize");
+        let ids = tokens
+            .iter()
+            .filter_map(|(start, token, end)| match token {
+                Tok::Id(id) => {
+                    assert_eq!(&source[*start..*end], id);
+                    Some(id.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["%", "%A", "A%", "A%%B", "%%", "%%tail", "C"]);
+        assert!(tokens.iter().any(|(_, token, _)| matches!(token, Tok::Sep)));
+    }
 
     #[test]
     fn unsupported_unicode_recovery_keeps_character_boundaries() {

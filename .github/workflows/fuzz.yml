@@ -364,6 +364,8 @@ jobs:
           sparse-checkout: |
             packages/mermaid/src/Diagram.ts
             packages/mermaid/src/mermaidAPI.ts
+            packages/mermaid/src/preprocess.ts
+            packages/mermaid/src/diagram-api/comments.ts
             packages/mermaid/src/diagrams/flowchart/parser/flow.jison
             packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
             packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison

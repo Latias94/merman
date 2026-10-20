@@ -316,3 +316,177 @@ fn assert_source_span(fixture: &str, source: &str, owner: &str, span: SourceSpan
         "{fixture}: {owner} span splits a UTF-8 code point: {span:?}"
     );
 }
+
+#[test]
+fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_crlf() {
+    use merman_core::{
+        DiagramParseOutcome, EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts,
+    };
+
+    let prefix = concat!(
+        "---\r\n",
+        "title: 中文😀\r\n",
+        "---\r\n",
+        "%%{init: {\"flowchart\":{\"htmlLabels\":false}}}%%\r\n",
+        "%% deleted 中文😀\r\n",
+        "flowchart TD\r\n",
+    );
+    let engine = Engine::new();
+    // Both complete sources were observed through the pinned Mermaid public oracle. The same
+    // original-byte boundaries apply to successful symbols and to the retained failure facts.
+    for (body, should_parse, names) in [
+        ("雪%-->B%%tail", true, ["雪%", "B%%tail"]),
+        ("雪%-->B %% comment", false, ["雪%", "B"]),
+    ] {
+        let source = format!("{prefix}{body}\r\n");
+        for known_type in [false, true] {
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            } else {
+                engine.parse_diagram_snapshot_sync(&source)
+            }
+            .unwrap()
+            .expect("Flowchart snapshot");
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("percent sources must retain their editor facts");
+            };
+            assert_editor_fact_spans_belong_to_source(
+                Path::new("flowchart-percent-original-source.mmd"),
+                &source,
+                facts,
+            );
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|prefix| prefix == "init")
+            );
+            for name in names {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap_or_else(|| panic!("missing percent source symbol {name}"));
+                let start = source.rfind(name).unwrap();
+                let expected = SourceSpan::new(start, start + name.len());
+                assert_eq!(symbol.selection, expected);
+                assert_eq!(symbol.span, expected);
+                assert_eq!(&source[expected.start..expected.end], name);
+            }
+
+            let parsed = if known_type {
+                engine.parse_diagram_with_type_sync("flowchart-v2", &source, ParseOptions::strict())
+            } else {
+                engine.parse_diagram_sync(&source, ParseOptions::strict())
+            };
+            if should_parse {
+                assert!(snapshot.outcome().parsed_model().is_some());
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                let parsed = parsed.unwrap().unwrap();
+                assert_eq!(parsed.model["nodes"][0]["id"], "雪%");
+                assert_eq!(parsed.model["edges"][0]["to"], "B%%tail");
+            } else {
+                let marker_start = source.rfind("%% comment").unwrap();
+                let expected = SourceSpan::new(marker_start, marker_start + "%%".len());
+                let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                    snapshot.outcome()
+                else {
+                    panic!("inline percent source must retain its structured parse failure");
+                };
+                assert_eq!(diagnostic.span(), Some(expected));
+                let Error::DiagramParse { diagnostic, .. } = parsed.unwrap_err() else {
+                    panic!("strict JSON parsing must retain its original diagnostic");
+                };
+                assert_eq!(diagnostic.span(), Some(expected));
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    facts
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.span == Some(expected))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_invalid_header_direction_recovers_complete_value_and_following_nodes() {
+    use merman_core::{
+        DiagramParseOutcome, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
+        ParsedEditorFacts,
+    };
+
+    let prefix = concat!(
+        "---\r\n",
+        "title: 中文😀\r\n",
+        "---\r\n",
+        "%% deleted 中文😀\r\n",
+    );
+    let engine = Engine::new();
+    for (header, direction_value, value_start) in [
+        ("flowchart LR%", "LR%", 10),
+        ("flowchart 错误%", "错误%", 10),
+        ("flowchart LR% extra", "LR%", 10),
+        ("flowchart", "", 9),
+        ("flowchart ", "", 10),
+    ] {
+        for separator in ["\r\n", ";", ""] {
+            if direction_value.is_empty() && separator != ";" {
+                continue;
+            }
+            let body = if separator.is_empty() {
+                ""
+            } else {
+                "雪%-->B\r\n"
+            };
+            let source = format!("{prefix}{header}{separator}{body}");
+            for known_type in [false, true] {
+                let snapshot = if known_type {
+                    engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+                } else {
+                    engine.parse_diagram_snapshot_sync(&source)
+                }
+                .unwrap()
+                .expect("invalid header retains a Flowchart snapshot");
+                assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("invalid header must retain editor recovery facts");
+                };
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert_editor_fact_spans_belong_to_source(
+                    Path::new("flowchart-invalid-header-original-source.mmd"),
+                    &source,
+                    facts,
+                );
+
+                let start = prefix.len() + value_start;
+                let expected = SourceSpan::new(start, start + direction_value.len());
+                let directions = facts
+                    .expected_syntax
+                    .iter()
+                    .filter(|expected| {
+                        expected.kind == EditorExpectedSyntaxKind::FlowchartDirectionValue
+                    })
+                    .map(|expected| expected.span)
+                    .collect::<Vec<_>>();
+                assert_eq!(directions, [expected], "{source}");
+                assert_eq!(&source[expected.start..expected.end], direction_value);
+
+                let names = facts
+                    .symbols
+                    .iter()
+                    .map(|symbol| symbol.name.as_str())
+                    .collect::<Vec<_>>();
+                let expected_names: &[&str] = if body.is_empty() { &[] } else { &["雪%", "B"] };
+                assert_eq!(names, expected_names, "header tail is not a node: {source}");
+                for symbol in &facts.symbols {
+                    let start = source.rfind(&symbol.name).unwrap();
+                    let expected = SourceSpan::new(start, start + symbol.name.len());
+                    assert_eq!(symbol.selection, expected);
+                    assert_eq!(symbol.span, expected);
+                }
+            }
+        }
+    }
+}
