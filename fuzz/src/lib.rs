@@ -21,7 +21,9 @@ pub fn bounded_utf8(data: &[u8], max_bytes: usize) -> Option<&str> {
 
 #[path = "../../crates/merman-core/tests/support/parse_equivalence.rs"]
 mod parse_equivalence;
-pub use parse_equivalence::{assert_parse_paths, deterministic_engine};
+pub use parse_equivalence::{
+    assert_known_type_parse_paths, assert_parse_paths, deterministic_engine,
+};
 
 #[derive(Debug, Clone)]
 pub struct BoundedRenderer {
@@ -145,6 +147,9 @@ fn is_event_handler_attribute(name: &str) -> bool {
 }
 
 #[cfg(test)]
+mod tree_sitter_edits;
+
+#[cfg(test)]
 mod tests {
     use super::assert_resvg_safe_svg;
 
@@ -153,6 +158,56 @@ mod tests {
         assert_resvg_safe_svg(
             r##"<svg xmlns="http://www.w3.org/2000/svg"><path style="filter:filterBurl(file:///tmp/x);stroke:#033"/></svg>"##,
         );
+    }
+
+    #[test]
+    fn terminal_finalizer_is_idempotent_for_unclosed_css_crash_seed() {
+        let svg = include_str!("../seeds/svg/04_unclosed-css-ci.svg");
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("parity render session must be constructible");
+        let sanitized = merman_render::svg::finalize_resvg_svg(svg, &session)
+            .expect("the well-formed CI crash seed must be sanitizable");
+        let sanitized = sanitized.as_ref();
+        assert_resvg_safe_svg(sanitized);
+        assert!(sanitized.contains(".node{}"), "{sanitized}");
+        assert!(!sanitized.contains("animatiw:"), "{sanitized}");
+    }
+
+    #[test]
+    fn terminal_finalizer_drops_unclosed_css_tokens_and_preserves_safe_css() {
+        let svg = include_str!("../seeds/svg/05_unclosed-css-tokens.svg");
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("parity render session must be constructible");
+        let sanitized = merman_render::svg::finalize_resvg_svg(svg, &session)
+            .expect("unclosed CSS tokens must be removable");
+        assert_resvg_safe_svg(sanitized.as_ref());
+
+        let document = roxmltree::Document::parse(sanitized.as_ref())
+            .expect("sanitized SVG must remain well formed");
+        let styles: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .map(|node| node.text().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            styles,
+            [
+                r##".safe{fill:#123456;content:"A\"B";font-family:'A\\'}.broken{stroke:blue;}"##,
+                ".single{fill:green;}",
+                ".escaped{fill:purple;}",
+                ".trailing{fill:orange;}",
+                ".comment{fill:teal;}",
+                ".url{fill:black;}",
+                r##".safe-url{fill:url(#paint);content:"45deg"}"##,
+            ]
+        );
+        let rect = document
+            .descendants()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("the safe rectangle must be preserved");
+        assert_eq!(rect.attribute("style"), Some("fill:#123456"));
     }
 
     #[test]

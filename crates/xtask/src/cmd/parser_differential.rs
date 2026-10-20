@@ -501,6 +501,16 @@ fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
             "flowchart LR\nsubgraph g[Group]\n A[开始] e@-->|Yes| B{Choice}\n A --> B\nend\nclassDef red fill:red,color:blue\nclass A red\nstyle B stroke:red\naccTitle: Diagram title\naccDescr: Diagram description\n",
         ),
         (
+            "flow-classdef-repeat",
+            "flowchart",
+            "graph TD\nclassDef c fill:red\nclassDef c fill:red\n",
+        ),
+        (
+            "flow-classdef-append",
+            "flowchart",
+            "flowchart TD\nA:::red\nclassDef red fill:red\nclassDef red stroke:blue\n",
+        ),
+        (
             "flow-entities",
             "flowchart",
             "flowchart TD\r\n%% comment\r\n A[\"a &amp; b #quot;\"]-->B[\"雪\"]",

@@ -22,12 +22,12 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 
 | Target | Surface | Seed corpus | Dictionary |
 | --- | --- | --- | --- |
-| `parse_mermaid` | Semantic JSON, typed render model selection, and lenient recovery | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
+| `parse_mermaid` | Semantic JSON, typed render models, editor snapshots, and lenient recovery through detected and known-type entrypoints | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
 | `render_mermaid` | Strict parse, layout, SVG render, and `resvg-safe` output | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
 | `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
 | `ffi_api` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
 | `tree_sitter_mermaid_parse` | Arbitrary-byte Tree-sitter fresh parsing, repeat determinism, and bounded CST spans | `distribution/tree-sitter-mermaid/fuzz/corpus/all-families` | `fuzz/dictionaries/mermaid.dict` |
-| `tree_sitter_mermaid_edits` | Bounded byte edits with incremental/fresh named-tree equivalence | `fuzz/seeds/tree-sitter-edits` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_edits` | Bounded byte edits, tree geometry, and restored CST equivalence after inverse edits | `fuzz/seeds/tree-sitter-edits` | `fuzz/dictionaries/mermaid.dict` |
 | `tree_sitter_mermaid_scanner` | External scanner state canonicalization plus arbitrary valid-symbol masks and row scans | `fuzz/seeds/tree-sitter-scanner` | `fuzz/dictionaries/mermaid.dict` |
 
 `ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
@@ -45,10 +45,36 @@ fixed default URI and treats the remaining bytes as Mermaid source.
 `parse_mermaid` compares the semantic-JSON and typed-render parse paths using the same fixed
 runtime/configuration, in both strict and paired lenient modes. It checks result categories,
 diagram identity, title, authored/effective configuration and the complete lossless managed
-semantic projection. Acceptance disagreement fails even when one side returns no diagram.
+semantic projection. Each input also exercises one catalog-selected known-type entrypoint, so
+malformed headers and empty sources reach family parsers independently of type detection.
+Editor snapshots must retain parser-backed facts with source-bounded, UTF-8-aligned spans. Their
+semantic acceptance and model match strict parsing, except when the snapshot explicitly records
+editor-only incomplete-directive recovery; parser panics always fail. A semantic failure can still
+carry recovered symbols, diagnostics, and completion context.
+Acceptance disagreement fails even when one side returns no diagram.
 Catalog-derived family/alias checks and extension, recovery and cancellation boundaries live in
 `crates/merman-core/tests/parse_projection_contract.rs` and related core parse tests; custom
 registry contracts are not inferred from built-in model kinds.
+
+`tree_sitter_mermaid_edits` checks byte/point consistency, parent containment, and sibling ordering
+for every node after each incremental edit, including every error subtree. Edited intermediates
+can have different CSTs from fresh parses: tolerant recovery nodes can represent malformed input
+even when `has_error()` is false. Cross-tree node ranges are not an invariant either; a reused
+recovery token can retain leading extras after an edit makes the document valid. Each edit records
+its inverse. After undoing all edits, the restored source must equal the original bytes, and the
+restored tree must have consistent geometry. If the initial tree has no errors, its restored CST
+must also match the original fresh tree in node kinds, fields, flags, and structure. This follows
+the intermediate-geometry/restored-output strategy in the fixed Tree-sitter 0.27.1 fuzz source
+(`crates/cli/src/fuzz.rs` and `crates/cli/src/fuzz/corpus_test.rs`); it does not replicate upstream's
+scope-based `changed_ranges` checker. Focused grammar/editor regressions continue to assert source
+ranges, and the separate parse target covers fresh-parse determinism.
+
+Stable regressions for the shared SVG oracle and incremental-edit implementation can run without
+building the instrumented libFuzzer executables:
+
+```sh
+cargo nextest run --locked --manifest-path fuzz/Cargo.toml --lib
+```
 
 Generated layout assertions in `flowchart_layout_test` and `swimlane_layout_test` use fixed seeds
 and their explicitly supported Dagre/Swimlane graph subsets. They exclude self/ancestor edges from
@@ -108,7 +134,9 @@ All UTF-8 SVG inputs, including malformed XML, pass through the pipeline for pan
 coverage. For well-formed input, the assertions mirror the documented `resvg-safe` structural
 contract: output must stay XML-parseable, remove active elements, event-handler and unsafe URL
 attributes, and `foreignObject`, while preserving safe local fragment references and safe raster
-image data URIs. `resvg-safe` is a raster-compatibility pipeline, not a general sanitizer for
+image data URIs. Successful output must also remain unchanged by another finalization pass.
+Unclosed CSS strings, comments, URLs, and blocks are regression inputs for this terminal-output
+contract; safe neighboring CSS must survive removal of malformed content. `resvg-safe` is a raster-compatibility pipeline, not a general sanitizer for
 arbitrary host CSS; browser and webview consumers must follow `docs/security/RENDERING_SECURITY.md`.
 
 When a crash is found, minimize it before promoting it into a regression test:
