@@ -6,6 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-21
+
 ### Fixed
 
 - Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#228](https://github.com/Latias94/merman/issues/228)
