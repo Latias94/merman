@@ -1342,6 +1342,13 @@ Use calibrated confirmation for subsequent latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
 
+The October 21 ZenUML selector-owner cleanup forwards the already normalized `SvgDiagramId`
+into the stylesheet writer instead of repeating the selector eligibility scan for its 35 CSS
+occurrences. Four balanced public E2E controls preserve exact SVG identities and show a 4.19% to
+6.06% ZenUML reduction, about 1.0 to 1.45 us, with no control regression. It is retained as a
+safe local cleanup below the 10% formal latency gate; it does not change the v0.9.0 classification.
+See the [compact evidence archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json).
+
 ### Active: alpha.7 default SVG regression
 
 The September 16 release-range audit confirms regressions in unthemed complete SVG operations

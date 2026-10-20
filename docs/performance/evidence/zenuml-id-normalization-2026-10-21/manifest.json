@@ -1,0 +1,31 @@
+{
+  "created_at_utc": "2026-10-21T00:00:00+00:00",
+  "base_revision": "4657e6017507b965026e9f35182f375dc418d855",
+  "candidate_revision": "b18c436a2b9d0fcb39a3a8f548f88cc2b404a0e7",
+  "fixtures": 4,
+  "pairs_per_fixture": 4,
+  "timed_calls": 32,
+  "decision": "keep low-risk redundant-normalization removal; no formal latency admission",
+  "zenuml_result": {
+    "base_median_ns": 24020.0,
+    "candidate_median_ns": 22790.0,
+    "paired_relative_bounds": [
+      -0.0606,
+      -0.0419
+    ],
+    "paired_absolute_bounds_ns": [
+      -1451.75,
+      -1008.0
+    ]
+  },
+  "controls": {
+    "packet": "within noise",
+    "kanban": "within noise",
+    "flowchart": "within noise"
+  },
+  "compressed_sha256": "d607aa12f7d41ba7fef62e7efc3663b7c8c626fa1ee9b02787e271055b980ed0",
+  "uncompressed_sha256": "f7353dc7001e31451de2f9b0314b340a71b67e5e9f85587b5ddaff294d4b0e3c",
+  "compressed_bytes": 67417,
+  "uncompressed_bytes": 552262,
+  "file": "diagnostic.json.gz"
+}

@@ -277,6 +277,29 @@ warm allocation/work only; this diagnostic does not change the v0.9.0 latency cl
 The [ledger latency archive](evidence/theme-ledger-latency-2026-10-21/manifest.json) retains
 the registration, full stock report and raw normalized rows.
 
+## ZenUML repeated selector normalization: keep the safe removal
+
+The ZenUML renderer already receives the normalized `SvgDiagramId` owned by the public SVG
+entrypoint, but its stylesheet call wrapped that value in `css_selector_diagram_id` again. The
+stylesheet template emits 35 mandatory diagram-ID selector occurrences, so the old call repeated
+the same eligibility scan for every occurrence. Passing the existing typed ID directly removes
+those repeated predicates while retaining the typed projection, XML boundary, byte accounting,
+resource limits and cancellation behavior. Raw test identifiers continue to use the adapter in
+the private writer tests.
+
+A fresh preregistered diagnostic compared `4657e6017` with `b18c436a2` using four end-to-end SVG
+fixtures and four balanced AB/BA pairs per fixture (32 timed calls). ZenUML moved from 24.02 us to
+22.79 us, with paired bounds of -4.19% to -6.06% and -1.008 to -1.452 us. Packet, Kanban and
+Flowchart controls stayed within noise. All four SVG byte hashes, element counts and input hashes
+matched exactly; both physical benchmark executables were frozen and the run had no contract
+errors. The reduction is below the registered 10% formal admission screen, so it is retained as a
+low-risk source cleanup without changing the v0.9.0 classification or claiming full-gap recovery.
+
+The [ZenUML normalization archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json)
+retains the registration and compact stock report. The next investigation should target the
+remaining ZenUML completion/layout cost rather than adding another selector cache or generalized
+normalization layer.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the
