@@ -472,7 +472,7 @@ function isThemeRecipeJson(value: unknown): value is string | null {
     return (
       isRecord(recipe) &&
       recipe.schema_version === 1 &&
-      (recipe.kind === "definition" || recipe.kind === "complete_spec")
+      (recipe.kind === "design" || recipe.kind === "complete_spec")
     );
   } catch {
     return false;

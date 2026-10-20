@@ -10,8 +10,9 @@ const MATERIALIZED_THEME_SCHEMA_VERSION_V1: u32 = 1;
 
 /// The closed version 1 success envelope produced by theme materialization.
 ///
-/// This wire carries only the resolved contract versions and the complete theme spec. Diagnostics,
-/// provenance, capability evidence, and render admission belong to their respective authorities.
+/// This wire carries the resolved contract versions, complete theme spec, and optional authored
+/// reference locations for editing. Reference locations are not execution or capability evidence;
+/// diagnostics and render admission belong to their respective authorities.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MaterializedThemeWireV1 {
     schema_version: u32,
@@ -19,6 +20,8 @@ pub struct MaterializedThemeWireV1 {
     expansion_version: u32,
     spec_schema_version: u32,
     spec: DiagramThemeSpecWireV1,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    references: Vec<crate::ThemeDesignReferenceUse>,
 }
 
 impl MaterializedThemeWireV1 {
@@ -36,6 +39,7 @@ impl MaterializedThemeWireV1 {
             expansion_version: THEME_CONTRACT_V1.expansion_version(),
             spec_schema_version: THEME_CONTRACT_V1.spec_schema_version(),
             spec,
+            references: Vec::new(),
         })
     }
 
@@ -68,6 +72,17 @@ impl MaterializedThemeWireV1 {
     pub fn into_spec(self) -> DiagramThemeSpecWireV1 {
         self.spec
     }
+
+    /// Attaches declared authoring bindings; these are not execution or capability evidence.
+    pub fn with_references(mut self, references: Vec<crate::ThemeDesignReferenceUse>) -> Self {
+        self.references = references;
+        self
+    }
+
+    /// Returns declared binding locations and consumer-owned input domains.
+    pub fn references(&self) -> &[crate::ThemeDesignReferenceUse] {
+        &self.references
+    }
 }
 
 #[derive(Deserialize)]
@@ -78,6 +93,8 @@ struct MaterializedThemeWireV1Decode {
     expansion_version: u32,
     spec_schema_version: u32,
     spec: DiagramThemeSpecWireV1,
+    #[serde(default)]
+    references: Vec<crate::ThemeDesignReferenceUse>,
 }
 
 impl<'de> Deserialize<'de> for MaterializedThemeWireV1 {
@@ -103,6 +120,8 @@ impl<'de> Deserialize<'de> for MaterializedThemeWireV1 {
             )));
         }
 
-        Self::try_new(decoded.spec).map_err(D::Error::custom)
+        Self::try_new(decoded.spec)
+            .map(|value| value.with_references(decoded.references))
+            .map_err(D::Error::custom)
     }
 }

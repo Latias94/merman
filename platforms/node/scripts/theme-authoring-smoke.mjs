@@ -164,10 +164,10 @@ export async function runThemeAuthoringSmoke(module, engine) {
     }
     const definitions = {};
     for (const name of ["light", "dark"]) {
-      const readable = await readFile(new URL(`${name}.definition.json`, FIXTURES), "utf8");
+      const readable = await readFile(new URL(`${name}.design.json`, FIXTURES), "utf8");
       const definition = JSON.parse(readable);
       const expectedDefinition = (await readFile(
-        new URL(`${name}.definition.canonical.json`, FIXTURES), "utf8",
+        new URL(`${name}.design.canonical.json`, FIXTURES), "utf8",
       )).trim();
       const expectedSpec = (await readFile(
         new URL(`${name}.spec.canonical.json`, FIXTURES), "utf8",
@@ -199,9 +199,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     }
 
     const edited = JSON.parse(definitions.light);
-    edited.styles = [{
-      kind: "rule", target: "state", family: "state", style: { fill: "#123abc" },
-    }];
+    edited.rules.push({ target: "state", family: "state", style: { fill: "#123abc" } });
     assert.equal(stateFill(await renderDefinition(engine, JSON.stringify(edited), "state")), "#123abc");
     assert.equal(await renderDefinition(engine, JSON.stringify(edited), "sequence"),
       await renderDefinition(engine, definitions.light, "sequence"), "State rule leaked into Sequence");
@@ -221,9 +219,9 @@ export async function runThemeAuthoringSmoke(module, engine) {
 
     for (const preset of ["brutalist", "spotless", "cyberpunk"]) {
       const exported = await executeJson(engine, "export-theme-preset-json", preset);
-      assert.equal(exported.kind, "complete_spec");
+      assert.equal(exported.kind, "design");
       assert.equal(exported.schema_version, 1);
-      const spec = exported.complete_spec;
+      const spec = await materialize(engine, JSON.stringify(exported.design));
       assert.ok(!Object.hasOwn(spec, "assets") && !Object.hasOwn(spec, "mermaid"),
         "native preset must not embed fonts or Mermaid compatibility");
       const diagramId = `node-preset-${preset}`;

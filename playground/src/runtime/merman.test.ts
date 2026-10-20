@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { registerHooks } from "node:module";
 
-import { BINDING_OPTIONS_SCHEMA_VERSION } from "@mermanjs/web";
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+} from "@mermanjs/web";
+import { browserRenderFixture } from "./merman-browser-test-fixture.ts";
 import {
   createMermanRuntime,
   installMermanDocumentLifecycle,
@@ -117,8 +121,97 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
 });
 
+test("browser facade keeps each measured or headless SVG with its single execution metadata", async (context) => {
+  const { calls, support, supportCalls } = browserRenderFixture;
+  const browserModuleUrl = new URL("./merman-browser.ts", import.meta.url).href;
+  const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (specifier === "@mermanjs/web" && context.parentURL === browserModuleUrl) {
+        return { url: new URL("./merman-browser-test-fixture.ts", import.meta.url).href, shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    },
+  });
+  const { mermanBrowserDependencies } = await import("./merman-browser.ts")
+    .finally(() => hooks.deregister());
+  const browserSession = mermanBrowserDependencies.createSession();
+  context.after(() => browserSession.dispose());
+
+  for (const mode of ["browser", "headless"] as const) {
+    await context.test(`${mode} publishes exactly one result call`, () => {
+      calls.length = 0;
+      const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"red"},"accent":{"type":"color","value":"blue"}}}}';
+      const input = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
+        textMeasurementMode: mode,
+        themeRecipeJson: recipe,
+      });
+      browserRenderFixture.result = {
+        svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${mode}</text></svg>`,
+        metadata: {
+          version: 1,
+          operation_id: "svg",
+          media_type: "image/svg+xml",
+          runtime_policy: "default",
+          byte_length: 0,
+          theme_execution_evidence: { version: 99, future_status: mode },
+        },
+      };
+      const result = browserSession.facade.render(input);
+      assert.equal(result.status, "success");
+      if (result.status !== "success") return;
+      assert.equal(result.artifact.svg, browserRenderFixture.result.svg);
+      assert.equal(result.metadata, browserRenderFixture.result.metadata);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].mode, mode);
+      assert.equal(calls[0].source, input.configuredSource);
+      assert.equal(calls[0].optionsJson, input.bindingOptionsJson);
+      assert.ok(calls[0].optionsJson?.includes(recipe));
+      assert.equal(typeof calls[0].measurer, mode === "browser" ? "function" : "undefined");
+    });
+  }
+
+  await context.test("configuration and recipe errors retain the render failure boundary", () => {
+    calls.length = 0;
+    const invalidInput = configuredMermanOperationInput("flowchart TD\nA", "auto", "{", undefined);
+    const invalidResult = browserSession.facade.render(invalidInput);
+    assert.equal(invalidResult.status, "failure");
+    if (invalidResult.status !== "failure") return;
+    assert.equal(invalidResult.stage, "render");
+    assert.equal(invalidResult.error, invalidInput.configurationError);
+    assert.equal(calls.length, 0);
+
+    browserRenderFixture.failure = { message: "Recipe is invalid.", code_name: "MERMAN_INVALID_OPTIONS" };
+    const result = browserSession.facade.render(configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", undefined));
+    browserRenderFixture.failure = null;
+    assert.equal(result.status, "failure");
+    if (result.status !== "failure") return;
+    assert.equal(result.stage, "render");
+    assert.equal(result.error.summary, "Recipe is invalid.");
+    assert.match(result.error.detail ?? "", /MERMAN_INVALID_OPTIONS/);
+    assert.equal(calls.length, 1);
+  });
+
+  await context.test("unsafe SVG cannot publish its successful theme evidence", () => {
+    calls.length = 0;
+    browserRenderFixture.result = { ...browserRenderFixture.result, svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)" />' };
+    const result = browserSession.facade.render(configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", undefined));
+    assert.equal(result.status, "failure");
+    if (result.status !== "failure") return;
+    assert.equal(result.stage, "svg-validation");
+    assert.equal(result.artifact, null);
+    assert.equal("metadata" in result, false);
+    assert.equal(calls.length, 1);
+  });
+
+  await context.test("support discovery delegates to the existing SDK without interpreting outcomes", () => {
+    const query = '{"schema_version":1,"family_id":"flowchart"}';
+    assert.equal(browserSession.facade.describeThemeSupport(query), support);
+    assert.deepEqual(supportCalls, [[query, undefined]]);
+  });
+});
+
 test("custom recipe reaches the Rust transport intact and changes render identity", () => {
-  const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#123456","accent":"#abcdef"}}}';
+  const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#123456"},"accent":{"type":"color","value":"#abcdef"}}}}';
   const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
     themeRecipeJson: recipe,
   });
@@ -137,7 +230,7 @@ test("invalid recipe and mixed selections are configuration errors", () => {
   for (const options of [
     { themeRecipeJson: "null" },
     { themeRecipeJson: "{}" },
-    { themeRecipeJson: '{"schema_version":1,"kind":"definition"},"site_config":{}' },
+    { themeRecipeJson: '{"schema_version":1,"kind":"design"},"site_config":{}' },
     { themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}', themePresetId: "brutalist" },
   ]) {
     const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", options);

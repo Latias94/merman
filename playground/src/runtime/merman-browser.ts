@@ -4,18 +4,20 @@ import {
   asciiSupportedDiagrams,
   createBrowserTextMeasurementSession,
   detectDiagramFacts,
+  describeThemeSupport,
   diagramFamilyCapabilities,
   initMerman,
   isMermanInitialized,
   layoutJson,
   layoutJsonWithTextMeasurer,
   loadMermanWasmModule,
+  materializeTheme,
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
   renderAscii,
-  renderSvg,
-  renderSvgWithTextMeasurer,
+  renderSvgResult,
+  renderSvgResultWithTextMeasurer,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
@@ -26,6 +28,7 @@ import {
   validate,
   type HostTextMeasurer,
   type MermanWasmModule,
+  type SvgRenderResult,
 } from "@mermanjs/web";
 
 import { themeRecipeOptionsJson } from "./merman-operation-input.ts";
@@ -71,6 +74,8 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     runtimeCatalog,
     themeCatalog,
     exportThemePreset,
+    describeThemeSupport,
+    materializeTheme,
     validateThemeRecipe(recipeJson) {
       svgPlanJson("flowchart LR\nA --> B", themeRecipeOptionsJson(
         { version: BINDING_OPTIONS_SCHEMA_VERSION }, recipeJson,
@@ -120,16 +125,16 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
           status: "failure",
         };
       }
-      let svg: string;
+      let result: SvgRenderResult;
       try {
-        svg =
+        result =
           input.textMeasurementMode === "browser"
-            ? renderSvgWithTextMeasurer(
+            ? renderSvgResultWithTextMeasurer(
                 input.configuredSource,
                 measureText,
                 input.bindingOptionsJson ?? input.bindingOptions,
               )
-            : renderSvg(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+            : renderSvgResult(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
       } catch (error) {
         return {
           artifact: null,
@@ -141,8 +146,9 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
       try {
         return {
-          artifact: projectNavigableInlineSvg(svg),
+          artifact: projectNavigableInlineSvg(result.svg),
           error: null,
+          metadata: result.metadata,
           renderTime: performance.now() - startedAt,
           status: "success",
         };

@@ -689,13 +689,20 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
   errors.assertNone();
 });
 
-test("a 100-million-unit SVG is rejected at the backend coordinate ceiling", async ({ page }) => {
+test("resvg-compatible SVG rejects coordinates admitted by Mermaid SVG", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await replaceEditorSource(page, [
     "---", "config:", "  xyChart:", "    width: 100000000", "    height: 1000000", "---",
     "xychart-beta", "  x-axis [a, b]", "  y-axis 0 --> 10", "  line [1, 9]",
   ].join("\n"));
+  await waitForPreviewSvg(page);
+  await expect.poll(() => largeSvgPreviewMetrics(page)).toMatchObject({
+    viewBoxWidth: 100_000_000,
+    viewBoxHeight: 1_000_000,
+  });
+  await page.getByRole("button", { name: "Render settings", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "resvg-compatible SVG", exact: true }).click();
   const error = page.getByRole("alert").filter({ hasText: "Merman · Render Error" });
   await expect(error).toContainText("svg_backend_coordinate_magnitude");
   await expect(error).toContainText("actual=100000000 maximum=16777216");

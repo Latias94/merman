@@ -20,9 +20,8 @@ import type {
   ThemePaint,
   ThemeRadialGradientRepetition,
   ThemeCapabilityDescriptorV1,
-  ThemeAuthoringTypographyV1,
   ThemeAuthoringOptions,
-  ThemeDefinitionV1,
+  ThemeDesignV1,
   ThemeRecipeV1,
   ThemeStylePatch,
   ThemeDiagnostic,
@@ -102,24 +101,30 @@ renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
   environment: { text_measurement: null },
 });
 
-const themeDefinition: ThemeDefinitionV1 = {
-  authoring_schema_version: 1,
-  expansion_version: 1,
-  tokens: { text: "#123456", accent: "#abcdef" },
+const themeDesign: ThemeDesignV1 = {
+  tokens: {
+    text: { type: "color", value: "#123456" },
+    accent: { type: "color", value: "#abcdef" },
+    shadow: { type: "effect", value: {
+      kind: "shadow-stack", composition: "independent",
+      shadows: [{ offset_x: 3, offset_y: 3, std_deviation: 0, color: { ref: "text" } }],
+    } },
+  },
+  styles: { node: { fill: { kind: "solid", color: { ref: "accent" } }, effect: { ref: "shadow" } } },
 };
-const materializedTheme = materializeTheme(themeDefinition, {
+const materializedTheme = materializeTheme(themeDesign, {
   resources: { profile: "constrained", limits: { max_theme_encoded_bytes: 1024 } },
 });
 const themeAuthoringOptions: ThemeAuthoringOptions = {
   resources: { limits: { max_theme_encoded_bytes: 1024 } },
 };
-materializeTheme(themeDefinition, themeAuthoringOptions);
+materializeTheme(themeDesign, themeAuthoringOptions);
 // @ts-expect-error theme-only limits must not leak into ordinary SVG options.
 const invalidSvgOptions: SvgBindingOptions = { resources: { limits: { max_theme_encoded_bytes: 1 } } };
 exportThemePreset("editor-light", themeAuthoringOptions);
-materializeTheme(themeDefinition, { analysis: themeAuthoringOptions });
-materializeTheme(themeDefinition, { merman: themeAuthoringOptions });
-materializeTheme(themeDefinition, {
+materializeTheme(themeDesign, { analysis: themeAuthoringOptions });
+materializeTheme(themeDesign, { merman: themeAuthoringOptions });
+materializeTheme(themeDesign, {
   // @ts-expect-error source limits do not apply to authoring operations.
   resources: { limits: { max_source_bytes: 1024 } },
 });
@@ -132,6 +137,12 @@ const mixedThemeOptions: ThemeAuthoringOptions = { resources: {}, analysis: { re
 // @ts-expect-error only one analysis wrapper is allowed.
 const ambiguousThemeOptions: ThemeAuthoringOptions = { analysis: {}, merman: {} };
 materializedTheme.spec.styles;
+materializedTheme.references?.forEach(({ token, path, domain }) => {
+  const kind: "color" | "number" | "string" | "length" | "insets" | "line-height" |
+    "font-stack" | "palette" | "paint" | "stroke" | "text-style" | "effect" = domain.value_type;
+  const minimum: number | undefined = domain.min;
+  void [token, path, kind, minimum];
+});
 
 const supportQuery: ThemeSupportQueryV1 = {
   schema_version: 1,
@@ -181,10 +192,14 @@ const nullOuterStroke = { stroke: null } satisfies ThemeStylePatch;
 // @ts-expect-error the Rust authoring wire rejects null for the outer typography patch.
 const nullOuterTypography = { typography: null } satisfies ThemeStylePatch;
 
-const compactTypographyWithLineHeight = {
-  // @ts-expect-error compact authoring typography has no portable base line-height consumer.
-  line_height: "normal",
-} satisfies ThemeAuthoringTypographyV1;
+const invalidDesignStroke = {
+  // @ts-expect-error outer stroke patches remain non-null in authored designs.
+  styles: { node: { stroke: null } },
+} satisfies ThemeDesignV1;
+const invalidDesignToken = {
+  // @ts-expect-error reusable values retain their declared type.
+  tokens: { size: { type: "length", value: "large" } },
+} satisfies ThemeDesignV1;
 
 const srgbEffectGraph: ThemeEffectGraph = {
   kind: "graph",
@@ -232,8 +247,8 @@ if (presetExport.kind === "complete_spec") {
 }
 const authoredRecipe = {
   schema_version: 1,
-  kind: "definition",
-  definition: themeDefinition,
+  kind: "design",
+  design: themeDesign,
 } satisfies ThemeRecipeV1;
 const authoredThemeOptions: SvgBindingOptions = { theme: authoredRecipe };
 const completeRecipe = {
@@ -254,7 +269,7 @@ const mixedSpecThemeOptions: SvgBindingOptions = { theme: mixedSpecRecipe };
 const ambiguousRecipe = { ...authoredRecipe, complete_spec: {} };
 // @ts-expect-error a recipe has exactly one payload, including structurally assigned values.
 const ambiguousRecipeOptions: SvgBindingOptions = { theme: ambiguousRecipe };
-const unversionedRecipe = { kind: "definition", definition: themeDefinition } as const;
+const unversionedRecipe = { kind: "design", design: themeDesign } as const;
 // @ts-expect-error shared recipes always carry their wire version.
 const unversionedThemeOptions: SvgBindingOptions = { theme: unversionedRecipe };
 
@@ -349,7 +364,7 @@ void asciiOptions;
 void svgOptions;
 void explicitNullTextMeasurementOptions;
 void hostMeasuredSvgOptions;
-void themeDefinition;
+void themeDesign;
 void materializedTheme;
 void supportQuery;
 void supportDescriptor;

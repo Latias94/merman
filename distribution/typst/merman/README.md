@@ -72,7 +72,7 @@ The `0.4.0` release keeps the previous wrapper entry points. Layout uses determi
 - [print.typ](examples/print.typ): print-friendly white-background output.
 - [presentation.typ](examples/presentation.typ): dark slide-sized output using a compiled theme preset.
 - [svg-export.typ](examples/svg-export.typ): raw SVG and structured render payloads.
-- [theme-authoring.typ](examples/theme-authoring.typ): materialize a shared definition, inspect support, and copy an editable preset recipe.
+- [theme-authoring.typ](examples/theme-authoring.typ): materialize a shared design, inspect support, and copy an editable preset recipe.
 
 Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/distribution/typst/merman/tests): API, option normalization, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
 
@@ -374,7 +374,7 @@ Returns the canonical diagnostic analysis schema 1 payload produced by the Rust 
 the shared Rust-owned theme operations. The Typst wrapper encodes inputs and unwraps successful
 results; it does not expand tokens or infer support locally.
 `mermaid-theme-definition` composes materialization and rendering in one call, so a document can
-render a shared definition without manually carrying an intermediate complete spec.
+render a shared design without manually carrying an intermediate complete spec.
 Like `mermaid`, it accepts `document-context: true` when the rendered diagram should inherit the
 current Typst text style and available width.
 
@@ -384,9 +384,20 @@ theme authoring payloads.
 
 ```typst
 #let definition = (
-  authoring_schema_version: 1,
-  expansion_version: 1,
-  tokens: (canvas: "#0f172a", text: "#e5e7eb", accent: "#38bdf8"),
+  tokens: (
+    canvas: (type: "color", value: "#0f172a"),
+    text: (type: "color", value: "#e5e7eb"),
+    accent: (type: "color", value: "#38bdf8"),
+  ),
+  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
+  styles: (
+    text: (fill: (kind: "solid", color: (ref: "text"))),
+    node: (
+      fill: (kind: "solid", color: (ref: "canvas")),
+      stroke: (paint: (kind: "solid", color: (ref: "accent"))),
+    ),
+    edge: (stroke: (paint: (kind: "solid", color: (ref: "accent")))),
+  ),
 )
 #let materialized = materialize-theme(definition)
 #mermaid-theme-definition(

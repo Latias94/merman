@@ -777,7 +777,7 @@ test("theme authoring diagnostics and additive details survive the public error 
       diagnostics: [{
         code: "theme-authoring.invalid-token-value",
         severity: "error",
-        path: "/styles/0/style/typography/font_stack",
+        path: "/styles/node/typography/font_stack",
         details: { expected_domain_id: "font-stack" },
         message: "font stack must not be empty",
       }],

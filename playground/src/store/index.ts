@@ -17,12 +17,31 @@ import {
   DEFAULT_SVG_PRESENTATION_MODE,
   type SvgPresentationMode,
 } from "../lib/svg-presentation.ts";
+import {
+  acceptThemeValidation,
+  advanceThemeBaseline,
+  beginThemeEditSession,
+  beginThemeImport,
+  completeThemeImport,
+  failThemeImport,
+  isThemeDraftChanged,
+  rejectThemeValidation,
+  selectThemeCandidate,
+  themeCandidateFields,
+  themeCandidateFromFields,
+  themeValidationToken,
+  type ThemeCandidate,
+  type ThemeEditSession,
+  type ThemeImportToken,
+  type ThemeValidationToken,
+} from "../lib/theme-edit-session.ts";
 
 export type Theme = MermaidThemeSelection;
 export type UITheme = "light" | "dark" | "system";
 export type ResolvedUITheme = Exclude<UITheme, "system">;
 export type EditorMode = "code" | "config";
 export type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
+export type PreviewBacking = "automatic" | "light" | "dark" | "transparency";
 export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
 export type SvgPipeline = MermanSvgPipeline;
@@ -46,6 +65,17 @@ export interface AppState {
   setThemePresetId: (presetId: string | null) => void;
   themeRecipeJson: string | null;
   setThemeRecipeJson: (recipeJson: string | null) => void;
+  themeEditSession: ThemeEditSession | null;
+  themeEditGeneration: number;
+  beginThemeEdit: () => ThemeValidationToken;
+  acceptThemeValidation: (token: ThemeValidationToken, recipeJson: string) => boolean;
+  rejectThemeValidation: (token: ThemeValidationToken, error: string) => boolean;
+  selectThemeCandidate: (candidate: Exclude<ThemeCandidate, { kind: "custom" }>) => void;
+  beginThemeImport: () => ThemeImportToken | null;
+  completeThemeImport: (token: ThemeImportToken, rawJson: string) => ThemeValidationToken | null;
+  failThemeImport: (token: ThemeImportToken, error: string) => boolean;
+  applyThemeEdit: () => boolean;
+  cancelThemeEdit: () => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -70,6 +100,8 @@ export interface AppState {
   setSvgPresentationMode: (mode: SvgPresentationMode) => void;
   showSvgBounds: boolean;
   setShowSvgBounds: (show: boolean) => void;
+  previewBacking: PreviewBacking;
+  setPreviewBacking: (backing: PreviewBacking) => void;
 }
 
 export function selectWorkspaceSnapshot(
@@ -85,6 +117,19 @@ export function selectWorkspaceSnapshot(
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
   };
+}
+
+export function selectRenderInputSnapshot(
+  state: Pick<AppState, keyof WorkspaceSnapshot | "themeEditSession">,
+): WorkspaceSnapshot {
+  const workspace = selectWorkspaceSnapshot(state);
+  return state.themeEditSession
+    ? { ...workspace, ...themeCandidateFields(state.themeEditSession.candidate) }
+    : workspace;
+}
+
+export function selectThemeDraftChanged(state: Pick<AppState, "themeEditSession">): boolean {
+  return isThemeDraftChanged(state.themeEditSession);
 }
 
 function getInitialUITheme(): UITheme {
@@ -136,7 +181,7 @@ function applyResolvedTheme(resolvedTheme: ResolvedUITheme): void {
 const initialUITheme = getInitialUITheme();
 const initialResolvedTheme = resolveUITheme(initialUITheme);
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Editor state
   code: DEFAULT_WORKSPACE_SNAPSHOT.code,
   setCode: (code) => set({ code }),
@@ -149,25 +194,87 @@ export const useAppStore = create<AppState>((set) => ({
   diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
   setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
   themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
-  setThemePresetId: (themePresetId) => set({ themePresetId, themeRecipeJson: null }),
+  setThemePresetId: (themePresetId) => set({ themePresetId, themeRecipeJson: null, themeEditSession: null }),
   themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
   setThemeRecipeJson: (themeRecipeJson) =>
     set(
       themeRecipeJson === null
-        ? { themeRecipeJson }
-        : { themeRecipeJson, themePresetId: null },
+        ? { themeRecipeJson, themeEditSession: null }
+        : { themeRecipeJson, themePresetId: null, themeEditSession: null },
     ),
+  themeEditSession: null,
+  themeEditGeneration: 0,
+  beginThemeEdit: () => {
+    const state = get();
+    if (state.themeEditSession) return themeValidationToken(state.themeEditSession);
+    const generation = state.themeEditGeneration + 1;
+    const session = beginThemeEditSession(generation, themeCandidateFromFields(state));
+    set({ themeEditSession: session, themeEditGeneration: generation });
+    return themeValidationToken(session);
+  },
+  acceptThemeValidation: (token, recipeJson) => {
+    const current = get().themeEditSession;
+    if (!current) return false;
+    const session = acceptThemeValidation(current, token, recipeJson);
+    if (session === current) return false;
+    set({ themeEditSession: session });
+    return true;
+  },
+  rejectThemeValidation: (token, error) => {
+    const current = get().themeEditSession;
+    if (!current) return false;
+    const session = rejectThemeValidation(current, token, error);
+    if (session === current) return false;
+    set({ themeEditSession: session });
+    return true;
+  },
+  selectThemeCandidate: (candidate) => {
+    const current = get().themeEditSession;
+    if (current) set({ themeEditSession: selectThemeCandidate(current, candidate) });
+  },
+  beginThemeImport: () => {
+    const current = get().themeEditSession;
+    if (!current) return null;
+    const session = beginThemeImport(current);
+    set({ themeEditSession: session });
+    return { ...themeValidationToken(session), generation: session.importGeneration };
+  },
+  completeThemeImport: (token, rawJson) => {
+    const current = get().themeEditSession;
+    if (!current) return null;
+    const session = completeThemeImport(current, token, rawJson);
+    if (session === current) return null;
+    set({ themeEditSession: session });
+    return themeValidationToken(session);
+  },
+  failThemeImport: (token, error) => {
+    const current = get().themeEditSession;
+    if (!current) return false;
+    const session = failThemeImport(current, token, error);
+    if (session === current) return false;
+    set({ themeEditSession: session });
+    return true;
+  },
+  applyThemeEdit: () => {
+    const current = get().themeEditSession;
+    if (!current || current.validation !== "valid" || current.importing) return false;
+    const session = advanceThemeBaseline(current);
+    set({ ...themeCandidateFields(session.candidate), themeEditSession: session });
+    return true;
+  },
+  cancelThemeEdit: () => set({ themeEditSession: null }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,
   setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
   diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
   setDiagramFont: (diagramFont) => set({ diagramFont }),
-  applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
+  applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeEditSession: null }),
   shareViewWarning: null,
   applyStartupShareHydration: ({ workspace, view, warning }) =>
     set({
       ...workspace,
+      themeEditSession: null,
       workspacePane: view.workspacePane,
       editorMode: view.editorMode,
       previewMode: view.previewMode,
@@ -200,6 +307,8 @@ export const useAppStore = create<AppState>((set) => ({
     ),
   showSvgBounds: false,
   setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
+  previewBacking: "automatic",
+  setPreviewBacking: (previewBacking) => set({ previewBacking }),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

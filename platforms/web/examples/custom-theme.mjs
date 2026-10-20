@@ -1,5 +1,5 @@
 /**
- * Customize explicit color roles in an exported complete recipe.
+ * Customize explicit semantic roles in an editable design or complete snapshot.
  *
  * This example changes the canvas, Node borders, and Class Node fill. Actor, edge,
  * marker, and chart-series colors remain independent. It is not a global palette recolorer.
@@ -10,18 +10,17 @@
  * @returns {import('../src/public-types.js').ThemeRecipeV1}
  */
 export function customizeNodeColors(exported, colors) {
-  if (exported.kind !== "complete_spec") {
-    throw new Error("This example expects an exported complete specification.");
-  }
   const recipe = structuredClone(exported);
-  const spec = recipe.complete_spec;
+  const authored = recipe.kind === "design";
+  const spec = authored ? recipe.design : recipe.complete_spec;
   // Retain layers and bleed when changing the base of a future layered preset.
   spec.canvas = { ...spec.canvas, base: colors.background };
-  spec.styles ??= [];
-  spec.styles.push(
-    { kind: "rule", target: "node", style: { stroke: { paint: colors.nodeBorder } } },
+  const rules = authored ? (spec.rules ??= []) : (spec.styles ??= []);
+  const tag = authored ? {} : { kind: "rule" };
+  rules.push(
+    { ...tag, target: "node", style: { stroke: { paint: colors.nodeBorder } } },
     {
-      kind: "rule", target: "node", family: "class",
+      ...tag, target: "node", family: "class",
       style: { fill: colors.classFill },
     },
   );

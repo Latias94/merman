@@ -245,6 +245,7 @@ fn complete_spec_wire_rejects_deep_non_finite_values_in_serde_and_canonical_json
         effects: Some(vec![ThemeEffectEntryWireV1::Graph {
             id: "unsafe-filter".to_owned(),
             color_space: None,
+            composition: None,
             primitives: vec![ThemeEffectPrimitiveWireV1::ColorMatrix {
                 input: Some("source-graphic".to_owned()),
                 values: vec![0.0, f32::NAN],
@@ -259,6 +260,25 @@ fn complete_spec_wire_rejects_deep_non_finite_values_in_serde_and_canonical_json
             .expect_err("canonical JSON must reject nested NaN")
             .kind(),
         CanonicalJsonErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn independent_shadow_composition_survives_complete_spec_exchange() {
+    let json = r##"{"effects":[{"kind":"graph","id":"raised","composition":"independent","primitives":[{"kind":"drop-shadow","offset_x":6,"offset_y":6,"blur_radius":0,"spread":0,"color":"#171717"}]}]}"##;
+    let spec: DiagramThemeSpecWireV1 = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+        &spec.effects.as_ref().unwrap()[0],
+        ThemeEffectEntryWireV1::Graph { composition: Some(value), .. } if value == "independent"
+    ));
+    let encoded = spec.canonical_json_bytes().unwrap();
+    assert_eq!(
+        serde_json::from_slice::<DiagramThemeSpecWireV1>(&encoded).unwrap(),
+        spec
+    );
+    assert!(
+        serde_json::from_str::<DiagramThemeSpecWireV1>(&json.replace("\"independent\"", "null"))
+            .is_err()
     );
 }
 

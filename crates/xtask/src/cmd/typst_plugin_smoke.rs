@@ -153,9 +153,8 @@ pub(crate) fn validate_typst_plugin_with_input(
         vec![
             b"materialize-theme-json".to_vec(),
             br##"{
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "tokens": {"text": "#123456", "accent": "#abcdef"}
+                "tokens": {"text": {"type":"color","value":"#123456"}},
+                "styles": {"text": {"fill":{"kind":"solid","color":{"ref":"text"}}}}
             }"##
             .to_vec(),
             options_json.to_vec(),
@@ -164,22 +163,10 @@ pub(crate) fn validate_typst_plugin_with_input(
     let materialized_theme = parse_json("materialize-theme-json", &materialized_theme)?;
     let materialized_theme =
         assert_theme_operation_payload(&materialized_theme, "materialize-theme-json")?;
-    if materialized_theme
-        .get("schema_version")
-        .and_then(JsonValue::as_u64)
-        != Some(1)
-        || materialized_theme
-            .get("authoring_schema_version")
-            .and_then(JsonValue::as_u64)
-            != Some(1)
-        || materialized_theme
-            .get("expansion_version")
-            .and_then(JsonValue::as_u64)
-            != Some(1)
-        || materialized_theme
-            .get("spec_schema_version")
-            .and_then(JsonValue::as_u64)
-            != Some(1)
+    if serde_json::from_value::<merman::diagram_theme::MaterializedThemeWireV1>(
+        materialized_theme.clone(),
+    )
+    .is_err()
         || materialized_theme
             .pointer("/spec/styles")
             .and_then(JsonValue::as_array)
@@ -202,10 +189,9 @@ pub(crate) fn validate_typst_plugin_with_input(
     )?;
     let preset_export = parse_json("export-theme-preset-json", &preset_export)?;
     let preset_export = assert_theme_operation_payload(&preset_export, "export-theme-preset-json")?;
-    if preset_export.get("kind").and_then(JsonValue::as_str) != Some("complete_spec")
-        || !preset_export
-            .get("complete_spec")
-            .is_some_and(JsonValue::is_object)
+    if serde_json::from_value::<merman::diagram_theme::ThemeRecipeV1>(preset_export.clone())
+        .is_err()
+        || preset_export.get("kind").and_then(JsonValue::as_str) != Some("design")
     {
         return Err(smoke_error(format!(
             "export-theme-preset-json returned an invalid preset export: {preset_export}"
@@ -1094,7 +1080,7 @@ fn validate_theme_authoring_vectors(
         (
             "light",
             include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.definition.json"
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.design.json"
             ),
             include_str!(
                 "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.spec.canonical.json"
@@ -1103,7 +1089,7 @@ fn validate_theme_authoring_vectors(
         (
             "dark",
             include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.definition.json"
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.design.json"
             ),
             include_str!(
                 "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.spec.canonical.json"

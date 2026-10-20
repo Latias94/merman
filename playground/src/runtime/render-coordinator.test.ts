@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
+import type { SvgRenderMetadata, ThemeExecutionEvidence } from "@mermanjs/web";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
@@ -22,7 +23,10 @@ import {
   createRenderCoordinator,
   type RenderCoordinatorInput,
 } from "./render-coordinator.ts";
-import { selectCurrentDiagramType } from "./use-render-coordinator.ts";
+import {
+  selectCurrentDiagramType,
+  selectVisibleMermanRenderMetadata,
+} from "./use-render-coordinator.ts";
 import type {
   MermaidRealmController,
   MermaidRealmRenderResult,
@@ -103,6 +107,84 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
     assert.match(state.mermaid.artifact.svg, /second/);
   }
   assert.equal(state.snapshot.operation.source, "second");
+  assert.equal(state.merman.metadata?.execution_label, "second");
+});
+
+test("publishes a frozen metadata snapshot with the exact admitted SVG", async () => {
+  const metadata = renderMetadata("current");
+  const artifact = projectNavigableInlineSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>current</text></svg>',
+  );
+  let renderCalls = 0;
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+  coordinator.setInput(input("current", {
+    ...facade(),
+    render() {
+      renderCalls += 1;
+      return { artifact, metadata, error: null, renderTime: 2, status: "success" };
+    },
+  }));
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(renderCalls, 1);
+  assert.equal(state.merman.artifact, artifact);
+  assert.deepEqual(state.merman.metadata, metadata);
+  assert.notEqual(state.merman.metadata, metadata);
+  assert.equal(Object.isFrozen(state.merman.metadata), true);
+  const evidence = state.merman.metadata?.theme_execution_evidence;
+  assert.equal(Object.isFrozen(evidence), true);
+  assert.equal(Object.isFrozen(evidence?.target_reason_ids), true);
+  assert.equal(Object.isFrozen(evidence?.diagnostics), true);
+  assert.equal(selectVisibleMermanRenderMetadata(state), state.merman.metadata);
+
+  metadata.execution_label = "mutated";
+  metadata.theme_execution_evidence.theme_status = "mutated";
+  assert.equal(state.merman.metadata?.execution_label, "current");
+  assert.equal(evidence?.theme_status, "residual");
+
+  coordinator.markPresented(state.snapshot.publicationId, "merman", 42);
+  const presented = coordinator.store.getState();
+  assert.equal(selectVisibleMermanRenderMetadata(presented), state.merman.metadata);
+  coordinator.dispose();
+});
+
+test("preserves unavailable and unknown execution evidence without certifying it", async () => {
+  const unknownEvidence: ThemeExecutionEvidence = {
+    version: 99,
+    future_outcome: { status: "unverified", reasons: ["future-rule"] },
+  };
+  for (const metadata of [null, renderMetadata("future", unknownEvidence)]) {
+    const coordinator = createRenderCoordinator({
+      compare: fakeCompare([]),
+      debounceMs: 0,
+    });
+    coordinator.setInput(input("future", {
+      ...facade(),
+      render(operation) {
+        const result = facade().render(operation);
+        assert.equal(result.status, "success");
+        return { ...result, metadata };
+      },
+    }));
+    await waitFor(() => coordinator.store.getState().status === "success");
+    const state = coordinator.store.getState();
+    assert.equal(state.status, "success");
+    if (state.status !== "success") continue;
+    assert.deepEqual(state.merman.metadata, metadata);
+    if (state.merman.metadata) {
+      const evidence = state.merman.metadata.theme_execution_evidence;
+      assert.deepEqual(evidence, unknownEvidence);
+      assert.ok("future_outcome" in evidence);
+      assert.equal(Object.isFrozen(evidence.future_outcome), true);
+    }
+    coordinator.dispose();
+  }
 });
 
 test("request identity includes the compiled theme and stores the same-snapshot SVG plan", async () => {
@@ -492,6 +574,7 @@ test("passes one frozen operation to every Merman projection", async () => {
           `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`,
         ),
         error: null,
+        metadata: null,
         renderTime: 1,
         status: "success",
       };
@@ -551,6 +634,7 @@ test("external pane geometry cannot change operation identity or enqueue another
           `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`,
         ),
         error: null,
+        metadata: null,
         renderTime: 2,
         status: "success",
       };
@@ -630,6 +714,7 @@ test("publishes the producer-owned Merman artifact without reprojecting it", asy
       render: () => ({
         artifact,
         error: null,
+        metadata: null,
         renderTime: 2,
         status: "success",
       }),
@@ -868,6 +953,7 @@ test("keeps the visible diagram type while a replacement render is updating", as
   });
 
   assert.equal(selectCurrentDiagramType(updating), "flowchart");
+  assert.equal(selectVisibleMermanRenderMetadata(updating), previous.merman.metadata);
 });
 
 test("rejects a facade artifact that was not created by the projector", async () => {
@@ -888,6 +974,7 @@ test("rejects a facade artifact that was not created by the projector", async ()
       render: () => ({
         artifact: forgedArtifact,
         error: null,
+        metadata: renderMetadata("forged"),
         renderTime: 2,
         status: "success",
       }),
@@ -899,6 +986,7 @@ test("rejects a facade artifact that was not created by the projector", async ()
   assert.equal(state.status, "failed");
   if (state.status !== "failed") return;
   assert.equal(state.merman.stage, "svg-validation");
+  assert.equal(selectVisibleMermanRenderMetadata(state), null);
 });
 
 test("updating disables old pair and partial replaces the failed pane", async () => {
@@ -1509,6 +1597,7 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
         `<svg xmlns="http://www.w3.org/2000/svg"><text>${input.source}</text></svg>`,
       ),
       error: null,
+      metadata: renderMetadata(input.source),
       renderTime: 2,
       status: "success",
     }),
@@ -1520,6 +1609,36 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
     svgPlan: (input: ConfiguredMermanOperationInput) =>
       svgPlan({ diagramType: input.source }),
   } as unknown as MermanDomainFacade;
+}
+
+function renderMetadata(
+  label: string,
+  evidence: ThemeExecutionEvidence = {
+    version: 1,
+    family_id: "flowchart",
+    theme_status: "residual",
+    output_mutated: true,
+    target_kind: "inline_svg",
+    target_status: "unverified",
+    target_reason_ids: ["browser-font"],
+    font_source: "browser",
+    diagnostics: [{
+      code: "conditional-facet",
+      subject: "rule",
+      source_paths: ["/rules/0"],
+      generated: false,
+    }],
+  },
+): SvgRenderMetadata {
+  return {
+    version: 1,
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    runtime_policy: "default",
+    byte_length: 0,
+    execution_label: label,
+    theme_execution_evidence: evidence,
+  };
 }
 
 function svgPlan({

@@ -28,14 +28,14 @@ impl ThemeStyleSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ThemeSourceDocument {
-    Definition,
+    Design,
     CompleteSpec,
 }
 
 impl ThemeSourceDocument {
     pub(crate) const fn id(self) -> &'static str {
         match self {
-            Self::Definition => "definition",
+            Self::Design => "design",
             Self::CompleteSpec => "complete_spec",
         }
     }
@@ -87,18 +87,50 @@ impl ThemeSourceMap {
 pub(super) enum ThemeWireSources {
     None,
     CompleteSpec,
-    Definition {
+    Design {
         styles: Vec<ThemeStyleSource>,
-        canvas_base: ThemeStyleSource,
+        canvas_base: Option<ThemeStyleSource>,
     },
 }
 
 impl ThemeWireSources {
+    pub(super) fn for_design(design: &merman_theme_contract::ThemeDesignV1) -> Self {
+        let escape = |target: &str| target.replace('~', "~0").replace('/', "~1");
+        let styles = design
+            .styles
+            .keys()
+            .map(|target| format!("/styles/{}", escape(target)))
+            .chain(
+                design
+                    .rules
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| format!("/rules/{index}/style")),
+            )
+            .chain(
+                design
+                    .palettes
+                    .keys()
+                    .map(|target| format!("/palettes/{}", escape(target))),
+            )
+            .map(ThemeStyleSource::authored)
+            .collect();
+        let canvas_base = design
+            .canvas
+            .as_ref()
+            .filter(|canvas| canvas.base.is_some())
+            .map(|_| ThemeStyleSource::authored("/canvas/base".to_owned()));
+        Self::Design {
+            styles,
+            canvas_base,
+        }
+    }
+
     pub(super) fn document(&self) -> Option<ThemeSourceDocument> {
         match self {
             Self::None => None,
             Self::CompleteSpec => Some(ThemeSourceDocument::CompleteSpec),
-            Self::Definition { .. } => Some(ThemeSourceDocument::Definition),
+            Self::Design { .. } => Some(ThemeSourceDocument::Design),
         }
     }
 
@@ -106,7 +138,7 @@ impl ThemeWireSources {
         match self {
             Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored(format!("/styles/{index}"))),
-            Self::Definition { styles, .. } => Some(std::mem::take(&mut styles[index])),
+            Self::Design { styles, .. } => styles.get_mut(index).map(std::mem::take),
         }
     }
 
@@ -114,7 +146,40 @@ impl ThemeWireSources {
         match self {
             Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored("/canvas/base".to_owned())),
-            Self::Definition { canvas_base, .. } => Some(std::mem::take(canvas_base)),
+            Self::Design { canvas_base, .. } => canvas_base.take(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn design_source_paths_follow_sorted_defaults_and_authored_rule_order() {
+        let design = serde_json::from_value(serde_json::json!({
+            "styles":{"z/z~":{},"a":{}},
+            "rules":[{"target":"node","style":{}},{"target":"edge","style":{}}],
+            "palettes":{"z/z~":["red"]},
+            "canvas":{"base":"white"}
+        }))
+        .unwrap();
+        let mut sources = ThemeWireSources::for_design(&design);
+        assert_eq!(sources.document().unwrap().id(), "design");
+        for (index, expected) in [
+            "/styles/a",
+            "/styles/z~1z~0",
+            "/rules/0/style",
+            "/rules/1/style",
+            "/palettes/z~1z~0",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(sources.take_style(index).unwrap().paths, [expected]);
+        }
+        assert!(sources.take_style(5).is_none());
+        assert_eq!(sources.take_canvas_base().unwrap().paths, ["/canvas/base"]);
+        assert!(sources.take_canvas_base().is_none());
     }
 }

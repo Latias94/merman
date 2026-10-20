@@ -1,5 +1,5 @@
 import { useStore } from "zustand";
-import type { DiagramType } from "@mermanjs/web";
+import type { DiagramType, SvgRenderMetadata } from "@mermanjs/web";
 
 import { renderCoordinatorStore } from "./render-coordinator-browser.ts";
 import type {
@@ -50,6 +50,13 @@ export function selectCurrentMermanRenderTime(
   return isCompletedRenderState(state) && state.merman.status === "success"
     ? state.merman.renderTimeMs
     : 0;
+}
+
+export function selectVisibleMermanRenderMetadata(
+  state: RenderCoordinatorState
+): SvgRenderMetadata | null {
+  const batch = selectVisibleRenderBatch(state);
+  return batch?.merman.status === "success" ? batch.merman.metadata : null;
 }
 
 export function selectRenderPending(state: RenderCoordinatorState): boolean {

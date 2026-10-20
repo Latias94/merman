@@ -306,8 +306,8 @@ is experimental; use a runtime artifact that exposes the matching theme operatio
 
 - `null`, to clear a compiled theme;
 - an object containing exactly one of `preset` and `spec`;
-- a version-1 `ThemeRecipeV1` envelope, with `schema_version: 1`, `kind: "definition"` or
-  `kind: "complete_spec"`, and the corresponding `definition` or `complete_spec` payload.
+- a version-1 `ThemeRecipeV1` envelope, with `schema_version: 1`, `kind: "design"` or
+  `kind: "complete_spec"`, and the corresponding `design` or `complete_spec` payload.
 
 `{}`, simultaneous `preset` and `spec`, null selection payloads, and mixtures of recipe and
 selection members are rejected. Recipe versions and payload fields are validated in Rust.
@@ -330,7 +330,7 @@ A downloaded recipe is passed directly as the `theme` value, without adding a `r
 ```
 
 See [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-themes.md)
-for exporting presets, authoring definitions, and importing saved recipes.
+for exporting presets, authoring designs, and importing saved recipes.
 
 `theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value

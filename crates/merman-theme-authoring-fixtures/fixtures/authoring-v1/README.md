@@ -1,6 +1,6 @@
 # Theme authoring vectors
 
-`light` and `dark` contain the shared definition and materialized-spec oracles.
+`light` and `dark` contain the shared editable-design and materialized-spec oracles. Their `references.json` files pin the authored binding metadata returned alongside each spec.
 `errors.json` contains exact UTF-8 input strings for `materialize-theme-json` and
 transport-independent error expectations. Send `source` unchanged and use `options_json` when
 present; otherwise use default authoring options. The encoded-byte-limit vector explicitly requests

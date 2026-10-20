@@ -1,149 +1,96 @@
 # merman-theme-contract
 
-`merman-theme-contract` is the pre-freeze owner for Merman's candidate theme authoring version
-registry, version 1 authoring and materialized-success wires, and canonical JSON implementation.
-It is intentionally independent from the parser, renderer, bindings, and host runtime crates.
+`merman-theme-contract` owns Merman's unreleased version 1 theme documents, typed authoring values,
+materialized results, and canonical JSON. It has no parser, renderer, bindings, or host dependency.
+The first-release schema remains 1 while its unreleased design evolves; there is no legacy decoder.
 
-The wire is closed at every object boundary. Persisted definitions must carry the exact supported
-`authoring_schema_version` and `expansion_version` tuple, must contain a non-null `tokens` object,
-and may omit `styles` to select an empty authored rule set. Optional token fields retain omission;
-JSON `null` is rejected outside clearable style-patch facets. The crate does not apply defaults,
-expand tokens, validate renderer semantics, or decode the wire into renderer types.
+## Save and share a theme
 
-This crate is configured as a publishable pre-freeze alpha contract and makes no cross-version
-compatibility promise before the C7a contract gate.
-
-## Saved theme recipes
-
-`ThemeRecipeV1` is the canonical exchange envelope for an editable theme file. Its required
-`schema_version: 1` and `kind` accompany either `definition` (compact tokens/styles) or
-`complete_spec` (the full specification, including canvas and effects). Exported presets use this
-same envelope. Pass the saved document directly to binding `options.theme` or CLI `--theme-file`;
-Rust callers can pass the decoded value to `DiagramThemeCompiler::compile_recipe`.
+`ThemeRecipeV1` is the exchange envelope accepted by binding `options.theme`, CLI `--theme-file`,
+and Rust `DiagramThemeCompiler::compile_recipe`. `design` retains editable values and bindings;
+`complete_spec` carries a concrete specification for precise low-level authoring.
 
 ```json
 {
   "schema_version": 1,
-  "kind": "definition",
-  "definition": {
-    "authoring_schema_version": 1,
-    "expansion_version": 1,
-    "tokens": { "canvas": "#0f172a", "text": "#e5e7eb", "accent": "#60a5fa" }
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "brand": { "type": "color", "value": "#60a5fa", "label": "Brand", "group": "Colors" }
+    },
+    "styles": {
+      "node": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "brand" } } } }
+    },
+    "canvas": { "base": "#0f172a" }
   }
 }
 ```
 
-Unknown versions and mixed payload kinds are errors. This dependency-neutral crate owns the
-wire, not renderer semantics or host resource admission. Direct Serde decoding is appropriate
-only for trusted or externally bounded input. Sharing a recipe does not guarantee that all
-families support every effect, bundle system fonts, or transfer redistribution rights; document
-those requirements in accompanying README/LICENSE files.
+Each object has a closed wire shape. Unknown fields, mixed payload kinds, unknown versions, and
+non-finite numbers are rejected. Omitted collections are empty; explicit `null` is permitted only
+at clearable style fields. Direct Serde decoding is appropriate for trusted or externally bounded
+input. Transport entry points must enforce byte and collection limits before decoding.
 
-## Authoring wire
+## Author typed values
 
-Rust callers can construct the current ephemeral envelope without spelling version numbers:
-
-```rust
-use merman_theme_contract::{ThemeDefinitionV1, ThemeTokensV1};
-
-let definition = ThemeDefinitionV1::new(
-    ThemeTokensV1::default()
-        .with_canvas("#0f172a")
-        .with_surface("#111827")
-        .with_text("#e5e7eb")
-        .with_border("#475569")
-        .with_accent("#60a5fa"),
-);
-assert_eq!(definition.authoring_schema_version(), 1);
-assert_eq!(definition.expansion_version(), 1);
-```
-
-Serde decoding remains strict. Call it directly only for trusted or externally size-limited JSON;
-untrusted transport entry points must apply their encoded-byte and collection ceilings first:
+Direct values require no tokens. A token is an optional named value with a declared type and
+editor metadata. Values can reference exact document-local IDs with `{ "ref": "brand" }`; dots
+in an ID are literal, and types are never implicitly converted. Colors, numbers, strings, lengths,
+font stacks, palettes, paints, strokes, text styles, effects, insets, and line heights are supported.
 
 ```rust
-use merman_theme_contract::ThemeDefinitionV1;
+use merman_theme_contract::{ThemeDesignTokenV1, ThemeDesignTokenValueV1, ThemeDesignV1, ThemeValueV1};
 
-let definition: ThemeDefinitionV1 = serde_json::from_str(
-    r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#,
-)?;
-assert!(definition.styles().is_empty());
-# Ok::<(), serde_json::Error>(())
-```
-
-Readable JSON, canonical JSON, Rust construction, and generated SDK construction are projections of
-the same `ThemeDefinitionV1` value. A theme can be shared as one ordinary JSON file without a
-manifest, package, registry, or installation step:
-
-```rust
-use merman_theme_contract::{ThemeDefinitionV1, ThemeTokensV1};
-
-let typed = ThemeDefinitionV1::new(
-    ThemeTokensV1::default()
-        .with_canvas("#0f172a")
-        .with_text("#e5e7eb")
-        .with_accent("#60a5fa"),
-);
-let readable = serde_json::to_string_pretty(&typed)?;
-let decoded: ThemeDefinitionV1 = serde_json::from_str(&readable)?;
-assert_eq!(typed.canonical_json_bytes()?, decoded.canonical_json_bytes()?);
+let mut design = ThemeDesignV1::default();
+design.tokens.insert("brand".into(), ThemeDesignTokenV1 {
+    value: ThemeDesignTokenValueV1::Color(ThemeValueV1::Literal("#60a5fa".into())),
+    label: Some("Brand".into()),
+    description: None,
+    group: Some("Colors".into()),
+});
+let readable = serde_json::to_string_pretty(&design)?;
+let restored: ThemeDesignV1 = serde_json::from_str(&readable)?;
+assert_eq!(design.canonical_json_bytes()?, restored.canonical_json_bytes()?);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`ThemeRuleSetWireV1` preserves the existing flat `kind: "rule" | "ordinal-palette"` JSON shape.
-Clearable facets use `SpecifiedWireV1`: omission is `Unspecified`, JSON `null` is `Clear`, and a
-non-null payload is `Value`. Semantic target IDs, colors, numeric domains, empty palettes, and
-effect references are intentionally left for the materializer to validate.
+`styles` contains semantic defaults keyed by target. Ordered `rules` provide family, variant, or
+ordinal exceptions after defaults; `palettes` then supplies ordinal color cycles. Nested paints,
+gradient stops, shadows, typography, and canvas layers can retain their own references. Editing a
+shared value affects only explicit consumers; equal literal colors remain independent.
 
-## Materialized success wire
+The Rust renderer owns bounded reference resolution, cycle detection, consumer domains, and
+compilation. This contract crate describes values without duplicating those semantics.
 
-`MaterializedThemeWireV1` is the closed, versioned success value returned after deterministic
-authoring expansion. Every version field and the complete `spec` are required and non-null. The
-wire intentionally carries no digest, diagnostics, trace, capability result, portability claim,
-preset metadata, or render receipt.
+## Materialized results
+
+`MaterializedThemeWireV1` contains the concrete `spec` and resolved version tuple. Its optional
+`references` list supplies authored locations and consumer domains for editor controls. These
+locations are not execution evidence, portability claims, preset qualification, or render receipts.
 
 ```rust
 use merman_theme_contract::{DiagramThemeSpecWireV1, MaterializedThemeWireV1};
 
-let materialized = MaterializedThemeWireV1::try_new(DiagramThemeSpecWireV1::default())
-    .expect("the default complete spec should produce a materialized success wire");
-assert_eq!(materialized.schema_version(), 1);
-assert_eq!(materialized.authoring_schema_version(), 1);
-assert_eq!(materialized.expansion_version(), 1);
-assert_eq!(materialized.spec_schema_version(), 1);
-let spec = materialized.into_spec();
-assert_eq!(spec, DiagramThemeSpecWireV1::default());
+let result = MaterializedThemeWireV1::try_new(DiagramThemeSpecWireV1::default())?;
+assert_eq!(result.schema_version(), 1);
+assert_eq!(result.spec_schema_version(), 1);
+assert!(result.references().is_empty());
+# Ok::<(), merman_theme_contract::CanonicalJsonError>(())
 ```
 
 ## Canonical JSON
 
-Canonical serialization is available only from a contract-owned typed definition:
+Canonical JSON uses RFC 8785 property ordering and number serialization. It is available only for
+contract-owned typed values, without a public arbitrary-`Serialize` canonicalizer.
 
 ```rust
-use merman_theme_contract::{ThemeDefinitionV1, ThemeTokensV1};
-
-let bytes = ThemeDefinitionV1::new(ThemeTokensV1::default()).canonical_json_bytes()?;
-assert_eq!(
-    bytes,
-    br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#
-);
+use merman_theme_contract::ThemeDesignV1;
+assert_eq!(ThemeDesignV1::default().canonical_json_bytes()?, b"{}");
 # Ok::<(), merman_theme_contract::CanonicalJsonError>(())
 ```
 
-The encoder applies RFC 8785 property ordering and number serialization, including negative-zero
-normalization. Rust-constructed non-finite numbers fail closed. There is deliberately no public
-canonicalizer for arbitrary `Serialize` values.
-
-## Version resolution
-
-Resolve the complete tuple rather than accepting authoring and expansion versions independently:
-
-```rust
-use merman_theme_contract::resolve_authoring_version;
-
-let version = resolve_authoring_version(1, 1)?;
-assert_eq!(version.spec_schema_version(), 1);
-# Ok::<(), merman_theme_contract::ThemeContractVersionError>(())
-```
+Saving a document does not embed host fonts or establish support for every diagram family and
+output. Use renderer support and execution results for those decisions. Asset redistribution
+requirements belong in the accompanying README and LICENSE files.
 
 This crate has no default Cargo features.

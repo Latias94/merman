@@ -294,7 +294,7 @@ export function themeRecipeOptionsJson(
   if (
     !recipe || typeof recipe !== "object" || Array.isArray(recipe) ||
     !("schema_version" in recipe) || recipe.schema_version !== 1 ||
-    !("kind" in recipe) || (recipe.kind !== "definition" && recipe.kind !== "complete_spec")
+    !("kind" in recipe) || (recipe.kind !== "design" && recipe.kind !== "complete_spec")
   ) {
     throw new Error("Expected a version 1 theme recipe (definition or complete_spec).");
   }

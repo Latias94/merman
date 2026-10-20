@@ -26,6 +26,7 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
   const host = page.locator(".preview-container > div").first();
   const editorTab = page.getByRole("tab", { name: "Editor", exact: true });
   const previewTab = page.getByRole("tab", { name: "Preview", exact: true });
+  await editorTab.tap();
   await editorTab.focus();
   await page.keyboard.press("ArrowRight");
   await expect(previewTab).toBeFocused();
@@ -710,7 +711,12 @@ async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
 }
 
 async function exerciseCompactToolbarMenus(page: Page): Promise<void> {
-  for (const name of ["Theme", "Render settings", "Export"]) {
+  const theme = page.getByRole("button", { name: "Theme", exact: true });
+  await theme.tap();
+  await expect(page.getByRole("region", { name: "Theme panel" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(theme).toBeFocused();
+  for (const name of ["Render settings", "Export"]) {
     const trigger = page.getByRole("button", { name, exact: true });
     await trigger.tap();
     await expect(page.getByRole("menu")).toBeVisible();

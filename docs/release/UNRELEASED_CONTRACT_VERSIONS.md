@@ -38,7 +38,7 @@ The branch's claim that published Typst 0.3.0 used ABI 3 was incorrect.
 | ASCII output | 2 | Keep candidate 3 for requested/effective layout and Compact-attempt metadata. |
 | CLI contract | 5 | Keep candidate 6. |
 | Mermaid theme artifact, `merman-core` / `xtask theme-snapshot` | 1 | Keep candidate 2. This existing artifact is distinct from the new compiled-theme format. |
-| Theme definition / expansion / complete spec / materialized wire / authoring error | Absent | Keep first-release 1. |
+| Theme design / materialization / complete spec / materialized wire / authoring error | Absent | Keep first-release 1. |
 | Theme support query and descriptor | Absent | One subject-based v1. Remove the earlier flat target/facet shape and its decoder; no V2 alias. |
 | Renderer support claim revision | Absent | Consolidate 90 to 1. Git source identity distinguishes development builds. |
 | Binding theme catalog | Absent | Consolidate 3 to 1, including Web, Flutter, Python and Node consumers. |
@@ -160,3 +160,10 @@ CLI/LSP archive replay; their source identities and commands are recorded in the
 verification record. Linux/Windows hosts, Apple Swift 5.9, Android devices and the complete
 release archive/profile matrix remain part of C7a's candidate gate. Existing historical artifact
 records retain their original source, profile and numbering and are not evidence for this tree.
+
+## General authoring follow-up
+
+The unreleased compact definition was replaced in place by `ThemeDesignV1`: typed reusable values,
+explicit references, semantic defaults, scoped exceptions, canvas and effects. `ThemeRecipeV1`
+uses `kind: "design"` or `kind: "complete_spec"`, with `schema_version: 1`. No V2 document, old
+definition decoder, or migration branch is retained. The materialized version tuple remains 1.
