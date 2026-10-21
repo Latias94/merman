@@ -6,57 +6,43 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Native generic/default font selection excludes symbolic and pictorial faces even when their Unicode cmap covers ASCII; explicitly named symbol fonts remain available. Fixes [#228](https://github.com/Latias94/merman/issues/228). Thanks [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
-- Host presets keep C4 children visible inside filled boundaries and style relationship labels and arrowheads; Gantt retains task states and readable label colors; Wardley anchors and ZenUML surfaces follow the selected host theme. Fixes [#229](https://github.com/Latias94/merman/issues/229), [#230](https://github.com/Latias94/merman/issues/230), and [#231](https://github.com/Latias94/merman/issues/231).
-- Explicit diagram-source Mermaid themes preserve their derived paint palettes under host styling, including ER rows and Quadrant point labels. Site and recipe theme selections remain fallback palettes; explicit site/source color variables retain their property-specific precedence. Independent typography, effects and canvas decoration remain applicable. Fixes [#232](https://github.com/Latias94/merman/issues/232).
-- ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Empty or typography-only ZenUML themes preserve independently authored border colors; source-colored comments no longer count as consuming typed text paint.
-- Playground keeps UI theme and font defaults in initialization, preserving authored source themes and typed host paints. Automatic canvas appearance follows the same configuration precedence.
+- Native generic/default font selection excludes symbolic and pictorial faces even when their Unicode cmap covers ASCII; explicitly named symbol fonts remain available. [#234](https://github.com/Latias94/merman/pull/234), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Host presets keep C4 children visible inside filled boundaries and style relationship labels and arrowheads; Gantt retains task states and readable label colors; Wardley anchors and ZenUML surfaces follow the selected host theme. Empty or typography-only ZenUML themes preserve independently authored border colors. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231)
+- Explicit diagram-source Mermaid themes preserve their derived paint palettes under host styling, including ER rows and Quadrant point labels. Site and recipe theme selections remain fallback palettes; explicit site/source color variables retain their property-specific precedence. ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Independent typography, effects and canvas decoration remain applicable. [#234](https://github.com/Latias94/merman/pull/234), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Repeated Flowchart `classDef` declarations accumulate styles in source order, retaining earlier properties and applying later overrides. Unsupported Unicode characters produce whole-character error spans and allow lexing to continue on valid UTF-8 boundaries. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Malformed Pie and Info headers now fail consistently across semantic, render, and editor parsing, with source spans and recovery facts retained; lenient parsing produces the normal error diagram. Empty XYChart sources use the same configured default model through each entrypoint. [#227](https://github.com/Latias94/merman/pull/227)
+- Look-based SVG selectors accept only supported looks, and Block/Requirement source styles reject unsafe declarations while retaining valid neighboring declarations. SVG CSS cleanup also rejects unterminated strings, comments, and URLs so finalized output is stable when checked again. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Building Python wheels respects Cargo's configured target directory, including `CARGO_TARGET_DIR`, when locating both the native library and UniFFI metadata. [#178](https://github.com/Latias94/merman/pull/178)
+- Workspace crate publishing checks the current Typst plugin with its examples; the independently versioned wrapper retains its own version-pinned gate. [#210](https://github.com/Latias94/merman/pull/210)
+- Incremental Tree-sitter fuzz checks handle tolerant recovery trees using geometry checks and inverse-edit restoration; regression seeds retain their exact bytes across platforms. [#227](https://github.com/Latias94/merman/pull/227)
 
-- Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes.
-  PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero.
-  PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording
-  diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict.
-- Rust binding engines can share an explicit operation-local font context across measurement and
-  native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and
-  missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains
-  the deterministic and native measurement choices for [#199](https://github.com/Latias94/merman/issues/199).
-- Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships;
-  ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and
-  font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their
-  precedence. Compiled theme paint and text rules keep their independent owners; the retired
-  presentation API is not restored. Fixes
-  [#197](https://github.com/Latias94/merman/issues/197),
-  [#198](https://github.com/Latias94/merman/issues/198), and
-  [#199](https://github.com/Latias94/merman/issues/199).
-- Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
-  center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
-  including HandDrawn circle paths with resource checks before generation;
-  ELK terminal straightening preserves label clearance. Swimlane nodes retain source order, title
-  bands avoid boundary rails, terminal routes remain separated, and cluster IDs include the diagram ID.
-- Preserve Agentflow's unmerged Dagre self-loop segments and SVG label order. Usecase SVG edge
-  backgrounds participate in layout and label clearance, and classic markers retain their source
-  variant. Swimlane synthetic colors follow nested declaration slots; unchanged pinned routes keep
-  their label anchors inside the root viewport.
-- Playground comparison keeps fallback fonts consistent across its rendering panes, including C4
-  on Windows.
-- The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds
-  no syntax family, Cargo feature, FFI version, or editor-facts schema version.
+- Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes. PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero. PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict. [#178](https://github.com/Latias94/merman/pull/178), [#203](https://github.com/Latias94/merman/pull/203)
+- Rust binding engines can share an explicit operation-local font context across measurement and native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains the deterministic and native measurement choices. [#178](https://github.com/Latias94/merman/pull/178), [issue #199](https://github.com/Latias94/merman/issues/199)
+- Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships; ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their precedence. Compiled theme paint and text rules keep their independent owners; the retired presentation API is not restored. [#178](https://github.com/Latias94/merman/pull/178), [issue #197](https://github.com/Latias94/merman/issues/197), [issue #198](https://github.com/Latias94/merman/issues/198), and [issue #199](https://github.com/Latias94/merman/issues/199).
+- Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`, center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions, including HandDrawn circle paths with resource checks before generation; ELK terminal straightening preserves label clearance. Swimlane nodes retain source order, title bands avoid boundary rails, terminal routes remain separated, and cluster IDs include the diagram ID. [#178](https://github.com/Latias94/merman/pull/178), [#196](https://github.com/Latias94/merman/pull/196)
+- Preserve Agentflow's unmerged Dagre self-loop segments and SVG label order. Usecase SVG edge backgrounds participate in layout and label clearance, and classic markers retain their source variant. Swimlane synthetic colors follow nested declaration slots; unchanged pinned routes keep their label anchors inside the root viewport. [#196](https://github.com/Latias94/merman/pull/196)
+- Playground comparison keeps fallback fonts consistent across its rendering panes, including C4 on Windows. [#196](https://github.com/Latias94/merman/pull/196)
+- The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds no syntax family, Cargo feature, FFI version, or editor-facts schema version. [#196](https://github.com/Latias94/merman/pull/196)
 
 ### Security
 
-- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
+- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [#234](https://github.com/Latias94/merman/pull/234), [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
 
 ### Theme integration
 
-- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
-- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
-- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline.
-- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
-- Added bounded theme resource admission and preserved the exact artifact/family/output qualification scope for alpha presets; catalog availability is not an all-family portability guarantee.
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract. [#178](https://github.com/Latias94/merman/pull/178)
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct; alpha preset qualifications apply only to the recorded artifact, family, and output, rather than guaranteeing portability across every family. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223)
+- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline. [#178](https://github.com/Latias94/merman/pull/178)
+- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary. [#178](https://github.com/Latias94/merman/pull/178)
+- Added a Playground theme workbench for editing and sharing reusable designs. UI theme and font defaults stay in initialization, preserving authored source themes and host paints; automatic canvas appearance follows the same configuration precedence. [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the implementation and [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
 
 ## [0.9.1] - 2026-10-18
 
-- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
+- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Thanks [@000Janela000](https://github.com/000Janela000) for the report. [#209](https://github.com/Latias94/merman/pull/209), [issue #207](https://github.com/Latias94/merman/issues/207)
 - Ensure Class, Sequence, and State lexers always make progress and observe cancellation while skipping input, including empty Sequence comments and malformed declarations.
 - Update the locked `rustls` dependency to 0.23.46 and refresh generated legal materials.
 - Shorten repository paths and enforce a Windows checkout path budget for Git dependencies.

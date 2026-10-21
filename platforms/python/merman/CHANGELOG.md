@@ -12,6 +12,14 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 - Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
 
+### Fixed
+
+- Host themes preserve filled C4 boundaries and relationships, Wardley anchors, and ZenUML colors and fonts. Diagram-source Mermaid themes retain their derived palettes under host styling. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Custom artifacts with native font support exclude symbolic faces from implicit font and missing-glyph fallback while retaining explicitly named fonts. [#234](https://github.com/Latias94/merman/pull/234), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Repeated Flowchart `classDef` styles accumulate in source order, and unsupported Unicode characters retain valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Look selectors and Block/Requirement styles reject unsafe values; SVG CSS cleanup removes unterminated strings, comments, and URLs while retaining safe neighboring declarations. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Wheel builds locate native libraries and UniFFI metadata in Cargo's configured target directory, including `CARGO_TARGET_DIR`. [#178](https://github.com/Latias94/merman/pull/178)
+
 ## [0.9.1] - 2026-10-18
 
 - ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
