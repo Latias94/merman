@@ -446,7 +446,8 @@ pub(crate) fn parse_wardley_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             let mut source = source;
             #[cfg(feature = "editor-facts")]
-            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
+            let editor_facts = editor_demand
+                .needs_recovery()
                 .then(|| std::mem::take(&mut source.editor_facts));
             let model = source.into_model_controlled(&metadata.semantic_config, control)?;
             crate::family::SemanticConstruction {
@@ -459,7 +460,7 @@ pub(crate) fn parse_wardley_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -934,7 +935,7 @@ fn wardley_failure(
         "wardley",
         error,
         #[cfg(feature = "editor-facts")]
-        (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+        editor_demand.needs_recovery().then_some(editor_facts),
     )
 }
 
@@ -948,7 +949,7 @@ fn parse_wardley_ast(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = EditorSemanticFacts::new();
     #[cfg(feature = "editor-facts")]
-    if editor_demand == EditorFactsDemand::Capture {
+    if editor_demand.captures_rich() {
         #[cfg(test)]
         crate::editor::test_work::record_collection();
     }
@@ -998,7 +999,7 @@ fn parse_wardley_ast(
             }
             saw_header = true;
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.captures_rich() {
                 editor_facts.push_directive_prefix(HEADER);
             }
             let body_start = header_start + HEADER.len();
@@ -1017,7 +1018,7 @@ fn parse_wardley_ast(
         let statement = &statement[leading..];
         if let Some(parsed) = parse_langium_common(code, statement_start) {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.captures_rich() {
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "wardley");
             }
             if let Some(diagnostic) = parsed.diagnostic {
@@ -1034,7 +1035,7 @@ fn parse_wardley_ast(
 
         if keyword_body(statement, "pipeline").is_some() {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.captures_rich() {
                 editor_facts.push_directive_prefix("pipeline");
             }
             let pipeline = parse_pipeline(
@@ -1103,12 +1104,12 @@ fn parse_wardley_statement(
 ) -> std::result::Result<(), WardleyParseProblem> {
     if let Some(body) = keyword_body(statement, "size") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("size");
         }
         let size = parse_size(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_number_fact(editor_facts, size.width, "wardley canvas width");
             push_number_fact(editor_facts, size.height, "wardley canvas height");
         }
@@ -1117,12 +1118,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "evolution") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("evolution");
         }
         let evolution = parse_evolution(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             for stage in &evolution.stages {
                 push_payload_fact(editor_facts, &stage.name, "wardley evolution stage");
                 if let Some(boundary) = stage.boundary {
@@ -1142,12 +1143,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "anchor") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("anchor");
         }
         let anchor = parse_positioned_node(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_entity_fact(editor_facts, &anchor.name, "wardley anchor");
             push_number_fact(editor_facts, anchor.visibility, "wardley anchor visibility");
             push_number_fact(editor_facts, anchor.evolution, "wardley anchor evolution");
@@ -1157,12 +1158,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "component") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("component");
         }
         let component = parse_component(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_component_facts(editor_facts, &component, "wardley component");
         }
         ast.components.push(component);
@@ -1170,12 +1171,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "evolve") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("evolve");
         }
         let evolve = parse_evolve(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_reference_fact(editor_facts, &evolve.component, "wardley evolved component");
             push_number_fact(editor_facts, evolve.target, "wardley evolution target");
         }
@@ -1184,12 +1185,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "note") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("note");
         }
         let note = parse_note(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_payload_fact(editor_facts, &note.text, "wardley note");
             push_number_fact(editor_facts, note.visibility, "wardley note visibility");
             push_number_fact(editor_facts, note.evolution, "wardley note evolution");
@@ -1199,13 +1200,13 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "annotations") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("annotations");
         }
         let annotations =
             parse_annotations_box(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_number_fact(
                 editor_facts,
                 annotations.x,
@@ -1218,12 +1219,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "annotation") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("annotation");
         }
         let annotation = parse_annotation(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_integer_fact(
                 editor_facts,
                 annotation.number,
@@ -1239,12 +1240,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "accelerator") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("accelerator");
         }
         let force = parse_force(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_outline_fact(editor_facts, &force.name, "wardley accelerator");
             push_number_fact(editor_facts, force.x, "wardley accelerator visibility");
             push_number_fact(editor_facts, force.y, "wardley accelerator evolution");
@@ -1254,12 +1255,12 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "deaccelerator") {
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("deaccelerator");
         }
         let force = parse_force(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             push_outline_fact(editor_facts, &force.name, "wardley deaccelerator");
             push_number_fact(editor_facts, force.x, "wardley deaccelerator visibility");
             push_number_fact(editor_facts, force.y, "wardley deaccelerator evolution");
@@ -1270,13 +1271,13 @@ fn parse_wardley_statement(
 
     let link = parse_link(statement, statement_start)?;
     #[cfg(feature = "editor-facts")]
-    if editor_demand == EditorFactsDemand::Capture {
+    if editor_demand.captures_rich() {
         push_reference_fact(editor_facts, &link.from, "wardley link source");
         push_reference_fact(editor_facts, &link.to, "wardley link target");
     }
     #[cfg(feature = "editor-facts")]
     if let Some(label) = &link.label
-        && editor_demand == EditorFactsDemand::Capture
+        && editor_demand.captures_rich()
     {
         push_payload_fact(editor_facts, label, "wardley link label");
     }
@@ -1328,7 +1329,7 @@ fn parse_pipeline(
     let parent = match parse_name(parent_raw, pipeline_body_start + leading) {
         Ok(parent) => {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.captures_rich() {
                 push_reference_fact(editor_facts, &parent, "wardley pipeline parent");
             }
             Some(parent)
@@ -1406,14 +1407,14 @@ fn parse_pipeline(
             continue;
         };
         #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
+        if editor_demand.captures_rich() {
             editor_facts.push_directive_prefix("component");
         }
         let component_start = body_start(trimmed_line, absolute, component_body);
         match parse_pipeline_component(component_body, component_start) {
             Ok(component) => {
                 #[cfg(feature = "editor-facts")]
-                if editor_demand == EditorFactsDemand::Capture {
+                if editor_demand.captures_rich() {
                     push_pipeline_component_facts(editor_facts, &component);
                 }
                 components.push(component);

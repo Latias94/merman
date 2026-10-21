@@ -76,6 +76,7 @@ impl StateSyntax {
         #[cfg(feature = "editor-facts")]
         let editor_facts = match facts_demand {
             EditorFactsDemand::Omit => None,
+            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
             EditorFactsDemand::Capture => Some(collect_state_editor_facts_from_events(
                 &self.events,
                 code,
@@ -241,7 +242,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
             })
         }
         #[cfg(feature = "editor-facts")]
-        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+        Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
                 failure.into_error_and_editor_facts_for_type(diagram_type, code.len());
             Ok(SemanticConstruction {

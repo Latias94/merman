@@ -998,7 +998,7 @@ impl<'a> Parser<'a> {
     #[cfg(feature = "editor-facts")]
     pub fn finalize_editor_facts(&mut self) -> OperationControlResult<()> {
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Omit {
+        if !self.editor_demand.captures_rich() {
             return Ok(());
         }
         use std::collections::{HashMap, HashSet};

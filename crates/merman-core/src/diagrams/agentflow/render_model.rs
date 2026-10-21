@@ -348,6 +348,7 @@ impl AgentflowDiagramRenderModel {
             nodes,
             edges,
             subgraphs,
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };

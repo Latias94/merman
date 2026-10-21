@@ -76,6 +76,8 @@ struct VennSemanticState {
     indent_mode: bool,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_demand: EditorFactsDemand,
 }
 
 impl VennSemanticState {
@@ -88,12 +90,24 @@ impl VennSemanticState {
             #[cfg(feature = "editor-facts")]
             editor_facts: match editor_demand {
                 EditorFactsDemand::Omit => None,
+                EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
                 EditorFactsDemand::Capture => {
                     #[cfg(test)]
                     crate::editor::test_work::record_collection();
                     Some(EditorSemanticFacts::new())
                 }
             },
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn rich_editor_facts(&mut self) -> Option<&mut EditorSemanticFacts> {
+        if self.editor_demand.captures_rich() {
+            self.editor_facts.as_mut()
+        } else {
+            None
         }
     }
 
@@ -634,14 +648,14 @@ fn construct_venn_parse_outcome_controlled(
             #[cfg(feature = "editor-facts")]
             let header_span = SourceSpan::new(statement_start, statement_start + "venn-beta".len());
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = state.editor_facts.as_mut() {
+            if let Some(facts) = state.rich_editor_facts() {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::Payload,
                     header_span,
                 ));
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = state.editor_facts.as_mut() {
+            if let Some(facts) = state.rich_editor_facts() {
                 facts.push_symbol(EditorSemanticSymbol::payload(
                     "venn-beta".to_string(),
                     Some("venn header".to_string()),
@@ -761,7 +775,7 @@ fn parse_venn_statement_facts(
     let statement_start = line_start + indent;
     if indent > 0 && state.indent_mode && starts_with_keyword_ci(statement, "text") {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("text");
         }
         let rest = strip_keyword_ci(statement, "text")
@@ -790,7 +804,7 @@ fn parse_venn_statement_facts(
             return Err(parse_error(diagram_type, "invalid Venn title syntax"));
         }
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("title");
         }
         let mut cursor = VennCursor::new(rest, statement_start + "title".len());
@@ -799,7 +813,7 @@ fn parse_venn_statement_facts(
         };
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             &payload,
             "venn title",
             EditorSemanticKind::String,
@@ -810,7 +824,7 @@ fn parse_venn_statement_facts(
 
     if let Some(rest) = strip_keyword_ci(statement, "set") {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("set");
         }
         return parse_venn_set_statement_facts(
@@ -823,7 +837,7 @@ fn parse_venn_statement_facts(
 
     if let Some(rest) = strip_keyword_ci(statement, "union") {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("union");
         }
         return parse_venn_union_statement_facts(
@@ -836,7 +850,7 @@ fn parse_venn_statement_facts(
 
     if let Some(rest) = strip_keyword_ci(statement, "text") {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("text");
         }
         return parse_venn_text_statement_facts(
@@ -850,7 +864,7 @@ fn parse_venn_statement_facts(
 
     if let Some(rest) = strip_keyword_ci(statement, "style") {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_directive_prefix("style");
         }
         return parse_venn_style_statement_facts(
@@ -894,7 +908,7 @@ fn parse_venn_set_statement_facts(
     let (identifier, label, size, size_value) = parsed?;
 
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = state.editor_facts.as_mut() {
+    if let Some(facts) = state.rich_editor_facts() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::NodeIdentifier,
             identifier.span,
@@ -902,7 +916,7 @@ fn parse_venn_set_statement_facts(
     }
     #[cfg(feature = "editor-facts")]
     push_venn_entity_fact(
-        state.editor_facts.as_mut(),
+        state.rich_editor_facts(),
         &identifier,
         "venn set",
         EditorSemanticKind::Namespace,
@@ -910,7 +924,7 @@ fn parse_venn_set_statement_facts(
     if let Some(label) = label.as_ref() {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             label,
             "venn set label",
             EditorSemanticKind::String,
@@ -919,7 +933,7 @@ fn parse_venn_set_statement_facts(
     if let Some(size) = size.as_ref() {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             size,
             "venn size",
             EditorSemanticKind::String,
@@ -969,7 +983,7 @@ fn parse_venn_union_statement_facts(
 
     let list_span = venn_list_span(&identifiers);
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = state.editor_facts.as_mut() {
+    if let Some(facts) = state.rich_editor_facts() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::IdList,
             list_span,
@@ -978,7 +992,7 @@ fn parse_venn_union_statement_facts(
     for identifier in &identifiers {
         #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             identifier,
             "venn union set",
             EditorSemanticKind::Namespace,
@@ -988,7 +1002,7 @@ fn parse_venn_union_statement_facts(
     if let Some(label) = label.as_ref() {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             label,
             "venn union label",
             EditorSemanticKind::String,
@@ -997,7 +1011,7 @@ fn parse_venn_union_statement_facts(
     if let Some(size) = size.as_ref() {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             size,
             "venn size",
             EditorSemanticKind::String,
@@ -1051,7 +1065,7 @@ fn parse_venn_text_statement_facts(
     if let Some(sets) = set_fields {
         let list_span = venn_list_span(&sets);
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.editor_facts.as_mut() {
+        if let Some(facts) = state.rich_editor_facts() {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::IdList,
                 list_span,
@@ -1060,7 +1074,7 @@ fn parse_venn_text_statement_facts(
         for set in &sets {
             #[cfg(feature = "editor-facts")]
             push_venn_reference_fact(
-                state.editor_facts.as_mut(),
+                state.rich_editor_facts(),
                 set,
                 "venn text set",
                 EditorSemanticKind::Namespace,
@@ -1069,7 +1083,7 @@ fn parse_venn_text_statement_facts(
     }
 
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = state.editor_facts.as_mut() {
+    if let Some(facts) = state.rich_editor_facts() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::NodeIdentifier,
             identifier.span,
@@ -1077,7 +1091,7 @@ fn parse_venn_text_statement_facts(
     }
     #[cfg(feature = "editor-facts")]
     push_venn_entity_fact(
-        state.editor_facts.as_mut(),
+        state.rich_editor_facts(),
         &identifier,
         "venn text node",
         EditorSemanticKind::Namespace,
@@ -1085,7 +1099,7 @@ fn parse_venn_text_statement_facts(
     if let Some(label) = label.as_ref() {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             label,
             "venn text label",
             EditorSemanticKind::String,
@@ -1142,7 +1156,7 @@ fn parse_venn_style_statement_facts(
 
     let list_span = venn_list_span(&targets);
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = state.editor_facts.as_mut() {
+    if let Some(facts) = state.rich_editor_facts() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::IdList,
             list_span,
@@ -1151,7 +1165,7 @@ fn parse_venn_style_statement_facts(
     for target in &targets {
         #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             target,
             "venn style target",
             EditorSemanticKind::Namespace,
@@ -1160,7 +1174,7 @@ fn parse_venn_style_statement_facts(
     for (_, value) in &styles {
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
-            state.editor_facts.as_mut(),
+            state.rich_editor_facts(),
             value,
             "venn style value",
             EditorSemanticKind::String,
@@ -2106,6 +2120,46 @@ mod semantic_tests {
             })),
             title: None,
         }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_preserves_venn_error_without_state_observer_facts() {
+        let source = "venn-beta\ntitle Example\nset A\nunion A,\nset B\n";
+        let capture = |demand| {
+            parse_venn_semantic_model_controlled(
+                source,
+                &metadata(),
+                demand,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+        };
+        let full = capture(EditorFactsDemand::Capture);
+        let full_facts = full.editor_facts.unwrap();
+        assert!(!full_facts.symbols.is_empty());
+        crate::editor::test_work::reset();
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
+        let recovery = capture(EditorFactsDemand::Recovery);
+        assert_eq!(
+            recovery.model.unwrap_err().to_string(),
+            full.model.unwrap_err().to_string()
+        );
+        let facts = recovery.editor_facts.unwrap();
+        assert_eq!(facts.diagnostics, full_facts.diagnostics);
+        assert!(!facts.diagnostics.is_empty());
+        assert!(facts.symbols.is_empty());
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.expected_syntax.is_empty());
+        let work = crate::editor::test_work::read();
+        assert_eq!(
+            (work.symbols, work.directives, work.expected_syntax),
+            (0, 0, 0)
+        );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("venn"),
+            1
+        );
     }
 
     #[test]

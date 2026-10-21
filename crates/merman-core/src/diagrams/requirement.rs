@@ -449,8 +449,9 @@ pub(crate) fn parse_requirement_semantic_model_controlled(
     Ok(match construction {
         Ok(source) => {
             #[cfg(feature = "editor-facts")]
-            let editor_facts =
-                (editor_demand == EditorFactsDemand::Capture).then_some(source.editor_facts);
+            let editor_facts = editor_demand
+                .needs_recovery()
+                .then_some(source.editor_facts);
             let mut model = source.model;
             model.sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
@@ -463,7 +464,7 @@ pub(crate) fn parse_requirement_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -734,7 +735,7 @@ fn parse_requirement_semantic_source_once(
             }
             if !parsed.complete {
                 #[cfg(feature = "editor-facts")]
-                if editor_demand == EditorFactsDemand::Capture {
+                if editor_demand.needs_recovery() {
                     editor_facts.mark_recovered_from_parse_error(
                         "requirement parser recovered from unterminated accDescr block",
                         Some(parsed.statement_span),
@@ -1031,7 +1032,7 @@ fn parse_requirement_semantic_source_once(
             "requirement",
             error,
             #[cfg(feature = "editor-facts")]
-            (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+            editor_demand.needs_recovery().then_some(editor_facts),
         )));
     }
 

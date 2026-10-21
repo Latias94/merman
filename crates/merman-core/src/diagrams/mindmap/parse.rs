@@ -60,7 +60,7 @@ pub(crate) fn parse_mindmap_semantic_model_controlled(
         },
         Err(failure) => {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.needs_recovery() {
                 let (error, facts) = failure.into_parts();
                 return Ok(crate::family::SemanticConstruction {
                     model: Err(error),
@@ -192,6 +192,7 @@ fn construct_mindmap_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => Some(mindmap_editor_facts_from_parsed(&parsed, control)?),
     };
     if let Some(error) = first_error {

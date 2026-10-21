@@ -371,7 +371,7 @@ fn parse_tree_view_input_controlled(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treeView");
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts = (demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    let mut editor_facts = demand.needs_recovery().then(EditorSemanticFacts::new);
     let mut first_issue = None;
     let body = match tree_view_body_start_controlled(code, control)? {
         Ok(body) => body,
@@ -422,7 +422,7 @@ fn parse_tree_view_input_controlled(
             let field = parsed.fact.field;
             let value = parsed.fact.value.clone();
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
                 push_langium_common_editor_fact(facts, &parsed.fact, "tree view");
             }
             match field {
@@ -474,7 +474,7 @@ fn parse_tree_view_input_controlled(
         ) {
             Ok(Some(node)) => {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut() {
+                if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
                     push_tree_view_node_editor_facts(facts, &node);
                 }
                 nodes.push(node);

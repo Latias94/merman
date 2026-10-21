@@ -214,7 +214,31 @@ impl SemanticParser {
         input: &str,
         control: &OperationControl,
     ) -> OperationControlResult<SemanticSnapshotCapture> {
-        self.capture_snapshot_controlled(input, None, control)
+        self.capture_snapshot_controlled(
+            input,
+            None,
+            crate::family::EditorFactsDemand::Capture,
+            control,
+        )
+    }
+
+    /// Captures canonical meaning and every parser diagnostic without editor navigation facts.
+    ///
+    /// The family is constructed once, using the same recovery, source mapping, runtime, and
+    /// cancellation contract as a rich snapshot. Symbols, directive prefixes, and expected syntax
+    /// are omitted from the returned editor facts.
+    #[cfg(feature = "editor-facts")]
+    pub fn capture_diagram_recovery_snapshot_controlled_sync(
+        &self,
+        input: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<SemanticSnapshotCapture> {
+        self.capture_snapshot_controlled(
+            input,
+            None,
+            crate::family::EditorFactsDemand::Recovery,
+            control,
+        )
     }
 
     /// Captures a semantic snapshot for a known built-in diagram type.
@@ -240,7 +264,12 @@ impl SemanticParser {
         input: &str,
         control: &OperationControl,
     ) -> OperationControlResult<SemanticSnapshotCapture> {
-        self.capture_snapshot_controlled(input, Some(diagram_type), control)
+        self.capture_snapshot_controlled(
+            input,
+            Some(diagram_type),
+            crate::family::EditorFactsDemand::Capture,
+            control,
+        )
     }
 
     #[cfg(feature = "editor-facts")]
@@ -248,6 +277,7 @@ impl SemanticParser {
         &self,
         input: &str,
         diagram_type: Option<&str>,
+        editor_demand: crate::family::EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<SemanticSnapshotCapture> {
         use crate::preprocess::{PreprocessCaptureResult, SourceConfigEvidence};
@@ -266,6 +296,7 @@ impl SemanticParser {
             let captured = crate::preprocess::preprocess_builtin_semantic_with_evidence_controlled(
                 input,
                 diagram_type,
+                editor_demand,
                 control,
             )?;
             let source_config = captured.source_config;
@@ -315,15 +346,19 @@ impl SemanticParser {
                 }
             };
             let recovered_incomplete_directive = source.recovered_incomplete_directive();
+            let family_demand = if editor_demand == crate::family::EditorFactsDemand::Recovery
+                && source.may_drop_editor_spans_controlled(control)?
+            {
+                // Preserve the existing dropped-span diagnostics without reparsing. The final
+                // recovery projection discards navigation facts after their spans are remapped.
+                crate::family::EditorFactsDemand::Capture
+            } else {
+                editor_demand
+            };
             let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 control.checkpoint()?;
                 match crate::family::canonical_parser(&metadata.diagram_type) {
-                    Some(parser) => parser(
-                        source.text(),
-                        &metadata,
-                        crate::family::EditorFactsDemand::Capture,
-                        control,
-                    ),
+                    Some(parser) => parser(source.text(), &metadata, family_demand, control),
                     None => Ok(crate::family::SemanticConstruction {
                         model: Err(Error::UnsupportedDiagram {
                             diagram_type: metadata.diagram_type.clone(),
@@ -346,9 +381,10 @@ impl SemanticParser {
                     let construction = construction?;
                     let editor_facts = match construction.editor_facts {
                         Some(facts) => crate::ParsedEditorFacts::Available(
-                            source.finish_editor_semantic_facts(
+                            source.finish_editor_semantic_facts_with_demand(
                                 facts,
                                 &metadata.diagram_type,
+                                editor_demand,
                                 control,
                             )?,
                         ),
@@ -583,6 +619,241 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "editor-facts")]
+    fn assert_recovery_snapshot_matches_rich(
+        source: &str,
+        omit_rich_work: bool,
+    ) -> SemanticDiagramSnapshot {
+        let parser = SemanticParser::new();
+        let SemanticSnapshotCapture::Snapshot(rich) = parser.capture_diagram_snapshot_sync(source)
+        else {
+            panic!("fixture must reach its family parser: {source}");
+        };
+        crate::editor::test_work::reset();
+        let SemanticSnapshotCapture::Snapshot(recovery) = parser
+            .capture_diagram_recovery_snapshot_controlled_sync(source, &OperationControl::new())
+            .unwrap()
+        else {
+            panic!("recovery fixture must reach its family parser: {source}");
+        };
+        let work = crate::editor::test_work::read();
+        if omit_rich_work {
+            assert_eq!(work.symbols, 0, "{source}");
+            assert_eq!(work.directives, 0, "{source}");
+            assert_eq!(work.expected_syntax, 0, "{source}");
+        }
+        assert_eq!(
+            recovery.metadata().diagram_type,
+            rich.metadata().diagram_type
+        );
+        assert_eq!(
+            recovery.metadata().config.as_value(),
+            rich.metadata().config.as_value()
+        );
+        assert_eq!(
+            recovery.metadata().semantic_config.as_value(),
+            rich.metadata().semantic_config.as_value()
+        );
+        assert_eq!(recovery.source_config(), rich.source_config());
+        assert_eq!(
+            recovery.recovered_incomplete_directive(),
+            rich.recovered_incomplete_directive()
+        );
+        assert_eq!(
+            format!("{:?}", recovery.outcome()),
+            format!("{:?}", rich.outcome()),
+            "{source}"
+        );
+        let crate::ParsedEditorFacts::Available(rich_facts) = rich.editor_facts() else {
+            panic!("rich family facts must be available");
+        };
+        let crate::ParsedEditorFacts::Available(recovery_facts) = recovery.editor_facts() else {
+            panic!("recovery family facts must be available");
+        };
+        assert_eq!(
+            recovery_facts.completeness, rich_facts.completeness,
+            "{source}"
+        );
+        assert_eq!(
+            recovery_facts.family_semantics, rich_facts.family_semantics,
+            "{source}"
+        );
+        assert_eq!(
+            recovery_facts.diagnostics, rich_facts.diagnostics,
+            "{source}"
+        );
+        assert!(recovery_facts.symbols.is_empty(), "{source}");
+        assert!(recovery_facts.directive_prefixes.is_empty(), "{source}");
+        assert!(recovery_facts.expected_syntax.is_empty(), "{source}");
+        recovery
+    }
+
+    #[cfg(all(feature = "editor-facts", feature = "diagram-flowchart"))]
+    #[test]
+    fn recovery_snapshot_retains_flowchart_eof_spans_without_rich_fact_work() {
+        for (source, omit_rich_work) in [
+            ("flowchart TD\nA[終] --> B\n", true),
+            ("flowchart TD\nA[終] -->\n", true),
+            (
+                "---\r\nconfig:\r\n  flowchart:\r\n    htmlLabels: false\r\n---\r\n%%{init: {theme: 'dark'}}%%\r\nflowchart TD\r\nA[終] -->\r\n",
+                false,
+            ),
+            ("%%{init: {theme: 'dark'}\nflowchart TD\nA-->B\n", false),
+        ] {
+            let snapshot = assert_recovery_snapshot_matches_rich(source, omit_rich_work);
+            if let SemanticParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                snapshot.outcome()
+            {
+                let span = diagnostic
+                    .span()
+                    .expect("Flowchart failure retains a precise span");
+                assert!(source.is_char_boundary(span.start));
+                assert!(source.is_char_boundary(span.end));
+            }
+        }
+        crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
+        SemanticParser::new()
+            .capture_diagram_recovery_snapshot_controlled_sync(
+                "flowchart TD\nA-->B\n",
+                &OperationControl::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
+            1
+        );
+    }
+
+    #[cfg(all(
+        feature = "editor-facts",
+        feature = "diagram-sequence",
+        feature = "diagram-state",
+        feature = "diagram-class"
+    ))]
+    #[test]
+    fn recovery_snapshots_skip_lalrpop_editor_collectors_and_construct_once() {
+        for source in [
+            "sequenceDiagram\nAlice->>Bob: 終\n",
+            "sequenceDiagram\nAlice->>Bob: 終\ninvalid ???\n",
+            "stateDiagram-v2\nIdle --> Running: 終\n",
+            "stateDiagram-v2\nIdle --> Running: 終\nstate [\n",
+            "classDiagram\nclass Widget\nWidget : +run()\n",
+            "classDiagram\nclass Widget\n???\n",
+        ] {
+            assert_recovery_snapshot_matches_rich(source, true);
+            assert_eq!(crate::editor::test_work::read().collections, 0, "{source}");
+        }
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        SemanticParser::new()
+            .capture_diagram_recovery_snapshot_controlled_sync(
+                "sequenceDiagram\nA->>B: Hi\n",
+                &OperationControl::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+    }
+
+    #[cfg(all(
+        feature = "editor-facts",
+        feature = "diagram-architecture",
+        feature = "diagram-requirement",
+        feature = "diagram-zenuml",
+        feature = "diagram-treemap"
+    ))]
+    #[test]
+    fn recovery_snapshots_preserve_partial_parse_and_semantic_validation_diagnostics() {
+        for source in [
+            "architecture-beta\nservice api\nbroken ?\nservice later\n",
+            "architecture-beta\nservice api\nservice api\n",
+            "requirementDiagram\naccDescr { unterminated\n",
+            "zenuml\n@Starter(A) A.call() ? B.call()",
+            "treemap-beta\n\"valid\": 2\ninvalid ?\n\"later\": 3\n",
+        ] {
+            let snapshot = assert_recovery_snapshot_matches_rich(source, true);
+            let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                unreachable!();
+            };
+            assert!(!facts.diagnostics.is_empty(), "{source}");
+            assert!(
+                facts.diagnostics.iter().any(|diagnostic| diagnostic.kind
+                    == crate::EditorSemanticDiagnosticKind::ParserRecovery),
+                "{source}"
+            );
+        }
+    }
+
+    #[cfg(all(feature = "editor-facts", feature = "diagram-flowchart"))]
+    #[test]
+    fn recovery_snapshot_preserves_preprocessing_evidence_and_cancellation() {
+        let parser = SemanticParser::new();
+        let source =
+            "---\nconfig: [\n---\n%%{initialize: {theme: 'dark'}}%%\nflowchart TD\nA-->B\n";
+        let SemanticSnapshotCapture::Failed {
+            error: rich_error,
+            source_config: rich_config,
+        } = parser.capture_diagram_snapshot_sync(source)
+        else {
+            panic!("invalid frontmatter must fail before the family parse");
+        };
+        let SemanticSnapshotCapture::Failed {
+            error,
+            source_config,
+        } = parser
+            .capture_diagram_recovery_snapshot_controlled_sync(source, &OperationControl::new())
+            .unwrap()
+        else {
+            panic!("recovery capture must retain the preprocessing failure");
+        };
+        assert_eq!(error.to_string(), rich_error.to_string());
+        assert_eq!(source_config, rich_config);
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let cancelled = parser
+            .capture_diagram_recovery_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control)
+            .unwrap_err();
+        assert_eq!(
+            parser
+                .capture_diagram_recovery_snapshot_controlled_sync(
+                    "flowchart TD\nA-->B\n",
+                    &control
+                )
+                .unwrap_err(),
+            cancelled
+        );
+        assert_recovery_snapshot_matches_rich("flowchart TD\nA-->B\n", true);
+    }
+
+    #[cfg(all(feature = "editor-facts", feature = "diagram-flowchart"))]
+    #[test]
+    fn recovery_snapshot_keeps_real_dropped_span_diagnostics_in_one_construction() {
+        let source = "flowchart TD\nA%%{wrap}%%B\nC\n";
+        let snapshot = assert_recovery_snapshot_matches_rich(source, false);
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            unreachable!();
+        };
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("editor fact span(s) that crossed a preprocessing edit")
+        }));
+        assert!(
+            crate::editor::test_work::read().symbols > 0,
+            "the edit-spanning input must retain its diagnostic observer"
+        );
+        crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
+        SemanticParser::new()
+            .capture_diagram_recovery_snapshot_controlled_sync(source, &OperationControl::new())
+            .unwrap();
+        assert_eq!(
+            crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
+            1
+        );
+    }
 
     #[cfg(feature = "diagram-git-graph")]
     fn semantic_gitgraph_ids(parser: &SemanticParser, known_type: bool) -> Vec<String> {

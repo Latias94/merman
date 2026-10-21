@@ -85,6 +85,7 @@ impl ClassSyntax {
         #[cfg(feature = "editor-facts")]
         let editor_facts = match editor_demand {
             EditorFactsDemand::Omit => None,
+            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
             EditorFactsDemand::Capture => Some(collect_class_editor_facts_from_events(
                 &events, code, control,
             )?),
@@ -278,7 +279,7 @@ pub(crate) fn parse_class_semantic_model_controlled(
             }
         }
         #[cfg(feature = "editor-facts")]
-        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+        Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
                 (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
             SemanticConstruction {

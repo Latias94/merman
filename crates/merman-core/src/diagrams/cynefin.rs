@@ -306,8 +306,9 @@ fn construct_cynefin_parse_outcome_controlled(
 
     let mut model = CynefinDiagramModel::default();
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts =
-        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    let mut editor_facts = editor_demand
+        .needs_recovery()
+        .then(EditorSemanticFacts::new);
     let mut header_decided = false;
     let mut current_domain: Option<usize> = None;
     let mut offset = 0usize;
@@ -361,7 +362,10 @@ fn construct_cynefin_parse_outcome_controlled(
             offset = body_start + parsed.consumed;
             current_domain = None;
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 push_langium_common_editor_fact(facts, &parsed.fact, "cynefin");
             }
             if let Some(diagnostic) = parsed.diagnostic {
@@ -406,7 +410,10 @@ fn construct_cynefin_parse_outcome_controlled(
             match part {
                 CynefinLinePart::Domain(domain) => {
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut editor_facts {
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
                         push_domain_fact(facts, domain.clone(), "cynefin domain");
                     }
                     current_domain = Some(start_domain(&mut model.domains, domain.text));
@@ -432,7 +439,10 @@ fn construct_cynefin_parse_outcome_controlled(
                         continue;
                     };
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut editor_facts {
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
                         push_payload_fact(
                             facts,
                             item.clone(),
@@ -447,7 +457,10 @@ fn construct_cynefin_parse_outcome_controlled(
                 CynefinLinePart::Transition(transition) => {
                     current_domain = None;
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut editor_facts {
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
                         push_domain_fact(
                             facts,
                             transition.from.clone(),
@@ -814,6 +827,52 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_keeps_parser_warnings_without_rich_observers() {
+        let source = "cynefin-beta\ncomplex\ncomplicated --> complicated : \"Self-loop\"\n";
+        let capture = |demand| {
+            construct_cynefin_parse_outcome_controlled(
+                source,
+                "cynefin",
+                demand,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+        };
+        let full = capture(EditorFactsDemand::Capture);
+        let full_facts = full.source.editor_facts.unwrap();
+        assert!(!full_facts.symbols.is_empty());
+        crate::editor::test_work::reset();
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("cynefin");
+        let recovery = capture(EditorFactsDemand::Recovery);
+        assert!(recovery.first_error.is_none());
+        assert_eq!(
+            recovery.source.model.domains.len(),
+            full.source.model.domains.len()
+        );
+        let facts = recovery.source.editor_facts.unwrap();
+        assert_eq!(facts.diagnostics, full_facts.diagnostics);
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(
+            facts.diagnostics[0].kind,
+            crate::EditorSemanticDiagnosticKind::ParserWarning
+        );
+        assert!(facts.symbols.is_empty());
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.expected_syntax.is_empty());
+        let work = crate::editor::test_work::read();
+        assert_eq!(
+            (work.symbols, work.directives, work.expected_syntax),
+            (0, 0, 0)
+        );
+        assert_eq!(work.diagnostics, 1);
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("cynefin"),
+            1
+        );
+    }
 
     #[test]
     fn controlled_parse_can_cancel_between_cynefin_lines() {

@@ -927,7 +927,7 @@ pub(crate) fn parse_gantt_semantic_model_controlled(
     let source = match construction {
         Ok(source) => source,
         #[cfg(feature = "editor-facts")]
-        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+        Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) = failure.into_parts();
             return Ok(SemanticConstruction {
                 model: Err(error),
@@ -1197,6 +1197,8 @@ fn parse_gantt_semantic_source_once(
         });
     }
 
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = editor_demand.finish_facts(editor_facts);
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
             #[cfg(feature = "editor-facts")]

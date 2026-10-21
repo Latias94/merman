@@ -165,7 +165,7 @@ pub(crate) fn parse_info_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -207,7 +207,8 @@ fn construct_info_semantic_source_controlled(
                 #[cfg(feature = "compat-json")]
                 compat_output: InfoCompatOutput::Empty,
                 #[cfg(feature = "editor-facts")]
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                editor_facts: editor_demand
+                    .needs_recovery()
                     .then(EditorSemanticFacts::new),
             }));
         }
@@ -217,7 +218,9 @@ fn construct_info_semantic_source_controlled(
                 "info",
                 Error::diagram_parse_exact(diagram_type, "expected info", span),
                 #[cfg(feature = "editor-facts")]
-                (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new),
+                editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
             )));
         }
         InfoHeader::Body(body) => body,
@@ -226,6 +229,7 @@ fn construct_info_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -254,7 +258,10 @@ fn construct_info_semantic_source_controlled(
                     });
                 }
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     push_langium_common_editor_fact(facts, &parsed.fact, "info");
                 }
                 common_seen = true;
@@ -267,7 +274,10 @@ fn construct_info_semantic_source_controlled(
             } => {
                 show_info = true;
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     push_show_info_editor_fact(facts, span);
                 }
                 offset += consumed;

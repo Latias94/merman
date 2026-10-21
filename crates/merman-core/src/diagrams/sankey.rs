@@ -314,7 +314,7 @@ pub(crate) fn parse_sankey_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -355,6 +355,7 @@ fn construct_sankey_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -1176,6 +1177,45 @@ mod semantic_tests {
                 "dompurifyConfig": { "FORBID_TAGS": ["b"] }
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_preserves_csv_diagnostics_without_record_facts() {
+        for source in ["sankey-beta\nA,B,1\n", "sankey-beta\nA,B,1\ninvalid\n"] {
+            let capture = |demand| {
+                parse_sankey_semantic_model_controlled(
+                    source,
+                    &metadata(),
+                    demand,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+            };
+            let full = capture(EditorFactsDemand::Capture);
+            let full_facts = full.editor_facts.unwrap();
+            assert!(!full_facts.symbols.is_empty());
+            crate::editor::test_work::reset();
+            reset_sankey_syntax_construction_count();
+            let recovery = capture(EditorFactsDemand::Recovery);
+            assert_eq!(recovery.model.is_ok(), full.model.is_ok());
+            assert_eq!(
+                recovery.model.as_ref().err().map(ToString::to_string),
+                full.model.as_ref().err().map(ToString::to_string),
+            );
+            let facts = recovery.editor_facts.unwrap();
+            assert_eq!(facts.completeness, full_facts.completeness);
+            assert_eq!(facts.diagnostics, full_facts.diagnostics);
+            assert!(facts.symbols.is_empty());
+            assert!(facts.directive_prefixes.is_empty());
+            assert!(facts.expected_syntax.is_empty());
+            let work = crate::editor::test_work::read();
+            assert_eq!(
+                (work.symbols, work.directives, work.expected_syntax),
+                (0, 0, 0)
+            );
+            assert_eq!(sankey_syntax_construction_count(), 1);
         }
     }
 

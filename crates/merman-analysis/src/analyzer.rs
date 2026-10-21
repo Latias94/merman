@@ -309,12 +309,19 @@ impl AnalysisBackend {
     fn capture(
         &self,
         source: &str,
+        mode: CaptureMode,
         control: &merman_core::OperationControl,
     ) -> merman_core::OperationControlResult<DiagramAnalysisEvidence> {
         match self {
-            Self::Semantic(parser) => parser
-                .capture_diagram_snapshot_controlled_sync(source, control)
-                .map(DiagramAnalysisEvidence::from_semantic_capture),
+            Self::Semantic(parser) => match mode {
+                CaptureMode::DiagnosticsOnly => {
+                    parser.capture_diagram_recovery_snapshot_controlled_sync(source, control)
+                }
+                CaptureMode::RichFacts => {
+                    parser.capture_diagram_snapshot_controlled_sync(source, control)
+                }
+            }
+            .map(DiagramAnalysisEvidence::from_semantic_capture),
             #[cfg(feature = "compat-json")]
             Self::Custom(engine) => engine
                 .capture_diagram_snapshot_controlled_sync(source, control)
@@ -534,15 +541,12 @@ impl Analyzer {
         source: Arc<str>,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisPayload, AnalysisCancelled> {
-        match self.analyze_generation_shared_cancellable(source, cancellation)? {
-            AnalysisCaptureOutcome::Ready(generation) => {
-                generation.project_cancellable(self.options.diagnostic_policy(), cancellation)
-            }
-            AnalysisCaptureOutcome::Rejected(rejection) => {
-                cancellation.checkpoint()?;
-                Ok(rejection.into_payload())
-            }
-        }
+        crate::document::analyze_document_shared_cancellable(
+            source,
+            self,
+            self.options.source().clone(),
+            cancellation,
+        )
     }
 
     /// Generates and projects the facts contract cooperatively using one cancellation token.
@@ -574,10 +578,10 @@ impl Analyzer {
             source_map_for_diagram_cancellable(diagram, document_source_map, cancellation)?;
         let evidence = match control {
             CaptureCancellation::RecoverParserCancellation(_) => {
-                self.capture_evidence(diagram.text.as_str())
+                self.capture_evidence(diagram.text.as_str(), mode)
             }
             CaptureCancellation::Propagate(_) => {
-                self.capture_evidence_cancellable(diagram.text.as_str(), cancellation)?
+                self.capture_evidence_cancellable(diagram.text.as_str(), mode, cancellation)?
             }
         };
         cancellation.checkpoint()?;
@@ -600,9 +604,9 @@ impl Analyzer {
         Ok(captured)
     }
 
-    fn capture_evidence(&self, source: &str) -> DiagramAnalysisEvidence {
+    fn capture_evidence(&self, source: &str, mode: CaptureMode) -> DiagramAnalysisEvidence {
         let cancellation = AnalysisCancellationToken::new();
-        self.capture_evidence_cancellable(source, &cancellation)
+        self.capture_evidence_cancellable(source, mode, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
                 error: CoreError::from(merman_core::OperationCancelled {
                     phase: merman_core::OperationPhase::Analysis,
@@ -615,6 +619,7 @@ impl Analyzer {
     fn capture_evidence_cancellable(
         &self,
         source: &str,
+        mode: CaptureMode,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<DiagramAnalysisEvidence, AnalysisCancelled> {
         cancellation.checkpoint()?;
@@ -625,7 +630,7 @@ impl Analyzer {
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.backend
-                .capture(source, cancellation.operation_control())
+                .capture(source, mode, cancellation.operation_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {

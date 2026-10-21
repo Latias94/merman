@@ -108,7 +108,7 @@ use text::{strip_wrapping_backticks, title_kind_str, trim_flowdb_label_text, unq
 pub use model::FlowchartRenderContext;
 pub use model::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
-    FlowNodeProvenance, FlowSubgraph, FlowchartModel,
+    FlowNodeProvenance, FlowSubgraph, FlowchartModel, FlowchartSubgraphStyles,
 };
 
 pub(crate) use model::{LabeledText, LinkToken, SubgraphHeader, TitleKind};
@@ -121,14 +121,12 @@ use ast::{
     FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use model::{Edge, EdgeDefaults, FlowNodeSyntax, Node};
+use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 #[cfg(all(
     feature = "presentation",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
-use presentation::{
-    FlowSubgraphVertexStyle, FlowchartRenderLabelSources, FlowchartRenderStyleSources,
-};
+use presentation::FlowchartRenderLabelSources;
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
@@ -202,8 +200,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
-    #[cfg(feature = "presentation")]
-    subgraph_vertex_styles: Option<FlowchartRenderStyleSources>,
+    subgraph_vertex_styles: FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     collapsed_subgraphs: Option<rustc_hash::FxHashSet<String>>,
     warning_facts: Vec<DiagramWarningFact>,
@@ -269,7 +266,12 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_flowchart_captured_semantic_model_controlled(code, meta, control)?;
+    let construction = construct_flowchart_captured_semantic_model_controlled(
+        code,
+        meta,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let (model, warning_facts) = match construction.model {
         Ok(model) => (
             render_model_to_compat_json(&model, meta),
@@ -291,6 +293,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
 fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     control.checkpoint()?;
@@ -299,19 +302,27 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
         title: acc_title,
         description: acc_descr,
         statements: accessibility_statements,
-    } = scan_flowchart_accessibility_controlled(code, EditorFactsDemand::Capture, control)?;
+    } = scan_flowchart_accessibility_controlled(code, editor_demand, control)?;
     control.checkpoint()?;
     let trace = construct_flowchart_token_trace(&code, control)?;
     let (model, facts) = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
         Ok(ast) => {
-            let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
-            control.checkpoint()?;
-            collect_accessibility_directive_prefixes(
-                &accessibility_statements,
-                &mut facts,
-                control,
-            )?;
-            collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
+            let mut facts = EditorSemanticFacts::new();
+            if editor_demand.captures_rich() {
+                facts = editor_facts_from_flowchart_ast(&ast, control)?;
+                control.checkpoint()?;
+                collect_accessibility_directive_prefixes(
+                    &accessibility_statements,
+                    &mut facts,
+                    control,
+                )?;
+                collect_expected_syntax_from_tokens(
+                    &code,
+                    trace.editor_tokens(),
+                    &mut facts,
+                    control,
+                )?;
+            }
             let model = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, false, control,
             )? {
@@ -322,16 +333,17 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
             (model, facts)
         }
         Err(error) => {
-            let facts = flowchart_recovery_facts(
+            let (facts, eof_insertion) = flowchart_recovery_facts(
                 &code,
                 trace,
                 &accessibility_statements,
                 error.as_ref(),
+                editor_demand,
                 control,
             )?;
             let error = Error::diagram_parse_diagnostic(
                 meta.diagram_type().to_string(),
-                flowchart_parse_diagnostic(error.as_ref(), &code, &facts),
+                flowchart_parse_diagnostic(error.as_ref(), &code, eof_insertion),
             );
             (Err(error), facts)
         }
@@ -383,8 +395,13 @@ pub(crate) fn parse_semantic_model_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     #[cfg(feature = "editor-facts")]
-    if editor_demand == crate::family::EditorFactsDemand::Capture {
-        return construct_flowchart_captured_semantic_model_controlled(code, meta, control);
+    if editor_demand.needs_recovery() {
+        return construct_flowchart_captured_semantic_model_controlled(
+            code,
+            meta,
+            editor_demand,
+            control,
+        );
     }
     let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
     let model = match source {
@@ -622,9 +639,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
     let mut edges = edges;
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
-    #[cfg(feature = "presentation")]
-    let mut subgraph_vertex_styles =
-        _collect_render_context.then(FlowchartRenderStyleSources::default);
+    let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
     #[cfg(feature = "presentation")]
     let mut collapsed_subgraphs = _collect_render_context.then(rustc_hash::FxHashSet::default);
     let mut vertex_calls = Vec::new();
@@ -650,8 +665,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
             subgraph_declaration_owners: &builder.declaration_owners,
-            #[cfg(feature = "presentation")]
-            subgraph_vertex_styles: subgraph_vertex_styles.as_mut(),
+            subgraph_vertex_styles: &mut subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs: collapsed_subgraphs.as_mut(),
             vertex_calls: &mut vertex_calls,
@@ -685,7 +699,6 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
-        #[cfg(feature = "presentation")]
         subgraph_vertex_styles,
         #[cfg(feature = "presentation")]
         collapsed_subgraphs,
@@ -944,8 +957,9 @@ fn editor_facts_from_flowchart_ast(
 fn recover_flowchart_editor_facts_from_tokens(
     code: &str,
     trace: FlowchartTokenTrace,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<EditorSemanticFacts> {
+) -> OperationControlResult<(EditorSemanticFacts, bool)> {
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
@@ -953,9 +967,18 @@ fn recover_flowchart_editor_facts_from_tokens(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        collector.accept(code, token, *start, *end, &mut facts);
+        collector.accept(code, token, *start, *end, &mut facts, editor_demand);
     }
-    collector.finish(code.len(), &mut facts);
+    let pending = collector.finish(code.len());
+    let mut has_eof_expected = pending.is_some_and(|span| span.end == code.len());
+    if editor_demand.captures_rich()
+        && let Some(span) = pending
+    {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            span,
+        ));
+    }
     for item in &trace.items {
         let error = match item {
             FlowchartTracedItem::RecoveredToken { strict_error, .. }
@@ -963,14 +986,25 @@ fn recover_flowchart_editor_facts_from_tokens(
             FlowchartTracedItem::Token(_) => None,
         };
         if let Some(error) = error {
-            push_flowchart_expected_syntax(&mut facts, error.expected_syntax.iter().copied());
+            has_eof_expected |= error.expected_syntax.iter().any(|expected| {
+                matches!(
+                    expected.kind,
+                    EditorExpectedSyntaxKind::NodeIdentifier
+                        | EditorExpectedSyntaxKind::FlowchartOperator
+                ) && expected.span.end == code.len()
+            });
+            if editor_demand.captures_rich() {
+                push_flowchart_expected_syntax(&mut facts, error.expected_syntax.iter().copied());
+            }
         }
-        if let Some(prefix) = error.and_then(|error| error.directive_prefix) {
+        if editor_demand.captures_rich()
+            && let Some(prefix) = error.and_then(|error| error.directive_prefix)
+        {
             facts.push_directive_prefix(prefix);
         }
     }
     control.checkpoint()?;
-    Ok(facts)
+    Ok((facts, has_eof_expected))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -980,11 +1014,16 @@ fn flowchart_recovery_facts(
     trace: FlowchartTokenTrace,
     accessibility_statements: &[FlowchartAccessibilityStatement],
     error: &FlowchartAstParseError,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<EditorSemanticFacts> {
-    let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
-    collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
-    let span = flowchart_eof_recovery_insertion(error, parser_code, &facts)
+) -> OperationControlResult<(EditorSemanticFacts, Option<usize>)> {
+    let (mut facts, has_eof_expected) =
+        recover_flowchart_editor_facts_from_tokens(parser_code, trace, editor_demand, control)?;
+    if editor_demand.captures_rich() {
+        collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
+    }
+    let eof_insertion = flowchart_eof_recovery_insertion(error, parser_code, has_eof_expected);
+    let span = eof_insertion
         .map(|insertion| SourceSpan::new(insertion, insertion))
         .unwrap_or_else(|| lalrpop_recovery_span(error, parser_code.len()));
     facts.mark_recovered_from_parse_error(
@@ -995,7 +1034,7 @@ fn flowchart_recovery_facts(
         Some(span),
     );
     control.checkpoint()?;
-    Ok(facts)
+    Ok((facts, eof_insertion))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1003,10 +1042,10 @@ fn flowchart_recovery_facts(
 fn flowchart_parse_diagnostic(
     error: &FlowchartAstParseError,
     code: &str,
-    #[cfg(feature = "editor-facts")] facts: &EditorSemanticFacts,
+    eof_insertion: Option<usize>,
 ) -> crate::ParseDiagnostic {
     let diagnostic = lalrpop_parse_diagnostic(error, code.len());
-    match flowchart_eof_recovery_insertion(error, code, facts) {
+    match eof_insertion {
         Some(insertion) => diagnostic.map_span(|_| SourceSpan::new(insertion, insertion)),
         None => diagnostic,
     }
@@ -1017,21 +1056,13 @@ fn flowchart_parse_diagnostic(
 fn flowchart_eof_recovery_insertion(
     error: &FlowchartAstParseError,
     code: &str,
-    #[cfg(feature = "editor-facts")] facts: &EditorSemanticFacts,
+    has_eof_expected: bool,
 ) -> Option<usize> {
     if !matches!(error, lalrpop_util::ParseError::UnrecognizedEof { .. }) {
         return None;
     }
     let insertion = code.trim_end_matches(['\r', '\n']).len();
-    (insertion < code.len()
-        && facts.expected_syntax.iter().any(|expected| {
-            matches!(
-                expected.kind,
-                EditorExpectedSyntaxKind::NodeIdentifier
-                    | EditorExpectedSyntaxKind::FlowchartOperator
-            ) && expected.span.end == code.len()
-        }))
-    .then_some(insertion)
+    (insertion < code.len() && has_eof_expected).then_some(insertion)
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1090,6 +1121,7 @@ impl FlowchartRecoveryFactCollector {
         start: usize,
         end: usize,
         #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
+        editor_demand: EditorFactsDemand,
     ) {
         enum TokenKind {
             Arrow,
@@ -1106,7 +1138,9 @@ impl FlowchartRecoveryFactCollector {
             Tok::Sep => TokenKind::Sep,
             _ => TokenKind::Other,
         };
-        collect_editor_fact_from_token(code, token, start, end, facts, &mut self.seen_entities);
+        if editor_demand.captures_rich() {
+            collect_editor_fact_from_token(code, token, start, end, facts, &mut self.seen_entities);
+        }
         match token_kind {
             TokenKind::Arrow => {
                 self.pending_node_identifier = Some(FlowchartRecoveryTargetState::Awaiting(
@@ -1140,10 +1174,8 @@ impl FlowchartRecoveryFactCollector {
         }
     }
 
-    fn finish(self, code_len: usize, facts: &mut EditorSemanticFacts) {
-        let Some(state) = self.pending_node_identifier else {
-            return;
-        };
+    fn finish(self, code_len: usize) -> Option<SourceSpan> {
+        let state = self.pending_node_identifier?;
 
         let span = match state {
             FlowchartRecoveryTargetState::Awaiting(mut span) => {
@@ -1153,12 +1185,7 @@ impl FlowchartRecoveryFactCollector {
             FlowchartRecoveryTargetState::Sealed(span) => span,
         };
 
-        if span.end >= span.start {
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::NodeIdentifier,
-                span,
-            ));
-        }
+        (span.end >= span.start).then_some(span)
     }
 }
 
@@ -1974,7 +2001,6 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
-            #[cfg(feature = "presentation")]
             subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs,
@@ -2062,6 +2088,7 @@ impl FlowchartSemanticSource {
             nodes: render_nodes,
             edges: render_edges,
             subgraphs: render_subgraphs,
+            subgraph_vertex_styles,
             tooltips: render_tooltips,
             warning_facts,
         };
@@ -2069,7 +2096,7 @@ impl FlowchartSemanticSource {
         let render_context = if _collect_render_context {
             Some(FlowchartRenderContext::new(
                 render_label_sources.expect("render labels are collected for render consumers"),
-                subgraph_vertex_styles.expect("subgraph styles are collected for render consumers"),
+                model.subgraph_vertex_styles.clone(),
                 collapsed_subgraphs
                     .expect("collapsed subgraphs are collected for render consumers"),
                 &model.subgraphs,
@@ -2439,7 +2466,6 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            assert!(source.subgraph_vertex_styles.is_none());
             assert!(source.collapsed_subgraphs.is_none());
         }
         let model = source
@@ -2447,6 +2473,7 @@ mod tests {
             .expect("private control cannot be cancelled")
             .expect("semantic projection");
         assert_eq!(model.subgraphs[0].id, "G");
+        assert!(model.contains_subgraph_vertex("G"));
     }
 
     #[test]
@@ -2823,9 +2850,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "presentation")]
     fn same_id_subgraph_vertex_style_preserves_statement_order() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         let cases = [
             (
                 concat!(
@@ -2850,8 +2876,8 @@ mod tests {
         ];
 
         for (source, expected_vertex_classes) in cases {
-            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
-                .expect("same-ID group model");
+            let model =
+                parse_flowchart_model_for_render(source, &meta).expect("same-ID group model");
             let (subgraph_index, subgraph) = model
                 .subgraphs
                 .iter()
@@ -2859,17 +2885,77 @@ mod tests {
                 .find(|(_, subgraph)| subgraph.id == "G")
                 .expect("subgraph G");
             let (vertex_classes, vertex_styles) =
-                context.effective_subgraph_css(subgraph_index, subgraph);
+                model.effective_subgraph_css(subgraph_index, subgraph);
 
             assert_eq!(subgraph.classes, ["base"]);
             assert_eq!(vertex_classes, expected_vertex_classes, "{source}");
             assert_eq!(vertex_styles, ["fill:#f00"], "{source}");
+            assert!(model.contains_subgraph_vertex("G"));
+
+            #[cfg(feature = "presentation")]
+            {
+                let (full_model, context) = parse_flowchart_model_with_render_context(
+                    source,
+                    &flowchart_test_meta("flowchart-v2"),
+                )
+                .expect("same-ID group render context");
+                let full_subgraph = &full_model.subgraphs[subgraph_index];
+                let semantic_css = full_model.effective_subgraph_css(subgraph_index, full_subgraph);
+                let render_css = context.effective_subgraph_css(subgraph_index, full_subgraph);
+                assert_eq!(render_css, (vertex_classes, vertex_styles));
+                assert!(std::ptr::eq(semantic_css.0, render_css.0));
+                assert!(std::ptr::eq(semantic_css.1, render_css.1));
+            }
+        }
+    }
+
+    #[test]
+    fn effective_subgraph_css_preserves_group_fallback_and_owner_ordinal() {
+        let meta = semantic_test_meta("flowchart-v2");
+        let group_only = parse_flowchart_model_for_render(
+            "flowchart TD\nsubgraph G\n A\nend\nclass G base\n",
+            &meta,
+        )
+        .expect("group-only CSS model");
+        let group = &group_only.subgraphs[0];
+        assert!(!group_only.contains_subgraph_vertex("G"));
+        assert_eq!(
+            group_only.effective_subgraph_css(0, group),
+            (group.classes.as_slice(), group.styles.as_slice()),
+        );
+
+        let vertex = parse_flowchart_model_for_render(
+            "flowchart TD\nsubgraph G\n A\nend\nclass G base\nstyle G fill:#f00\nclass G hot\n",
+            &meta,
+        )
+        .expect("same-ID vertex CSS model");
+        let group = &vertex.subgraphs[0];
+        let (classes, styles) = vertex.effective_subgraph_css(0, group);
+        assert_eq!(classes, ["hot"]);
+        assert_eq!(styles, ["fill:#f00"]);
+        assert_eq!(
+            vertex.effective_subgraph_css(1, group),
+            (group.classes.as_slice(), group.styles.as_slice()),
+            "a different declaration owner must retain the group's own CSS",
+        );
+        #[cfg(feature = "presentation")]
+        {
+            let (full_model, context) = parse_flowchart_model_with_render_context(
+                "flowchart TD\nsubgraph G\n A\nend\nclass G base\nstyle G fill:#f00\nclass G hot\n",
+                &flowchart_test_meta("flowchart-v2"),
+            )
+            .expect("same-ID vertex CSS render context");
+            let full_group = &full_model.subgraphs[0];
+            assert_eq!(
+                context.effective_subgraph_css(1, full_group),
+                (full_group.classes.as_slice(), full_group.styles.as_slice()),
+            );
         }
     }
 
     #[test]
     #[cfg(feature = "compat-json")]
-    fn same_id_subgraph_vertex_style_stays_out_of_the_public_model() {
+    fn same_id_subgraph_vertex_style_stays_out_of_serialized_models() {
         let meta = flowchart_test_meta("flowchart-v2");
         let (model, context) = parse_flowchart_model_with_render_context(
             concat!(
@@ -2883,6 +2969,7 @@ mod tests {
         .expect("same-ID group model");
 
         let json = serde_json::to_value(&model).expect("serialize Flowchart model");
+        assert!(json.get("subgraph_vertex_styles").is_none());
         assert!(json["subgraphs"][0].get("sameIdVertexStyle").is_none());
         let subgraph = &model.subgraphs[0];
         assert!(subgraph.styles.is_empty());
@@ -2900,9 +2987,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "presentation")]
     fn duplicate_subgraph_vertex_css_is_owned_by_the_canonical_group() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         let cases = [
             concat!(
                 "flowchart TD\n",
@@ -2925,7 +3011,7 @@ mod tests {
         ];
 
         for source in cases {
-            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+            let model = parse_flowchart_model_for_render(source, &meta)
                 .expect("duplicate subgraph declarations should parse");
 
             assert_eq!(model.subgraphs.len(), 1, "{source}");
@@ -2936,7 +3022,7 @@ mod tests {
                     .all(|subgraph| subgraph.styles.is_empty()),
                 "style statements belong to FlowDB's vertex record, not FlowSubgraph: {source}"
             );
-            let (_, styles) = context.effective_subgraph_css(0, &model.subgraphs[0]);
+            let (_, styles) = model.effective_subgraph_css(0, &model.subgraphs[0]);
             assert_eq!(styles, ["fill:#f00"], "{source}");
         }
     }

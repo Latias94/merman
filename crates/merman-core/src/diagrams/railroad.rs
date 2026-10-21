@@ -834,6 +834,7 @@ fn construct_railroad_semantic_source(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => Some(editor_facts_from_model(
             &parser.model,
             dialect,

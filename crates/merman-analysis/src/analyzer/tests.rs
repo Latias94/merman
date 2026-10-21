@@ -689,6 +689,95 @@ fn diagnostics_only_capture_does_not_materialize_syntax_indexes() {
 }
 
 #[test]
+fn diagnostics_only_backend_requests_recovery_without_editor_navigation_facts() {
+    let analyzer = Analyzer::new();
+    for source in [
+        "flowchart TD\nA-->B\n",
+        "flowchart TD\nA[終] -->\n",
+        "flowchart TD\nA%%{wrap}%%B\nC\n",
+        "cynefin-beta\ncomplicated\ncomplicated --> complicated : \"Self-loop\"\n",
+        "architecture-beta\nservice api\nbroken ?\nservice later\n",
+    ] {
+        let recovery = analyzer.capture_evidence(source, super::CaptureMode::DiagnosticsOnly);
+        let rich = analyzer.capture_evidence(source, super::CaptureMode::RichFacts);
+        let facts = |evidence: &super::DiagramAnalysisEvidence| match evidence {
+            super::DiagramAnalysisEvidence::Parsed { editor_facts, .. }
+            | super::DiagramAnalysisEvidence::ParseFailed { editor_facts, .. } => {
+                editor_facts.as_ref().unwrap().clone()
+            }
+            _ => panic!("fixture must reach its family parser: {source}"),
+        };
+        let recovery_facts = facts(&recovery);
+        let rich_facts = facts(&rich);
+        assert_eq!(
+            recovery_facts.completeness, rich_facts.completeness,
+            "{source}"
+        );
+        assert_eq!(
+            recovery_facts.diagnostics, rich_facts.diagnostics,
+            "{source}"
+        );
+        assert!(recovery_facts.symbols.is_empty(), "{source}");
+        assert!(recovery_facts.directive_prefixes.is_empty(), "{source}");
+        assert!(recovery_facts.expected_syntax.is_empty(), "{source}");
+        assert!(!rich_facts.symbols.is_empty(), "{source}");
+    }
+}
+
+#[test]
+fn cancellable_diagnostics_match_rich_projection_for_multiple_recovered_fences() {
+    let source = "前文\n```mermaid\nflowchart TD\nA[終] -->\n```\n```mermaid\nsequenceDiagram\nA->>B: Hi\ninvalid ???\n```\n";
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_source(
+        crate::source_descriptor_for_markdown_path(Some("file:///tmp/recovery.md")),
+    ));
+    let rich = analyzer.analyze_generation(source).into_ready().unwrap();
+    let expected = rich.project(analyzer.options().diagnostic_policy());
+    assert_eq!(expected.summary.errors, 2);
+    assert_eq!(analyzer.analyze(source), expected);
+    assert_eq!(
+        analyzer
+            .analyze_cancellable(Arc::from(source), &AnalysisCancellationToken::new())
+            .unwrap(),
+        expected
+    );
+
+    let cancellation = AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(20);
+    assert!(
+        analyzer
+            .analyze_cancellable(Arc::from(source), &cancellation)
+            .is_err()
+    );
+    assert!(cancellation.is_cancelled());
+    assert_eq!(
+        analyzer
+            .analyze_cancellable(Arc::from(source), &AnalysisCancellationToken::new())
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn diagnostics_preserve_real_preprocessing_span_drop_warnings() {
+    let source = "flowchart TD\nA%%{wrap}%%B\nC\n";
+    let analyzer = Analyzer::new();
+    let rich = analyzer.analyze_generation(source).into_ready().unwrap();
+    let expected = rich.project(analyzer.options().diagnostic_policy());
+    assert!(expected.diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("editor fact span(s) that crossed a preprocessing edit")
+    }));
+    assert_eq!(analyzer.analyze(source), expected);
+    assert_eq!(
+        analyzer
+            .analyze_cancellable(Arc::from(source), &AnalysisCancellationToken::new())
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
 fn rich_capture_materializes_parser_syntax_indexes() {
     let analyzer = Analyzer::new();
     let captured = capture_document_diagram_for_test(

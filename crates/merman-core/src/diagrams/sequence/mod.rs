@@ -83,7 +83,7 @@ pub(crate) use compat::parse_sequence_json_and_editor_facts;
 #[cfg(feature = "compat-json")]
 pub(crate) use compat::{parse_sequence, render_model_to_compat_json};
 pub(crate) use parse::parse_sequence_semantic_model_controlled;
-#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
+#[cfg(all(test, feature = "editor-facts"))]
 pub(crate) use parse::{
     reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
 };

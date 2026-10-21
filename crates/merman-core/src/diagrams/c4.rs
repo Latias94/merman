@@ -859,6 +859,7 @@ fn parse_acc_descr_spanned_c4(
 
 fn parse_direction_stmt_facts_c4(
     line: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     #[cfg(feature = "editor-facts")] line_start: usize,
     #[cfg(feature = "editor-facts")] facts: &mut Option<EditorSemanticFacts>,
 ) -> Option<bool> {
@@ -876,7 +877,7 @@ fn parse_direction_stmt_facts_c4(
     let value = &rest[whitespace..];
     if value.is_empty() {
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = facts.as_mut() {
+        if let Some(facts) = facts.as_mut().filter(|_| editor_demand.captures_rich()) {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::CardinalDirectionValue,
                 SourceSpan::new(keyword_end, keyword_end),
@@ -891,7 +892,7 @@ fn parse_direction_stmt_facts_c4(
     #[cfg(feature = "editor-facts")]
     let value_span = SourceSpan::new(value_start, value_start + token.len());
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = facts.as_mut() {
+    if let Some(facts) = facts.as_mut().filter(|_| editor_demand.captures_rich()) {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::CardinalDirectionValue,
             value_span,
@@ -902,8 +903,17 @@ fn parse_direction_stmt_facts_c4(
 
 fn parse_macro_stmt_facts_c4(
     stmt: &SpannedMacroStmt,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     #[cfg(feature = "editor-facts")] facts: &mut Option<EditorSemanticFacts>,
 ) -> Result<()> {
+    #[cfg(feature = "editor-facts")]
+    let mut omitted_facts = None;
+    #[cfg(feature = "editor-facts")]
+    let facts = if editor_demand.captures_rich() {
+        facts
+    } else {
+        &mut omitted_facts
+    };
     match stmt.name.as_str() {
         "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
         | "SystemDb_Ext" | "SystemQueue_Ext" => {
@@ -2146,7 +2156,7 @@ fn parse_c4_semantic_source(
     control.checkpoint()?;
     let mut db = C4Db::new(config);
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
+    let mut editor_facts = editor_demand.needs_recovery().then(|| {
         #[cfg(test)]
         crate::editor::test_work::record_collection();
         EditorSemanticFacts::new()
@@ -2274,11 +2284,16 @@ fn parse_c4_semantic_source(
                 );
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("title");
             }
             #[cfg(feature = "editor-facts")]
-            push_c4_payload_fact(&mut editor_facts, &title, "c4 title");
+            if editor_demand.captures_rich() {
+                push_c4_payload_fact(&mut editor_facts, &title, "c4 title");
+            }
             continue;
         }
 
@@ -2299,11 +2314,16 @@ fn parse_c4_semantic_source(
                 );
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accTitle");
             }
             #[cfg(feature = "editor-facts")]
-            push_c4_payload_fact(&mut editor_facts, &acc_title, "c4 accessibility title");
+            if editor_demand.captures_rich() {
+                push_c4_payload_fact(&mut editor_facts, &acc_title, "c4 accessibility title");
+            }
             continue;
         }
 
@@ -2323,15 +2343,20 @@ fn parse_c4_semantic_source(
                 );
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescription");
             }
             #[cfg(feature = "editor-facts")]
-            push_c4_payload_fact(
-                &mut editor_facts,
-                &acc_description,
-                "c4 accessibility description",
-            );
+            if editor_demand.captures_rich() {
+                push_c4_payload_fact(
+                    &mut editor_facts,
+                    &acc_description,
+                    "c4 accessibility description",
+                );
+            }
             continue;
         }
 
@@ -2351,15 +2376,20 @@ fn parse_c4_semantic_source(
                 );
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescr");
             }
             #[cfg(feature = "editor-facts")]
-            push_c4_payload_fact(
-                &mut editor_facts,
-                &acc_descr.value,
-                "c4 accessibility description",
-            );
+            if editor_demand.captures_rich() {
+                push_c4_payload_fact(
+                    &mut editor_facts,
+                    &acc_descr.value,
+                    "c4 accessibility description",
+                );
+            }
             if !acc_descr.closed {
                 let error = Error::diagram_parse_insertion_point(
                     diagram_type.to_string(),
@@ -2375,6 +2405,8 @@ fn parse_c4_semantic_source(
         let statement_span = SourceSpan::new(stmt_start, stmt_start + t.len());
         if let Some(_valid) = parse_direction_stmt_facts_c4(
             raw,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
             #[cfg(feature = "editor-facts")]
             line_start,
             #[cfg(feature = "editor-facts")]
@@ -2414,6 +2446,8 @@ fn parse_c4_semantic_source(
         }
         if let Err(error) = parse_macro_stmt_facts_c4(
             &stmt,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
             #[cfg(feature = "editor-facts")]
             &mut editor_facts,
         ) {
@@ -2722,6 +2756,44 @@ fn split_next_arg(input: &str) -> (&str, Option<(usize, &str)>) {
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_retains_c4_issues_without_macro_or_payload_facts() {
+        let source = "C4Context\r\ntitle Example\r\nRel(first, )\r\nPerson(later, \"Later\")\r\n";
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "c4".into(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let capture = |demand| {
+            parse_c4_semantic_model_controlled(source, &metadata, demand, &OperationControl::new())
+                .unwrap()
+        };
+        let full = capture(EditorFactsDemand::Capture);
+        let full_facts = full.editor_facts.unwrap();
+        assert!(!full_facts.symbols.is_empty());
+        crate::editor::test_work::reset();
+        reset_c4_syntax_construction_count();
+        let recovery = capture(EditorFactsDemand::Recovery);
+        assert_eq!(
+            recovery.model.unwrap_err().to_string(),
+            full.model.unwrap_err().to_string()
+        );
+        let facts = recovery.editor_facts.unwrap();
+        assert_eq!(facts.diagnostics, full_facts.diagnostics);
+        assert!(!facts.diagnostics.is_empty());
+        assert!(facts.symbols.is_empty());
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.expected_syntax.is_empty());
+        let work = crate::editor::test_work::read();
+        assert_eq!(
+            (work.symbols, work.directives, work.expected_syntax),
+            (0, 0, 0)
+        );
+        assert_eq!(c4_syntax_construction_count(), 1);
+    }
 
     #[test]
     fn canonical_capture_retains_all_recovery_issues_and_later_symbols() {

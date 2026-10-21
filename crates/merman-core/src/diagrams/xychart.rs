@@ -841,7 +841,8 @@ fn construct_xychart_semantic_source_controlled(
             source: XyChartSemanticSource {
                 model: XyChartState::new(config).into_semantic_model(None, None, None),
                 #[cfg(feature = "editor-facts")]
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                editor_facts: editor_demand
+                    .needs_recovery()
                     .then(EditorSemanticFacts::new),
             },
             first_error: None,
@@ -850,7 +851,7 @@ fn construct_xychart_semantic_source_controlled(
 
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
-        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Omit | EditorFactsDemand::Recovery => None,
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -1015,7 +1016,7 @@ fn construct_xychart_semantic_source_controlled(
         source: XyChartSemanticSource {
             model: state.into_semantic_model(title, acc_title, acc_descr),
             #[cfg(feature = "editor-facts")]
-            editor_facts,
+            editor_facts: editor_demand.finish_facts(editor_facts),
         },
         first_error,
     })
@@ -1052,7 +1053,7 @@ pub(crate) fn parse_xychart_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),

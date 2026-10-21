@@ -327,7 +327,7 @@ pub(crate) fn parse_ishikawa_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_error_and_editor_facts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -427,10 +427,14 @@ fn construct_ishikawa_semantic_source_controlled(
     }
 
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts =
-        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    let mut editor_facts = editor_demand
+        .needs_recovery()
+        .then(EditorSemanticFacts::new);
     #[cfg(feature = "editor-facts")]
-    if let Some(facts) = &mut editor_facts {
+    if let Some(facts) = editor_facts
+        .as_mut()
+        .filter(|_| editor_demand.captures_rich())
+    {
         for (index, node) in nodes.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;

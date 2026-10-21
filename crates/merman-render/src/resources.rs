@@ -2506,6 +2506,7 @@ mod tests {
                 styles: Vec::new(),
                 nodes: vec!["A".to_string()],
             }],
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };

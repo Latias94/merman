@@ -218,7 +218,7 @@ pub(crate) fn parse_pie_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -273,7 +273,8 @@ fn construct_pie_semantic_source_controlled(
                 #[cfg(feature = "compat-json")]
                 compatibility_output: CompatibilityOutputState::Empty,
                 #[cfg(feature = "editor-facts")]
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                editor_facts: editor_demand
+                    .needs_recovery()
                     .then(EditorSemanticFacts::new),
             }));
         }
@@ -283,7 +284,9 @@ fn construct_pie_semantic_source_controlled(
                 "pie",
                 Error::diagram_parse_exact(diagram_type.to_string(), "expected pie", span),
                 #[cfg(feature = "editor-facts")]
-                (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new),
+                editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
             )));
         }
         PieHeader::Body(body) => body,
@@ -294,6 +297,7 @@ fn construct_pie_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -301,7 +305,12 @@ fn construct_pie_semantic_source_controlled(
         }
     };
     #[cfg(feature = "editor-facts")]
-    if let (Some(facts), Some(span)) = (&mut editor_facts, body.show_data_span) {
+    if let (Some(facts), Some(span)) = (
+        editor_facts
+            .as_mut()
+            .filter(|_| editor_demand.captures_rich()),
+        body.show_data_span,
+    ) {
         push_show_data_editor_fact(facts, span);
     }
     let mut first_error = None;
@@ -324,7 +333,10 @@ fn construct_pie_semantic_source_controlled(
                     });
                 }
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     push_langium_common_editor_fact(facts, &parsed.fact, "pie");
                 }
                 common.push(parsed.fact);
@@ -335,7 +347,10 @@ fn construct_pie_semantic_source_controlled(
                 next_offset,
             } => {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     push_pie_section_editor_fact(facts, &section);
                 }
                 parsed_sections.push(section);

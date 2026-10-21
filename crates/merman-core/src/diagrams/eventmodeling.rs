@@ -198,7 +198,7 @@ pub(crate) fn parse_eventmodeling_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_error_and_editor_facts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -310,59 +310,62 @@ impl EventModelingSyntaxFacts {
     #[cfg(feature = "editor-facts")]
     fn editor_facts_controlled(
         &self,
+        demand: EditorFactsDemand,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EditorSemanticFacts> {
         control.checkpoint()?;
         #[cfg(test)]
         crate::editor::test_work::record_collection();
         let mut facts = EditorSemanticFacts::new();
-        if let Some(header) = &self.header {
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                header.span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                header.text.clone(),
-                Some("eventmodeling header".to_string()),
-                EditorSemanticKind::String,
-                header.span,
-                header.span,
-            ));
-        }
-        for common in self.common.iter() {
-            control.checkpoint()?;
-            push_langium_common_editor_fact(&mut facts, common, "eventmodeling");
-        }
-        for entity in &self.model_entities {
-            control.checkpoint()?;
-            facts.push_symbol(
-                EditorSemanticSymbol::new(
-                    entity.text.clone(),
-                    Some("eventmodeling model entity".to_string()),
-                    EditorSemanticKind::Object,
-                    entity.span,
-                    entity.span,
-                )
-                .with_rename_policy(EditorRenamePolicy::QualifiedIdentifier),
-            );
-        }
-        for frame in &self.frames {
-            control.checkpoint()?;
-            push_eventmodeling_frame_facts(&mut facts, frame, control)?;
-        }
-        for data_entity in &self.data_entities {
-            control.checkpoint()?;
-            push_eventmodeling_data_facts(&mut facts, data_entity);
-            control.checkpoint()?;
-        }
-        for note in &self.note_entities {
-            control.checkpoint()?;
-            push_eventmodeling_note_facts(&mut facts, note);
-            control.checkpoint()?;
-        }
-        for gwt in &self.gwt_entities {
-            control.checkpoint()?;
-            push_eventmodeling_gwt_facts(&mut facts, gwt, control)?;
+        if demand.captures_rich() {
+            if let Some(header) = &self.header {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    header.span,
+                ));
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    header.text.clone(),
+                    Some("eventmodeling header".to_string()),
+                    EditorSemanticKind::String,
+                    header.span,
+                    header.span,
+                ));
+            }
+            for common in self.common.iter() {
+                control.checkpoint()?;
+                push_langium_common_editor_fact(&mut facts, common, "eventmodeling");
+            }
+            for entity in &self.model_entities {
+                control.checkpoint()?;
+                facts.push_symbol(
+                    EditorSemanticSymbol::new(
+                        entity.text.clone(),
+                        Some("eventmodeling model entity".to_string()),
+                        EditorSemanticKind::Object,
+                        entity.span,
+                        entity.span,
+                    )
+                    .with_rename_policy(EditorRenamePolicy::QualifiedIdentifier),
+                );
+            }
+            for frame in &self.frames {
+                control.checkpoint()?;
+                push_eventmodeling_frame_facts(&mut facts, frame, control)?;
+            }
+            for data_entity in &self.data_entities {
+                control.checkpoint()?;
+                push_eventmodeling_data_facts(&mut facts, data_entity);
+                control.checkpoint()?;
+            }
+            for note in &self.note_entities {
+                control.checkpoint()?;
+                push_eventmodeling_note_facts(&mut facts, note);
+                control.checkpoint()?;
+            }
+            for gwt in &self.gwt_entities {
+                control.checkpoint()?;
+                push_eventmodeling_gwt_facts(&mut facts, gwt, control)?;
+            }
         }
         for diagnostic in &self.validation_diagnostics {
             control.checkpoint()?;
@@ -661,7 +664,9 @@ fn construct_eventmodeling_semantic_source_controlled(
     }
     #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
-        EditorFactsDemand::Capture => Some(syntax.editor_facts_controlled(control)?),
+        EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+            Some(syntax.editor_facts_controlled(editor_demand, control)?)
+        }
         EditorFactsDemand::Omit => None,
     };
     Ok(Ok(EventModelingSemanticSource {
@@ -926,7 +931,9 @@ fn eventmodeling_failure_controlled(
     let span = eventmodeling_error_span(&error, fallback);
     #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
-        EditorFactsDemand::Capture => Some(syntax.editor_facts_controlled(control)?),
+        EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+            Some(syntax.editor_facts_controlled(editor_demand, control)?)
+        }
         EditorFactsDemand::Omit => None,
     };
     Ok(EventModelingParseFailure {
@@ -1638,7 +1645,7 @@ fn validate_eventmodeling_semantics(
         }
     }
     #[cfg(feature = "editor-facts")]
-    if editor_demand == EditorFactsDemand::Capture {
+    if editor_demand.needs_recovery() {
         let mut data_names = HashSet::with_capacity(syntax.data_entities.len());
         for data in &syntax.data_entities {
             control.checkpoint()?;
@@ -2629,6 +2636,45 @@ gwt 02
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_keeps_validation_and_parse_diagnostics_without_rich_facts() {
+        for source in [
+            "eventmodeling\ntf 01 evt Changed ->> 99 [[MissingData]]\n",
+            "eventmodeling\ntf 01 cmd Start\ntf 01 evt Changed\n",
+        ] {
+            let capture = |demand| {
+                parse_eventmodeling_semantic_model_controlled(
+                    source,
+                    &metadata(),
+                    demand,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+            };
+            let full = capture(EditorFactsDemand::Capture);
+            let full_facts = full.editor_facts.unwrap();
+            assert!(!full_facts.symbols.is_empty());
+            assert!(!full_facts.diagnostics.is_empty());
+            crate::editor::test_work::reset();
+            reset_eventmodeling_syntax_construction_count();
+            let recovery = capture(EditorFactsDemand::Recovery);
+            assert_eq!(recovery.model.is_ok(), full.model.is_ok());
+            let facts = recovery.editor_facts.unwrap();
+            assert_eq!(facts.completeness, full_facts.completeness);
+            assert_eq!(facts.diagnostics, full_facts.diagnostics);
+            assert!(facts.symbols.is_empty());
+            assert!(facts.directive_prefixes.is_empty());
+            assert!(facts.expected_syntax.is_empty());
+            let work = crate::editor::test_work::read();
+            assert_eq!(
+                (work.symbols, work.directives, work.expected_syntax),
+                (0, 0, 0)
+            );
+            assert_eq!(eventmodeling_syntax_construction_count(), 1);
+        }
+    }
 
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {

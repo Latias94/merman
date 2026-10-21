@@ -689,7 +689,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         kind: EditorSemanticKind,
     ) {
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Omit {
+        if !self.editor_demand.captures_rich() {
             return;
         }
         self.facts.push(ArchitectureTraceFact {
@@ -709,7 +709,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         kind: EditorSemanticKind,
     ) {
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Omit {
+        if !self.editor_demand.captures_rich() {
             return;
         }
         self.facts.push(ArchitectureTraceFact {
@@ -729,7 +729,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         kind: EditorSemanticKind,
     ) {
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Omit {
+        if !self.editor_demand.captures_rich() {
             return;
         }
         if value.value.is_empty() {
@@ -983,7 +983,9 @@ fn construct_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mode = match editor_demand {
         EditorFactsDemand::Omit => ArchitectureParseMode::Strict,
-        EditorFactsDemand::Capture => ArchitectureParseMode::Recovering,
+        EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+            ArchitectureParseMode::Recovering
+        }
     };
     #[cfg(not(feature = "editor-facts"))]
     let mode = ArchitectureParseMode::Strict;
@@ -998,7 +1000,7 @@ fn construct_semantic_source_controlled(
         Ok(trace) => trace,
         Err(error) => {
             #[cfg(feature = "editor-facts")]
-            let editor_facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
+            let editor_facts = editor_demand.needs_recovery().then(|| {
                 let mut facts = EditorSemanticFacts::new();
                 push_recovery_error(&mut facts, &error);
                 facts
@@ -1014,7 +1016,7 @@ fn construct_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut syntax_error = None;
     #[cfg(feature = "editor-facts")]
-    if editor_demand == EditorFactsDemand::Capture {
+    if editor_demand.needs_recovery() {
         for (index, entry) in trace.entries.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
@@ -1033,8 +1035,13 @@ fn construct_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
-        EditorFactsDemand::Capture => {
-            Some(trace.editor_facts_controlled(db.as_ref().ok(), db.as_ref().err(), control)?)
+        EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+            Some(trace.editor_facts_controlled(
+                db.as_ref().ok(),
+                db.as_ref().err(),
+                editor_demand,
+                control,
+            )?)
         }
     };
     control.checkpoint()?;
@@ -1531,7 +1538,7 @@ impl ArchitectureTrace {
         validation_error: Option<&Error>,
     ) -> EditorSemanticFacts {
         let control = crate::OperationControl::new();
-        self.editor_facts_controlled(db, validation_error, &control)
+        self.editor_facts_controlled(db, validation_error, EditorFactsDemand::Capture, &control)
             .expect("a private parse control cannot be cancelled")
     }
 
@@ -1570,10 +1577,11 @@ impl ArchitectureTrace {
         &self,
         db: Option<&ArchitectureDb>,
         validation_error: Option<&Error>,
+        editor_demand: EditorFactsDemand,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
-        let recovered_declaration_kinds = if db.is_none() {
+        let recovered_declaration_kinds = if editor_demand.captures_rich() && db.is_none() {
             Some(self.declaration_kinds_controlled(control)?)
         } else {
             None
@@ -1583,10 +1591,17 @@ impl ArchitectureTrace {
                 control.checkpoint()?;
             }
             debug_assert!(entry.span.start <= entry.span.end);
-            if let Some(prefix) = entry.directive_prefix {
+            if editor_demand.captures_rich()
+                && let Some(prefix) = entry.directive_prefix
+            {
                 facts.push_directive_prefix(prefix);
             }
-            for (fact_index, fact) in entry.facts.iter().enumerate() {
+            for (fact_index, fact) in entry
+                .facts
+                .iter()
+                .filter(|_| editor_demand.captures_rich())
+                .enumerate()
+            {
                 if fact_index % 128 == 0 {
                     control.checkpoint()?;
                 }

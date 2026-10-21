@@ -2458,6 +2458,7 @@ C["$$x$$"] -->|"$$x$$"| D
             nodes,
             edges,
             subgraphs: Vec::new(),
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }

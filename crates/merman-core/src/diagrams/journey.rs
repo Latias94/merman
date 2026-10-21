@@ -385,7 +385,7 @@ pub(crate) fn parse_journey_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -517,8 +517,9 @@ fn parse_journey_semantic_source(
     control.checkpoint()?;
     let mut db = JourneyDb::default();
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts =
-        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    let mut editor_facts = editor_demand
+        .needs_recovery()
+        .then(EditorSemanticFacts::new);
     let mut lines = LineCursor::new(code);
     let mut header_seen = false;
     let mut first_error = None;
@@ -565,7 +566,10 @@ fn parse_journey_semantic_source(
 
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("title");
                 if let Some(value) = spanned_keyword_value(line, line_start, "title") {
                     push_journey_payload_fact(
@@ -581,7 +585,10 @@ fn parse_journey_semantic_source(
         }
         if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accTitle");
                 if let Some(value) = spanned_colon_value(line, line_start, "accTitle") {
                     push_journey_payload_fact(
@@ -597,7 +604,10 @@ fn parse_journey_semantic_source(
         }
         if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescr");
                 if let Some(value) = spanned_colon_value(line, line_start, "accDescr") {
                     push_journey_payload_fact(
@@ -613,7 +623,10 @@ fn parse_journey_semantic_source(
         }
         if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescr");
                 push_journey_payload_fact_spanned(
                     facts,
@@ -645,7 +658,9 @@ fn parse_journey_semantic_source(
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
             let v = v.split(':').next().unwrap_or("").to_string();
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
                 && let Some(value) = spanned_keyword_value(line, line_start, "section")
             {
                 let section_text = value.text.split(':').next().unwrap_or("").trim();
@@ -679,7 +694,10 @@ fn parse_journey_semantic_source(
             continue;
         }
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = &mut editor_facts {
+        if let Some(facts) = editor_facts
+            .as_mut()
+            .filter(|_| editor_demand.captures_rich())
+        {
             let task_start = line_start + task_name_source.find(task_name).unwrap_or(0);
             let task_end = task_start + task_name.len();
             facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -719,7 +737,10 @@ fn parse_journey_semantic_source(
         }
 
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = &mut editor_facts {
+        if let Some(facts) = editor_facts
+            .as_mut()
+            .filter(|_| editor_demand.captures_rich())
+        {
             let rest_source = &stripped[colon + ':'.len_utf8()..];
             let rest = rest_source.trim_start();
             let rest_start =
@@ -1458,10 +1479,11 @@ R task: 5:\n",
 
     #[test]
     fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
-        let mut db = JourneyDb::default();
-
-        db.acc_title = "Shopping".to_string();
-        db.acc_descr = "A user journey for family shopping".to_string();
+        let mut db = JourneyDb {
+            acc_title: "Shopping".to_string(),
+            acc_descr: "A user journey for family shopping".to_string(),
+            ..JourneyDb::default()
+        };
         db.add_section("Journey to the shops");
         db.add_task("Get car keys", ":5:Dad").unwrap();
         db.add_task("Go to car", ":3:Dad, Mum, Child#1, Child#2")

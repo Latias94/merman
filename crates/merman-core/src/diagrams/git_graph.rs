@@ -1865,7 +1865,7 @@ fn construct_git_graph_semantic_source_controlled(
 
 #[cfg(feature = "editor-facts")]
 fn new_gitgraph_editor_facts(demand: EditorFactsDemand) -> Option<EditorSemanticFacts> {
-    (demand == EditorFactsDemand::Capture).then(|| {
+    demand.needs_recovery().then(|| {
         #[cfg(test)]
         crate::editor::test_work::record_collection();
         EditorSemanticFacts::new()
@@ -1999,7 +1999,10 @@ fn collect_gitgraph_commands(
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 push_langium_common_editor_fact(facts, &parsed.fact, "gitGraph");
             }
             if let Some(diagnostic) = parsed.diagnostic {
@@ -2027,7 +2030,10 @@ fn collect_gitgraph_commands(
         ) {
             Ok(Some(command)) => {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut() {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     command.push_editor_facts_controlled(facts, control)?;
                 }
                 commands.push(command);
@@ -2977,6 +2983,53 @@ mod semantic_tests {
         assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
         #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_keeps_database_failure_without_command_facts() {
+        for source in [
+            "gitGraph\ncommit id:\"root\"\n",
+            "gitGraph\ncommit id:\"root\"\ncheckout missing\n",
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "gitGraph".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::from_value(json!({"gitGraph": {"seed": 1}})),
+                title: None,
+            };
+            let capture = |demand| {
+                parse_git_graph_semantic_model_controlled(
+                    source,
+                    &metadata,
+                    demand,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+            };
+            let full = capture(EditorFactsDemand::Capture);
+            let full_facts = full.editor_facts.unwrap();
+            assert!(!full_facts.symbols.is_empty());
+            reset_construction_counts();
+            let recovery = capture(EditorFactsDemand::Recovery);
+            assert_eq!(recovery.model.is_ok(), full.model.is_ok());
+            let facts = recovery.editor_facts.unwrap();
+            assert_eq!(facts.completeness, full_facts.completeness);
+            assert_eq!(facts.diagnostics, full_facts.diagnostics);
+            assert!(facts.symbols.is_empty());
+            assert!(facts.directive_prefixes.is_empty());
+            assert!(facts.expected_syntax.is_empty());
+            let work = crate::editor::test_work::read();
+            assert_eq!(
+                (work.symbols, work.directives, work.expected_syntax),
+                (0, 0, 0)
+            );
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+                1
+            );
+            assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+        }
     }
 
     #[test]

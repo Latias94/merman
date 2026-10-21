@@ -397,14 +397,15 @@ pub(crate) fn parse_usecase_semantic_model_controlled(
             model.sanitize_common_db_fields(&metadata.semantic_config);
             #[cfg(feature = "editor-facts")]
             {
-                editor_facts = matches!(editor_demand, EditorFactsDemand::Capture)
+                editor_facts = editor_demand
+                    .needs_recovery()
                     .then_some(source.editor_facts);
             }
             Ok(model)
         }
         Err(failure) => {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.needs_recovery() {
                 let (error, facts) = failure.into_parts();
                 editor_facts = Some(facts);
                 return Ok(family::SemanticConstruction {
@@ -600,13 +601,13 @@ fn failure(
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> family::CombinedSemanticFailure {
     #[cfg(feature = "editor-facts")]
-    if editor_demand == EditorFactsDemand::Capture {
+    if editor_demand.needs_recovery() {
         facts.mark_recovered_from_parse_error(issue.message.clone(), Some(issue.span));
     }
     family::CombinedSemanticFailure::new(
         Error::diagram_parse_exact(diagram_type.to_string(), issue.message, issue.span),
         #[cfg(feature = "editor-facts")]
-        matches!(editor_demand, EditorFactsDemand::Capture).then_some(facts),
+        editor_demand.needs_recovery().then_some(facts),
     )
 }
 

@@ -27,7 +27,34 @@ use std::sync::OnceLock;
 #[cfg(feature = "editor-facts")]
 pub(crate) enum EditorFactsDemand {
     Omit,
+    Recovery,
     Capture,
+}
+
+#[cfg(feature = "editor-facts")]
+impl EditorFactsDemand {
+    pub(crate) const fn needs_recovery(self) -> bool {
+        !matches!(self, Self::Omit)
+    }
+
+    pub(crate) const fn captures_rich(self) -> bool {
+        matches!(self, Self::Capture)
+    }
+
+    pub(crate) fn finish_facts(
+        self,
+        facts: Option<EditorSemanticFacts>,
+    ) -> Option<EditorSemanticFacts> {
+        match self {
+            Self::Omit => None,
+            Self::Recovery => {
+                let mut facts = facts.unwrap_or_default();
+                facts.retain_recovery_facts();
+                Some(facts)
+            }
+            Self::Capture => facts,
+        }
+    }
 }
 
 pub(crate) struct SemanticConstruction<M> {

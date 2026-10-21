@@ -393,7 +393,7 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
             }
         }
         #[cfg(feature = "editor-facts")]
-        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+        Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) = failure.into_parts();
             SemanticConstruction {
                 model: Err(error),
@@ -576,6 +576,10 @@ fn construct_source(
     );
     let result = parser.parse()?;
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    {
+        parser.facts = editor_demand.finish_facts(parser.facts);
+    }
     match result {
         Ok(model) => Ok(Ok(Construction {
             model,

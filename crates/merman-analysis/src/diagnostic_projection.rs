@@ -161,6 +161,7 @@ impl DiagnosticCandidate {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn project_diagnostic_candidates(
     candidates: &[DiagnosticCandidate],
     policy: &AnalysisDiagnosticPolicy,
@@ -234,6 +235,7 @@ struct ProjectedPrimaryParse {
     trailing_source_context_count: usize,
 }
 
+#[cfg(test)]
 pub(crate) fn materialize_diagnostic_candidates(
     candidates: &[DiagnosticCandidate],
     policy: &AnalysisDiagnosticPolicy,

@@ -99,12 +99,17 @@ impl PreprocessCaptureOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourceConfigCaptureMode {
     Omit,
+    CollectRecovery,
     Collect,
 }
 
 #[cfg(feature = "editor-facts")]
 impl SourceConfigCaptureMode {
     const fn collects(self) -> bool {
+        !matches!(self, Self::Omit)
+    }
+
+    const fn collects_editor(self) -> bool {
         matches!(self, Self::Collect)
     }
 }
@@ -210,6 +215,7 @@ pub(crate) fn preprocess_builtin_semantic_controlled(
 pub(crate) fn preprocess_builtin_semantic_with_evidence_controlled(
     input: &str,
     diagram_type: Option<&str>,
+    editor_demand: crate::family::EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     let detector = |text: &str, control: &OperationControl| {
@@ -220,7 +226,11 @@ pub(crate) fn preprocess_builtin_semantic_with_evidence_controlled(
         &detector,
         diagram_type,
         DirectiveRecoveryMode::RecoverLine,
-        SourceConfigCaptureMode::Collect,
+        if editor_demand.captures_rich() {
+            SourceConfigCaptureMode::Collect
+        } else {
+            SourceConfigCaptureMode::CollectRecovery
+        },
         control,
     )
 }
@@ -291,7 +301,7 @@ fn preprocess_single_pass_controlled(
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     control.checkpoint()?;
     #[cfg(feature = "editor-facts")]
-    let capture_editor_evidence = capture_mode.collects();
+    let capture_editor_evidence = capture_mode.collects_editor();
     cleanup_text_controlled(&mut source, control)?;
     #[cfg(feature = "editor-facts")]
     let mut source_config = SourceConfigEvidence::empty();
@@ -1856,7 +1866,7 @@ fn process_directives_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_prefixes = Vec::new();
     #[cfg(feature = "editor-facts")]
-    if capture_mode.collects() {
+    if capture_mode.collects_editor() {
         for (index, directive) in directives.iter().enumerate() {
             if index % 32 == 0 {
                 control.checkpoint()?;

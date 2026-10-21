@@ -477,6 +477,12 @@ impl EditorSemanticFacts {
         Self::default()
     }
 
+    pub(crate) fn retain_recovery_facts(&mut self) {
+        self.symbols.clear();
+        self.directive_prefixes.clear();
+        self.expected_syntax.clear();
+    }
+
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
         #[cfg(test)]
         test_work::update(|work| work.symbols += 1);

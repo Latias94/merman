@@ -1,5 +1,4 @@
-use super::model::{FlowEdge, FlowNode, FlowSubgraph};
-use indexmap::IndexMap;
+use super::model::{FlowEdge, FlowNode, FlowSubgraph, FlowchartSubgraphStyles};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Default)]
@@ -115,77 +114,12 @@ impl FlowchartRenderLabelSources {
     }
 }
 
-/// Parser-owned CSS provenance used only while rendering a Flowchart model.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct FlowchartRenderStyleSources {
-    subgraph_vertices: IndexMap<String, FlowSubgraphVertexStyleSource>,
-}
-
-impl FlowchartRenderStyleSources {
-    /// Returns the CSS sources exposed by Mermaid for the rendered subgraph node.
-    pub(crate) fn effective_subgraph_css<'a>(
-        &'a self,
-        declaration_ordinal: usize,
-        subgraph: &'a FlowSubgraph,
-    ) -> (&'a [String], &'a [String]) {
-        self.subgraph_vertices
-            .get(&subgraph.id)
-            .filter(|source| source.declaration_ordinal == declaration_ordinal)
-            .map_or_else(
-                || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
-                |source| {
-                    (
-                        source.style.classes.as_slice(),
-                        source.style.styles.as_slice(),
-                    )
-                },
-            )
-    }
-
-    /// Returns whether parsing observed a FlowDB vertex with this subgraph ID.
-    pub(crate) fn contains_subgraph_vertex(&self, id: &str) -> bool {
-        self.subgraph_vertices.contains_key(id)
-    }
-
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub(crate) fn insert(
-        &mut self,
-        id: String,
-        declaration_ordinal: usize,
-        style: FlowSubgraphVertexStyle,
-    ) {
-        self.subgraph_vertices.insert(
-            id,
-            FlowSubgraphVertexStyleSource {
-                declaration_ordinal,
-                style,
-            },
-        );
-    }
-
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub(crate) fn retained_bytes(&self) -> usize {
-        self.subgraph_vertices
-            .iter()
-            .fold(0usize, |total, (id, source)| {
-                source
-                    .style
-                    .classes
-                    .iter()
-                    .chain(&source.style.styles)
-                    .fold(total.saturating_add(id.len()), |subtotal, value| {
-                        subtotal.saturating_add(value.len())
-                    })
-            })
-    }
-}
-
-/// Parser-owned render facts that are intentionally absent from [`FlowchartModel`].
+/// Parser-owned render facts and a shared view of canonical authored subgraph CSS.
 #[doc(hidden)]
 #[derive(Debug, Clone, Default)]
 pub struct FlowchartRenderContext {
     labels: FlowchartRenderLabelSources,
-    styles: FlowchartRenderStyleSources,
+    styles: FlowchartSubgraphStyles,
     collapsed_subgraphs: FxHashSet<String>,
     collapsed_replacements: FxHashMap<String, String>,
     subgraph_color_ordinals: FxHashMap<String, usize>,
@@ -195,7 +129,7 @@ pub struct FlowchartRenderContext {
 impl FlowchartRenderContext {
     pub(crate) fn new(
         labels: FlowchartRenderLabelSources,
-        styles: FlowchartRenderStyleSources,
+        styles: FlowchartSubgraphStyles,
         collapsed_subgraphs: FxHashSet<String>,
         subgraphs: &[FlowSubgraph],
     ) -> Self {
@@ -305,7 +239,6 @@ impl FlowchartRenderContext {
     pub(crate) fn retained_bytes(&self) -> usize {
         self.labels
             .retained_bytes()
-            .saturating_add(self.styles.retained_bytes())
             .saturating_add(
                 self.collapsed_subgraphs
                     .iter()
@@ -421,16 +354,4 @@ fn build_collapsed_replacements(
         }
     }
     replacements
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct FlowSubgraphVertexStyle {
-    pub(crate) classes: Vec<String>,
-    pub(crate) styles: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-struct FlowSubgraphVertexStyleSource {
-    declaration_ordinal: usize,
-    style: FlowSubgraphVertexStyle,
 }

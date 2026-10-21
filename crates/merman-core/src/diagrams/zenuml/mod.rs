@@ -141,8 +141,9 @@ pub(crate) fn parse_zenuml_semantic_model_controlled(
         control,
     )?;
     #[cfg(feature = "editor-facts")]
-    let editor_facts =
-        matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts);
+    let editor_facts = editor_demand
+        .needs_recovery()
+        .then_some(source.editor_facts);
     let model = match source.first_diagnostic {
         Some(diagnostic) => Err(Error::diagram_parse_exact(
             metadata.diagram_type.clone(),

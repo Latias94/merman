@@ -769,7 +769,7 @@ pub(crate) fn parse_radar_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -810,7 +810,8 @@ fn construct_radar_semantic_source_controlled(
             return Ok(Ok(RadarSemanticSource {
                 model: None,
                 #[cfg(feature = "editor-facts")]
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                editor_facts: editor_demand
+                    .needs_recovery()
                     .then(EditorSemanticFacts::new),
             }));
         }
@@ -820,7 +821,9 @@ fn construct_radar_semantic_source_controlled(
                 #[cfg(feature = "editor-facts")]
                 match editor_demand {
                     EditorFactsDemand::Omit => None,
-                    EditorFactsDemand::Capture => Some(EditorSemanticFacts::new()),
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+                        Some(EditorSemanticFacts::new())
+                    }
                 },
                 #[cfg(feature = "editor-facts")]
                 code,
@@ -833,6 +836,7 @@ fn construct_radar_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -861,7 +865,10 @@ fn construct_radar_semantic_source_controlled(
                 });
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut() {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 push_langium_common_editor_fact(facts, &parsed.fact, "radar");
             }
             common.push(parsed.fact);
@@ -878,7 +885,10 @@ fn construct_radar_semantic_source_controlled(
         match parse_radar_statement(&statement, statement_start, control)? {
             Ok(parsed) => {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut() {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     push_radar_statement_facts(facts, &parsed.event, control)?;
                 }
                 apply_radar_statement_controlled(

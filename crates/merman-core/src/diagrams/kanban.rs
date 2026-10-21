@@ -1170,7 +1170,7 @@ fn construct_kanban_semantic_source_controlled(
     let mut db = KanbanDb::default();
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
-        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Omit | EditorFactsDemand::Recovery => None,
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -1290,6 +1290,8 @@ fn construct_kanban_semantic_source_controlled(
             );
         }
     }
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = editor_demand.finish_facts(editor_facts);
     if let Some(failure) = first_failure {
         #[cfg(feature = "editor-facts")]
         let mut failure = failure;
@@ -1622,7 +1624,7 @@ pub(crate) fn parse_kanban_semantic_model_controlled(
         },
         Err(failure) => {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.needs_recovery() {
                 let (error, facts) = failure.into_error_and_editor_facts();
                 return Ok(crate::family::SemanticConstruction {
                     model: Err(error),

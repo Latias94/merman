@@ -4166,7 +4166,7 @@ mod tests {
 
     #[test]
     fn class_note_index_charges_linear_build_and_lookup_work() {
-        let notes = vec![note("note-a", "first"), note("note-b", "second")];
+        let notes = [note("note-a", "first"), note("note-b", "second")];
 
         let mut exact = resources_with_layout_work_limit(4);
         let index = ClassNoteIndex::new(

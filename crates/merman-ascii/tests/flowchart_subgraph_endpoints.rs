@@ -2,7 +2,9 @@ mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions};
 use merman_core::diagrams::flowchart::FlowNodeProvenance;
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{
+    Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+};
 use support::render_parsed;
 
 const SUBGRAPH_ENDPOINT_FIXTURE: &str = include_str!(
@@ -192,6 +194,36 @@ fn same_id_group_style_preserves_flowdb_class_and_style_statement_order() {
         style_before_class_rendered.contains("\u{1b}[38;2;0;0;255m"),
         "a class assigned after vertex creation must remain visible:\n{style_before_class_rendered}"
     );
+}
+
+#[test]
+fn canonical_flowchart_css_matches_the_parser_owned_terminal_projection() {
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+    for statements in [
+        "class G base\nstyle G fill:#ff0000",
+        "style G fill:#ff0000\nclass G base",
+        "G\nclass G base\nstyle G fill:#ff0000",
+    ] {
+        let source = format!(
+            "flowchart TD\nclassDef base stroke:#0000ff\nsubgraph G\n  A\nend\n{statements}\nG --> A\n"
+        );
+        let full = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect("full Flowchart should parse")
+            .expect("Flowchart should be detected");
+        let canonical = SemanticParser::new()
+            .parse_diagram_sync(&source)
+            .expect("canonical Flowchart should parse without presentation");
+        let SemanticDiagramModel::Flowchart(model) = canonical.model else {
+            panic!("expected canonical Flowchart model");
+        };
+        let canonical_output =
+            support::render_model(&RenderSemanticModel::Flowchart(model), &options)
+                .expect("canonical authored CSS should render without a render context");
+        let full_output =
+            render_parsed(&full, &options).expect("parser-owned authored CSS should render");
+        assert_eq!(canonical_output, full_output, "{statements}");
+    }
 }
 
 #[test]

@@ -1021,7 +1021,7 @@ pub(crate) fn parse_block_semantic_model_controlled(
         }
         Err(failure) => {
             #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
+            if editor_demand.needs_recovery() {
                 let (error, facts) = failure.into_error_and_editor_facts();
                 control.checkpoint()?;
                 return Ok(crate::family::SemanticConstruction {
@@ -1606,7 +1606,9 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     #[cfg(feature = "editor-facts")]
     fn into_editor_facts(self) -> Option<EditorSemanticFacts> {
-        matches!(self.editor_demand, EditorFactsDemand::Capture).then_some(self.editor_facts)
+        self.editor_demand
+            .needs_recovery()
+            .then_some(self.editor_facts)
     }
 
     fn is_eof(&self) -> bool {
@@ -2671,7 +2673,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         kind: EditorSemanticKind,
         occurrence: BlockNodeOccurrence,
     ) {
-        if self.editor_demand == EditorFactsDemand::Omit {
+        if !self.editor_demand.captures_rich() {
             return;
         }
         let is_entity = match occurrence {

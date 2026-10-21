@@ -150,7 +150,7 @@ use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 #[cfg(feature = "diagram-er")]
 use merman_core::diagrams::er::ErDiagramRenderModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-gantt")]
 use merman_core::diagrams::gantt::GanttDiagramRenderModel;
 #[cfg(feature = "diagram-git-graph")]
@@ -483,13 +483,9 @@ fn render_model_with_execution(
         #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(model) => render_flowchart_model(
-            model,
-            parsed.and_then(ParsedDiagramRender::flowchart_render_context),
-            options,
-            policies.layout.flowchart,
-            &execution,
-        ),
+        RenderSemanticModel::Flowchart(model) => {
+            render_flowchart_model(model, options, policies.layout.flowchart, &execution)
+        }
         #[cfg(feature = "diagram-gantt")]
         RenderSemanticModel::Gantt(model) => {
             render_gantt_model(model, options, _local_time_zone, &execution)
@@ -607,7 +603,6 @@ fn render_er_model(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn render_flowchart_model(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     layout: FlowchartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
@@ -616,7 +611,7 @@ fn render_flowchart_model(
     let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
-            render_flowchart_model_inner(model, render_context, options, layout, *execution)
+            render_flowchart_model_inner(model, options, layout, *execution)
         });
         match result {
             // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
@@ -636,7 +631,6 @@ fn render_flowchart_model(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn render_flowchart_model_inner(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     layout: FlowchartLayoutPolicy,
     execution: operation::AsciiExecution<'_>,
@@ -645,7 +639,6 @@ fn render_flowchart_model_inner(
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
-        render_context,
         layout,
         &mut semantic_resources,
         execution,
@@ -902,6 +895,7 @@ mod tests {
             nodes: Vec::new(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }

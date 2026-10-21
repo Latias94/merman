@@ -65,16 +65,36 @@ impl PreprocessedSource {
         control.checkpoint()
     }
 
+    #[cfg(feature = "presentation")]
     pub(crate) fn finish_editor_semantic_facts(
+        &self,
+        facts: EditorSemanticFacts,
+        diagram_type: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<EditorSemanticFacts> {
+        self.finish_editor_semantic_facts_with_demand(
+            facts,
+            diagram_type,
+            crate::family::EditorFactsDemand::Capture,
+            control,
+        )
+    }
+
+    pub(crate) fn finish_editor_semantic_facts_with_demand(
         &self,
         mut facts: EditorSemanticFacts,
         diagram_type: &str,
+        demand: crate::family::EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<EditorSemanticFacts> {
         let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         self.remap_editor_facts_controlled(&mut facts, control)?;
         facts.family_semantics = crate::family::diagram_type_editor_semantics(diagram_type)
             .expect("built-in semantic facts have typed editor family semantics");
+        if !demand.captures_rich() {
+            facts.retain_recovery_facts();
+            return Ok(facts);
+        }
         for expected in self.global_expected_syntax().chunks(128) {
             control.checkpoint()?;
             facts.expected_syntax.extend_from_slice(expected);

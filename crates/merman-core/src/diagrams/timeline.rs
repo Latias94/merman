@@ -635,12 +635,16 @@ fn parse_timeline_period(line: TimelineSource<'_>) -> ParsedTimelinePeriod<'_> {
 
 #[cfg(feature = "editor-facts")]
 fn push_timeline_payload_fact(
+    demand: EditorFactsDemand,
     facts: &mut Option<EditorSemanticFacts>,
     text: &str,
     span: SourceSpan,
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
+    if !demand.captures_rich() {
+        return;
+    }
     let Some(facts) = facts else {
         return;
     };
@@ -662,6 +666,7 @@ fn push_timeline_payload_fact(
 
 #[cfg(feature = "editor-facts")]
 fn push_timeline_outline_fact(
+    demand: EditorFactsDemand,
     facts: &mut Option<EditorSemanticFacts>,
     text: &str,
     statement_span: SourceSpan,
@@ -669,6 +674,9 @@ fn push_timeline_outline_fact(
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
+    if !demand.captures_rich() {
+        return;
+    }
     let Some(facts) = facts else {
         return;
     };
@@ -844,8 +852,9 @@ fn parse_timeline_semantic_source(
     control.checkpoint()?;
     let mut db = TimelineDb::default();
     #[cfg(feature = "editor-facts")]
-    let mut editor_facts =
-        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    let mut editor_facts = editor_demand
+        .needs_recovery()
+        .then(EditorSemanticFacts::new);
     let mut issues = Vec::new();
     let mut lines = LineCursor::new(code);
     let mut header_seen = false;
@@ -940,11 +949,15 @@ fn parse_timeline_semantic_source(
         let statement = line.trim_start();
         if let Some(parsed) = parse_space_directive(statement, "title") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("title");
             }
             #[cfg(feature = "editor-facts")]
             push_timeline_payload_fact(
+                editor_demand,
                 &mut editor_facts,
                 parsed.value.text,
                 parsed.value.span(),
@@ -957,11 +970,15 @@ fn parse_timeline_semantic_source(
 
         if let Some(parsed) = parse_colon_directive(statement, "accTitle") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accTitle");
             }
             #[cfg(feature = "editor-facts")]
             push_timeline_payload_fact(
+                editor_demand,
                 &mut editor_facts,
                 parsed.value.text,
                 parsed.value.span(),
@@ -974,11 +991,15 @@ fn parse_timeline_semantic_source(
 
         if let Some(parsed) = parse_colon_directive(statement, "accDescr") {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescr");
             }
             #[cfg(feature = "editor-facts")]
             push_timeline_payload_fact(
+                editor_demand,
                 &mut editor_facts,
                 parsed.value.text,
                 parsed.value.span(),
@@ -991,11 +1012,15 @@ fn parse_timeline_semantic_source(
 
         if let Some(parsed) = parse_acc_descr_block(&mut lines, line, control)? {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 facts.push_directive_prefix("accDescr");
             }
             #[cfg(feature = "editor-facts")]
             push_timeline_payload_fact(
+                editor_demand,
                 &mut editor_facts,
                 &parsed.text,
                 parsed.span,
@@ -1020,6 +1045,7 @@ fn parse_timeline_semantic_source(
         if let Some(parsed) = parse_section(statement) {
             #[cfg(feature = "editor-facts")]
             push_timeline_outline_fact(
+                editor_demand,
                 &mut editor_facts,
                 parsed.value.text,
                 statement.span(),
@@ -1038,6 +1064,7 @@ fn parse_timeline_semantic_source(
                     Ok(()) => {
                         #[cfg(feature = "editor-facts")]
                         push_timeline_payload_fact(
+                            editor_demand,
                             &mut editor_facts,
                             event.value.text,
                             event.value.span(),
@@ -1061,6 +1088,7 @@ fn parse_timeline_semantic_source(
 
         #[cfg(feature = "editor-facts")]
         push_timeline_outline_fact(
+            editor_demand,
             &mut editor_facts,
             parsed.task.text,
             statement.span(),
@@ -1080,6 +1108,7 @@ fn parse_timeline_semantic_source(
                         Ok(()) => {
                             #[cfg(feature = "editor-facts")]
                             push_timeline_payload_fact(
+                                editor_demand,
                                 &mut editor_facts,
                                 event.value.text,
                                 event.value.span(),
@@ -1125,6 +1154,44 @@ fn parse_timeline_semantic_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_keeps_ordered_issues_without_timeline_payloads() {
+        let source = "timeline\r\ntitle Example\r\nBefore:bad\r\nMiddle: Ready\r\nAfter:bad\r\n";
+        let capture = |demand| {
+            parse_timeline_semantic_model_controlled(
+                source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                demand,
+                &OperationControl::new(),
+            )
+            .unwrap()
+        };
+        let full = capture(EditorFactsDemand::Capture);
+        let full_facts = full.editor_facts.unwrap();
+        assert!(!full_facts.symbols.is_empty());
+        crate::editor::test_work::reset();
+        reset_timeline_syntax_construction_count();
+        let recovery = capture(EditorFactsDemand::Recovery);
+        assert_eq!(
+            recovery.model.unwrap_err().to_string(),
+            full.model.unwrap_err().to_string()
+        );
+        let facts = recovery.editor_facts.unwrap();
+        assert_eq!(facts.diagnostics, full_facts.diagnostics);
+        assert_eq!(facts.diagnostics.len(), 2);
+        assert!(facts.symbols.is_empty());
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.expected_syntax.is_empty());
+        let work = crate::editor::test_work::read();
+        assert_eq!(
+            (work.symbols, work.directives, work.expected_syntax),
+            (0, 0, 0)
+        );
+        assert_eq!(timeline_syntax_construction_count(), 1);
+    }
 
     #[test]
     fn canonical_capture_retains_every_recovery_issue_in_source_order() {

@@ -2,6 +2,7 @@ use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowchartModel {
@@ -23,6 +24,14 @@ pub struct FlowchartModel {
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
+    /// Mermaid's effective CSS source for subgraph vertices that share an ID with a group.
+    ///
+    /// This is a parser-owned semantic fact rather than compatibility JSON. It is kept out of
+    /// serialization because Mermaid's public model exposes the group's own classes and styles,
+    /// while terminal consumers still need the later vertex declaration to reproduce its paint.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub subgraph_vertex_styles: FlowchartSubgraphStyles,
     #[serde(default)]
     pub tooltips: FxHashMap<String, String>,
     #[serde(
@@ -33,7 +42,112 @@ pub struct FlowchartModel {
     pub warning_facts: Vec<DiagramWarningFact>,
 }
 
+/// Parser-owned CSS provenance for vertices whose ID also names a subgraph.
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct FlowchartSubgraphStyles {
+    sources: Option<Arc<IndexMap<String, FlowSubgraphVertexStyleSource>>>,
+}
+
+impl FlowchartSubgraphStyles {
+    pub(crate) fn effective_subgraph_css<'a>(
+        &'a self,
+        declaration_ordinal: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> (&'a [String], &'a [String]) {
+        self.sources
+            .as_deref()
+            .and_then(|sources| sources.get(&subgraph.id))
+            .filter(|source| source.declaration_ordinal == declaration_ordinal)
+            .map_or_else(
+                || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
+                |source| {
+                    (
+                        source.style.classes.as_slice(),
+                        source.style.styles.as_slice(),
+                    )
+                },
+            )
+    }
+
+    pub(crate) fn contains_subgraph_vertex(&self, id: &str) -> bool {
+        self.sources
+            .as_deref()
+            .is_some_and(|sources| sources.contains_key(id))
+    }
+
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub(crate) fn insert(
+        &mut self,
+        id: String,
+        declaration_ordinal: usize,
+        style: FlowSubgraphVertexStyle,
+    ) {
+        let sources = self
+            .sources
+            .get_or_insert_with(|| Arc::new(IndexMap::new()));
+        Arc::make_mut(sources).insert(
+            id,
+            FlowSubgraphVertexStyleSource {
+                declaration_ordinal,
+                style,
+            },
+        );
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.sources.iter().flat_map(|sources| sources.iter()).fold(
+            0usize,
+            |total, (id, source)| {
+                source
+                    .style
+                    .classes
+                    .iter()
+                    .chain(&source.style.styles)
+                    .fold(total.saturating_add(id.len()), |subtotal, value| {
+                        subtotal.saturating_add(value.len())
+                    })
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct FlowSubgraphVertexStyle {
+    pub(crate) classes: Vec<String>,
+    pub(crate) styles: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct FlowSubgraphVertexStyleSource {
+    declaration_ordinal: usize,
+    style: FlowSubgraphVertexStyle,
+}
+
 impl FlowchartModel {
+    /// Returns the effective CSS source for one canonical subgraph.
+    ///
+    /// A vertex declaration replaces the group's CSS source; it is not merged with that source.
+    /// The canonical ordinal prevents same-ID subgraphs from borrowing another owner's CSS.
+    pub fn effective_subgraph_css<'a>(
+        &'a self,
+        declaration_ordinal: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> (&'a [String], &'a [String]) {
+        self.subgraph_vertex_styles
+            .effective_subgraph_css(declaration_ordinal, subgraph)
+    }
+
+    /// Returns whether parsing observed a FlowDB vertex with this subgraph ID.
+    pub fn contains_subgraph_vertex(&self, id: &str) -> bool {
+        self.subgraph_vertex_styles.contains_subgraph_vertex(id)
+    }
+
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);

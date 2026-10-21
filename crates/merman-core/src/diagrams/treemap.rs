@@ -201,7 +201,7 @@ impl TreemapParseOutcome {
             span,
         };
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Capture {
+        if self.editor_demand.needs_recovery() {
             self.parsed
                 .editor_facts
                 .mark_recovered_from_parse_error(issue.message.clone(), issue.span);
@@ -1251,7 +1251,8 @@ pub(crate) fn parse_treemap_semantic_model_controlled(
     #[cfg(feature = "editor-facts")]
     let mut parsed = parsed;
     #[cfg(feature = "editor-facts")]
-    let editor_facts = matches!(editor_demand, EditorFactsDemand::Capture)
+    let editor_facts = editor_demand
+        .needs_recovery()
         .then(|| std::mem::take(&mut parsed.editor_facts));
     let model = match first_issue {
         Some(issue) => Err(treemap_error(&meta.diagram_type, issue.message, issue.span)),

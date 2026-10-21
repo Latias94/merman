@@ -730,7 +730,9 @@ impl ErSyntax {
             collector.finish(code, &mut facts);
             Some(facts)
         } else {
-            None
+            editor_demand
+                .needs_recovery()
+                .then(EditorSemanticFacts::new)
         };
         control.checkpoint()?;
         let mut emitted = 0usize;
@@ -880,7 +882,7 @@ pub(crate) fn parse_er_semantic_model_controlled(
             }
         }
         #[cfg(feature = "editor-facts")]
-        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+        Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
                 (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
             SemanticConstruction {

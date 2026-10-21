@@ -307,7 +307,7 @@ pub(crate) fn parse_packet_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),
@@ -349,7 +349,8 @@ fn construct_packet_semantic_source_controlled(
             return Ok(Ok(PacketSemanticSource {
                 output: PacketParseOutput::Empty,
                 #[cfg(feature = "editor-facts")]
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                editor_facts: editor_demand
+                    .needs_recovery()
                     .then(EditorSemanticFacts::new),
             }));
         }
@@ -357,7 +358,9 @@ fn construct_packet_semantic_source_controlled(
             return Ok(Err(packet_parse_failure(
                 error,
                 #[cfg(feature = "editor-facts")]
-                (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new),
+                editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
                 #[cfg(feature = "editor-facts")]
                 code,
             )));
@@ -369,6 +372,7 @@ fn construct_packet_semantic_source_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -394,7 +398,10 @@ fn construct_packet_semantic_source_controlled(
                 });
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 push_langium_common_editor_fact(facts, &parsed.fact, "packet");
             }
             common.push(parsed.fact);
@@ -413,7 +420,10 @@ fn construct_packet_semantic_source_controlled(
 
         if let Some(block) = parse_packet_block_spanned(line, line_start) {
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
                 push_packet_block_editor_fact(facts, &block);
             }
             blocks.push(block.semantic);

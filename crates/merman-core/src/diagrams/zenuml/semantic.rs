@@ -53,6 +53,8 @@ struct SemanticBuilder {
     groups: Vec<ZenumlGroup>,
     #[cfg(feature = "editor-facts")]
     facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_demand: EditorFactsDemand,
     generated_statement_id: usize,
     ownable_statement_count: usize,
     some_statement_misses_from: bool,
@@ -79,13 +81,15 @@ impl SemanticBuilder {
             groups: Vec::new(),
             #[cfg(feature = "editor-facts")]
             facts: match editor_demand {
-                EditorFactsDemand::Omit => None,
+                EditorFactsDemand::Omit | EditorFactsDemand::Recovery => None,
                 EditorFactsDemand::Capture => {
                     #[cfg(test)]
                     crate::editor::test_work::record_collection();
                     Some(EditorSemanticFacts::new())
                 }
             },
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
             generated_statement_id: 0,
             ownable_statement_count: 0,
             some_statement_misses_from: false,
@@ -186,6 +190,10 @@ impl SemanticBuilder {
                 .shift_insert(0, "_STARTER_".to_string(), starter);
         }
 
+        #[cfg(feature = "editor-facts")]
+        {
+            self.facts = self.editor_demand.finish_facts(self.facts);
+        }
         for (index, _diagnostic) in self.diagnostics.iter().enumerate() {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
@@ -199,10 +207,12 @@ impl SemanticBuilder {
                     ),
                     Some(_diagnostic.span),
                 );
-                facts.push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::Payload,
-                    _diagnostic.span,
-                ));
+                if self.editor_demand.captures_rich() {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::Payload,
+                        _diagnostic.span,
+                    ));
+                }
             }
         }
 

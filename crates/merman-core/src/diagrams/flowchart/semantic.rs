@@ -10,8 +10,7 @@ use super::{
     FlowchartAst, LinkStylePos, Node, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
-#[cfg(feature = "presentation")]
-use super::{FlowSubgraphVertexStyle, FlowchartRenderStyleSources};
+use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
 
 pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) nodes: &'a mut Vec<Node>,
@@ -19,8 +18,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) edges: &'a mut Vec<Edge>,
     pub(super) subgraphs: &'a mut Vec<FlowSubGraph>,
     pub(super) subgraph_declaration_owners: &'a [usize],
-    #[cfg(feature = "presentation")]
-    pub(super) subgraph_vertex_styles: Option<&'a mut FlowchartRenderStyleSources>,
+    pub(super) subgraph_vertex_styles: &'a mut FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     pub(super) collapsed_subgraphs: Option<&'a mut rustc_hash::FxHashSet<String>>,
     pub(super) vertex_calls: &'a mut Vec<String>,
@@ -47,8 +45,14 @@ impl<'a> FlowchartSemanticContext<'a> {
     fn apply_statements(&mut self, ast: &FlowchartAst) -> OperationControlResult<Result<()>> {
         let mut active_subgraphs = HashMap::new();
         let mut seen_vertex_ids = HashSet::new();
-        #[cfg(feature = "presentation")]
-        let mut vertex_css = self.subgraph_vertex_styles.as_ref().map(|_| HashMap::new());
+        let mut vertex_css: HashMap<String, Option<FlowSubgraphVertexStyle>> =
+            HashMap::with_capacity(self.subgraphs.len());
+        for (index, subgraph) in self.subgraphs.iter().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
+            vertex_css.insert(subgraph.id.clone(), None);
+        }
         let mut seen_edge_indices: HashMap<String, Vec<usize>> = HashMap::new();
         let mut next_built_edge_index = 0usize;
         let mut next_built_subgraph_index = 0usize;
@@ -82,11 +86,9 @@ impl<'a> FlowchartSemanticContext<'a> {
                     }
                     self.vertex_calls.push(s.target.clone());
                     let is_new_vertex = seen_vertex_ids.insert(s.target.clone());
-                    #[cfg(feature = "presentation")]
-                    if let Some(vertex_css) = &mut vertex_css {
-                        vertex_css
-                            .entry(s.target.clone())
-                            .or_insert_with(FlowSubgraphVertexStyle::default)
+                    if let Some(style) = vertex_css.get_mut(&s.target) {
+                        style
+                            .get_or_insert_default()
                             .styles
                             .extend(s.styles.iter().cloned());
                     }
@@ -124,11 +126,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         if index % 128 == 0 {
                             self.control.checkpoint()?;
                         }
-                        #[cfg(feature = "presentation")]
-                        if let Some(style) = vertex_css
-                            .as_mut()
-                            .and_then(|styles| styles.get_mut(target))
-                        {
+                        if let Some(style) = vertex_css.get_mut(target).and_then(Option::as_mut) {
                             style.classes.push(c.class_name.clone());
                         }
                         self.add_class_to_target(
@@ -149,10 +147,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                             self.tooltips
                                 .insert(id.clone(), sanitize_text(tt, self.config));
                         }
-                        #[cfg(feature = "presentation")]
-                        if let Some(style) =
-                            vertex_css.as_mut().and_then(|styles| styles.get_mut(id))
-                        {
+                        if let Some(style) = vertex_css.get_mut(id).and_then(Option::as_mut) {
                             style.classes.push("clickable".to_string());
                         }
                         self.add_class_to_target(
@@ -265,9 +260,8 @@ impl<'a> FlowchartSemanticContext<'a> {
                         if !seen_edge_indices.contains_key(target) {
                             self.vertex_calls.push(target.clone());
                             seen_vertex_ids.insert(target.clone());
-                            #[cfg(feature = "presentation")]
-                            if let Some(vertex_css) = &mut vertex_css {
-                                vertex_css.entry(target.clone()).or_default();
+                            if let Some(style) = vertex_css.get_mut(target) {
+                                style.get_or_insert_default();
                             }
                         }
                         continue;
@@ -284,9 +278,8 @@ impl<'a> FlowchartSemanticContext<'a> {
                     self.vertex_calls.push(target.clone());
                     self.vertex_calls.push(target.clone());
                     seen_vertex_ids.insert(target.clone());
-                    #[cfg(feature = "presentation")]
-                    if let Some(vertex_css) = &mut vertex_css {
-                        vertex_css.entry(target.clone()).or_default();
+                    if let Some(style) = vertex_css.get_mut(target) {
+                        style.get_or_insert_default();
                     }
                     let idx = self.ensure_authored_node(target);
                     if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value)
@@ -306,7 +299,6 @@ impl<'a> FlowchartSemanticContext<'a> {
                             first_group,
                             &active_subgraphs,
                             &mut seen_vertex_ids,
-                            #[cfg(feature = "presentation")]
                             &mut vertex_css,
                             &seen_edge_indices,
                         )?
@@ -319,7 +311,6 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 next_group,
                                 &active_subgraphs,
                                 &mut seen_vertex_ids,
-                                #[cfg(feature = "presentation")]
                                 &mut vertex_css,
                                 &seen_edge_indices,
                             )?
@@ -340,7 +331,6 @@ impl<'a> FlowchartSemanticContext<'a> {
                         std::slice::from_ref(node.as_ref()),
                         &active_subgraphs,
                         &mut seen_vertex_ids,
-                        #[cfg(feature = "presentation")]
                         &mut vertex_css,
                         &seen_edge_indices,
                     )? {
@@ -359,19 +349,17 @@ impl<'a> FlowchartSemanticContext<'a> {
                 "flowchart semantic replay did not consume the built model",
             )));
         }
-        #[cfg(feature = "presentation")]
-        if let (Some(vertex_css), Some(subgraph_vertex_styles)) =
-            (vertex_css, self.subgraph_vertex_styles.as_deref_mut())
-        {
-            for (index, (id, style)) in vertex_css.into_iter().enumerate() {
-                if index % 128 == 0 {
-                    self.control.checkpoint()?;
-                }
-                if let Some(&declaration_ordinal) = active_subgraphs.get(&id) {
-                    // Every completed declaration with this id resolves to the same canonical
-                    // FlowDB group, including CSS authored between repeated declarations.
-                    subgraph_vertex_styles.insert(id, declaration_ordinal, style);
-                }
+        for (index, (id, style)) in vertex_css.into_iter().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
+            if let Some(style) = style
+                && let Some(&declaration_ordinal) = active_subgraphs.get(&id)
+            {
+                // Every completed declaration with this id resolves to the same canonical
+                // FlowDB group, including CSS authored between repeated declarations.
+                self.subgraph_vertex_styles
+                    .insert(id, declaration_ordinal, style);
             }
         }
         self.control.checkpoint()?;
@@ -383,9 +371,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         nodes: &[Node],
         active_subgraphs: &HashMap<String, usize>,
         seen_vertex_ids: &mut HashSet<String>,
-        #[cfg(feature = "presentation")] vertex_css: &mut Option<
-            HashMap<String, FlowSubgraphVertexStyle>,
-        >,
+        vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
         seen_edge_indices: &HashMap<String, Vec<usize>>,
     ) -> OperationControlResult<Result<()>> {
         let mut deferred_shape_data_calls = Vec::new();
@@ -411,9 +397,8 @@ impl<'a> FlowchartSemanticContext<'a> {
                     if !seen_edge_indices.contains_key(&node.id) {
                         self.vertex_calls.push(node.id.clone());
                         seen_vertex_ids.insert(node.id.clone());
-                        #[cfg(feature = "presentation")]
-                        if let Some(vertex_css) = vertex_css {
-                            let style = vertex_css.entry(node.id.clone()).or_default();
+                        if let Some(style) = vertex_css.get_mut(&node.id) {
+                            let style = style.get_or_insert_default();
                             style.classes.extend(node.classes.iter().cloned());
                             style.styles.extend(node.styles.iter().cloned());
                         }
@@ -439,9 +424,8 @@ impl<'a> FlowchartSemanticContext<'a> {
 
             self.vertex_calls.push(node.id.clone());
             seen_vertex_ids.insert(node.id.clone());
-            #[cfg(feature = "presentation")]
-            if let Some(vertex_css) = vertex_css {
-                let style = vertex_css.entry(node.id.clone()).or_default();
+            if let Some(style) = vertex_css.get_mut(&node.id) {
+                let style = style.get_or_insert_default();
                 style.classes.extend(node.classes.iter().cloned());
                 style.styles.extend(node.styles.iter().cloned());
             }
@@ -715,8 +699,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let mut subgraphs = Vec::new();
-        #[cfg(feature = "presentation")]
-        let mut subgraph_vertex_styles = FlowchartRenderStyleSources::default();
+        let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
         #[cfg(feature = "presentation")]
         let mut collapsed_subgraphs = rustc_hash::FxHashSet::default();
         let mut vertex_calls = Vec::new();
@@ -737,8 +720,7 @@ mod tests {
             edges: &mut edges,
             subgraphs: &mut subgraphs,
             subgraph_declaration_owners: &[],
-            #[cfg(feature = "presentation")]
-            subgraph_vertex_styles: Some(&mut subgraph_vertex_styles),
+            subgraph_vertex_styles: &mut subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs: Some(&mut collapsed_subgraphs),
             vertex_calls: &mut vertex_calls,

@@ -32,7 +32,6 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             ..GanttTask::default()
         },
         render_end_ms: Some(9_223_372_036_854_775_002),
-        ..GanttRenderTask::default()
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
@@ -258,7 +257,6 @@ fn gantt_structured_text_preserves_time_precision_and_render_end() {
             ..GanttTask::default()
         },
         render_end_ms: Some(3),
-        ..GanttRenderTask::default()
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));

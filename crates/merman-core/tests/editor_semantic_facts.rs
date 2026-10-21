@@ -219,6 +219,55 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
                         "{} canonical/full editor facts diverged",
                         relative.display()
                     );
+                    let merman_core::SemanticSnapshotCapture::Snapshot(recovery) = parser
+                        .capture_diagram_recovery_snapshot_controlled_sync(
+                            &source,
+                            &merman_core::OperationControl::new(),
+                        )
+                        .expect("fixture recovery capture must not be cancelled")
+                    else {
+                        panic!("{} lost its recovery snapshot", relative.display());
+                    };
+                    let merman_core::ParsedEditorFacts::Available(recovery_facts) =
+                        recovery.editor_facts()
+                    else {
+                        panic!("{} lost recovery facts", relative.display());
+                    };
+                    assert_eq!(
+                        recovery_facts.completeness,
+                        canonical.completeness,
+                        "{}",
+                        relative.display()
+                    );
+                    assert_eq!(
+                        recovery_facts.family_semantics,
+                        canonical.family_semantics,
+                        "{}",
+                        relative.display()
+                    );
+                    assert_eq!(
+                        recovery_facts.diagnostics,
+                        canonical.diagnostics,
+                        "{} recovery diagnostics diverged",
+                        relative.display()
+                    );
+                    assert_eq!(
+                        recovery.source_config(),
+                        snapshot.source_config(),
+                        "{}",
+                        relative.display()
+                    );
+                    assert!(recovery_facts.symbols.is_empty(), "{}", relative.display());
+                    assert!(
+                        recovery_facts.directive_prefixes.is_empty(),
+                        "{}",
+                        relative.display()
+                    );
+                    assert!(
+                        recovery_facts.expected_syntax.is_empty(),
+                        "{}",
+                        relative.display()
+                    );
                 }
                 audit.available += 1;
                 let localized_drop_diagnostics = facts

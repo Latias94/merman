@@ -129,6 +129,37 @@ impl PreprocessedSource {
         self.edit_map.try_map_span(span)
     }
 
+    #[cfg(feature = "editor-facts")]
+    pub(crate) fn may_drop_editor_spans_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<bool> {
+        // Rich facts report a diagnostic when an exact span crosses an edit. Such inputs must
+        // observe those spans during the same family construction even for a recovery capture.
+        // Prefix/suffix deletions and one-byte boundary replacements (including CRLF) cannot
+        // contain an interior UTF-8 boundary and do not need the richer observer.
+        for (index, gap) in self.edit_map.gaps.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if gap.output_offset > 0 && gap.output_offset < self.edit_map.output_len {
+                return Ok(true);
+            }
+        }
+        for (index, segment) in self.edit_map.segments.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if segment.mapping == SegmentMapping::Unmapped
+                || (segment.mapping == SegmentMapping::Boundaries && segment.output.len() > 1)
+            {
+                return Ok(true);
+            }
+        }
+        control.checkpoint()?;
+        Ok(false)
+    }
+
     pub(crate) fn remap_parse_error(&self, error: crate::Error) -> crate::Error {
         match error {
             crate::Error::DiagramParse {

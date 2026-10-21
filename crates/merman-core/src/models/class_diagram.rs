@@ -928,6 +928,7 @@ impl ClassStylePrecedenceFacts {
         self.classdef_typography.as_ref()
     }
 
+    #[cfg(feature = "presentation")]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.assignment_before_definition_copy
             .as_ref()
@@ -971,6 +972,7 @@ impl ClassStyleDeclarationWitness {
         self.style_event_ordinal
     }
 
+    #[cfg(feature = "presentation")]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.target
             .len()
@@ -1009,6 +1011,7 @@ impl ClassStylePrecedenceWitness {
         self.later_style_event_ordinal
     }
 
+    #[cfg(feature = "presentation")]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.class_name
             .len()

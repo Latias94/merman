@@ -865,6 +865,7 @@ fn parse_quadrant_chart_semantic_source(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
         EditorFactsDemand::Capture => {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -890,7 +891,9 @@ fn parse_quadrant_chart_semantic_source(
                 if !text.is_empty() {
                     #[cfg(feature = "editor-facts")]
                     push_quadrant_payload_fact(
-                        editor_facts.as_mut(),
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
                         &text,
                         block.source_start,
                         line.start + end,
@@ -942,15 +945,20 @@ fn parse_quadrant_chart_semantic_source(
 
             if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut() {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     facts.push_directive_prefix("accTitle");
                 }
                 #[cfg(feature = "editor-facts")]
-                if editor_facts.is_some()
+                if editor_demand.captures_rich()
                     && let Ok(value) = parse_text_slice(directive.value)
                 {
                     push_quadrant_payload_fact(
-                        editor_facts.as_mut(),
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
                         &value.value,
                         value.content.start,
                         value.content.end(),
@@ -966,7 +974,10 @@ fn parse_quadrant_chart_semantic_source(
                 let rest = directive.rest;
                 if rest.text.starts_with('{') {
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = editor_facts.as_mut() {
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
                         facts.push_directive_prefix("accDescr");
                     }
                     let content_start = rest.start + 1;
@@ -977,7 +988,9 @@ fn parse_quadrant_chart_semantic_source(
                         if !text.is_empty() {
                             #[cfg(feature = "editor-facts")]
                             push_quadrant_payload_fact(
-                                editor_facts.as_mut(),
+                                editor_facts
+                                    .as_mut()
+                                    .filter(|_| editor_demand.captures_rich()),
                                 &text,
                                 content_start,
                                 content.end(),
@@ -1011,15 +1024,20 @@ fn parse_quadrant_chart_semantic_source(
                 if rest.text.starts_with(':') {
                     let value = rest.subslice(1, rest.text.len()).trim();
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = editor_facts.as_mut() {
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
                         facts.push_directive_prefix("accDescr");
                     }
                     #[cfg(feature = "editor-facts")]
-                    if editor_facts.is_some()
+                    if editor_demand.captures_rich()
                         && let Ok(parsed) = parse_text_slice(value)
                     {
                         push_quadrant_payload_fact(
-                            editor_facts.as_mut(),
+                            editor_facts
+                                .as_mut()
+                                .filter(|_| editor_demand.captures_rich()),
                             &parsed.value,
                             parsed.content.start,
                             parsed.content.end(),
@@ -1035,15 +1053,20 @@ fn parse_quadrant_chart_semantic_source(
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
                 let value = directive.rest;
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut() {
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
                     facts.push_directive_prefix("title");
                 }
                 #[cfg(feature = "editor-facts")]
-                if editor_facts.is_some()
+                if editor_demand.captures_rich()
                     && let Ok(parsed) = parse_text_slice(value)
                 {
                     push_quadrant_payload_fact(
-                        editor_facts.as_mut(),
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
                         &parsed.value,
                         parsed.content.start,
                         parsed.content.end(),
@@ -1067,7 +1090,9 @@ fn parse_quadrant_chart_semantic_source(
                 };
                 #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
-                    editor_facts.as_mut(),
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
                     &axis.left.value,
                     axis.left.content.start,
                     axis.left.content.end(),
@@ -1077,7 +1102,9 @@ fn parse_quadrant_chart_semantic_source(
                 #[cfg(feature = "editor-facts")]
                 if let Some(right) = &axis.right {
                     push_quadrant_outline_fact(
-                        editor_facts.as_mut(),
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
                         &right.value,
                         right.content.start,
                         right.content.end(),
@@ -1108,7 +1135,9 @@ fn parse_quadrant_chart_semantic_source(
                 };
                 #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
-                    editor_facts.as_mut(),
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
                     &axis.left.value,
                     axis.left.content.start,
                     axis.left.content.end(),
@@ -1118,7 +1147,9 @@ fn parse_quadrant_chart_semantic_source(
                 #[cfg(feature = "editor-facts")]
                 if let Some(top) = &axis.right {
                     push_quadrant_outline_fact(
-                        editor_facts.as_mut(),
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
                         &top.value,
                         top.content.start,
                         top.content.end(),
@@ -1159,7 +1190,9 @@ fn parse_quadrant_chart_semantic_source(
                 };
                 #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
-                    editor_facts.as_mut(),
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
                     &text.value,
                     text.content.start,
                     text.content.end(),
@@ -1195,7 +1228,13 @@ fn parse_quadrant_chart_semantic_source(
                 let style_text = rest.subslice(name_end, rest.text.len()).trim();
                 let styles = split_style_slices(style_text);
                 #[cfg(feature = "editor-facts")]
-                push_quadrant_class_fact(editor_facts.as_mut(), statement_span, name);
+                push_quadrant_class_fact(
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
+                    statement_span,
+                    name,
+                );
                 let style_values = styles
                     .items
                     .iter()
@@ -1212,7 +1251,13 @@ fn parse_quadrant_chart_semantic_source(
             match parse_point_statement(statement_trimmed) {
                 Ok(Some(point)) => {
                     #[cfg(feature = "editor-facts")]
-                    push_quadrant_point_facts(editor_facts.as_mut(), statement_span, &point);
+                    push_quadrant_point_facts(
+                        editor_facts
+                            .as_mut()
+                            .filter(|_| editor_demand.captures_rich()),
+                        statement_span,
+                        &point,
+                    );
                     let class_name = point.class_name.map(|class| class.text.to_string());
                     let styles = point
                         .styles
@@ -1257,7 +1302,9 @@ fn parse_quadrant_chart_semantic_source(
         if !text.is_empty() {
             #[cfg(feature = "editor-facts")]
             push_quadrant_payload_fact(
-                editor_facts.as_mut(),
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
                 &text,
                 block.source_start,
                 code.len(),
@@ -1437,7 +1484,7 @@ pub(crate) fn parse_quadrant_chart_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             {
                 match editor_demand {
-                    EditorFactsDemand::Capture => {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
                         let (error, facts) = failure.into_parts();
                         crate::family::SemanticConstruction {
                             model: Err(error),

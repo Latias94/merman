@@ -2211,7 +2211,7 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
             .saturating_add(id.len())
             .saturating_add(value.len())
     });
-    total
+    total.saturating_add(model.subgraph_vertex_styles.retained_bytes())
 }
 
 #[cfg(any(
@@ -2607,6 +2607,65 @@ mod tests {
             assert_eq!(
                 policy.check_render_model(parsed.model()).unwrap_err(),
                 model_error
+            );
+        }
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn flowchart_subgraph_vertex_css_is_charged_once_by_its_canonical_owner() {
+        let source =
+            "flowchart TD\nsubgraph G\n A\nend\nclass G base\nstyle G fill:#f00\nclass G hot\n";
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let crate::SemanticDiagramModel::Flowchart(model) = &parsed.model else {
+            panic!("expected Flowchart model");
+        };
+        let complexity = FlowchartComplexity::from_model(model).as_model_complexity();
+        let mut without_vertex_css = model.clone();
+        without_vertex_css.subgraph_vertex_styles = Default::default();
+        assert_eq!(
+            complexity.text_bytes,
+            FlowchartComplexity::from_model(&without_vertex_css)
+                .as_model_complexity()
+                .text_bytes
+                + "G".len()
+                + "hot".len()
+                + "fill:#f00".len(),
+        );
+        let exact = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(
+                InputResourceLimitId::MaxModelTextBytes,
+                complexity.text_bytes,
+            )
+            .unwrap();
+        exact.check_semantic_model(&parsed.model).unwrap();
+        let too_small = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(
+                InputResourceLimitId::MaxModelTextBytes,
+                complexity.text_bytes - 1,
+            )
+            .unwrap();
+        let error = too_small.check_semantic_model(&parsed.model).unwrap_err();
+        assert_eq!(error.limit, "max_model_text_bytes");
+        assert_eq!(error.actual, complexity.text_bytes);
+
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(ModelComplexity::from_render_model(full.model()), complexity);
+            assert_eq!(
+                full.retained_render_context_bytes(),
+                "G".len() + std::mem::size_of::<usize>(),
+                "the presentation context retains only the group color ordinal, not another CSS owner",
+            );
+            assert_eq!(
+                ModelComplexity::from_parsed_render(&full).text_bytes,
+                complexity.text_bytes + full.retained_render_context_bytes(),
             );
         }
     }
