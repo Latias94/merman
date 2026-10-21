@@ -116,7 +116,8 @@ impl SystemCatalog {
     ) -> Result<Option<ID>, NativeFontError> {
         for face in self.database.faces() {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if excluded.iter().any(|used| same_face(used, face))
+            if !self.selection.allows_implicit(face.id)
+                || excluded.iter().any(|used| same_face(used, face))
                 || (base.style != face.style
                     && base.weight != face.weight
                     && base.stretch != face.stretch)
@@ -694,6 +695,58 @@ mod tests {
                 .collect();
             assert_eq!(selected, BTreeSet::from(["Cousine-Regular"]));
             assert_eq!(context.0.sources.snapshots.lock().unwrap().files.len(), 1);
+        }
+    }
+
+    #[test]
+    fn bounded_glyph_fallback_skips_symbolic_faces_before_snapshot_admission() {
+        for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+            for include_text_fallback in [false, true] {
+                let root = Root::new();
+                let symbol = root.copy(fixture);
+                fs::rename(symbol, root.0.join("0-symbol.ttf")).unwrap();
+                if include_text_fallback {
+                    root.copy("Cousine-Regular.ttf");
+                }
+                let control = OperationControl::new();
+                let mut loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+                loader
+                    .file(&root.copy("NotoSans-Latin-subset.ttf"))
+                    .unwrap();
+                let context = context_from_loader(&root, loader, &control).unwrap();
+                let mut options = usvg::Options::default();
+                context.apply_to_usvg_options(&mut options);
+                let tree = usvg::Tree::from_str(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="Noto Sans">Aam</text></svg>"#,
+                    &options,
+                ).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("partial text must still be painted");
+                };
+                let selected: BTreeSet<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .map(|glyph| {
+                        tree.fontdb()
+                            .face(glyph.font)
+                            .unwrap()
+                            .post_script_name
+                            .as_str()
+                    })
+                    .collect();
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                assert_eq!(selected, BTreeSet::from([expected]));
+                assert_eq!(
+                    context.0.sources.snapshots.lock().unwrap().files.len(),
+                    usize::from(include_text_fallback)
+                );
+                context.check().unwrap();
+            }
         }
     }
 

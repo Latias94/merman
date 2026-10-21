@@ -612,6 +612,47 @@ mod tests {
     }
 
     #[test]
+    fn platform_glyph_fallback_rejects_symbolic_faces_after_binary_admission() {
+        for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+            for include_text_fallback in [false, true] {
+                let discovered = poisoned_platform_context(
+                    fixture,
+                    include_text_fallback,
+                    NativeFontLimits::default(),
+                );
+                let mut context = NativeFontOptions::default()
+                    .with_font_file(
+                        Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("tests/fonts/NotoSans-Latin-subset.ttf"),
+                    )
+                    .load(&OperationControl::new())
+                    .unwrap();
+                let Some(super::super::resolver::DiscoveryProvider::Platform { catalog, .. }) =
+                    &discovered.0.discovery
+                else {
+                    panic!("platform discovery");
+                };
+                let inner = Arc::get_mut(&mut context.0).unwrap();
+                inner.discovery = Some(super::super::resolver::DiscoveryProvider::Platform {
+                    catalog: Arc::clone(catalog),
+                    explicit: Arc::clone(&inner.database),
+                });
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                assert_eq!(
+                    platform_painted_families(&context, Some("Noto Sans")),
+                    BTreeSet::from([expected.to_owned()]),
+                    "{fixture}, include_text_fallback={include_text_fallback}"
+                );
+                context.check().unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn platform_symbol_only_generics_remain_unresolved_without_blocking_named_symbol() {
         let context =
             poisoned_platform_context("MermanSymbolicTest.ttf", false, NativeFontLimits::default());

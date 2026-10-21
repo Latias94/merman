@@ -2935,13 +2935,16 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
 fn browser_like_font_resolver(
     selection: std::sync::Arc<font_selection::FontSelectionPolicy>,
 ) -> usvg::FontResolver<'static> {
+    let fallback_selection = std::sync::Arc::clone(&selection);
     usvg::FontResolver {
         select_font: Box::new(move |font, database| {
             selection
                 .requested(font, database)
                 .or_else(|| selection.fallback(font, database))
         }),
-        select_fallback: usvg::FontResolver::default_fallback_selector(),
+        select_fallback: Box::new(move |character, excluded, database| {
+            fallback_selection.glyph_fallback(character, excluded, database)
+        }),
     }
 }
 

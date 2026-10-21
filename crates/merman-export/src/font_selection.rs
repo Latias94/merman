@@ -1,4 +1,4 @@
-//! Shared family selection over classification retained from admitted font bytes.
+//! Shared family and glyph selection over classification retained from admitted font bytes.
 
 use std::collections::BTreeMap;
 use usvg::fontdb::{Database, FaceInfo, Family, ID, Query, Stretch, Style, Weight};
@@ -35,7 +35,7 @@ impl FontSelectionPolicy {
         self.classes.insert(id, class);
     }
 
-    fn allows(&self, id: ID) -> bool {
+    pub(crate) fn allows_implicit(&self, id: ID) -> bool {
         self.classes
             .get(&id)
             .is_some_and(|class| !matches!(class, FaceClass::Symbolic))
@@ -96,7 +96,7 @@ impl FontSelectionPolicy {
         style: Style,
     ) -> Option<ID> {
         if let Some(id) = query_font_family(database, family, weight, stretch, style)
-            .filter(|id| self.allows(*id))
+            .filter(|id| self.allows_implicit(*id))
         {
             return Some(id);
         }
@@ -112,13 +112,13 @@ impl FontSelectionPolicy {
         };
         let face = database
             .faces()
-            .find(|face| self.allows(face.id) && compatible(face))
-            .or_else(|| database.faces().find(|face| self.allows(face.id)))?;
+            .find(|face| self.allows_implicit(face.id) && compatible(face))
+            .or_else(|| database.faces().find(|face| self.allows_implicit(face.id)))?;
         face.families
             .first()
             .and_then(|(name, _)| {
                 query_font_family(database, Family::Name(name), weight, stretch, style)
-                    .filter(|id| self.allows(*id))
+                    .filter(|id| self.allows_implicit(*id))
             })
             .or(Some(face.id))
     }
@@ -155,6 +155,35 @@ impl FontSelectionPolicy {
         let style = font.style().into();
         // Preserve usvg's serif fallback after exhausting the authored family stack.
         self.query_generic(database, Family::Serif, weight, stretch, style)
+    }
+
+    pub(crate) fn glyph_fallback(
+        &self,
+        character: char,
+        excluded: &[ID],
+        database: &Database,
+    ) -> Option<ID> {
+        let base = database.face(*excluded.first()?)?;
+        database.faces().find_map(|face| {
+            // Preserve usvg's ordering and style matching, with the same text-suitability
+            // gate as implicit family selection. Named symbol requests bypass this path.
+            if excluded.contains(&face.id)
+                || !self.allows_implicit(face.id)
+                || (base.style != face.style
+                    && base.weight != face.weight
+                    && base.stretch != face.stretch)
+            {
+                return None;
+            }
+            database
+                .with_face_data(face.id, |bytes, index| {
+                    ttf_parser::Face::parse(bytes, index)
+                        .ok()
+                        .is_some_and(|face| face.glyph_index(character).is_some())
+                })
+                .unwrap_or(false)
+                .then_some(face.id)
+        })
     }
 }
 
