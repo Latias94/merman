@@ -47,6 +47,7 @@ pub mod sanitize;
     feature = "diagram-sequence",
     feature = "diagram-cynefin",
     feature = "diagram-info",
+    feature = "diagram-journey",
     feature = "diagram-pie"
 ))]
 pub mod semantic;
@@ -104,6 +105,7 @@ use presentation::PresentationConfig;
     feature = "diagram-sequence",
     feature = "diagram-cynefin",
     feature = "diagram-info",
+    feature = "diagram-journey",
     feature = "diagram-pie"
 ))]
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};

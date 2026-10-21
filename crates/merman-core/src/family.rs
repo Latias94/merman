@@ -24,6 +24,7 @@ use std::sync::OnceLock;
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-info",
+    feature = "diagram-journey",
     feature = "diagram-pie",
     feature = "diagram-sequence",
     feature = "diagram-state"
