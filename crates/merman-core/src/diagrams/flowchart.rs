@@ -178,7 +178,7 @@ struct FlowchartSemanticSource {
 
 trait FlowchartMetadata {
     fn diagram_type(&self) -> &str;
-    fn config(&self) -> &MermaidConfig;
+    fn diagram_config(&self) -> &MermaidConfig;
 }
 
 impl FlowchartMetadata for ParseMetadata {
@@ -186,7 +186,7 @@ impl FlowchartMetadata for ParseMetadata {
         &self.diagram_type
     }
 
-    fn config(&self) -> &MermaidConfig {
+    fn diagram_config(&self) -> &MermaidConfig {
         self.effective_config.as_config()
     }
 }
@@ -196,7 +196,7 @@ impl FlowchartMetadata for crate::SemanticMetadata {
         &self.diagram_type
     }
 
-    fn config(&self) -> &MermaidConfig {
+    fn diagram_config(&self) -> &MermaidConfig {
         &self.semantic_config
     }
 }
@@ -509,7 +509,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
     let shape_data_documents = prepare_flowchart_shape_data(&ast, control)?;
     control.checkpoint()?;
     let inherit_dir = meta
-        .config()
+        .diagram_config()
         .as_value()
         .get("flowchart")
         .and_then(|v| v.get("inheritDir"))
@@ -549,7 +549,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         }
         node_index.insert(n.id.clone(), idx);
     }
-    let security_level_loose = meta.config().get_str("securityLevel") == Some("loose");
+    let security_level_loose = meta.diagram_config().get_str("securityLevel") == Some("loose");
     {
         let mut semantic_ctx = FlowchartSemanticContext {
             nodes: &mut nodes,
@@ -566,7 +566,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
             edge_defaults: &mut edge_defaults,
             security_level_loose,
             diagram_type: meta.diagram_type(),
-            config: meta.config(),
+            config: meta.diagram_config(),
             shape_data_documents: &shape_data_documents,
             control,
         };
@@ -663,7 +663,7 @@ const DEFAULT_FLOWCHART_MAX_EDGES: usize = 500;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn flowchart_edge_budget<M: FlowchartMetadata>(meta: &M) -> Cell<usize> {
     let max_edges = meta
-        .config()
+        .diagram_config()
         .as_value()
         .get("maxEdges")
         .and_then(Value::as_u64)
@@ -1825,7 +1825,7 @@ impl FlowchartSemanticSource {
                 control.checkpoint()?;
             }
             let (node, render_label_source) =
-                flow_node_to_model(node, meta.config(), collect_render_context);
+                flow_node_to_model(node, meta.diagram_config(), collect_render_context);
             if let (Some(sources), Some(source)) = (&mut render_label_sources, render_label_source)
             {
                 sources.insert_node(node.id.clone(), source);
@@ -1855,7 +1855,7 @@ impl FlowchartSemanticSource {
                 control.checkpoint()?;
             }
             let (subgraph, render_title_source) =
-                flow_subgraph_to_model(subgraph, meta.config(), collect_render_context);
+                flow_subgraph_to_model(subgraph, meta.diagram_config(), collect_render_context);
             if let Some(sources) = &mut render_label_sources {
                 sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
             }
@@ -1993,12 +1993,12 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
     meta: &M,
     collect_render_context: bool,
 ) -> Result<(FlowEdge, Option<String>)> {
-    let label = sanitized_optional_label(e.label.as_deref(), meta.config());
+    let label = sanitized_optional_label(e.label.as_deref(), meta.diagram_config());
     let render_label_source = e
         .label
         .as_deref()
         .filter(|raw| collect_render_context && render_label_source_needs_provenance(raw))
-        .map(|raw| sanitized_render_label_source(raw, meta.config()));
+        .map(|raw| sanitized_render_label_source(raw, meta.diagram_config()));
     let render_label_source = match (&label, render_label_source) {
         (Some(label), Some(source)) if *label != source => Some(source),
         _ => None,
