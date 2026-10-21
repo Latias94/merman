@@ -130,11 +130,11 @@ pub(crate) use shadow_plan::{
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 pub use support::describe_theme_support;
-pub(crate) use typography::is_css_wide_keyword;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,
     TextStylePatch, TextTransform, TypographySpec, WhiteSpace, WrapMode as ThemeWrapMode,
 };
+pub(crate) use typography::{is_css_wide_keyword, validate_font_stack_families};
 
 pub(crate) use source_styles::{
     PreparedSourceStyleDeclaration, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,

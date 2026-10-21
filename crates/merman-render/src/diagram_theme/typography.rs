@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use super::{ThemeCompileValidationError, ThemeTypographyProperty};
 use crate::DiagramFamilyId;
@@ -94,24 +95,32 @@ pub enum WrapMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontStack {
-    families: Vec<String>,
+    families: Arc<[String]>,
+}
+
+pub(crate) fn validate_font_stack_families(
+    families: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<Vec<String>, ThemeCompileValidationError> {
+    let families = families
+        .into_iter()
+        .map(Into::into)
+        .map(|family| validate_font_family(family, "typography.font_stack"))
+        .collect::<Result<Vec<_>, _>>()?;
+    if families.is_empty() || families.len() > MAX_FONT_STACK_ENTRIES {
+        return Err(ThemeCompileValidationError::InvalidCollection {
+            field: "typography.font_stack",
+        });
+    }
+    Ok(families)
 }
 
 impl FontStack {
     pub fn new(
         families: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, ThemeCompileValidationError> {
-        let families = families
-            .into_iter()
-            .map(Into::into)
-            .map(|family| validate_font_family(family, "typography.font_stack"))
-            .collect::<Result<Vec<_>, _>>()?;
-        if families.is_empty() || families.len() > MAX_FONT_STACK_ENTRIES {
-            return Err(ThemeCompileValidationError::InvalidCollection {
-                field: "typography.font_stack",
-            });
-        }
-        Ok(Self { families })
+        Ok(Self {
+            families: validate_font_stack_families(families)?.into(),
+        })
     }
 
     pub fn single(family: impl Into<String>) -> Result<Self, ThemeCompileValidationError> {
@@ -173,12 +182,12 @@ pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
 impl Default for FontStack {
     fn default() -> Self {
         Self {
-            families: vec![
+            families: Arc::from([
                 "trebuchet ms".to_string(),
                 "verdana".to_string(),
                 "arial".to_string(),
                 "sans-serif".to_string(),
-            ],
+            ]),
         }
     }
 }
