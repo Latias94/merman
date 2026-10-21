@@ -66,30 +66,34 @@ const PLACEMENT_RIGHT_OF: i32 = 1;
 const PLACEMENT_OVER: i32 = 2;
 
 mod ast;
+mod compat;
 mod db;
 mod lexer;
+mod model;
 mod parse;
-mod render_model;
 
 use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
-pub(crate) use parse::parse_sequence_json_and_editor_facts;
+pub(crate) use compat::{
+    parse_sequence, parse_sequence_json_and_editor_facts,
+    parse_sequence_model_for_render_controlled, render_model_to_compat_json,
+};
 pub(crate) use parse::parse_sequence_semantic_model_controlled;
-pub(crate) use parse::{parse_sequence, parse_sequence_model_for_render_controlled};
 #[cfg(test)]
 pub(crate) use parse::{
     reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
 };
-pub(crate) use render_model::render_model_to_compat_json;
 // Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
-pub use render_model::{
+pub use model::{
     SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
     SequenceCentralDecoration, SequenceControlKind, SequenceControlRole, SequenceControlSemantics,
-    SequenceDiagramRenderModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
+    SequenceDiagramModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
     SequenceNotePlacement, SequenceSignalSemantics,
 };
+// Transitional alias while full-render consumers migrate to the canonical model name.
+pub use model::SequenceDiagramModel as SequenceDiagramRenderModel;
 
 #[cfg(test)]
 mod tests {
@@ -201,7 +205,7 @@ Worker-->>Bob: Done"#;
         let typed_json =
             serde_json::to_value(model).expect("typed lifecycle truth should serialize");
         assert!(typed_json.get("actorLifecycles").is_some());
-        let round_trip: super::SequenceDiagramRenderModel =
+        let round_trip: super::SequenceDiagramModel =
             serde_json::from_value(typed_json).expect("typed lifecycle truth should deserialize");
         assert_eq!(round_trip.created_actor_message_index("B"), Some(6));
         assert_eq!(round_trip.destroyed_actor_message_index("A"), Some(7));

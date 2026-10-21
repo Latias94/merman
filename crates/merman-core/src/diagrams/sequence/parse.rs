@@ -1,16 +1,15 @@
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
-    ParseMetadata, Result, SemanticMetadata, SourceSpan,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
+    SemanticMetadata, SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
-use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::SequenceDiagramRenderModel;
+use super::SequenceDiagramModel;
 use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::db::{SequenceDb, is_css_color_value, split_box_color_and_title};
@@ -80,12 +79,12 @@ impl SequenceSyntax {
     }
 }
 
-struct SequenceSemanticSource {
-    db: SequenceDb,
-    editor_facts: EditorSemanticFacts,
+pub(super) struct SequenceSemanticSource {
+    pub(super) db: SequenceDb,
+    pub(super) editor_facts: EditorSemanticFacts,
 }
 
-enum SequenceSemanticFailure {
+pub(super) enum SequenceSemanticFailure {
     Grammar {
         error: SequenceGrammarError,
         editor_facts: EditorSemanticFacts,
@@ -97,11 +96,11 @@ enum SequenceSemanticFailure {
 }
 
 impl SequenceSemanticFailure {
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
-    }
-
-    fn into_parse_error_for_type(self, diagram_type: &str, fallback_offset: usize) -> Error {
+    pub(super) fn into_parse_error_for_type(
+        self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> Error {
         match self {
             Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
                 diagram_type.to_string(),
@@ -113,15 +112,7 @@ impl SequenceSemanticFailure {
         }
     }
 
-    fn into_error_and_editor_facts(
-        self,
-        meta: &ParseMetadata,
-        fallback_offset: usize,
-    ) -> (Error, EditorSemanticFacts) {
-        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
-    }
-
-    fn into_error_and_editor_facts_for_type(
+    pub(super) fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
         fallback_offset: usize,
@@ -164,34 +155,11 @@ impl SequenceSemanticFailure {
     }
 }
 
-pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_sequence_semantic_source(code, meta)?
-        .db
-        .into_model(meta))
-}
-
-pub(crate) fn parse_sequence_model_for_render_controlled(
-    code: &str,
-    meta: &ParseMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
-    let construction = construct_sequence_semantic_source(
-        code,
-        sequence_wrap_enabled(meta),
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    match construction {
-        Ok(source) => Ok(Ok(source.db.into_render_model())),
-        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
-    }
-}
-
 pub(crate) fn parse_sequence_semantic_model_controlled(
     code: &str,
     meta: &SemanticMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
+) -> OperationControlResult<Result<SequenceDiagramModel>> {
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(&meta.semantic_config),
@@ -200,7 +168,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
     )?;
     match construction {
         Ok(source) => {
-            let mut model = source.db.into_render_model();
+            let mut model = source.db.into_model();
             model.sanitize_common_db_fields(&meta.semantic_config);
             Ok(Ok(model))
         }
@@ -210,41 +178,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
     }
 }
 
-pub(crate) fn parse_sequence_json_and_editor_facts(
-    code: &str,
-    meta: &ParseMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_sequence_semantic_source(
-        code,
-        sequence_wrap_enabled(meta),
-        EditorFactsDemand::Capture,
-        control,
-    )?;
-    let parsed = crate::family::CombinedSemanticParse::from_construction(
-        construction,
-        |SequenceSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
-        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
-    );
-    control.checkpoint()?;
-    Ok(parsed)
-}
-
-fn parse_sequence_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<SequenceSemanticSource> {
-    construct_sequence_semantic_source(
-        code,
-        sequence_wrap_enabled(meta),
-        EditorFactsDemand::Omit,
-        &OperationControl::new(),
-    )
-    .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
-}
-
-fn construct_sequence_semantic_source(
+pub(super) fn construct_sequence_semantic_source(
     code: &str,
     wrap_enabled: Option<bool>,
     facts_demand: EditorFactsDemand,
@@ -295,11 +229,7 @@ fn build_sequence_db(
     Ok(Ok(db))
 }
 
-fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
-    sequence_wrap_enabled_from_config(meta.effective_config.as_config())
-}
-
-fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
+pub(super) fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
     config
         .as_value()
         .get("wrap")
@@ -755,8 +685,9 @@ fn sequence_box_name_and_selection(
 
 #[cfg(test)]
 mod tests {
+    use super::super::compat::parse_sequence_json_and_editor_facts;
     use super::*;
-    use crate::{EditorSemanticRole, MermaidConfig};
+    use crate::{EditorSemanticRole, MermaidConfig, ParseMetadata};
     use std::fmt::Write as _;
 
     fn meta() -> ParseMetadata {
@@ -766,6 +697,46 @@ mod tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
+    }
+
+    #[test]
+    fn canonical_semantic_model_retains_lifecycle_ownership_without_editor_work() {
+        let source = concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant C\n",
+            "create participant B\n",
+            "destroy A\n",
+            "loop pending\n",
+            "Note over C: pending\n",
+            "end\n",
+            "autonumber\n",
+            "activate C\n",
+            "deactivate C\n",
+            "C->>B: create\n",
+            "A--xC: destroy\n",
+        );
+        let metadata = SemanticMetadata {
+            diagram_type: "sequence".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        reset_sequence_syntax_construction_count();
+        crate::editor::test_work::reset();
+
+        let model: SequenceDiagramModel =
+            parse_sequence_semantic_model_controlled(source, &metadata, &OperationControl::new())
+                .expect("semantic construction is not cancelled")
+                .expect("canonical Sequence semantics");
+
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        assert_eq!(model.actor_order, ["A", "C", "B"]);
+        assert_eq!(model.created_actors.get("B"), Some(&0));
+        assert_eq!(model.destroyed_actors.get("A"), Some(&0));
+        assert_eq!(model.created_actor_message_index("B"), Some(6));
+        assert_eq!(model.destroyed_actor_message_index("A"), Some(7));
     }
 
     fn editor_facts(source: &str) -> EditorSemanticFacts {

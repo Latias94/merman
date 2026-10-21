@@ -1,12 +1,12 @@
-use crate::{OperationControl, OperationControlResult, ParseMetadata};
+use crate::{OperationControl, OperationControlResult};
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use super::Action;
-use super::render_model::{
-    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
-    SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload, SequenceNote,
+use super::model::{
+    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox, SequenceDiagramModel,
+    SequenceMessage, SequenceMessagePayload, SequenceNote,
 };
 use super::{
     LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
@@ -670,11 +670,7 @@ impl SequenceDb {
         }
     }
 
-    pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
-        self.into_render_model().to_compat_json(&meta.diagram_type)
-    }
-
-    pub(super) fn into_render_model(mut self) -> SequenceDiagramRenderModel {
+    pub(super) fn into_model(mut self) -> SequenceDiagramModel {
         let mut actors = std::mem::take(&mut self.actors);
         let mut actors_typed = BTreeMap::new();
         let mut actor_lifecycles = Vec::with_capacity(self.actor_order.len());
@@ -732,7 +728,7 @@ impl SequenceDb {
             })
             .collect();
 
-        SequenceDiagramRenderModel {
+        SequenceDiagramModel {
             title: self.title,
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,

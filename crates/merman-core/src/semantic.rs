@@ -22,7 +22,7 @@ pub enum SemanticDiagramModel {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-sequence")]
-    Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    Sequence(crate::diagrams::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-state")]
     State(crate::diagrams::state::StateDiagramModel),
     #[cfg(feature = "diagram-timeline")]
