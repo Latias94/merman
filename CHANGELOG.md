@@ -4,28 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.9.2] - 2026-10-21
+## [0.9.2] - 2026-10-22
 
 ### Fixed
 
-- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#228](https://github.com/Latias94/merman/issues/228). Thanks [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
-- Filled C4 boundaries no longer cover their children. Host themes also reach boundary labels, relationships, and arrowheads while explicit configuration and relationship styles retain priority. [#229](https://github.com/Latias94/merman/issues/229)
-- Wardley host themes reach anchor labels, component surfaces, and structural lines while preserving explicit colors and evolved-component styling. [#230](https://github.com/Latias94/merman/issues/230)
-- ZenUML host themes consistently style the frame, participants, messages, lifelines, notes, groups, activations, and text. Explicit ZenUML settings retain priority, and layout uses the same typography as the rendered labels. [#231](https://github.com/Latias94/merman/issues/231)
-- Explicit site or source theme selections preserve the selected Mermaid theme's complete derived palette instead of mixing it with host-derived colors. Independent host fonts remain available, and host roles fill only values missing from the selected theme. This fixes ER, Quadrant, and Timeline color combinations under host themes. [#232](https://github.com/Latias94/merman/issues/232)
-- Restrict look-based SVG selectors to supported looks; unsupported values use the normal fallback.
-- Drop rejected Block inline CSS declarations instead of copying them into SVG, preserving valid sibling declarations.
-- Validate Requirement source CSS while preserving declaration order, quoted values, and `!important` handling.
+- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#235](https://github.com/Latias94/merman/pull/235), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Filled C4 boundaries no longer cover their children. Host themes also reach boundary labels, relationships, and arrowheads while explicit configuration and relationship styles retain priority. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229)
+- Wardley host themes reach anchor labels, component surfaces, and structural lines while preserving explicit colors and evolved-component styling. [#235](https://github.com/Latias94/merman/pull/235), [issue #230](https://github.com/Latias94/merman/issues/230)
+- ZenUML host themes consistently style the frame, participants, messages, lifelines, notes, groups, activations, and text. Explicit ZenUML settings retain priority, and layout uses the same typography as the rendered labels. [#235](https://github.com/Latias94/merman/pull/235), [issue #231](https://github.com/Latias94/merman/issues/231)
+- Explicit site or source theme selections preserve the selected Mermaid theme's complete derived palette instead of mixing it with host-derived colors. Independent host fonts remain available, and host roles fill only values missing from the selected theme. This fixes ER, Quadrant, and Timeline color combinations under host themes. [#235](https://github.com/Latias94/merman/pull/235), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Restrict look-based SVG selectors to supported looks; unsupported values use the normal fallback. [#235](https://github.com/Latias94/merman/pull/235)
+- Drop rejected Block inline CSS declarations instead of copying them into SVG, preserving valid sibling declarations. [#235](https://github.com/Latias94/merman/pull/235)
+- Validate Requirement source CSS while preserving declaration order, quoted values, and `!important` handling. [#235](https://github.com/Latias94/merman/pull/235)
+- Repeated Flowchart `classDef` declarations retain earlier properties and apply later overrides in source order. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- Unsupported Flowchart Unicode characters produce whole-character error spans and allow lexing to continue on valid UTF-8 boundaries. [#178](https://github.com/Latias94/merman/pull/178), [#237](https://github.com/Latias94/merman/pull/237)
+- Malformed Pie and Info headers fail consistently across semantic, render, and editor parsing, retaining source spans and recovery facts; lenient parsing produces the normal error diagram. Empty XYChart sources use the same configured default model through each entrypoint. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- SVG CSS cleanup rejects unterminated strings, comments, and URLs while preserving safe neighboring declarations, so finalized output is stable when checked again. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- Building Python wheels respects Cargo's configured target directory, including `CARGO_TARGET_DIR`, when locating both the native library and UniFFI metadata. [#178](https://github.com/Latias94/merman/pull/178), [#237](https://github.com/Latias94/merman/pull/237)
+- Workspace crate publishing checks the current Typst plugin with its examples; the independently versioned Typst wrapper retains its own version-pinned test gate. [#210](https://github.com/Latias94/merman/pull/210), [#237](https://github.com/Latias94/merman/pull/237)
+- Incremental Tree-sitter fuzz checks handle tolerant recovery trees using geometry checks and inverse-edit restoration instead of requiring every edited tree to match a fresh parse. Regression seeds retain their exact bytes across platforms. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
 
-These rendering fixes can change SVG and exported image/PDF snapshots. Review regenerated output; the existing Presentation API and Options JSON schema 2 remain the integration contract.
+These fixes can change SVG and exported image/PDF snapshots. Malformed Pie/Info headers now follow the normal strict-failure/lenient-error path. Review regenerated output and handle those parse failures; the existing Presentation API and Options JSON schema 2 remain the integration contract.
 
 ### Security
 
-- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
+- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [#235](https://github.com/Latias94/merman/pull/235), [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
+
+### Changed
+
+- Refresh compatible Rust dependency locks, including AWS-LC, platform certificate loading, and Ratex, while retaining the pinned math, Tree-sitter, NAPI, and export-stack compatibility boundaries. [#237](https://github.com/Latias94/merman/pull/237)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the fixes and maintenance backports, and [@nerzhulart](https://github.com/nerzhulart) for reporting issues #228-232.
 
 ## [0.9.1] - 2026-10-18
 
-- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Fixes [#207](https://github.com/Latias94/merman/issues/207).
+- Reuse prepared ER text geometry during SVG emission and isolate native font measurement state for each render. Large ER diagrams no longer fail with misleading entity-size errors or consume a previous render's measurement budget. The default budget is now 16,384 uncached shaping probes; `--font-max-measurements COUNT` configures it independently of render resource profiles, and exhaustion errors explain how to retry. Thanks [@000Janela000](https://github.com/000Janela000) for the report. [#209](https://github.com/Latias94/merman/pull/209), [issue #207](https://github.com/Latias94/merman/issues/207)
 - Ensure Class, Sequence, and State lexers always make progress and observe cancellation while skipping input, including empty Sequence comments and malformed declarations.
 - Update the locked `rustls` dependency to 0.23.46 and refresh generated legal materials.
 - Shorten repository paths and enforce a Windows checkout path budget for Git dependencies.
