@@ -55,8 +55,11 @@ export function buildMermaidOperationInput(
   initializationConfig: Readonly<MermaidConfigObject>;
   configuredSource: string;
 }> {
-  const authoredConfig = buildMermaidConfig(configJson, theme, options);
-  const initializationConfig = safeInitializationConfig(authoredConfig, options);
+  const authoredConfig = parseMermaidConfigJson(configJson);
+  const initializationConfig = safeInitializationConfig(
+    buildMermaidConfig(configJson, theme, options),
+    options,
+  );
   const configuredSource = sourceWithMermaidConfig(source, authoredConfig);
   return Object.freeze({ initializationConfig, configuredSource });
 }

@@ -102,7 +102,7 @@ impl BlockNodeLabelPaintPlan {
             "themeVariables.textColor",
         ]
         .into_iter()
-        .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
+        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path));
         let has_ordinal = theme.family_rules().any(|(_, rule)| {
             matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
                 && rule.ordinal().is_some()
@@ -561,11 +561,11 @@ impl BlockNodePaintThemePlan {
         let ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
         let node_config_fill = mermaid_owns_node_fill(effective_config);
         let node_config_stroke = mermaid_owns_node_stroke(effective_config);
-        let cluster_config_fill = merman_core::__private::config_path_overrides_typed_default(
+        let cluster_config_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.clusterBkg",
         );
-        let cluster_config_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let cluster_config_stroke = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.clusterBorder",
         );
@@ -893,11 +893,14 @@ fn observe_shell_style(
 }
 
 fn mermaid_owns_node_stroke(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    )
 }
 
 fn mermaid_owns_node_fill(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 #[derive(Debug, Default)]

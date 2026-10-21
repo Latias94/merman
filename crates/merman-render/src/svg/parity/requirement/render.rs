@@ -1,6 +1,7 @@
 use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
+use crate::requirement::requirement_color_indices;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
@@ -9,22 +10,6 @@ const REQUIREMENT_ROUGH_GEOMETRY_COLOR: &str = "#000000";
 
 fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
-}
-
-fn requirement_color_indices(
-    model: &RequirementDiagramRenderModel,
-) -> std::collections::HashMap<String, usize> {
-    let mut indices = std::collections::HashMap::new();
-    let mut index = 0usize;
-    for node in &model.requirements {
-        indices.insert(node.name.clone(), index);
-        index += 1;
-    }
-    for node in &model.elements {
-        indices.insert(node.name.clone(), index);
-        index += 1;
-    }
-    indices
 }
 
 fn requirement_color_css<I>(

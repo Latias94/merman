@@ -166,11 +166,11 @@ impl BlockMarkerPaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_fill = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.arrowheadColor",
         );
-        let config_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let config_stroke = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.lineColor",
         );

@@ -284,13 +284,13 @@ pub(crate) struct ArchitectureThemeOutcome {
 }
 
 fn mermaid_owns_group_stroke(effective_config: &merman_core::MermaidConfig) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(
+    if merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.archGroupBorderColor",
     ) {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(
+    merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.primaryBorderColor",
     ) && effective_config.get_str("themeVariables.archGroupBorderColor")

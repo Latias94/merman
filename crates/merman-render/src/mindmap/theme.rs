@@ -62,7 +62,7 @@ impl MindmapEdgeStrokeSource {
             Self::ColorScale { section } => MINDMAP_COLOR_SCALE_PATHS[section],
             Self::NodeBorder => "themeVariables.nodeBorder",
         };
-        merman_core::__private::config_path_overrides_typed_default(config, path)
+        merman_core::__private::config_paint_overrides_typed_default(config, path)
     }
 }
 
@@ -122,12 +122,12 @@ impl MindmapNodeFillOwnership {
     pub(crate) fn from_config(config: &MermaidConfig) -> Self {
         Self {
             color_scale: std::array::from_fn(|section| {
-                merman_core::__private::config_path_overrides_typed_default(
+                merman_core::__private::config_paint_overrides_typed_default(
                     config,
                     MINDMAP_COLOR_SCALE_PATHS[section],
                 )
             }),
-            main_background: merman_core::__private::config_path_overrides_typed_default(
+            main_background: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.mainBkg",
             ),
@@ -337,11 +337,11 @@ impl MindmapNodePalettePlan {
             None,
             work_meter,
         )?;
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.mainBkg",
         );
-        let config_owns_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_stroke = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.nodeBorder",
         );

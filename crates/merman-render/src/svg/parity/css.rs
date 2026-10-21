@@ -1148,6 +1148,9 @@ where
 {
     let id = CssSelectorDiagramId(diagram_id);
     let theme = task_theme.css_binding();
+    // These are fallback declarations when terminal label paints are present. In particular,
+    // usvg 0.47 retains the first important declaration even over later inline important paint.
+    let label_priority = task_theme.task_label_css_priority();
     let mut out = String::new();
     theme
         .common
@@ -1181,8 +1184,13 @@ where
     let vert_line_color = &theme.vert_line_color;
     let title_text_color = &theme.title_text_color;
 
-    fn push_outside_done_text_rules<I>(out: &mut String, id: I, class_prefix: &str, color: &str)
-    where
+    fn push_outside_done_text_rules<I>(
+        out: &mut String,
+        id: I,
+        class_prefix: &str,
+        color: &str,
+        priority: &str,
+    ) where
         I: Copy + std::fmt::Display,
     {
         let mut first = true;
@@ -1200,7 +1208,7 @@ where
                 );
             }
         }
-        let _ = write!(out, "{{fill:{}!important;}}", color);
+        let _ = write!(out, "{{fill:{}{};}}", color, priority);
     }
 
     let _ = write!(
@@ -1257,7 +1265,7 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .task.clickable{{cursor:pointer;}}#{} .taskText.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}#{} .taskTextOutsideLeft.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}#{} .taskTextOutsideRight.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}"#,
+        r#"#{} .task.clickable{{cursor:pointer;}}#{} .taskText.clickable{{cursor:pointer;fill:{}{label_priority};font-weight:bold;}}#{} .taskTextOutsideLeft.clickable{{cursor:pointer;fill:{}{label_priority};font-weight:bold;}}#{} .taskTextOutsideRight.clickable{{cursor:pointer;fill:{}{label_priority};font-weight:bold;}}"#,
         id,
         id,
         task_text_clickable_color,
@@ -1288,7 +1296,7 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .activeText0,#{} .activeText1,#{} .activeText2,#{} .activeText3{{fill:{}!important;}}"#,
+        r#"#{} .activeText0,#{} .activeText1,#{} .activeText2,#{} .activeText3{{fill:{}{label_priority};}}"#,
         id, id, id, id, task_text_dark_color
     );
     let _ = write!(
@@ -1298,10 +1306,16 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:{}!important;}}"#,
+        r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:{}{label_priority};}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, id, "doneText", task_text_outside_color);
+    push_outside_done_text_rules(
+        &mut out,
+        id,
+        "doneText",
+        task_text_outside_color,
+        label_priority,
+    );
     let _ = write!(
         &mut out,
         r#"#{} .crit0,#{} .crit1,#{} .crit2,#{} .crit3{{stroke:{};fill:{};stroke-width:2;}}"#,
@@ -1324,18 +1338,24 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:{}!important;}}"#,
+        r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:{}{label_priority};}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, id, "doneCritText", task_text_outside_color);
+    push_outside_done_text_rules(
+        &mut out,
+        id,
+        "doneCritText",
+        task_text_outside_color,
+        label_priority,
+    );
     let _ = write!(
         &mut out,
-        r#"#{} .vert{{stroke:{};}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:{}!important;}}"#,
+        r#"#{} .vert{{stroke:{};}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:{}{label_priority};}}"#,
         id, vert_line_color, id, vert_line_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .activeCritText0,#{} .activeCritText1,#{} .activeCritText2,#{} .activeCritText3{{fill:{}!important;}}"#,
+        r#"#{} .activeCritText0,#{} .activeCritText1,#{} .activeCritText2,#{} .activeCritText3{{fill:{}{label_priority};}}"#,
         id, id, id, id, task_text_dark_color
     );
     let _ = write!(

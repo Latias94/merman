@@ -104,11 +104,11 @@ pub(crate) fn prepare_flowchart_render_config(
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
     let node_label_fill_config_override =
         flowchart_node_label_fill_config_override(effective_config);
-    let node_border_config_override = merman_core::__private::config_path_overrides_typed_default(
+    let node_border_config_override = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.nodeBorder",
     );
-    let node_fill_config_override = merman_core::__private::config_path_overrides_typed_default(
+    let node_fill_config_override = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.mainBkg",
     );
@@ -117,18 +117,18 @@ pub(crate) fn prepare_flowchart_render_config(
             effective_config,
             "themeVariables.strokeWidth",
         );
-    let edge_stroke_config_override = merman_core::__private::config_path_overrides_typed_default(
+    let edge_stroke_config_override = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.lineColor",
     );
     let cluster_fill_color = compatibility.cluster_bkg.clone();
     let cluster_stroke_color = compatibility.cluster_border.clone();
-    let cluster_fill_config_override = merman_core::__private::config_path_overrides_typed_default(
+    let cluster_fill_config_override = merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.clusterBkg",
     );
     let cluster_stroke_config_override =
-        merman_core::__private::config_path_overrides_typed_default(
+        merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.clusterBorder",
         );
@@ -196,7 +196,7 @@ pub(crate) fn flowchart_node_label_fill_config_override(
         .filter(|color| !color.is_empty());
 
     let owns =
-        |path| merman_core::__private::config_path_overrides_typed_default(effective_config, path);
+        |path| merman_core::__private::config_paint_overrides_typed_default(effective_config, path);
     let Some(node_text_color) = node_text_color else {
         return owns(TEXT_COLOR);
     };

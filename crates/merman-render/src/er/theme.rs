@@ -636,9 +636,13 @@ impl ErEntityThemePlan {
                     visible_subgraph_styles
                         .get(id.as_ref())
                         .is_some_and(ErEntitySourceStyle::owns_text_color)
-                        || effective_config
+                        || (effective_config
                             .get_str("themeVariables.titleColor")
                             .is_some()
+                            && merman_core::__private::config_paint_overrides_typed_default(
+                                effective_config,
+                                "themeVariables.titleColor",
+                            ))
                         || mermaid_owns_paint_input(
                             effective_config,
                             merman_core::__private::ErPaintInput::Text,
@@ -1300,27 +1304,27 @@ fn table_occurrence_count(
 }
 
 fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
         || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || (mermaid_owns_entity_palette(config, "bkgColorArray")
-                && entity_palette_has_colors(config, "borderColorArray"))))
+        ) && mermaid_owns_entity_palette(config, "bkgColorArray")
+            && entity_palette_has_colors(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || (matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || mermaid_owns_entity_palette(config, "borderColorArray")))
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    ) || (matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) && mermaid_owns_entity_palette(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -> bool {
     entity_palette_has_colors(config, key)
-        && merman_core::__private::config_path_overrides_typed_default(
+        && merman_core::__private::config_paint_overrides_typed_default(
             config,
             &format!("themeVariables.{key}"),
         )
@@ -1346,11 +1350,8 @@ fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
 }
 
 fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool) -> bool {
-    let node_text_owned =
-        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText);
-    if html_labels && (!node_text_owned || config.get_str("themeVariables.nodeTextColor").is_some())
-    {
-        node_text_owned
+    if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
+        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText)
     } else {
         mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Text)
     }
@@ -1385,7 +1386,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn redux_entity_palette_owns_typed_paint_only_when_authored() {
+    fn redux_entity_palette_owns_typed_paint_only_when_source_selected() {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(crate::diagram_theme::DiagramThemeSpec::new())
             .unwrap();
@@ -1398,7 +1399,7 @@ mod tests {
             (
                 serde_json::json!({"theme": "redux-color"}),
                 "erDiagram\nA ||--o{ B : links\n",
-                true,
+                false,
             ),
             (
                 serde_json::json!({}),

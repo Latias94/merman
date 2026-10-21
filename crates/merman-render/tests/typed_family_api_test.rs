@@ -269,7 +269,6 @@ fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capabilit
             case.variant_id
         );
         let expected_missing = match case.variant_id {
-            "flowchart-elk" if !cfg!(feature = "layout-elk") => Some(RenderCapability::LayoutElk),
             "architecture" if !cfg!(feature = "layout-cytoscape") => {
                 Some(RenderCapability::LayoutCytoscape)
             }

@@ -713,6 +713,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::FLOWCHART
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::SEQUENCE
+            | DiagramFamilyId::ZENUML
             | DiagramFamilyId::CLASS
             | DiagramFamilyId::GANTT
             | DiagramFamilyId::MINDMAP
@@ -753,6 +754,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::FLOWCHART
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::SEQUENCE
+            | DiagramFamilyId::ZENUML
             | DiagramFamilyId::BLOCK
             | DiagramFamilyId::RAILROAD
             | DiagramFamilyId::CLASS
@@ -846,6 +848,37 @@ pub(super) fn classify_rule_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
+    if ((family == DiagramFamilyId::WARDLEY
+        && matches!(target, ThemeTarget::Text | ThemeTarget::NodeLabel)
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        ))
+        || (family == DiagramFamilyId::GANTT
+            && target == ThemeTarget::TaskLabel
+            && matches!(
+                selector,
+                FamilyThemeSelectorShape::Static {
+                    variant: None
+                        | Some(
+                            ThemeVariant::Default
+                                | ThemeVariant::Active
+                                | ThemeVariant::Success
+                                | ThemeVariant::Error
+                        )
+                }
+            )))
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::XY_CHART
         && matches!(
             target,
@@ -1797,7 +1830,15 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::C4
-        && target == ThemeTarget::Text
+        && matches!(
+            target,
+            ThemeTarget::Text
+                | ThemeTarget::Node
+                | ThemeTarget::NodeLabel
+                | ThemeTarget::EdgeLabel
+                | ThemeTarget::ClusterLabel
+                | ThemeTarget::Marker
+        )
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -1807,6 +1848,26 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::C4
+        && matches!(
+            target,
+            ThemeTarget::Node | ThemeTarget::Edge | ThemeTarget::Marker
+        )
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1894,21 +1955,51 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::ZENUML && target == ThemeTarget::Title {
-        return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-            && matches!(
-                facet,
-                FamilyThemeRuleFacet::Fill(
-                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-                )
-            ) {
+    if family == DiagramFamilyId::ZENUML {
+        let static_default = matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        );
+        let supported_paint = match facet {
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+            ) => matches!(
+                target,
+                ThemeTarget::Text
+                    | ThemeTarget::Title
+                    | ThemeTarget::Actor
+                    | ThemeTarget::ActorLabel
+                    | ThemeTarget::MessageLabel
+                    | ThemeTarget::SequenceNumberLabel
+                    | ThemeTarget::LoopLabelBackground
+                    | ThemeTarget::LoopLabel
+                    | ThemeTarget::Activation
+                    | ThemeTarget::Note
+                    | ThemeTarget::NoteLabel
+                    | ThemeTarget::Cluster
+                    | ThemeTarget::ClusterLabel
+            ),
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+            ) => matches!(
+                target,
+                ThemeTarget::Actor
+                    | ThemeTarget::Lifeline
+                    | ThemeTarget::Message
+                    | ThemeTarget::Loop
+                    | ThemeTarget::Activation
+                    | ThemeTarget::Note
+                    | ThemeTarget::Cluster
+            ),
+            _ => false,
+        };
+        return if static_default && supported_paint {
             FamilyThemeDisposition::TypedAdapter
         } else {
             FamilyThemeDisposition::Unsupported
         };
-    }
-    if family == DiagramFamilyId::ZENUML && target == ThemeTarget::Text {
-        return FamilyThemeDisposition::Unsupported;
     }
     if family == DiagramFamilyId::CYNEFIN
         && target == ThemeTarget::Text

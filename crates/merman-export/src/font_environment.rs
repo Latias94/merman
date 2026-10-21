@@ -1,3 +1,4 @@
+use super::font_selection::FontSelectionPolicy;
 use super::{ExportError, Result};
 use merman_render::diagram_theme::{FontCatalog, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
@@ -287,17 +288,15 @@ pub(crate) struct ExportFontEnvironment {
 
 impl ExportFontEnvironment {
     pub(crate) fn from_svg(svg: &ResvgCompatibleSvg) -> Result<Self> {
-        Self::from_resources(
-            svg.font_catalog(),
-            svg.font_source_policy(),
-            shared_system_fontdb,
-        )
+        Self::from_resources(svg.font_catalog(), svg.font_source_policy(), || {
+            shared_system_fonts().clone()
+        })
     }
 
     fn from_resources(
         catalog: &FontCatalog,
         policy: &merman_render::diagram_theme::FontSourcePolicy,
-        system_fonts: impl FnOnce() -> Arc<usvg::fontdb::Database>,
+        system_fonts: impl FnOnce() -> (Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>),
     ) -> Result<Self> {
         if !policy.priority().any(|source| {
             source == FontSource::System
@@ -308,10 +307,10 @@ impl ExportFontEnvironment {
             return Err(ExportError::FontSourceUnavailable);
         }
 
-        let fontdb = system_fonts();
+        let (fontdb, selection) = system_fonts();
         let recorder = Arc::new(FontResolutionRecorder::default());
-        let default_family = default_font_family(&fontdb).unwrap_or_else(|| "Arial".to_owned());
-        let resolver = system_font_resolver(Arc::clone(&fontdb), Arc::clone(&recorder));
+        let default_family = selection.default_family(&fontdb).unwrap_or_default();
+        let resolver = system_font_resolver(Arc::clone(&fontdb), selection, Arc::clone(&recorder));
 
         Ok(Self {
             fontdb: Arc::clone(&fontdb),
@@ -330,22 +329,20 @@ impl ExportFontEnvironment {
 
 fn system_font_resolver(
     fontdb: Arc<usvg::fontdb::Database>,
+    selection: Arc<FontSelectionPolicy>,
     recorder: Arc<FontResolutionRecorder>,
 ) -> usvg::FontResolver<'static> {
     let select_fontdb = Arc::clone(&fontdb);
     let select_recorder = Arc::clone(&recorder);
+    let fallback_selection = Arc::clone(&selection);
 
     usvg::FontResolver {
         select_font: Box::new(move |font, combined_db| {
-            if let Some(id) = super::select_requested_font_case_insensitively(font, &select_fontdb)
-            {
+            if let Some(id) = selection.requested(font, &select_fontdb) {
                 debug_assert!(combined_db.face(id).is_some());
                 return Some(id);
             }
-            if let Some(id) = query_default_serif(font, &select_fontdb)
-                .or_else(|| query_browser_like_fallback_font(font, &select_fontdb))
-                .or_else(|| select_fontdb.faces().next().map(|face| face.id))
-            {
+            if let Some(id) = selection.fallback(font, &select_fontdb) {
                 debug_assert!(combined_db.face(id).is_some());
                 select_recorder
                     .family_fallback_used
@@ -358,20 +355,7 @@ fn system_font_resolver(
             None
         }),
         select_fallback: Box::new(move |character, excluded, combined_db| {
-            let base_face = excluded.first().and_then(|id| combined_db.face(*id));
-            let selected = fontdb.faces().find_map(|face| {
-                if excluded.contains(&face.id) {
-                    return None;
-                }
-                if let Some(base) = base_face
-                    && base.style != face.style
-                    && base.weight != face.weight
-                    && base.stretch != face.stretch
-                {
-                    return None;
-                }
-                face_has_char(&fontdb, face.id, character).then_some(face.id)
-            });
+            let selected = fallback_selection.glyph_fallback(character, excluded, combined_db);
             if selected.is_some() {
                 recorder.glyph_fallback_used.store(true, Ordering::Relaxed);
             } else {
@@ -384,144 +368,27 @@ fn system_font_resolver(
     }
 }
 
-fn face_has_char(database: &usvg::fontdb::Database, id: usvg::fontdb::ID, character: char) -> bool {
-    database
-        .with_face_data(id, |data, face_index| {
-            ttf_parser::Face::parse(data, face_index)
-                .ok()
-                .and_then(|face| face.glyph_index(character))
-                .is_some()
-        })
-        .unwrap_or(false)
-}
-
-fn query_default_serif(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-) -> Option<usvg::fontdb::ID> {
-    fontdb.query(&usvg::fontdb::Query {
-        families: &[usvg::fontdb::Family::Serif],
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
+fn shared_system_fonts() -> &'static (Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>) {
+    static FONTS: OnceLock<(Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>)> =
+        OnceLock::new();
+    FONTS.get_or_init(|| {
+        let mut database = usvg::fontdb::Database::new();
+        database.load_system_fonts();
+        let selection = FontSelectionPolicy::from_database(&database);
+        selection.configure_generics(&mut database);
+        (Arc::new(database), Arc::new(selection))
     })
 }
 
-fn query_browser_like_fallback_font(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-) -> Option<usvg::fontdb::ID> {
-    let families = if font_requests_monospace(font) {
-        [
-            usvg::fontdb::Family::Monospace,
-            usvg::fontdb::Family::SansSerif,
-            usvg::fontdb::Family::Serif,
-        ]
-    } else {
-        [
-            usvg::fontdb::Family::SansSerif,
-            usvg::fontdb::Family::Serif,
-            usvg::fontdb::Family::Monospace,
-        ]
-    };
-
-    fontdb.query(&usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
-    })
-}
-
-fn font_requests_monospace(font: &usvg::Font) -> bool {
-    font.families().iter().any(|family| match family {
-        usvg::FontFamily::Monospace => true,
-        usvg::FontFamily::Named(name) => {
-            let name = name.to_ascii_lowercase();
-            name.contains("mono")
-                || name.contains("courier")
-                || name.contains("consolas")
-                || name.contains("menlo")
-        }
-        _ => false,
-    })
-}
-
+#[cfg(test)]
 pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
-    static FONTDB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
-    Arc::clone(FONTDB.get_or_init(|| {
-        let mut fontdb = usvg::fontdb::Database::new();
-        fontdb.load_system_fonts();
-        configure_fontdb_generic_families(&mut fontdb);
-        Arc::new(fontdb)
-    }))
-}
-
-fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
-    let sans = first_font_family(fontdb, |face| !face.monospaced)
-        .or_else(|| first_font_family(fontdb, |_| true));
-    let mono = first_font_family(fontdb, |face| face.monospaced).or_else(|| sans.clone());
-
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none()
-        && let Some(family) = sans.as_ref()
-    {
-        fontdb.set_sans_serif_family(family.clone());
-    }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none()
-        && let Some(family) = sans.as_ref()
-    {
-        fontdb.set_serif_family(family.clone());
-    }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none()
-        && let Some(family) = mono.as_ref()
-    {
-        fontdb.set_monospace_family(family.clone());
-    }
-}
-
-fn default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
-    query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
-        .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
-        .or_else(|| first_font_family(fontdb, |_| true))
-}
-
-fn query_normal_font_family(
-    fontdb: &usvg::fontdb::Database,
-    family: usvg::fontdb::Family<'_>,
-) -> Option<String> {
-    let families = [family];
-    fontdb
-        .query(&usvg::fontdb::Query {
-            families: &families,
-            weight: usvg::fontdb::Weight::NORMAL,
-            stretch: usvg::fontdb::Stretch::Normal,
-            style: usvg::fontdb::Style::Normal,
-        })
-        .and_then(|id| fontdb.face(id))
-        .and_then(face_family_name)
-}
-
-fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
-where
-    F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
-{
-    fontdb
-        .faces()
-        .find(|face| predicate(face))
-        .and_then(face_family_name)
-}
-
-fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
-    face.families
-        .iter()
-        .find(|(_, lang)| *lang == usvg::fontdb::Language::English_UnitedStates)
-        .or_else(|| face.families.first())
-        .map(|(family, _)| family.clone())
+    Arc::clone(&shared_system_fonts().0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::font_selection::face_family_name;
     use merman_render::diagram_theme::FontSourcePolicy;
     use merman_render::environment::RenderEnvironment;
     use merman_render::svg::finalize_resvg_svg;
@@ -565,6 +432,197 @@ mod tests {
         assert!(matches!(result, Err(ExportError::FontSourceUnavailable)));
     }
 
+    #[test]
+    fn system_export_rejects_symbolic_generic_and_preserves_named_opt_in() {
+        for fixture in [
+            include_bytes!("../tests/fonts/MermanSymbolicTest.ttf").as_slice(),
+            include_bytes!("../tests/fonts/MermanPictorialTest.ttf").as_slice(),
+        ] {
+            let mut database = usvg::fontdb::Database::new();
+            database.load_font_data(fixture.to_vec());
+            let symbol = face_family_name(database.faces().next().unwrap()).unwrap();
+            let symbol_id = database.faces().next().unwrap().id;
+            database.load_font_data(
+                include_bytes!(
+                    "../../merman-render/tests/fixtures/fonts/DejaVuSerif-NativeFilter.ttf"
+                )
+                .to_vec(),
+            );
+            let serif_id = database
+                .faces()
+                .find(|face| face.post_script_name == "DejaVuSerif")
+                .unwrap()
+                .id;
+            database.set_serif_family(symbol.clone());
+            database.set_sans_serif_family(symbol.clone());
+            let selection = FontSelectionPolicy::from_database(&database);
+            selection.configure_generics(&mut database);
+            let database = Arc::new(database);
+            let options = usvg::Options {
+                fontdb: Arc::clone(&database),
+                font_resolver: system_font_resolver(
+                    database,
+                    Arc::new(selection),
+                    Arc::new(FontResolutionRecorder::default()),
+                ),
+                ..Default::default()
+            };
+            for (family, expected) in [
+                ("serif", serif_id),
+                ("sans-serif", serif_id),
+                (symbol.as_str(), symbol_id),
+            ] {
+                let source = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text x="0" y="40" font-family="{family}">am</text></svg>"#
+                );
+                let tree = usvg::Tree::from_str(&source, &options).unwrap();
+                let usvg::Node::Text(text) = &tree.root().children()[0] else {
+                    panic!("text must be painted");
+                };
+                let glyphs: Vec<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .collect();
+                assert!(!glyphs.is_empty(), "family {family} must paint glyphs");
+                assert!(
+                    glyphs.iter().all(|glyph| glyph.font == expected),
+                    "family {family}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn system_export_glyph_fallback_filters_symbols_and_reports_missing_coverage() {
+        for fixture in [
+            include_bytes!("../tests/fonts/MermanSymbolicTest.ttf").as_slice(),
+            include_bytes!("../tests/fonts/MermanPictorialTest.ttf").as_slice(),
+        ] {
+            for include_text_fallback in [false, true] {
+                let mut database = usvg::fontdb::Database::new();
+                database.load_font_data(
+                    include_bytes!("../tests/fonts/NotoSans-Latin-subset.ttf").to_vec(),
+                );
+                database.load_font_data(fixture.to_vec());
+                if include_text_fallback {
+                    database.load_font_data(
+                        include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec(),
+                    );
+                }
+                let selection = Arc::new(FontSelectionPolicy::from_database(&database));
+                let database = Arc::new(database);
+                let recorder = Arc::new(FontResolutionRecorder::default());
+                let options = usvg::Options {
+                    fontdb: Arc::clone(&database),
+                    font_resolver: system_font_resolver(database, selection, Arc::clone(&recorder)),
+                    ..Default::default()
+                };
+                let tree = usvg::Tree::from_str(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="Noto Sans">Aam</text></svg>"#,
+                    &options,
+                ).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("partial text must still be painted");
+                };
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                let glyphs: Vec<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .collect();
+                assert!(!glyphs.is_empty());
+                assert!(glyphs.iter().all(|glyph| {
+                    tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
+                }));
+                assert_eq!(
+                    recorder.glyph_fallback_used.load(Ordering::Relaxed),
+                    include_text_fallback
+                );
+                assert_eq!(
+                    recorder.unresolved_glyph_fallback.load(Ordering::Relaxed),
+                    !include_text_fallback
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_fontconfig_symbol_alias_preserves_serif_and_zenuml_default_stack() {
+        const CHILD: &str = "MERMAN_SYMBOL_FONTCONFIG_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let environment = ExportFontEnvironment::from_resources(
+                &FontCatalog::system_fonts(),
+                &FontSourcePolicy::system_only(),
+                || shared_system_fonts().clone(),
+            )
+            .unwrap();
+            let options = usvg::Options {
+                fontdb: environment.fontdb,
+                font_resolver: environment.resolver,
+                ..Default::default()
+            };
+            for family in ["serif", "Helvetica,Verdana,serif"] {
+                let source = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="{family}">am</text></svg>"#
+                );
+                let tree = usvg::Tree::from_str(&source, &options).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("text must paint for {family}");
+                };
+                let selected: BTreeSet<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .map(|glyph| {
+                        tree.fontdb()
+                            .face(glyph.font)
+                            .unwrap()
+                            .post_script_name
+                            .as_str()
+                    })
+                    .collect();
+                assert_eq!(selected, BTreeSet::from(["DejaVuSerif"]), "{family}");
+            }
+            return;
+        }
+        let root =
+            std::env::temp_dir().join(format!("merman-symbol-fontconfig-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        for (name, bytes) in [
+            (
+                "symbol.ttf",
+                include_bytes!("../tests/fonts/MermanSymbolicTest.ttf").as_slice(),
+            ),
+            (
+                "serif.ttf",
+                include_bytes!(
+                    "../../merman-render/tests/fixtures/fonts/DejaVuSerif-NativeFilter.ttf"
+                )
+                .as_slice(),
+            ),
+        ] {
+            std::fs::write(root.join(name), bytes).unwrap();
+        }
+        let config = root.join("fonts.conf");
+        std::fs::write(&config, format!(r#"<fontconfig><dir>{}</dir><alias><family>serif</family><prefer><family>Merman Symbolic Test</family></prefer></alias></fontconfig>"#, root.display())).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "font_environment::tests::linux_fontconfig_symbol_alias_preserves_serif_and_zenuml_default_stack", "--nocapture"])
+            .env(CHILD, "1").env("FONTCONFIG_FILE", config).output().unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn fixture_font_environment() -> ExportFontEnvironment {
         ExportFontEnvironment::from_resources(
             &FontCatalog::system_fonts(),
@@ -583,7 +641,8 @@ mod tests {
                     )
                     .to_vec(),
                 );
-                Arc::new(database)
+                let selection = FontSelectionPolicy::from_database(&database);
+                (Arc::new(database), Arc::new(selection))
             },
         )
         .unwrap()
@@ -618,7 +677,12 @@ mod tests {
             let environment = ExportFontEnvironment::from_resources(
                 &FontCatalog::system_fonts(),
                 &FontSourcePolicy::system_only(),
-                || Arc::clone(&database),
+                || {
+                    (
+                        Arc::clone(&database),
+                        Arc::new(FontSelectionPolicy::from_database(&database)),
+                    )
+                },
             )
             .unwrap();
             let options = usvg::Options {

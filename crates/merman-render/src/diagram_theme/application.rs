@@ -157,11 +157,11 @@ impl RootThemePlan {
         family_background_path: &str,
     ) -> bool {
         (self.canvas.has_explicit_base() || !self.canvas.layers().is_empty())
-            && !merman_core::__private::config_path_overrides_typed_default(
+            && !merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.background",
             )
-            && !merman_core::__private::config_path_overrides_typed_default(
+            && !merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 family_background_path,
             )

@@ -235,6 +235,231 @@ Active milestone: milestone, active, active-milestone-task, 2024-01-07, 1d
 Done vertical marker: vert, done, done-vert-task, 2024-01-08, 0d
 "#;
 
+fn render_gantt_preset(source: &str, preset: merman_render::diagram_theme::ThemePreset) -> String {
+    let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_owned()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+#[test]
+fn gantt_editor_presets_preserve_task_states_and_critical_strokes() {
+    use merman_render::diagram_theme::ThemePreset;
+    for (preset, default, active, done, critical) in [
+        (
+            ThemePreset::EditorLight,
+            "#f8fafc",
+            "#2563eb",
+            "#e2e8f0",
+            "#be123c",
+        ),
+        (
+            ThemePreset::EditorDark,
+            "#111827",
+            "#60a5fa",
+            "#1f2937",
+            "#fb7185",
+        ),
+    ] {
+        let svg = render_gantt_preset(GANTT_TASK_FILL_SOURCE, preset);
+        let fills = gantt_task_terminal_inline_fills(&svg);
+        for (id, expected) in [
+            ("default-task", default),
+            ("active-task", active),
+            ("done-task", done),
+            ("crit-task", critical),
+            ("active-crit-task", active),
+            ("done-crit-task", done),
+            ("active-milestone-task", active),
+            ("done-vert-task", done),
+        ] {
+            assert_eq!(
+                fills
+                    .iter()
+                    .find(|(actual, _, _)| actual == &format!("gantt-config-{id}"))
+                    .map(|(_, _, fill)| fill.as_str()),
+                Some(expected),
+                "{preset:?} {id}"
+            );
+        }
+        let strokes = gantt_task_terminal_inline_strokes(&svg);
+        for id in ["crit-task", "active-crit-task", "done-crit-task"] {
+            assert_eq!(
+                strokes
+                    .iter()
+                    .find(|(actual, _, _)| actual == &format!("gantt-config-{id}"))
+                    .map(|(_, _, stroke)| stroke.as_str()),
+                Some(critical),
+                "{preset:?} {id} critical border"
+            );
+        }
+    }
+}
+
+#[test]
+fn gantt_editor_presets_bind_foregrounds_to_inside_outside_and_clickable_labels() {
+    use merman_render::diagram_theme::ThemePreset;
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nActive: active, active-task, 2024-01-01, 100d\nDone: done, done-task, 2024-01-01, 100d\nCritical: crit, crit-task, 2024-01-01, 100d\nA very long outside active label: active, outside-task, 2024-01-01, 1d\nclick active-task href \"https://example.com\"\n";
+    for (preset, active_label, text) in [
+        (ThemePreset::EditorLight, "#ffffff", "#0f172a"),
+        (ThemePreset::EditorDark, "#0f172a", "#e5e7eb"),
+    ] {
+        let svg = render_gantt_preset(source, preset);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        for (id, expected) in [
+            ("active-task-text", active_label),
+            ("done-task-text", text),
+            ("crit-task-text", active_label),
+            ("outside-task-text", text),
+        ] {
+            let label = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("id") == Some(format!("gantt-config-{id}").as_str())
+                })
+                .expect("task label terminal");
+            assert_eq!(
+                label
+                    .attribute("style")
+                    .and_then(|style| style_property(style, "fill")),
+                Some(format!("{expected}!important").as_str()),
+                "{preset:?}: {label:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn gantt_preset_labels_preserve_explicit_terminal_foreground_variables() {
+    use merman_render::diagram_theme::ThemePreset;
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nDefault: default-task, 2024-01-01, 100d\nActive: active, active-task, 2024-01-01, 100d\nDone: done, done-task, 2024-01-01, 100d\nA very long outside done label: done, outside-task, 2024-01-01, 1d\nclick default-task href \"https://example.com\"\n";
+    for (variable, terminal) in [
+        ("taskTextDarkColor", "active-task-text"),
+        ("taskTextClickableColor", "default-task-text"),
+        ("taskTextOutsideColor", "outside-task-text"),
+    ] {
+        let configured =
+            format!("---\nconfig:\n  themeVariables:\n    {variable}: '#123456'\n---\n{source}");
+        let svg = render_gantt_preset(&configured, ThemePreset::EditorDark);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let terminal_id = format!("gantt-config-{terminal}");
+        let label = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text") && node.attribute("id") == Some(terminal_id.as_str())
+            })
+            .unwrap();
+        assert_eq!(
+            label
+                .attribute("style")
+                .and_then(|style| style_property(style, "fill")),
+            None,
+            "{variable} must own {terminal}"
+        );
+        assert!(
+            doc.descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .filter_map(|node| node.text())
+                .any(|css| css.contains("fill:#123456;")),
+            "explicit {variable} must reach final CSS"
+        );
+    }
+}
+
+#[test]
+fn gantt_generic_text_reaches_active_and_done_visible_labels() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nActive: active, active-task, 2024-01-01, 100d\nDone: done, done-task, 2024-01-01, 100d";
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let svg = render_gantt_svg_from_text_with_theme(
+            source,
+            &gantt_text_fill_theme(CanvasPaint::solid("#123456").unwrap(), variant),
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        for id in [
+            "gantt-config-active-task-text",
+            "gantt-config-done-task-text",
+        ] {
+            let label = doc
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.attribute("id") == Some(id))
+                .unwrap();
+            assert_eq!(
+                label
+                    .attribute("style")
+                    .and_then(|style| style_property(style, "fill")),
+                Some("#123456!important")
+            );
+        }
+    }
+}
+
+#[test]
+fn gantt_mixed_labels_preserve_vertical_fallback_and_final_active_paint() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, marker, 2026-09-01, 0d\nActive task :active, active, 2026-09-02, 1d";
+    let theme = gantt_task_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::TaskLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .with_variant(ThemeVariant::Active),
+    );
+    let svg = render_gantt_svg_from_text_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(css.contains(".vertText{font-size:15px;text-anchor:middle;fill:navy;}"));
+    let marker = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "vertText")
+                })
+        })
+        .unwrap();
+    assert_eq!(marker.attribute("style"), None);
+    let active = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "activeText0")
+                })
+        })
+        .unwrap();
+    assert_eq!(
+        active
+            .attribute("style")
+            .and_then(|style| style_property(style, "fill")),
+        Some("#123456!important")
+    );
+}
+
 const GANTT_TASK_VARIANT_TERMINALS: [(ThemeVariant, &[&str]); 4] = [
     (ThemeVariant::Default, &["gantt-config-default-task"]),
     (
@@ -1239,7 +1464,7 @@ fn gantt_text_fill_preserves_task_text_source_ownership() {
 }
 
 #[test]
-fn gantt_text_fill_is_not_applicable_when_both_source_tokens_own_terminals() {
+fn gantt_text_fill_is_not_applicable_when_all_source_roles_own_terminals() {
     let theme = gantt_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid source-owned Gantt text fill"),
         Some(ThemeVariant::Default),
@@ -1247,7 +1472,11 @@ fn gantt_text_fill_is_not_applicable_when_both_source_tokens_own_terminals() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {
             "textColor": "#abcdef",
-            "taskTextColor": "#fedcba"
+            "taskTextColor": "#fedcba",
+            "taskTextDarkColor": "#fedcba",
+            "taskTextOutsideColor": "#fedcba",
+            "taskTextClickableColor": "#fedcba",
+            "vertLineColor": "#fedcba"
         }
     })));
     let (fixture_parsed_26, fixture_layout_26, fixture_session_26) =
@@ -1268,6 +1497,50 @@ fn gantt_text_fill_is_not_applicable_when_both_source_tokens_own_terminals() {
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_generic_text_keeps_unowned_active_labels_when_grid_and_ordinary_labels_are_source_owned() {
+    let theme = gantt_text_fill_theme(
+        CanvasPaint::solid("#123456").unwrap(),
+        Some(ThemeVariant::Default),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "textColor": "#abcdef", "taskTextColor": "#fedcba" }
+    })));
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nOrdinary: ordinary, 2024-01-01, 100d\nActive: active, active-task, 2024-01-01, 100d\n";
+    let (parsed, options, session) =
+        prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
+    let rendered = family::prepare(&parsed, &options, session)
+        .unwrap()
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_owned()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for (id, expected) in [
+        ("gantt-config-ordinary-text", None),
+        ("gantt-config-active-task-text", Some("#123456!important")),
+    ] {
+        let label = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("id") == Some(id))
+            .unwrap();
+        assert_eq!(
+            label
+                .attribute("style")
+                .and_then(|style| style_property(style, "fill")),
+            expected
+        );
+    }
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
@@ -1642,6 +1915,15 @@ fn gantt_task_stroke_supports_variant_and_rejects_ordinal_clear_gradient_and_pat
             .filter(|(_, _, stroke)| stroke == "#654321")
             .map(|(id, _, _)| id.as_str())
             .collect::<Vec<_>>();
+        let expected_ids = if variant == ThemeVariant::Error {
+            &[
+                "gantt-config-crit-task",
+                "gantt-config-active-crit-task",
+                "gantt-config-done-crit-task",
+            ][..]
+        } else {
+            expected_ids
+        };
         assert_eq!(
             actual_ids, expected_ids,
             "unexpected terminal stroke scope for {variant:?}"
@@ -2367,5 +2649,76 @@ fn gantt_compound_critical_strokes_have_independent_config_ownership() {
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_active_done_labels_preserve_upstream_classes_and_outside_paint_ownership() {
+    let theme = gantt_text_fill_theme(CanvasPaint::solid("#abcdef").unwrap(), None);
+    for critical in [false, true] {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\nsection Work\nAn extremely long outside task label: active, done, {}task, 2024-01-01, 1d\nLong span: span, 2024-01-01, 100d\n",
+            if critical { "crit, " } else { "" }
+        );
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"taskTextOutsideColor": "#123456"}
+        })));
+        for themed in [false, true] {
+            let svg = if themed {
+                let (parsed, options, session) =
+                    prepare_gantt_family_with_theme_and_engine(&source, &theme, engine.clone());
+                family::prepare(&parsed, &options, session)
+                    .unwrap()
+                    .render_svg(
+                        &SvgRenderOptions {
+                            diagram_id: Some("gantt-config".into()),
+                            ..Default::default()
+                        },
+                        &SvgDebugOptions::default(),
+                    )
+                    .unwrap()
+                    .svg()
+                    .to_owned()
+            } else {
+                render_gantt_svg_from_text_with_engine(engine.clone(), &source)
+            };
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("-task-text"))
+                })
+                .unwrap();
+            let classes = label.attribute("class").unwrap();
+            let active = if critical {
+                "activeCritText0"
+            } else {
+                "activeText0"
+            };
+            let done = if critical {
+                "doneCritText0"
+            } else {
+                "doneText0"
+            };
+            assert!(
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == active),
+                "{classes}"
+            );
+            assert!(
+                classes.split_ascii_whitespace().any(|class| class == done),
+                "{classes}"
+            );
+            assert!(classes.contains("taskTextOutside"), "{classes}");
+            assert!(
+                label.attribute("style").is_none(),
+                "source-owned outside paint must retain its CSS winner"
+            );
+            assert!(svg.contains("fill:#123456;"), "{svg}");
+        }
     }
 }

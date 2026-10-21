@@ -172,7 +172,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.path_is_owned(path),
+                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -193,7 +193,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             }
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.path_is_owned(path),
+                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -216,7 +216,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.path_is_owned(path),
+                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -313,6 +313,12 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
         }
         StateResolvedValue::constant(fallback)
+    }
+
+    fn paint_path_is_owned(&self, path: &str) -> bool {
+        self.config.is_some_and(|config| {
+            merman_core::__private::config_paint_overrides_typed_default(config, path)
+        })
     }
 
     fn path_is_owned(&self, path: &str) -> bool {

@@ -109,7 +109,7 @@ impl FlowchartTextSurfacePaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            config_owned: merman_core::__private::config_path_overrides_typed_default(
+            config_owned: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.titleColor",
             ),

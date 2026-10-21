@@ -264,17 +264,17 @@ impl TreemapTypographyThemePlan {
             }
         }
         let theme_text_color_is_source_owned =
-            merman_core::__private::config_path_overrides_typed_default(
+            merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.textColor",
             );
         let label_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "treemap.labelColor",
             );
         let value_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "treemap.valueColor",
             );
@@ -1146,10 +1146,10 @@ impl TreemapTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "treemap.titleColor",
-        ) || merman_core::__private::config_path_overrides_typed_default(
+        ) || merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.titleColor",
         );

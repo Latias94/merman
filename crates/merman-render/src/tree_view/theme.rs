@@ -270,15 +270,15 @@ impl TreeViewThemePlan {
 
         let mut evidence = FamilyThemeOutcomes::default();
 
-        let label_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let label_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.labelColor",
         );
-        let line_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let line_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.lineColor",
         );
-        let icon_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let icon_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.iconColor",
         );

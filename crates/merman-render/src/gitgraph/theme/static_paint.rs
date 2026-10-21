@@ -117,7 +117,7 @@ impl GitGraphStaticPaintPlan {
         let source_owns_fill = effective_config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen)
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 COMMIT_LABEL_BACKGROUND_PATH,
             );

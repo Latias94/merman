@@ -243,7 +243,7 @@ impl XyChartSeriesPaintPlan {
         if routes.is_empty() && plan.palette.is_none() && plan.effect_binding.is_none() {
             return Ok(plan);
         }
-        let source_colors = merman_core::__private::config_path_overrides_typed_default(
+        let source_colors = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.xyChart.plotColorPalette",
         );

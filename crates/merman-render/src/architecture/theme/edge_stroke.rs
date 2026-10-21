@@ -248,9 +248,9 @@ fn typed_static_stroke(
 }
 
 fn mermaid_owns_edge_stroke(config: &MermaidConfig) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH) {
+    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH) {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(config, LINE_COLOR_PATH)
+    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
 }

@@ -39,7 +39,7 @@ impl ClassPaintBinding {
             compatibility_css: css.clone(),
             css,
             config_origin: owner_paths.iter().copied().find(|path| {
-                merman_core::__private::config_path_overrides_typed_default(config, path)
+                merman_core::__private::config_paint_overrides_typed_default(config, path)
             }),
             ..Self::default()
         }

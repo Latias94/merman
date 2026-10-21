@@ -99,7 +99,7 @@ impl ClassRelationThemePlan {
             ["themeVariables.mainBkg", "themeVariables.primaryColor"]
                 .into_iter()
                 .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(
+                    merman_core::__private::config_paint_overrides_typed_default(
                         effective_config,
                         path,
                     )

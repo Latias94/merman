@@ -405,7 +405,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             receipt.record_vertical_terminal_visibility(layout.tasks.iter().any(|task| task.vert));
         }
 
-        for (_task_index, t) in &tasks_in_draw_order {
+        for (task_index, t) in &tasks_in_draw_order {
             let base_class = &t.label.class;
             let mut task_type_class = String::new();
             if let Some(task) = semantic_task_by_id.get(t.id.as_str()) {
@@ -414,28 +414,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     &layout.categories,
                     layout.number_section_styles,
                 );
-                if task.active {
-                    if task.crit {
-                        task_type_class = format!("activeCritText{section_suffix}");
-                    } else {
-                        task_type_class = format!("activeText{section_suffix}");
-                    }
-                }
-                if task.done {
-                    if !task_type_class.is_empty() {
-                        task_type_class.push(' ');
-                    }
-                    if task.crit {
-                        task_type_class.push_str(&format!("doneCritText{section_suffix}"));
-                    } else {
-                        task_type_class.push_str(&format!("doneText{section_suffix}"));
-                    }
-                } else if task.crit {
-                    if !task_type_class.is_empty() {
-                        task_type_class.push(' ');
-                    }
-                    task_type_class.push_str(&format!("critText{section_suffix}"));
-                }
+                task_type_class =
+                    crate::gantt::GanttTaskTheme::task_label_state_classes(task, &section_suffix);
                 if task.milestone {
                     if !task_type_class.is_empty() {
                         task_type_class.push(' ');
@@ -459,6 +439,15 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),
             );
+            let terminal_label_fill =
+                task_theme.terminal_label_fill_for_layout_task(*task_index, &class);
+            if let Some(fill) = terminal_label_fill {
+                let _ = write!(
+                    &mut out,
+                    r#" style="fill:{}!important;""#,
+                    escape_attr(fill)
+                );
+            }
             options.checkpoint_emit()?;
             if preserve_task_text_height {
                 let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
@@ -472,7 +461,15 @@ pub(crate) fn render_gantt_diagram_svg_model(
             out.checkpoint()?;
             if let Some(receipt) = task_theme_receipt.as_mut() {
                 receipt.record_typography_text(&t.label.text);
-                receipt.record_task_text(&t.label.text, &class);
+                if terminal_label_fill.is_none() {
+                    receipt.record_task_text(&t.label.text, &class);
+                }
+                receipt.record_label_fill(
+                    *task_index,
+                    &class,
+                    terminal_label_fill,
+                    !t.label.text.trim().is_empty(),
+                );
             }
         }
 

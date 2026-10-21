@@ -148,13 +148,13 @@ impl FlowchartTextPaintPlan {
                         node_config_owned
                     }
                     FlowchartTextPaintChannel::Cluster => {
-                        merman_core::__private::config_path_overrides_typed_default(
+                        merman_core::__private::config_paint_overrides_typed_default(
                             config,
                             "themeVariables.titleColor",
                         )
                     }
                     FlowchartTextPaintChannel::DiagramTitle => {
-                        merman_core::__private::config_path_overrides_typed_default(
+                        merman_core::__private::config_paint_overrides_typed_default(
                             config,
                             "themeVariables.textColor",
                         )

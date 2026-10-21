@@ -52,7 +52,7 @@ impl RequirementRelationPaintPlan {
         }) {
             return Ok(None);
         }
-        let source_owned = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned = merman_core::__private::config_paint_overrides_typed_default(
             config,
             REQUIREMENT_RELATION_PAINT_PATH,
         );

@@ -612,7 +612,7 @@ fn railroad_config_owns_font_size(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_title_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.ruleNameColor",
@@ -623,11 +623,11 @@ fn railroad_config_owns_title_fill(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_text_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(config, ["themeVariables.textColor"])
+    railroad_config_owns_any_paint(config, ["themeVariables.textColor"])
 }
 
 fn railroad_config_owns_terminal_text_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.terminalTextColor",
@@ -638,7 +638,7 @@ fn railroad_config_owns_terminal_text_fill(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_nonterminal_text_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.nonTerminalTextColor",
@@ -649,7 +649,7 @@ fn railroad_config_owns_nonterminal_text_fill(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_comment_text_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.commentTextColor",
@@ -660,7 +660,7 @@ fn railroad_config_owns_comment_text_fill(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_rule_name_text_fill(config: &MermaidConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.ruleNameColor",
@@ -674,4 +674,13 @@ fn railroad_config_owns_any<const N: usize>(config: &MermaidConfig, paths: [&str
     paths
         .into_iter()
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))
+}
+
+fn railroad_config_owns_any_paint<const N: usize>(
+    config: &MermaidConfig,
+    paths: [&str; N],
+) -> bool {
+    paths
+        .into_iter()
+        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path))
 }

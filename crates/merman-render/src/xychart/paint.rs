@@ -1012,7 +1012,7 @@ pub(crate) fn text_is_visible(text: &str, font_size: f64) -> bool {
 }
 
 fn source_owns(config: &MermaidConfig, channel: &str) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(
+    merman_core::__private::config_paint_overrides_typed_default(
         config,
         &format!("themeVariables.xyChart.{channel}"),
     )

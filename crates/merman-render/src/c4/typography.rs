@@ -24,10 +24,8 @@ pub(crate) struct C4TypographyThemePlan {
     element_styles: BTreeMap<String, C4ElementStyle>,
     boundary_font: crate::text::TextStyle,
     message_font: crate::text::TextStyle,
-    boundary_text_color: Option<String>,
     relationship_text_color: String,
     relationship_line_color: String,
-    themed_relationship_markers: bool,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
@@ -156,14 +154,8 @@ impl C4TypographyThemePlan {
             element_styles,
             boundary_font: view.boundary_font(),
             message_font: view.message_font(),
-            boundary_text_color: effective_config
-                .get_str("c4.boundary_font_color")
-                .map(str::to_owned),
             relationship_text_color: view.color("relationship_text_color", "#444444"),
             relationship_line_color: view.color("relationship_line_color", "#444444"),
-            themed_relationship_markers: effective_config
-                .get_str("c4.relationship_line_color")
-                .is_some(),
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
@@ -213,17 +205,11 @@ impl C4TypographyThemePlan {
         &self.message_font
     }
 
-    pub(crate) fn boundary_text_color(&self) -> Option<&str> {
-        self.boundary_text_color.as_deref()
-    }
     pub(crate) fn relationship_text_color(&self) -> &str {
         &self.relationship_text_color
     }
     pub(crate) fn relationship_line_color(&self) -> &str {
         &self.relationship_line_color
-    }
-    pub(crate) const fn themed_relationship_markers(&self) -> bool {
-        self.themed_relationship_markers
     }
 
     #[cfg(test)]

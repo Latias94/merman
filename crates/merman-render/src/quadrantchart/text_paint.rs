@@ -138,7 +138,7 @@ impl QuadrantChartPaintPlan {
             ),
         ] {
             let source_owned =
-                merman_core::__private::config_path_overrides_typed_default(config, path);
+                merman_core::__private::config_paint_overrides_typed_default(config, path);
             let static_style = theme.text_style_with_work_meter(
                 target,
                 ThemeVariant::Default,
@@ -300,7 +300,7 @@ impl QuadrantChartPaintPlan {
                 "themeVariables.quadrantInternalBorderStrokeFill"
             };
             let source_owned =
-                merman_core::__private::config_path_overrides_typed_default(config, path);
+                merman_core::__private::config_paint_overrides_typed_default(config, path);
             if !source_owned && let Some(paint) = &border_paint {
                 line.stroke_fill = paint.css().to_owned();
             }

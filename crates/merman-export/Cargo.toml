@@ -24,6 +24,7 @@ native-fonts = [
     "dep:rustybuzz",
     "dep:sha2",
     "dep:thiserror",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]

@@ -4,9 +4,10 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    MermaidThemeCompatibility, OrdinalPalette, ThemeColorValue, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -23,16 +24,34 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
 fn classic_engine() -> Engine {
     Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "theme": "default",
         "look": "classic",
         "layout": "dagre"
     })))
 }
 
+fn requirement_theme_spec(theme: &str) -> DiagramThemeSpec {
+    if theme == "default" {
+        return DiagramThemeSpec::new();
+    }
+    DiagramThemeSpec::new().with_mermaid_compatibility(
+        MermaidThemeCompatibility::default()
+            .with_theme(theme)
+            .expect("valid Requirement fixture theme"),
+    )
+}
+
+fn requirement_classic_paint_spec() -> DiagramThemeSpec {
+    DiagramThemeSpec::new().with_mermaid_compatibility(
+        MermaidThemeCompatibility::default()
+            .with_theme("default")
+            .expect("valid classic Requirement paint baseline"),
+    )
+}
+
 fn requirement_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
@@ -48,7 +67,7 @@ fn requirement_fill_theme(fill: CanvasPaint) -> DiagramTheme {
 fn requirement_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
@@ -64,7 +83,7 @@ fn requirement_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
 fn requirement_fill_and_stroke_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
@@ -82,7 +101,7 @@ fn requirement_fill_and_stroke_theme(fill: CanvasPaint, stroke: CanvasPaint) -> 
 fn requirement_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(
                         ThemeRule::new(
@@ -105,7 +124,7 @@ fn requirement_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramThem
 
 fn requirement_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_typography(
+        .compile(requirement_theme_spec("default").with_typography(
             TypographySpec::default().with_family_style(DiagramFamilyId::REQUIREMENT, typography),
         ))
         .expect("compile Requirement typography theme")
@@ -114,7 +133,7 @@ fn requirement_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
 fn requirement_ordinal_palette_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default().with_ordinal_palette(
                     ThemeTarget::Requirement,
                     OrdinalPalette::new([
@@ -142,6 +161,30 @@ fn render_requirement_with_theme_and_engine(
         engine,
         ThemePortabilityRequirement::RequirePortable,
     )
+}
+
+fn render_requirement_with_classic_paint_baseline(
+    source: &str,
+    theme: &DiagramTheme,
+) -> family::RenderedFamilySvg {
+    render_requirement_with_retained_recipe_baseline(source, theme, classic_engine())
+}
+
+fn render_requirement_with_retained_recipe_baseline(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    let rendered = render_requirement_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_core::__private::theme_parse_evidence(rendered.metadata());
+    assert_eq!(evidence.mermaid_residual_count(), 1);
+    assert!(evidence.mermaid_theme_field_survives());
+    rendered
 }
 
 fn render_requirement_with_theme_requirement(
@@ -210,12 +253,16 @@ fn render_requirement_without_theme_and_engine(
     source: &str,
     engine: Engine,
 ) -> family::RenderedFamilySvg {
-    let parsed = engine
+    let baseline = DiagramThemeCompiler::new()
+        .compile(requirement_classic_paint_spec())
+        .expect("compile Requirement baseline");
+    let parsed = merman_render::__private::install_parse_compatibility(&baseline, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Requirement")
         .expect("detect Requirement");
     let session = RenderEnvironment::deterministic()
-        .begin_session()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(&baseline)
         .expect("begin Requirement session");
 
     family::prepare(&parsed, &LayoutOptions::default(), session)
@@ -297,6 +344,63 @@ fn requirement_stylesheet(svg: &str) -> String {
         .to_string()
 }
 
+fn requirement_palette_property(
+    document: &roxmltree::Document<'_>,
+    node_id: &str,
+    property: &str,
+) -> Option<String> {
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .expect("visible Requirement palette node");
+    let look = node.attribute("data-look").expect("Requirement look");
+    let color = node
+        .attribute("data-color-id")
+        .expect("Requirement palette slot");
+    let selector =
+        format!("#requirement-theme [data-look=\"{look}\"][data-color-id=\"{color}\"].node path{{");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Requirement stylesheet");
+    css.split(&selector)
+        .nth(1)?
+        .split('}')
+        .next()?
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .find_map(|(name, value)| (name == property).then(|| value.to_owned()))
+}
+
+fn assert_requirement_has_no_typed_paint_override(
+    document: &roxmltree::Document<'_>,
+    node_id: &str,
+    property: &str,
+    typed: &str,
+) {
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .expect("visible Requirement paint node");
+    for path in node.descendants().filter(|node| node.has_tag_name("path")) {
+        for (name, value) in path
+            .attribute("style")
+            .unwrap_or_default()
+            .split(';')
+            .filter_map(|declaration| declaration.split_once(':'))
+        {
+            if name.trim() == property {
+                assert_ne!(
+                    value.trim().trim_end_matches("!important").trim_end(),
+                    typed,
+                    "{node_id} must retain its {property} palette owner"
+                );
+            }
+        }
+    }
+}
+
 fn requirement_source() -> &'static str {
     r#"requirementDiagram
   requirement req1 {
@@ -318,7 +422,9 @@ fn requirement_relation_theme(
         rule = rule.with_variant(variant);
     }
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .compile(
+            requirement_classic_paint_spec().with_styles(ThemeRuleSet::default().with_rule(rule)),
+        )
         .expect("compile Requirement relation paint")
 }
 
@@ -338,7 +444,7 @@ fn requirement_relation_paint_is_portable_for_lines_and_referenced_markers() {
                 ThemeStylePatch::default().with_stroke(paint.clone()),
             ] {
                 let theme = requirement_relation_theme(patch, variant);
-                let rendered = render_requirement_with_theme(&source, &theme);
+                let rendered = render_requirement_with_classic_paint_baseline(&source, &theme);
                 let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
                 let css = requirement_stylesheet(rendered.svg());
                 assert!(
@@ -389,6 +495,7 @@ fn requirement_relation_paint_is_portable_for_lines_and_referenced_markers() {
                 }
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
                 assert_eq!(evidence.applied_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
                 assert_eq!(evidence.not_applicable_count(), 0);
@@ -411,7 +518,7 @@ fn requirement_relation_config_ownership_and_empty_domain_are_not_applicable() {
             source,
             classic_engine().with_site_config(config.clone()),
         );
-        let rendered = render_requirement_with_theme_and_engine(
+        let rendered = render_requirement_with_retained_recipe_baseline(
             source,
             &theme,
             classic_engine().with_site_config(config),
@@ -423,18 +530,20 @@ fn requirement_relation_config_ownership_and_empty_domain_are_not_applicable() {
         );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
     let baseline = render_requirement_without_theme(requirement_source());
-    let rendered = render_requirement_with_theme(requirement_source(), &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(requirement_source(), &theme);
     assert_eq!(
         baseline.svg(),
         rendered.svg(),
         "unreferenced marker defs are not visible relations"
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
 }
@@ -466,6 +575,7 @@ fn requirement_relation_stroke_blocks_fill_fallback_including_clear() {
         }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
         assert_eq!(
             evidence.applied_count(),
             usize::from(matches!(stroke, Specified::Value(_)))
@@ -498,7 +608,7 @@ fn requirement_svg_label_source() -> &'static str {
 #[test]
 fn requirement_optional_evidence_preserves_exact_unmodified_svg() {
     let empty_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
+        .compile(requirement_classic_paint_spec())
         .expect("compile empty theme");
     for source in [
         "requirementDiagram\n",
@@ -515,7 +625,7 @@ fn requirement_optional_evidence_preserves_exact_unmodified_svg() {
                 source,
                 classic_engine().with_site_config(config.clone()),
             );
-            let with_evidence = render_requirement_with_theme_and_engine(
+            let with_evidence = render_requirement_with_retained_recipe_baseline(
                 source,
                 &empty_theme,
                 classic_engine().with_site_config(config),
@@ -526,6 +636,12 @@ fn requirement_optional_evidence_preserves_exact_unmodified_svg() {
                 with_evidence.svg(),
                 "htmlLabels={html_labels}, source={source}"
             );
+            let evidence =
+                merman_render::__private::family_evidence(with_evidence.into_completion().report());
+            assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
+            assert_eq!(evidence.required_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.source_residual_count(), 0);
         }
     }
 }
@@ -1477,23 +1593,42 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
 }
 
 #[test]
-fn requirement_family_default_keeps_redux_color_paint_ownership() {
-    let theme = requirement_fill_theme(CanvasPaint::solid("#123456").unwrap());
+fn requirement_family_default_palette_yields_to_typed_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Requirement,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::REQUIREMENT),
+                ),
+            ),
+        )
+        .unwrap();
     let rendered =
         render_requirement_with_theme_and_engine(requirement_source(), &theme, Engine::new());
     let document = roxmltree::Document::parse(rendered.svg()).expect("default Requirement SVG");
     assert_eq!(
         terminal_fill_for(&document, "requirement-theme-req1"),
-        "#ffffff"
+        "#123456"
+    );
+    assert_eq!(
+        terminal_stroke_for(&document, "requirement-theme-req1"),
+        "#654321"
     );
     assert!(rendered.svg().contains(r#"data-look="neo""#));
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1518,8 +1653,10 @@ fn same_named_requirement_and_element_share_one_typed_fill_receipt() {
     let theme = requirement_fill_theme(
         CanvasPaint::solid("#123456").expect("valid same-name Requirement fill"),
     );
-    let rendered =
-        render_requirement_with_theme(same_named_requirement_and_element_source(), &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(
+        same_named_requirement_and_element_source(),
+        &theme,
+    );
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid themed Requirement SVG");
     let node_id = "requirement-theme-shared";
@@ -1536,6 +1673,7 @@ fn same_named_requirement_and_element_share_one_typed_fill_receipt() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1554,7 +1692,7 @@ fn requirement_fill_reaches_terminal_path_and_family_evidence() {
 
     for (fill, expected_fill) in cases {
         let theme = requirement_fill_theme(fill);
-        let rendered = render_requirement_with_theme(requirement_source(), &theme);
+        let rendered = render_requirement_with_classic_paint_baseline(requirement_source(), &theme);
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid themed Requirement SVG");
         assert_eq!(
@@ -1565,6 +1703,7 @@ fn requirement_fill_reaches_terminal_path_and_family_evidence() {
         drop(document);
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
@@ -1585,7 +1724,7 @@ fn requirement_stroke_reaches_terminal_path_and_family_evidence() {
     let mut expected_geometry = None;
     for (stroke, expected_stroke) in cases {
         let theme = requirement_stroke_theme(stroke);
-        let rendered = render_requirement_with_theme(requirement_source(), &theme);
+        let rendered = render_requirement_with_classic_paint_baseline(requirement_source(), &theme);
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid themed Requirement SVG");
         assert_eq!(
@@ -1605,6 +1744,7 @@ fn requirement_stroke_reaches_terminal_path_and_family_evidence() {
         drop(document);
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
@@ -1620,7 +1760,8 @@ fn requirement_typed_stroke_remains_the_neo_terminal_winner() {
     let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "neo"
     })));
-    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let rendered =
+        render_requirement_with_retained_recipe_baseline(requirement_source(), &theme, engine);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid Neo themed Requirement SVG");
     let requirement = document
@@ -1664,6 +1805,7 @@ fn requirement_typed_stroke_remains_the_neo_terminal_winner() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1696,7 +1838,7 @@ fn requirement_source_class_and_inline_strokes_outrank_typed_stroke_per_node() {
     let theme = requirement_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid mixed Requirement stroke"),
     );
-    let rendered = render_requirement_with_theme(source, &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(source, &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid mixed-owner Requirement SVG");
 
@@ -1716,6 +1858,7 @@ fn requirement_source_class_and_inline_strokes_outrank_typed_stroke_per_node() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1737,7 +1880,7 @@ fn requirement_source_owned_fill_does_not_hide_direct_stroke_evidence() {
         CanvasPaint::solid("#654321").expect("valid suppressed Requirement fill"),
         CanvasPaint::solid("#123456").expect("valid direct Requirement stroke"),
     );
-    let rendered = render_requirement_with_theme(source, &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(source, &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid property-local Requirement SVG");
 
@@ -1753,6 +1896,7 @@ fn requirement_source_owned_fill_does_not_hide_direct_stroke_evidence() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1763,7 +1907,7 @@ fn requirement_source_owned_fill_does_not_hide_direct_stroke_evidence() {
 fn requirement_explicit_default_paint_reaches_terminal_receipt() {
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            requirement_classic_paint_spec().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
@@ -1783,7 +1927,7 @@ fn requirement_explicit_default_paint_reaches_terminal_receipt() {
             ),
         )
         .expect("compile explicit Default Requirement paint");
-    let rendered = render_requirement_with_theme(requirement_source(), &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(requirement_source(), &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid explicit-Default Requirement SVG");
     assert_eq!(
@@ -1798,6 +1942,7 @@ fn requirement_explicit_default_paint_reaches_terminal_receipt() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1812,7 +1957,8 @@ fn requirement_explicit_node_border_outranks_typed_stroke() {
     let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "nodeBorder": "#fedcba" }
     })));
-    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let rendered =
+        render_requirement_with_retained_recipe_baseline(requirement_source(), &theme, engine);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid config-owned Requirement SVG");
     assert_eq!(
@@ -1823,6 +1969,7 @@ fn requirement_explicit_node_border_outranks_typed_stroke() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -1855,7 +2002,7 @@ fn requirement_source_class_and_inline_fills_outrank_typed_fill_per_node() {
     let theme = requirement_fill_theme(
         CanvasPaint::solid("#123456").expect("valid mixed Requirement fill"),
     );
-    let rendered = render_requirement_with_theme(source, &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(source, &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid mixed-owner Requirement SVG");
 
@@ -1875,6 +2022,7 @@ fn requirement_source_class_and_inline_fills_outrank_typed_fill_per_node() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1898,7 +2046,7 @@ fn requirement_source_styles_reject_css_injection_tokens() {
         CanvasPaint::solid("#abcdef").expect("valid Requirement fill"),
         CanvasPaint::solid("#fedcba").expect("valid Requirement stroke"),
     );
-    let rendered = render_requirement_with_theme(source, &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(source, &theme);
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Requirement SVG");
     let requirement = document
         .descendants()
@@ -1916,6 +2064,13 @@ fn requirement_source_styles_reject_css_injection_tokens() {
     );
     assert!(!emitted_styles.contains("javascript:"));
     assert!(!emitted_styles.contains(";fill:red"));
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.source_residual_count(), 0);
 }
 
 #[test]
@@ -1938,7 +2093,7 @@ fn requirement_fill_is_not_applicable_when_every_node_has_a_source_owner() {
     let theme = requirement_fill_theme(
         CanvasPaint::solid("#123456").expect("valid suppressed Requirement fill"),
     );
-    let rendered = render_requirement_with_theme(source, &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(source, &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid source-owned Requirement SVG");
     assert_eq!(
@@ -1953,6 +2108,7 @@ fn requirement_fill_is_not_applicable_when_every_node_has_a_source_owner() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -1964,9 +2120,10 @@ fn requirement_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
     let theme = requirement_fill_with_ordinal_palette_theme(
         CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
     );
-    let rendered = render_requirement_with_theme(requirement_source(), &theme);
+    let rendered = render_requirement_with_classic_paint_baseline(requirement_source(), &theme);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
 
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -1984,9 +2141,13 @@ fn requirement_ordinal_palette_is_not_applicable_when_source_fill_wins() {
   classDef accent fill:#00aa00
   class assigned accent
 "#;
-    let rendered = render_requirement_with_theme(source, &requirement_ordinal_palette_theme());
+    let rendered = render_requirement_with_classic_paint_baseline(
+        source,
+        &requirement_ordinal_palette_theme(),
+    );
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
 
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -2000,7 +2161,8 @@ fn requirement_explicit_background_outranks_typed_fill() {
     let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "mainBkg": "#fedcba" }
     })));
-    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let rendered =
+        render_requirement_with_retained_recipe_baseline(requirement_source(), &theme, engine);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid config-owned Requirement SVG");
     assert_eq!(
@@ -2011,6 +2173,7 @@ fn requirement_explicit_background_outranks_typed_fill() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -2019,60 +2182,502 @@ fn requirement_explicit_background_outranks_typed_fill() {
 
 #[test]
 fn extended_dark_primary_color_does_not_own_requirement_main_background() {
-    let theme = requirement_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid config-derived Requirement fill"),
-    );
     let source_owned = format!(
         "%%{{init: {{\"themeVariables\": {{\"primaryColor\": \"#fedcba\"}}}}}}%%\n{}",
         requirement_source()
     );
-    let cases = [
-        (
-            "site-owned neo-dark",
-            requirement_source().to_string(),
-            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "theme": "neo-dark",
-                "themeVariables": { "primaryColor": "#fedcba" }
-            }))),
-            "#123456",
-            1,
-            0,
-        ),
-        (
-            "source-owned redux-dark",
-            source_owned,
-            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "theme": "redux-dark",
-                "secure": []
-            }))),
-            "#123456",
-            1,
-            0,
-        ),
-    ];
-
-    for (owner, source, engine, expected_fill, applied_count, not_applicable_count) in cases {
-        let rendered = render_requirement_with_theme_and_engine(&source, &theme, engine);
-        let document = roxmltree::Document::parse(rendered.svg())
-            .unwrap_or_else(|error| panic!("valid {owner} Requirement SVG: {error}"));
-        assert_eq!(
-            terminal_fill_for(&document, "requirement-theme-req1"),
-            expected_fill,
-            "{owner} primaryColor must not own the mainBkg terminal"
-        );
-
-        drop(document);
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1, "{owner}");
-        assert_eq!(evidence.applied_count(), applied_count, "{owner}");
-        assert_eq!(
-            evidence.not_applicable_count(),
-            not_applicable_count,
-            "{owner}"
-        );
-        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    for baseline in ["neo-dark", "redux-dark"] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                requirement_theme_spec(baseline).with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Requirement,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456").expect("valid Requirement fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::REQUIREMENT),
+                    ),
+                ),
+            )
+            .expect("compile extended-dark Requirement baseline");
+        for (owner, source, variables) in [
+            (
+                "site",
+                requirement_source().to_owned(),
+                serde_json::json!({"themeVariables": {"primaryColor": "#fedcba"}}),
+            ),
+            (
+                "source",
+                source_owned.clone(),
+                serde_json::json!({"secure": []}),
+            ),
+        ] {
+            let rendered = render_requirement_with_retained_recipe_baseline(
+                &source,
+                &theme,
+                classic_engine().with_site_config(MermaidConfig::from_value(variables)),
+            );
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid Requirement SVG");
+            assert_eq!(
+                terminal_fill_for(&document, "requirement-theme-req1"),
+                "#123456",
+                "{baseline} {owner} primaryColor must not own the independent mainBkg terminal",
+            );
+            drop(document);
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{baseline} {owner}");
+            assert_eq!(evidence.applied_count(), 1, "{baseline} {owner}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{baseline} {owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{baseline} {owner}");
+        }
     }
+}
+
+#[test]
+fn requirement_source_palette_wins_while_site_palette_is_a_fallback() {
+    let theme = requirement_fill_and_stroke_theme(
+        CanvasPaint::solid("#123456").unwrap(),
+        CanvasPaint::solid("#654321").unwrap(),
+    );
+    for (baseline, fill, stroke) in [
+        ("neo-dark", "#2a2020", "#ccc"),
+        ("redux-dark", "#111113", "#FFFFFF"),
+    ] {
+        for (owner, source, config) in [
+            (
+                "site",
+                requirement_source().to_owned(),
+                serde_json::json!({"theme": baseline}),
+            ),
+            (
+                "source",
+                format!(
+                    "---\nconfig:\n  theme: {baseline}\n---\n{}",
+                    requirement_source()
+                ),
+                serde_json::json!({"secure": []}),
+            ),
+        ] {
+            let rendered = render_requirement_with_theme_and_engine(
+                &source,
+                &theme,
+                classic_engine().with_site_config(MermaidConfig::from_value(config)),
+            );
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid Requirement SVG");
+            assert_eq!(
+                terminal_fill_for(&document, "requirement-theme-req1"),
+                if owner == "source" { fill } else { "#123456" },
+                "{baseline} {owner}"
+            );
+            assert_eq!(
+                terminal_stroke_for(&document, "requirement-theme-req1"),
+                if owner == "source" { stroke } else { "#654321" },
+                "{baseline} {owner}"
+            );
+            drop(document);
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{baseline} {owner}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(owner == "site"),
+                "{baseline} {owner}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(owner == "source"),
+                "{baseline} {owner}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{baseline} {owner}");
+            assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+            assert_eq!(evidence.source_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_redux_fallback_palettes_yield_to_typed_paint() {
+    for palette in ["redux-color", "redux-dark-color"] {
+        for origin in ["site", "recipe", "source"] {
+            let mut spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            );
+            if origin == "recipe" {
+                spec = spec.with_mermaid_compatibility(
+                    MermaidThemeCompatibility::default()
+                        .with_theme(palette)
+                        .unwrap(),
+                );
+            }
+            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+            let source = if origin == "source" {
+                format!(
+                    "%%{{init: {{\"theme\": \"{palette}\"}}}}%%\n{}",
+                    requirement_source()
+                )
+            } else {
+                requirement_source().to_owned()
+            };
+            let engine = if origin == "site" {
+                classic_engine().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"theme": palette}),
+                ))
+            } else {
+                classic_engine()
+            };
+            let rendered = render_requirement_with_theme_requirement(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            );
+            assert_eq!(
+                rendered.metadata().effective_config.get_str("theme"),
+                Some(palette)
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if origin == "source" {
+                for (property, typed) in [("fill", "#123456"), ("stroke", "#654321")] {
+                    let terminal = if property == "fill" {
+                        terminal_fill_for(&document, "requirement-theme-req1")
+                    } else {
+                        terminal_stroke_for(&document, "requirement-theme-req1")
+                    };
+                    let config = rendered.metadata().effective_config.as_value();
+                    if let Some(palette_paint) =
+                        requirement_palette_property(&document, "requirement-theme-req1", property)
+                    {
+                        let channel = if property == "fill" {
+                            "bkgColorArray"
+                        } else {
+                            "borderColorArray"
+                        };
+                        let expected = config["themeVariables"][channel]
+                            .as_array()
+                            .and_then(|colors| {
+                                colors.iter().filter_map(serde_json::Value::as_str).next()
+                            })
+                            .expect("the matched source palette has a first color");
+                        assert_eq!(palette_paint, expected, "{origin} {palette} {property}");
+                    } else {
+                        let channel = if property == "fill" {
+                            "mainBkg"
+                        } else {
+                            "nodeBorder"
+                        };
+                        assert_eq!(
+                            Some(terminal.as_str()),
+                            config["themeVariables"][channel].as_str(),
+                            "{origin} {palette} {property}"
+                        );
+                    }
+                    assert_ne!(terminal, typed, "{origin} {palette} {property}");
+                    assert_requirement_has_no_typed_paint_override(
+                        &document,
+                        "requirement-theme-req1",
+                        property,
+                        typed,
+                    );
+                }
+            } else {
+                assert_eq!(
+                    terminal_fill_for(&document, "requirement-theme-req1"),
+                    "#123456",
+                    "{origin} {palette}"
+                );
+                assert_eq!(
+                    terminal_stroke_for(&document, "requirement-theme-req1"),
+                    "#654321",
+                    "{origin} {palette}"
+                );
+            }
+            assert!(
+                document
+                    .descendants()
+                    .filter_map(|node| node.text())
+                    .any(|text| text.contains("Themed requirement"))
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {palette}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(origin != "source"),
+                "{origin} {palette}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(origin == "source"),
+                "{origin} {palette}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {palette}");
+            assert_eq!(
+                evidence.mermaid_compatibility_residual_count(),
+                usize::from(origin == "recipe"),
+                "{origin} {palette}"
+            );
+        }
+    }
+}
+
+#[test]
+fn requirement_explicit_palette_arrays_own_only_valid_paint_channels() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for (case, variables, owned_fill, owned_stroke) in [
+        (
+            "background-only",
+            serde_json::json!({"bkgColorArray": ["#fedcba"]}),
+            Some("#fedcba"),
+            None,
+        ),
+        (
+            "border-only",
+            serde_json::json!({"borderColorArray": ["#abcdef"]}),
+            None,
+            Some("#abcdef"),
+        ),
+        (
+            "empty",
+            serde_json::json!({"bkgColorArray": [], "borderColorArray": []}),
+            None,
+            None,
+        ),
+        (
+            "non-string",
+            serde_json::json!({"bkgColorArray": [7], "borderColorArray": [false]}),
+            None,
+            None,
+        ),
+    ] {
+        for origin in ["site", "directive"] {
+            let mut config = serde_json::json!({"theme": "redux-color"});
+            let source = if origin == "site" {
+                config["themeVariables"] = variables.clone();
+                requirement_source().to_owned()
+            } else {
+                format!(
+                    "%%{{init: {{\"themeVariables\": {variables}}}}}%%\n{}",
+                    requirement_source()
+                )
+            };
+            let rendered = render_requirement_with_theme_and_engine(
+                &source,
+                &theme,
+                classic_engine().with_site_config(MermaidConfig::from_value(config)),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if origin == "directive" {
+                for (channel, values) in variables.as_object().unwrap() {
+                    for color in values
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                    {
+                        assert!(
+                            !rendered.metadata().effective_config.as_value()["themeVariables"]
+                                [channel]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|value| value.as_str() == Some(color)),
+                            "directive admission must reject {channel}: {color}"
+                        );
+                    }
+                }
+            }
+            for (property, owner, typed) in [
+                ("fill", owned_fill, "#123456"),
+                ("stroke", owned_stroke, "#654321"),
+            ] {
+                // Mermaid rejects palette arrays in init directives before paint ownership.
+                let owner = if origin == "directive" { None } else { owner };
+                let terminal = if property == "fill" {
+                    terminal_fill_for(&document, "requirement-theme-req1")
+                } else {
+                    terminal_stroke_for(&document, "requirement-theme-req1")
+                };
+                if owner.is_some() {
+                    let channel = if property == "fill" {
+                        "bkgColorArray"
+                    } else {
+                        "borderColorArray"
+                    };
+                    let expected =
+                        rendered.metadata().effective_config.as_value()["themeVariables"][channel]
+                            .as_array()
+                            .and_then(|colors| {
+                                colors.iter().filter_map(serde_json::Value::as_str).next()
+                            })
+                            .expect("the explicit palette channel has a first final color");
+                    assert_eq!(
+                        requirement_palette_property(&document, "requirement-theme-req1", property)
+                            .as_deref(),
+                        Some(expected),
+                        "{case} {origin} {property}"
+                    );
+                    assert_ne!(terminal, typed, "{case} {origin} {property}");
+                    assert_requirement_has_no_typed_paint_override(
+                        &document,
+                        "requirement-theme-req1",
+                        property,
+                        typed,
+                    );
+                } else {
+                    assert_eq!(terminal, typed, "{case} {origin} {property}");
+                }
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{case} {origin}");
+            assert_eq!(evidence.applied_count(), 1, "{case} {origin}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{case} {origin}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{case} {origin}");
+        }
+    }
+}
+
+#[test]
+fn requirement_palette_ownership_follows_each_visible_color_slot() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    let source = format!(
+        "{}\nrequirement req2 {{\n id: 2\n text: Second\n risk: low\n verifymethod: test\n}}\n",
+        requirement_source()
+    );
+    for limit in [0, 1, 2] {
+        let rendered = render_requirement_with_theme_and_engine(
+            &source,
+            &theme,
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "theme": "redux-color",
+                "themeVariables": {
+                    "bkgColorArray": ["#fedcba"],
+                    "borderColorArray": ["#abcdef", "#aabbcc"],
+                    "THEME_COLOR_LIMIT": limit
+                }
+            }))),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (id, slot, border) in [
+            ("requirement-theme-req1", 0, "#abcdef"),
+            ("requirement-theme-req2", 1, "#aabbcc"),
+        ] {
+            let owns_fill = slot == 0 && slot < limit;
+            let owns_stroke = slot < limit;
+            if owns_fill {
+                assert_eq!(
+                    requirement_palette_property(&document, id, "fill").as_deref(),
+                    Some("#fedcba"),
+                    "limit={limit} {id}"
+                );
+                assert_ne!(
+                    terminal_fill_for(&document, id),
+                    "#123456",
+                    "limit={limit} {id}"
+                );
+                assert_requirement_has_no_typed_paint_override(&document, id, "fill", "#123456");
+            } else {
+                assert_eq!(
+                    terminal_fill_for(&document, id),
+                    "#123456",
+                    "limit={limit} {id}"
+                );
+            }
+            if owns_stroke {
+                assert_eq!(
+                    requirement_palette_property(&document, id, "stroke").as_deref(),
+                    Some(border),
+                    "limit={limit} {id}"
+                );
+                assert_ne!(
+                    terminal_stroke_for(&document, id),
+                    "#654321",
+                    "limit={limit} {id}"
+                );
+                assert_requirement_has_no_typed_paint_override(&document, id, "stroke", "#654321");
+            } else {
+                assert_eq!(
+                    terminal_stroke_for(&document, id),
+                    "#654321",
+                    "limit={limit} {id}"
+                );
+            }
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "limit={limit}");
+        assert_eq!(evidence.applied_count(), 1, "limit={limit}");
+        assert_eq!(evidence.not_applicable_count(), 0, "limit={limit}");
+        assert_eq!(evidence.theme_residual_count(), 0, "limit={limit}");
+    }
+
+    let rendered = render_requirement_with_theme_and_engine(
+        same_named_requirement_and_element_source(),
+        &theme,
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "bkgColorArray": ["#fedcba", "#aabbcc"],
+                "borderColorArray": ["#abcdef", "#ddeeff"],
+                "THEME_COLOR_LIMIT": 1
+            }
+        }))),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let terminals = document
+        .descendants()
+        .filter(|node| node.attribute("id") == Some("requirement-theme-shared"))
+        .collect::<Vec<_>>();
+    assert_eq!(terminals.len(), 1);
+    assert_eq!(terminals[0].attribute("data-color-id"), Some("color-1"));
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-shared"),
+        "#123456"
+    );
+    assert_eq!(
+        terminal_stroke_for(&document, "requirement-theme-shared"),
+        "#654321"
+    );
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -2086,7 +2691,8 @@ fn requirement_border_color_array_owns_stroke_without_hiding_typed_fill() {
             "borderColorArray": ["#fedcba"]
         }
     })));
-    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let rendered =
+        render_requirement_with_retained_recipe_baseline(requirement_source(), &theme, engine);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid borderColorArray Requirement SVG");
 
@@ -2112,6 +2718,7 @@ fn requirement_border_color_array_owns_stroke_without_hiding_typed_fill() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -2130,7 +2737,8 @@ fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence()
             "bkgColorArray": ["#abcdef"]
         }
     })));
-    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let rendered =
+        render_requirement_with_retained_recipe_baseline(requirement_source(), &theme, engine);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid Requirement color-array SVG");
 
@@ -2155,6 +2763,7 @@ fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence()
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -2163,7 +2772,7 @@ fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence()
 
 fn requirement_text_theme(rules: ThemeRuleSet) -> DiagramTheme {
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .compile(requirement_theme_spec("default").with_styles(rules))
         .expect("compile Requirement text paint")
 }
 

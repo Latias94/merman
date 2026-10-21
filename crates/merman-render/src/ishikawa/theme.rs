@@ -391,7 +391,7 @@ fn selector_matches_text_domain(selector: FamilyThemeSelectorShape, text_count: 
 }
 
 fn mermaid_owns_text_fill(config: &MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.textColor")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.textColor")
 }
 
 #[derive(Debug, Default)]

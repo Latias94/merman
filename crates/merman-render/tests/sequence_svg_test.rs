@@ -4,9 +4,10 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector,
-    Specified, TextStylePatch as ThemeTextStylePatch, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,
+    MermaidThemeCompatibility, OrdinalSelector, Specified, TextStylePatch as ThemeTextStylePatch,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 
 use merman_render::environment::{
@@ -538,21 +539,27 @@ fn sequence_role_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramT
     };
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(role_fill(ThemeTarget::ActorLabel))
-                    .with_rule(role_fill(ThemeTarget::MessageLabel))
-                    .with_rule(role_fill(ThemeTarget::NoteLabel))
-                    .with_rule(role_fill(ThemeTarget::LoopLabel))
-                    .with_rule(role_fill(ThemeTarget::LoopLabelBackground))
-                    .with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::LoopLabelBackground,
-                            ThemeStylePatch::default().with_stroke(stroke),
-                        )
-                        .for_family(DiagramFamilyId::SEQUENCE),
-                    ),
-            ),
+            DiagramThemeSpec::new()
+                .with_mermaid_compatibility(
+                    MermaidThemeCompatibility::default()
+                        .with_theme("default")
+                        .unwrap(),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(role_fill(ThemeTarget::ActorLabel))
+                        .with_rule(role_fill(ThemeTarget::MessageLabel))
+                        .with_rule(role_fill(ThemeTarget::NoteLabel))
+                        .with_rule(role_fill(ThemeTarget::LoopLabel))
+                        .with_rule(role_fill(ThemeTarget::LoopLabelBackground))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::LoopLabelBackground,
+                                ThemeStylePatch::default().with_stroke(stroke),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                ),
         )
         .expect("compile Sequence role paint theme")
 }
@@ -2827,13 +2834,15 @@ end"#;
         let theme = sequence_role_paint_theme(fill, stroke);
         let parsed = merman_render::__private::install_parse_compatibility(
             &theme,
-            classic_sequence_engine(),
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"look":"classic"}),
+            )),
         )
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap_or_else(|error| panic!("parse {case} Sequence role paint source: {error}"))
         .unwrap_or_else(|| panic!("detect {case} Sequence role paint source"));
         let session = RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
             .begin_session_with_theme(&theme)
             .unwrap_or_else(|error| panic!("begin {case} Sequence role paint session: {error}"));
         let diagram_id = format!("sequence-role-paint-{case}");
@@ -2938,13 +2947,12 @@ fn render_sequence_paint_owner_case(
     } else {
         ThemeStylePatch::default().with_fill(paint)
     };
+    let spec = DiagramThemeSpec::new().with_styles(
+        ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE)),
+    );
     let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
-                )),
-        )
+        .compile(spec)
         .unwrap_or_else(|error| panic!("compile {origin} Sequence {case} {property}: {error}"));
     let (engine, source) = if origin == "site" {
         (
@@ -2975,6 +2983,50 @@ fn render_sequence_paint_owner_case(
             &SvgDebugOptions::default(),
         )
         .unwrap_or_else(|error| panic!("render {origin} Sequence {case} {property}: {error}"))
+}
+
+#[test]
+fn sequence_source_palette_owns_actor_text_while_site_palette_is_a_fallback() {
+    for origin in ["site", "source"] {
+        let rendered = render_sequence_paint_owner_case(
+            "sequenceDiagram\nparticipant Alice\nAlice->>Bob: Message\n",
+            ThemeTarget::ActorLabel,
+            "fill",
+            serde_json::json!({"theme":"base", "themeVariables":{"primaryColor":"#fff4dd"}}),
+            origin,
+            "external-palette",
+        );
+        assert_eq!(rendered.svg().contains("#123456"), origin == "site");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(
+            css_property_values_for_exact_selector(
+                css,
+                &format!("#sequence-{origin}-external-palette text.actor>tspan"),
+                "fill"
+            )
+            .last()
+            .copied(),
+            Some(if origin == "source" {
+                "#333"
+            } else {
+                "#123456"
+            })
+        );
+        drop(document);
+        assert_sequence_paint_owner_evidence(
+            rendered,
+            origin == "site",
+            origin,
+            "external-palette",
+            "fill",
+        );
+    }
 }
 
 fn assert_sequence_paint_owner_evidence(
@@ -3724,6 +3776,8 @@ end"#;
             let partially_owned_terminal = theme_id == "default"
                 && target == ThemeTarget::ActorLabel
                 && config_key == "textColor";
+            let terminal_owned =
+                origin == "source" || (mermaid_owns_terminal && !partially_owned_terminal);
             let property = if stroke { "stroke" } else { "fill" };
             let (selector_suffix, dom_tag, dom_class, text_fragment) = match target {
                 ThemeTarget::Actor => (".actor", "rect", "actor", None),
@@ -3744,10 +3798,10 @@ end"#;
             };
             // Independent constants from the pinned Mermaid theme updateColors functions
             // (khroma 2.1.0); do not derive expectations from the parsed effective config.
-            let expected = if !mermaid_owns_terminal || partially_owned_terminal {
-                TYPED_COLOR
+            let derived_expected = if !mermaid_owns_terminal || partially_owned_terminal {
+                None
             } else {
-                match (theme_id, target, config_key, stroke) {
+                Some(match (theme_id, target, config_key, stroke) {
                     ("forest", ThemeTarget::Lifeline, "mainBkg", _) => {
                         "hsl(142.0858895706, 70.5627705628%, 25.2941176471%)"
                     }
@@ -3762,15 +3816,56 @@ end"#;
                     }
                     (_, ThemeTarget::SequenceNumberLabel, "lineColor", _) => "#dd3aa1",
                     _ => MERMAID_COLOR,
-                }
+                })
             };
             let case = format!("{theme_id}-{config_key}-{target:?}-{property}");
             let config = serde_json::json!({
                 "theme": theme_id,
                 "themeVariables": {(config_key): MERMAID_COLOR},
             });
-            let rendered =
-                render_sequence_paint_owner_case(SOURCE, target, property, config, origin, &case);
+            let rendered = render_sequence_paint_owner_case(
+                SOURCE,
+                target,
+                property,
+                config.clone(),
+                origin,
+                &case,
+            );
+            let (baseline_engine, baseline_source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_owned(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let baseline =
+                render_sequence_svg_from_text_with_engine(baseline_engine, &baseline_source);
+            let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+            let baseline_id = baseline_document.root_element().attribute("id").unwrap();
+            let baseline_css = baseline_document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            let expected = css_property_values_for_exact_selector(
+                baseline_css,
+                &format!("#{baseline_id} {selector_suffix}"),
+                property,
+            )
+            .last()
+            .copied()
+            .unwrap();
+            if let Some(derived_expected) = derived_expected {
+                assert_eq!(
+                    expected, derived_expected,
+                    "{origin} {case}: selected Mermaid derivation"
+                );
+            }
             let document = roxmltree::Document::parse(rendered.svg())
                 .unwrap_or_else(|error| panic!("parse {origin} {case} SVG: {error}"));
             let css = document
@@ -3783,7 +3878,11 @@ end"#;
                 css_property_values_for_exact_selector(css, &selector, property)
                     .last()
                     .copied(),
-                Some(expected),
+                Some(if terminal_owned {
+                    expected
+                } else {
+                    TYPED_COLOR
+                }),
                 "{origin} {case} final {selector} {property} terminal: {css}",
             );
             assert!(
@@ -3804,13 +3903,12 @@ end"#;
                 }),
                 "missing {origin} {case} terminal {dom_tag}.{dom_class}"
             );
-            if mermaid_owns_terminal && !partially_owned_terminal {
-                assert!(
-                    !rendered.svg().contains(TYPED_COLOR),
-                    "typed paint must yield completely to {origin} {case}: {}",
-                    rendered.svg(),
-                );
-            }
+            assert_eq!(
+                rendered.svg().contains(TYPED_COLOR),
+                !terminal_owned,
+                "typed paint follows the actual {origin} {case} terminal owner: {}",
+                rendered.svg(),
+            );
             if partially_owned_terminal {
                 let root_selector = format!("#sequence-{origin}-{case}");
                 assert_eq!(
@@ -3832,7 +3930,7 @@ end"#;
             drop(document);
             assert_sequence_paint_owner_evidence(
                 rendered,
-                !mermaid_owns_terminal || partially_owned_terminal,
+                !terminal_owned,
                 origin,
                 &case,
                 property,
@@ -8395,13 +8493,21 @@ fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
                     )
                     .with_rule(ThemeRule::new(ThemeTarget::LoopLabelBackground, keyword));
                 let theme = DiagramThemeCompiler::new()
-                    .compile(sequence_shadow_spec(ThemeTarget::Loop, rules))
+                    .compile(
+                        sequence_shadow_spec(ThemeTarget::Loop, rules).with_mermaid_compatibility(
+                            MermaidThemeCompatibility::default()
+                                .with_theme("default")
+                                .unwrap(),
+                        ),
+                    )
                     .unwrap();
                 let rendered = try_render_sequence_theme_request(
                     &input,
                     &theme,
-                    classic_sequence_engine(),
-                    ThemePortabilityRequirement::RequirePortable,
+                    Engine::new().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({"look":"classic"}),
+                    )),
+                    ThemePortabilityRequirement::BestEffort,
                 )
                 .unwrap();
                 let doc = roxmltree::Document::parse(rendered.svg()).unwrap();

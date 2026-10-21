@@ -107,11 +107,11 @@ impl RequirementTextPaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            node_owned: merman_core::__private::config_path_overrides_typed_default(
+            node_owned: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.nodeTextColor",
             ),
-            relation_owned: merman_core::__private::config_path_overrides_typed_default(
+            relation_owned: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.relationLabelColor",
             ),
