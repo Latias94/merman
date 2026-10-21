@@ -378,7 +378,7 @@ fn gantt_preset_labels_preserve_explicit_terminal_foreground_variables() {
             doc.descendants()
                 .filter(|node| node.has_tag_name("style"))
                 .filter_map(|node| node.text())
-                .any(|css| css.contains("fill:#123456!important")),
+                .any(|css| css.contains("fill:#123456;")),
             "explicit {variable} must reach final CSS"
         );
     }
@@ -409,6 +409,55 @@ fn gantt_generic_text_reaches_active_and_done_visible_labels() {
             );
         }
     }
+}
+
+#[test]
+fn gantt_mixed_labels_preserve_vertical_fallback_and_final_active_paint() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, marker, 2026-09-01, 0d\nActive task :active, active, 2026-09-02, 1d";
+    let theme = gantt_task_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::TaskLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .with_variant(ThemeVariant::Active),
+    );
+    let svg = render_gantt_svg_from_text_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(css.contains(".vertText{font-size:15px;text-anchor:middle;fill:navy;}"));
+    let marker = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "vertText")
+                })
+        })
+        .unwrap();
+    assert_eq!(marker.attribute("style"), None);
+    let active = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "activeText0")
+                })
+        })
+        .unwrap();
+    assert_eq!(
+        active
+            .attribute("style")
+            .and_then(|style| style_property(style, "fill")),
+        Some("#123456!important")
+    );
 }
 
 const GANTT_TASK_VARIANT_TERMINALS: [(ThemeVariant, &[&str]); 4] = [
@@ -2669,7 +2718,7 @@ fn gantt_active_done_labels_preserve_upstream_classes_and_outside_paint_ownershi
                 label.attribute("style").is_none(),
                 "source-owned outside paint must retain its CSS winner"
             );
-            assert!(svg.contains("fill:#123456!important"), "{svg}");
+            assert!(svg.contains("fill:#123456;"), "{svg}");
         }
     }
 }

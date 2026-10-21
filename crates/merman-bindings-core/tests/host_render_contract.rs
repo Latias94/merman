@@ -577,6 +577,11 @@ fn pure_editor_presets_preserve_gantt_states_and_visible_label_foregrounds() {
         for pipeline in ["parity", "resvg-safe"] {
             let svg = render(ISSUE_GANTT, &preset_options(Some(preset), pipeline));
             let document = roxmltree::Document::parse(&svg).unwrap();
+            assert!(
+                !css_property(&document, &format!("#{ID} .doneText0"), "fill")
+                    .ends_with("!important"),
+                "native fallback CSS must yield to final inline task-label paints"
+            );
             for (id, fill, inside_text) in [
                 ("t1", done, text),
                 ("t2", active, active_text),
@@ -619,6 +624,11 @@ fn pure_editor_presets_preserve_gantt_states_and_visible_label_foregrounds() {
             }
             let plain = render(ISSUE_GANTT, &preset_options(None, pipeline));
             let document = roxmltree::Document::parse(&plain).unwrap();
+            assert!(
+                css_property(&document, &format!("#{ID} .doneText0"), "fill")
+                    .ends_with("!important"),
+                "plain Mermaid CSS retains its upstream priority"
+            );
             assert_eq!(
                 css_property(&document, &format!("#{ID} .active0"), "fill"),
                 "#bfc7ff"
@@ -637,6 +647,58 @@ fn pure_editor_presets_preserve_gantt_states_and_visible_label_foregrounds() {
             );
         }
     }
+}
+
+#[test]
+fn gantt_vertical_label_fallbacks_preserve_final_and_source_owned_paints() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, marker, 2026-09-01, 0d\nCritical marker :crit, active, vert, critical, 2026-09-02, 0d";
+    for pipeline in ["parity", "resvg-safe"] {
+        let mut options = preset_options(Some("editor-dark"), pipeline);
+        let svg = render(source, &options);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !css_property(&document, &format!("#{ID} .vertText"), "fill").ends_with("!important")
+        );
+        let marker = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("issue-theme-marker-text"))
+            .unwrap();
+        assert_eq!(explicit_fill(marker), "#e5e7eb");
+
+        options["site_config"]["themeVariables"]["taskTextDarkColor"] = json!("#123456");
+        let svg = render(source, &options);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("issue-theme-critical-text"))
+            .unwrap();
+        assert_eq!(marker.attribute("style"), None);
+        assert_eq!(
+            css_property(&document, &format!("#{ID} .activeCritText0"), "fill"),
+            "#123456"
+        );
+        assert!(
+            !css_property(&document, &format!("#{ID} .vertText"), "fill").ends_with("!important")
+        );
+    }
+}
+
+#[test]
+fn gantt_source_owned_vertical_labels_preserve_color_with_other_themed_tasks() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, marker, 2026-09-01, 0d\nThemed task : active, 2026-09-02, 1d";
+    let mut options = preset_options(Some("editor-dark"), "resvg-safe");
+    options["site_config"]["themeVariables"]["vertLineColor"] = json!("#123456");
+    let svg = render(source, &options);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(
+        css_property(&document, &format!("#{ID} .vertText"), "fill"),
+        "#123456"
+    );
+    let marker = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("issue-theme-marker-text"))
+        .unwrap();
+    assert_eq!(marker.attribute("style"), None);
 }
 
 #[test]

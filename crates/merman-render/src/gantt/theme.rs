@@ -26,6 +26,17 @@ use label::GanttTaskLabelPlan;
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
+fn task_label_css_priority(tasks: &[GanttTaskTerminalExpectation]) -> &'static str {
+    if tasks
+        .iter()
+        .any(|task| task.label.typed_candidates().next().is_some())
+    {
+        ""
+    } else {
+        "!important"
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GanttTaskFillOwner {
     Mermaid,
@@ -726,6 +737,10 @@ impl GanttTaskTheme {
 
     pub(crate) fn css_binding(&self) -> &GanttCssBinding {
         &self.css
+    }
+
+    pub(crate) fn task_label_css_priority(&self) -> &'static str {
+        task_label_css_priority(&self.tasks)
     }
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
@@ -1612,8 +1627,9 @@ impl GanttTaskThemeReceipt {
                 self.warning_vert_css_matches = false;
             } else {
                 self.warning_vert_css_recorded = true;
+                let priority = task_label_css_priority(&self.expectations);
                 let expected = format!(
-                    "#{diagram_id} .vert{{stroke:{color};}}#{diagram_id} .vertText{{font-size:15px;text-anchor:middle;fill:{color}!important;}}"
+                    "#{diagram_id} .vert{{stroke:{color};}}#{diagram_id} .vertText{{font-size:15px;text-anchor:middle;fill:{color}{priority};}}"
                 );
                 self.warning_vert_css_matches = css.contains(&expected);
             }
