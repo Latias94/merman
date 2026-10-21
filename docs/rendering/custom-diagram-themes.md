@@ -15,12 +15,12 @@ C4 element, boundary and relationship colors, `themeVariables.zenuml` colors and
 Wardley anchor/annotation colors, Gantt axis color, and Mindmap label backgrounds use their
 family owners. Measurement and SVG paint consume the same prepared font values.
 
-An explicit source or site Mermaid theme selects its materialized paint palette, including
+An explicit Mermaid theme in diagram source selects its materialized paint palette, including
 derived colors. Existing palette values take precedence over compiled paint defaults; roles
-absent from that palette retain their compiled fallback. Individual explicit variables keep
-their property-specific dependencies. A recipe's own compatibility theme supplies recipe
-defaults and does not suppress its compiled rules. Typography, geometry, effects, and the
-host canvas retain their independent owners.
+absent from that palette retain their compiled fallback. Individual explicit variables from
+source or site configuration keep their property-specific dependencies. Site theme defaults
+and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
+style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
