@@ -1,5 +1,6 @@
-// auto-generated: "lalrpop 0.23.1"
+// auto-generated: "lalrpop 0.23.2"
 // sha3: fdec1a4db285d64f90c3b3124ed8c27463a42d181f5808b79f88a520c2f58eb3
+// features:
 use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
@@ -1373,8 +1374,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // (Item)* =  => ActionFn(48);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action48::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (0, 1)
@@ -1438,8 +1439,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // @L =  => ActionFn(47);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action47::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
         (0, 3)
@@ -1453,8 +1454,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // @R =  => ActionFn(46);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action46::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
         (0, 4)
@@ -1709,8 +1710,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Items =  => ActionFn(55);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action55::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
         (0, 13)
@@ -1812,8 +1813,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // OptBlock =  => ActionFn(32);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action32::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
         (0, 16)
@@ -1843,8 +1844,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // OptDescr =  => ActionFn(29);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action29::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
         (0, 17)
@@ -1874,8 +1875,8 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Prelude =  => ActionFn(2);
-        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
-        let ___end = ___start;
+        let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2.clone())).unwrap_or_default();
+        let ___end = ___start.clone();
         let ___nt = super::___action2::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant13(___nt), ___end));
         (0, 18)
@@ -2241,7 +2242,7 @@ mod ___parse___Root {
 pub use self::___parse___Root::RootParser;
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action0<
 >(
     document: &mut StateDocument,
@@ -2252,7 +2253,7 @@ fn ___action0<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action1<
 >(
     document: &mut StateDocument,
@@ -2265,7 +2266,7 @@ fn ___action1<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action2<
 >(
     document: &mut StateDocument,
@@ -2276,7 +2277,7 @@ fn ___action2<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action3<
 >(
     document: &mut StateDocument,
@@ -2288,7 +2289,7 @@ fn ___action3<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action4<
 >(
     document: &mut StateDocument,
@@ -2299,7 +2300,7 @@ fn ___action4<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action5<
 >(
     document: &mut StateDocument,
@@ -2310,7 +2311,7 @@ fn ___action5<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action6<
 >(
     document: &mut StateDocument,
@@ -2321,7 +2322,7 @@ fn ___action6<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action7<
 >(
     document: &mut StateDocument,
@@ -2332,7 +2333,7 @@ fn ___action7<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action8<
 >(
     document: &mut StateDocument,
@@ -2343,7 +2344,7 @@ fn ___action8<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action9<
 >(
     document: &mut StateDocument,
@@ -2354,7 +2355,7 @@ fn ___action9<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action10<
 >(
     document: &mut StateDocument,
@@ -2365,7 +2366,7 @@ fn ___action10<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action11<
 >(
     document: &mut StateDocument,
@@ -2376,7 +2377,7 @@ fn ___action11<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action12<
 >(
     document: &mut StateDocument,
@@ -2387,7 +2388,7 @@ fn ___action12<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action13<
 >(
     document: &mut StateDocument,
@@ -2398,7 +2399,7 @@ fn ___action13<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action14<
 >(
     document: &mut StateDocument,
@@ -2409,7 +2410,7 @@ fn ___action14<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action15<
 >(
     document: &mut StateDocument,
@@ -2420,7 +2421,7 @@ fn ___action15<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action16<
 >(
     document: &mut StateDocument,
@@ -2438,7 +2439,7 @@ fn ___action16<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action17<
 >(
     document: &mut StateDocument,
@@ -2453,7 +2454,7 @@ fn ___action17<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action18<
 >(
     document: &mut StateDocument,
@@ -2464,7 +2465,7 @@ fn ___action18<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action19<
 >(
     document: &mut StateDocument,
@@ -2490,7 +2491,7 @@ fn ___action19<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action20<
 >(
     document: &mut StateDocument,
@@ -2534,7 +2535,7 @@ fn ___action20<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action21<
 >(
     document: &mut StateDocument,
@@ -2550,7 +2551,7 @@ fn ___action21<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action22<
 >(
     document: &mut StateDocument,
@@ -2566,7 +2567,7 @@ fn ___action22<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action23<
 >(
     document: &mut StateDocument,
@@ -2582,7 +2583,7 @@ fn ___action23<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action24<
 >(
     document: &mut StateDocument,
@@ -2593,7 +2594,7 @@ fn ___action24<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action25<
 >(
     document: &mut StateDocument,
@@ -2621,7 +2622,7 @@ fn ___action25<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action26<
 >(
     document: &mut StateDocument,
@@ -2635,7 +2636,7 @@ fn ___action26<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action27<
 >(
     document: &mut StateDocument,
@@ -2646,7 +2647,7 @@ fn ___action27<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action28<
 >(
     document: &mut StateDocument,
@@ -2657,7 +2658,7 @@ fn ___action28<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action29<
 >(
     document: &mut StateDocument,
@@ -2669,7 +2670,7 @@ fn ___action29<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action30<
 >(
     document: &mut StateDocument,
@@ -2680,7 +2681,7 @@ fn ___action30<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action31<
 >(
     document: &mut StateDocument,
@@ -2693,7 +2694,7 @@ fn ___action31<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action32<
 >(
     document: &mut StateDocument,
@@ -2705,7 +2706,7 @@ fn ___action32<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action33<
 >(
     document: &mut StateDocument,
@@ -2716,7 +2717,7 @@ fn ___action33<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action34<
 >(
     document: &mut StateDocument,
@@ -2729,7 +2730,7 @@ fn ___action34<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action35<
 >(
     document: &mut StateDocument,
@@ -2742,7 +2743,7 @@ fn ___action35<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action36<
 >(
     document: &mut StateDocument,
@@ -2755,7 +2756,7 @@ fn ___action36<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action37<
 >(
     document: &mut StateDocument,
@@ -2766,7 +2767,7 @@ fn ___action37<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action38<
 >(
     document: &mut StateDocument,
@@ -2777,7 +2778,7 @@ fn ___action38<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action39<
 >(
     document: &mut StateDocument,
@@ -2788,7 +2789,7 @@ fn ___action39<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action40<
 >(
     document: &mut StateDocument,
@@ -2799,7 +2800,7 @@ fn ___action40<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action41<
 >(
     document: &mut StateDocument,
@@ -2817,7 +2818,7 @@ fn ___action41<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action42<
 >(
     document: &mut StateDocument,
@@ -2835,7 +2836,7 @@ fn ___action42<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action43<
 >(
     document: &mut StateDocument,
@@ -2852,7 +2853,7 @@ fn ___action43<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action44<
 >(
     document: &mut StateDocument,
@@ -2869,7 +2870,7 @@ fn ___action44<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action45<
 >(
     document: &mut StateDocument,
@@ -2911,7 +2912,7 @@ fn ___action47<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action48<
 >(
     document: &mut StateDocument,
@@ -2923,7 +2924,7 @@ fn ___action48<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action49<
 >(
     document: &mut StateDocument,
@@ -2934,7 +2935,7 @@ fn ___action49<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action50<
 >(
     document: &mut StateDocument,
@@ -2945,7 +2946,7 @@ fn ___action50<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action51<
 >(
     document: &mut StateDocument,
@@ -2956,7 +2957,7 @@ fn ___action51<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn ___action52<
 >(
     document: &mut StateDocument,
@@ -2969,15 +2970,15 @@ fn ___action52<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action53<
 >(
     document: &mut StateDocument,
     ___0: (usize, Option<StateStatement>, usize),
 ) -> alloc::vec::Vec<Option<StateStatement>>
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.2;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.2.clone();
     let ___temp0 = ___action50(
         document,
         ___0,
@@ -2991,7 +2992,7 @@ fn ___action53<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action54<
 >(
     document: &mut StateDocument,
@@ -2999,8 +3000,8 @@ fn ___action54<
     ___1: (usize, Option<StateStatement>, usize),
 ) -> alloc::vec::Vec<Option<StateStatement>>
 {
-    let ___start0 = ___1.0;
-    let ___end0 = ___1.2;
+    let ___start0 = ___1.0.clone();
+    let ___end0 = ___1.2.clone();
     let ___temp0 = ___action50(
         document,
         ___1,
@@ -3015,7 +3016,7 @@ fn ___action54<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action55<
 >(
     document: &mut StateDocument,
@@ -3023,8 +3024,8 @@ fn ___action55<
     ___lookahead: &usize,
 ) -> Vec<StateStatement>
 {
-    let ___start0 = *___lookbehind;
-    let ___end0 = *___lookahead;
+    let ___start0 = ___lookbehind.clone();
+    let ___end0 = ___lookahead.clone();
     let ___temp0 = ___action48(
         document,
         &___start0,
@@ -3039,15 +3040,15 @@ fn ___action55<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action56<
 >(
     document: &mut StateDocument,
     ___0: (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
 ) -> Vec<StateStatement>
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.2;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.2.clone();
     let ___temp0 = ___action49(
         document,
         ___0,
@@ -3061,7 +3062,7 @@ fn ___action56<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action57<
 >(
     document: &mut StateDocument,
@@ -3069,8 +3070,8 @@ fn ___action57<
     ___1: (usize, usize, usize),
 ) -> StateStatementState
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3087,7 +3088,7 @@ fn ___action57<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action58<
 >(
     document: &mut StateDocument,
@@ -3095,8 +3096,8 @@ fn ___action58<
     ___1: (usize, usize, usize),
 ) -> StateStatementState
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3113,15 +3114,15 @@ fn ___action58<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action59<
 >(
     document: &mut StateDocument,
     ___0: (usize, (String, String), usize),
 ) -> StateStatementState
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3137,7 +3138,7 @@ fn ___action59<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action60<
 >(
     document: &mut StateDocument,
@@ -3148,8 +3149,8 @@ fn ___action60<
     ___4: (usize, String, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___1.2;
-    let ___end0 = ___2.0;
+    let ___start0 = ___1.2.clone();
+    let ___end0 = ___2.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3169,7 +3170,7 @@ fn ___action60<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action61<
 >(
     document: &mut StateDocument,
@@ -3178,8 +3179,8 @@ fn ___action61<
     ___2: (usize, StateDocumentId, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3197,7 +3198,7 @@ fn ___action61<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action62<
 >(
     document: &mut StateDocument,
@@ -3207,8 +3208,8 @@ fn ___action62<
     ___3: (usize, Option<StateDocumentId>, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___1.2;
-    let ___end0 = ___2.0;
+    let ___start0 = ___1.2.clone();
+    let ___end0 = ___2.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3227,15 +3228,15 @@ fn ___action62<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action63<
 >(
     document: &mut StateDocument,
     ___0: (usize, String, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3251,15 +3252,15 @@ fn ___action63<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action64<
 >(
     document: &mut StateDocument,
     ___0: (usize, String, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3275,15 +3276,15 @@ fn ___action64<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action65<
 >(
     document: &mut StateDocument,
     ___0: (usize, String, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___0.0;
-    let ___end0 = ___0.0;
+    let ___start0 = ___0.0.clone();
+    let ___end0 = ___0.0.clone();
     let ___temp0 = ___action47(
         document,
         &___start0,
@@ -3299,15 +3300,15 @@ fn ___action65<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action66<
 >(
     document: &mut StateDocument,
     ___0: (usize, String, usize),
 ) -> StateStatementState
 {
-    let ___start0 = ___0.2;
-    let ___end0 = ___0.2;
+    let ___start0 = ___0.2.clone();
+    let ___end0 = ___0.2.clone();
     let ___temp0 = ___action46(
         document,
         &___start0,
@@ -3323,15 +3324,15 @@ fn ___action66<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action67<
 >(
     document: &mut StateDocument,
     ___0: (usize, Tok, usize),
 ) -> StateStatementState
 {
-    let ___start0 = ___0.2;
-    let ___end0 = ___0.2;
+    let ___start0 = ___0.2.clone();
+    let ___end0 = ___0.2.clone();
     let ___temp0 = ___action46(
         document,
         &___start0,
@@ -3347,7 +3348,7 @@ fn ___action67<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action68<
 >(
     document: &mut StateDocument,
@@ -3357,8 +3358,8 @@ fn ___action68<
     ___3: (usize, String, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___2.2;
-    let ___end0 = ___3.0;
+    let ___start0 = ___2.2.clone();
+    let ___end0 = ___3.0.clone();
     let ___temp0 = ___action46(
         document,
         &___start0,
@@ -3377,7 +3378,7 @@ fn ___action68<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
 fn ___action69<
 >(
     document: &mut StateDocument,
@@ -3385,8 +3386,8 @@ fn ___action69<
     ___1: (usize, StateDocumentId, usize),
 ) -> StateStatement
 {
-    let ___start0 = ___0.2;
-    let ___end0 = ___1.0;
+    let ___start0 = ___0.2.clone();
+    let ___end0 = ___1.0.clone();
     let ___temp0 = ___action46(
         document,
         &___start0,
