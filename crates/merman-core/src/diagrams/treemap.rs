@@ -4,10 +4,12 @@ use crate::diagrams::langium_common::{
     LangiumCommonField, parse_langium_common, push_langium_common_editor_fact,
 };
 use crate::diagrams::scan::{leading_whitespace_len, physical_line_at, split_ascii_indent};
+#[cfg(feature = "compat-json")]
+use crate::family;
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, Result, SourceSpan,
 };
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
@@ -1202,18 +1204,30 @@ fn construct_treemap_semantic_source(
 pub(crate) fn parse_treemap_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<TreemapDiagramModel>> {
-    let parsed = parse_treemap_outcome_controlled(code, EditorFactsDemand::Omit, control)?;
-    let parsed = match parsed.into_strict(&meta.diagram_type) {
-        Ok(parsed) => parsed,
-        Err(error) => return Ok(Err(error)),
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreemapDiagramModel>> {
+    let TreemapParseOutcome {
+        mut parsed,
+        first_issue,
+        ..
+    } = parse_treemap_outcome_controlled(code, editor_demand, control)?;
+    let editor_facts = matches!(editor_demand, EditorFactsDemand::Capture)
+        .then(|| std::mem::take(&mut parsed.editor_facts));
+    let model = match first_issue {
+        Some(issue) => Err(treemap_error(&meta.diagram_type, issue.message, issue.span)),
+        None => {
+            let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+            let mut model = source.into_semantic_model_controlled(control)?;
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            Ok(model)
+        }
     };
-    let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
-    let mut model = source.into_semantic_model_controlled(control)?;
-    model.sanitize_common_db_fields(&meta.semantic_config);
     control.checkpoint()?;
-    Ok(Ok(model))
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 fn treemap_semantic_source_from_parsed_controlled(
@@ -3029,9 +3043,11 @@ title Inventory
 classDef hot fill:red
 "#,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.title.as_deref(), Some("Inventory"));
         assert_eq!(model.root.children.as_deref(), Some([0usize].as_slice()));
@@ -3059,9 +3075,11 @@ classDef hot fill:red
             let model = parse_treemap_semantic_model_controlled(
                 source,
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &crate::OperationControl::new(),
             )
             .unwrap()
+            .model
             .unwrap();
             assert_eq!(model.root.children.as_deref(), Some([].as_slice()));
             assert!(model.nodes.is_empty());
@@ -3071,9 +3089,11 @@ classDef hot fill:red
             "wrong
 ",
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("structured error");
@@ -3092,6 +3112,7 @@ classDef hot fill:red
 "Leaf": 1
 "#,
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &control,
             )
             .is_err()

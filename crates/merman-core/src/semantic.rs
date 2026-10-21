@@ -3,6 +3,11 @@
 use crate::preprocess::preprocess_builtin_semantic_controlled;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
+#[cfg(feature = "editor-facts")]
+mod snapshot;
+#[cfg(feature = "editor-facts")]
+pub use snapshot::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
+
 /// Configuration and source metadata needed to interpret a diagram's meaning.
 #[derive(Debug, Clone)]
 pub struct SemanticMetadata {
@@ -179,6 +184,183 @@ impl SemanticParser {
         self.runtime_policy.begin_operation()
     }
 
+    /// Captures canonical meaning and parser recovery facts without resolving presentation.
+    #[cfg(feature = "editor-facts")]
+    pub fn capture_diagram_snapshot_sync(&self, input: &str) -> SemanticSnapshotCapture {
+        self.capture_diagram_snapshot_controlled_sync(input, &OperationControl::new())
+            .expect("a private semantic snapshot control cannot be cancelled")
+    }
+
+    /// Captures a semantic snapshot; cooperative cancellation remains the outer error channel.
+    #[cfg(feature = "editor-facts")]
+    pub fn capture_diagram_snapshot_controlled_sync(
+        &self,
+        input: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<SemanticSnapshotCapture> {
+        self.capture_snapshot_controlled(input, None, control)
+    }
+
+    /// Captures a semantic snapshot for a known built-in diagram type.
+    #[cfg(feature = "editor-facts")]
+    pub fn capture_diagram_snapshot_with_type_sync(
+        &self,
+        diagram_type: &str,
+        input: &str,
+    ) -> SemanticSnapshotCapture {
+        self.capture_diagram_snapshot_with_type_controlled_sync(
+            diagram_type,
+            input,
+            &OperationControl::new(),
+        )
+        .expect("a private semantic snapshot control cannot be cancelled")
+    }
+
+    /// Known-type capture with the same cancellation and recovery contract as detection capture.
+    #[cfg(feature = "editor-facts")]
+    pub fn capture_diagram_snapshot_with_type_controlled_sync(
+        &self,
+        diagram_type: &str,
+        input: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<SemanticSnapshotCapture> {
+        self.capture_snapshot_controlled(input, Some(diagram_type), control)
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn capture_snapshot_controlled(
+        &self,
+        input: &str,
+        diagram_type: Option<&str>,
+        control: &OperationControl,
+    ) -> OperationControlResult<SemanticSnapshotCapture> {
+        use crate::preprocess::{PreprocessCaptureResult, SourceConfigEvidence};
+
+        control.checkpoint()?;
+        let context = match self.begin_operation() {
+            Ok(context) => context,
+            Err(error) => {
+                return Ok(SemanticSnapshotCapture::Failed {
+                    error: error.into(),
+                    source_config: SourceConfigEvidence::default(),
+                });
+            }
+        };
+        crate::runtime::with_operation_context(&context, || {
+            let captured = crate::preprocess::preprocess_builtin_semantic_with_evidence_controlled(
+                input,
+                diagram_type,
+                control,
+            )?;
+            let source_config = captured.source_config;
+            let pre = match captured.outcome {
+                PreprocessCaptureResult::Ready(pre) => *pre,
+                PreprocessCaptureResult::Failed(error) => {
+                    return Ok(SemanticSnapshotCapture::Failed {
+                        error,
+                        source_config,
+                    });
+                }
+                PreprocessCaptureResult::Panicked(panic) => {
+                    return Ok(SemanticSnapshotCapture::Panicked {
+                        panic,
+                        source_config,
+                    });
+                }
+            };
+            let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let diagram_type = match diagram_type {
+                    Some(diagram_type) => diagram_type,
+                    None => match crate::detect::detect_builtin_precleaned_controlled(
+                        pre.code(),
+                        control,
+                    )? {
+                        Ok(fact) => fact.id,
+                        Err(error) => return Ok(Err(error)),
+                    },
+                };
+                self.prepare_semantic_source_controlled(diagram_type, pre, control)
+            }));
+            let (metadata, source) = match prepared {
+                Ok(ready) => match ready? {
+                    Ok(ready) => ready,
+                    Err(error) => {
+                        return Ok(SemanticSnapshotCapture::Failed {
+                            error,
+                            source_config,
+                        });
+                    }
+                },
+                Err(payload) => {
+                    return Ok(SemanticSnapshotCapture::Panicked {
+                        panic: crate::CapturedPanic::from_payload(payload),
+                        source_config,
+                    });
+                }
+            };
+            let recovered_incomplete_directive = source.recovered_incomplete_directive();
+            let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                control.checkpoint()?;
+                match crate::family::canonical_parser(&metadata.diagram_type) {
+                    Some(parser) => parser(
+                        source.text(),
+                        &metadata,
+                        crate::family::EditorFactsDemand::Capture,
+                        control,
+                    ),
+                    None => Ok(crate::family::SemanticConstruction {
+                        model: Err(Error::UnsupportedDiagram {
+                            diagram_type: metadata.diagram_type.clone(),
+                        }),
+                        editor_facts: None,
+                    }),
+                }
+            }));
+            control.checkpoint()?;
+            let (outcome, editor_facts) = match parsed {
+                Err(payload) => (
+                    SemanticParseOutcome::Panicked(
+                        crate::CapturedPanic::from_payload(payload)
+                            .message()
+                            .to_string(),
+                    ),
+                    crate::ParsedEditorFacts::Unavailable,
+                ),
+                Ok(construction) => {
+                    let construction = construction?;
+                    let editor_facts = match construction.editor_facts {
+                        Some(facts) => crate::ParsedEditorFacts::Available(
+                            source.finish_editor_semantic_facts(
+                                facts,
+                                &metadata.diagram_type,
+                                control,
+                            )?,
+                        ),
+                        None => crate::ParsedEditorFacts::Unavailable,
+                    };
+                    let outcome = match construction.model {
+                        Ok(mut model) => {
+                            model.remap_source_positions(&source, control)?;
+                            SemanticParseOutcome::Parsed(model)
+                        }
+                        Err(error) => SemanticParseOutcome::Failed(source.remap_parse_error(error)),
+                    };
+                    (outcome, editor_facts)
+                }
+            };
+            control.checkpoint()?;
+            Ok(SemanticSnapshotCapture::Snapshot(
+                SemanticDiagramSnapshot::new(
+                    metadata,
+                    outcome,
+                    editor_facts,
+                    source_config,
+                    recovered_incomplete_directive,
+                ),
+            ))
+        })
+    }
+
     /// Applies host-level config before parsing. An explicit `secure` array replaces the
     /// hardened defaults, matching the full parser's site-policy behavior.
     pub fn with_site_config(mut self, mut overrides: MermaidConfig) -> Self {
@@ -276,6 +458,38 @@ impl SemanticParser {
         pre: crate::PreprocessResult,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
+        let (metadata, source) =
+            match self.prepare_semantic_source_controlled(diagram_type, pre, control)? {
+                Ok(prepared) => prepared,
+                Err(error) => return Ok(Err(error)),
+            };
+        let Some(parser) = crate::family::canonical_parser(diagram_type) else {
+            return Ok(Err(Error::UnsupportedDiagram {
+                diagram_type: diagram_type.to_string(),
+            }));
+        };
+        let mut model = match parser(
+            source.text(),
+            &metadata,
+            crate::family::EditorFactsDemand::Omit,
+            control,
+        )?
+        .model
+        {
+            Ok(model) => model,
+            Err(error) => return Ok(Err(source.remap_parse_error(error))),
+        };
+        model.remap_source_positions(&source, control)?;
+        control.checkpoint()?;
+        Ok(Ok(ParsedSemanticDiagram { metadata, model }))
+    }
+
+    fn prepare_semantic_source_controlled(
+        &self,
+        diagram_type: &str,
+        pre: crate::PreprocessResult,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(SemanticMetadata, crate::PreprocessedSource)>> {
         control.checkpoint()?;
         if pre.code().trim_start().starts_with("---") {
             return Ok(Err(Error::MalformedFrontMatter));
@@ -312,20 +526,7 @@ impl SemanticParser {
             &metadata.semantic_config,
             control,
         )?;
-        let parser_input = source.text();
-
-        let Some(parser) = crate::family::canonical_parser(diagram_type) else {
-            return Ok(Err(Error::UnsupportedDiagram {
-                diagram_type: diagram_type.to_string(),
-            }));
-        };
-        let mut model = match parser(parser_input, &metadata, control)? {
-            Ok(model) => model,
-            Err(error) => return Ok(Err(source.remap_parse_error(error))),
-        };
-        model.remap_source_positions(&source, control)?;
-        control.checkpoint()?;
-        Ok(Ok(ParsedSemanticDiagram { metadata, model }))
+        Ok(Ok((metadata, source)))
     }
 
     fn effective_semantic_config(

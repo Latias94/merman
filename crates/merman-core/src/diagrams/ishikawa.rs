@@ -75,10 +75,6 @@ struct IshikawaParseFailure {
 }
 
 impl IshikawaSemanticSource {
-    fn editor_facts(&self) -> EditorSemanticFacts {
-        self.editor_facts.clone()
-    }
-
     fn into_semantic_model_controlled(
         mut self,
         config: &crate::MermaidConfig,
@@ -117,8 +113,8 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
         control,
     )?;
     let construction = match construction {
-        Ok(source) => {
-            let editor_facts = source.editor_facts();
+        Ok(mut source) => {
+            let editor_facts = std::mem::take(&mut source.editor_facts);
             let model = source
                 .into_semantic_model_controlled(meta.effective_config.as_config(), control)?;
             let projected = render_model_to_compat_json_controlled(&model, meta, control)?;
@@ -292,20 +288,40 @@ impl IshikawaParseFailure {
 pub(crate) fn parse_ishikawa_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<IshikawaDiagramModel>> {
-    let source = match construct_ishikawa_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<IshikawaDiagramModel>> {
+    let construction = construct_ishikawa_semantic_source_controlled(
         code,
         &meta.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )? {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(*failure.error)),
-    };
-    let model = source.into_semantic_model_controlled(&meta.semantic_config, control)?;
-    control.checkpoint()?;
-    Ok(Ok(model))
+    )?;
+    Ok(match construction {
+        Ok(mut source) => {
+            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
+                .then(|| std::mem::take(&mut source.editor_facts));
+            let model = source.into_semantic_model_controlled(&meta.semantic_config, control)?;
+            control.checkpoint()?;
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(*failure.error),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 struct IshikawaHeader {
@@ -969,9 +985,11 @@ mod semantic_tests {
   Cause B
 ",
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.title.as_deref(), Some("Problem"));
         assert_eq!(model.root, Some(0));
@@ -994,9 +1012,11 @@ mod semantic_tests {
  Cause
 ",
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.nodes[0].text, "<b>ok</b>");
         assert_eq!(model.title.as_deref(), Some("<b>ok</b>"));
@@ -1005,9 +1025,11 @@ mod semantic_tests {
             "wrong
 ",
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("structured error");
@@ -1026,6 +1048,7 @@ mod semantic_tests {
   Cause
 ",
                 &metadata,
+                EditorFactsDemand::Omit,
                 &control,
             )
             .is_err()

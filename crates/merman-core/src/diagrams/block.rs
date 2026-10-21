@@ -972,21 +972,37 @@ pub(crate) fn parse_block_model_for_render_controlled(
 pub(crate) fn parse_block_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<BlockDiagramModel>> {
-    let source = match construct_block_semantic_source(
+) -> OperationControlResult<crate::family::SemanticConstruction<BlockDiagramModel>> {
+    let construction = construct_block_semantic_source(
         code,
         &meta.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         false,
         control,
-    )? {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(*failure.error)),
+    )?;
+    let (model, editor_facts) = match construction {
+        Ok(source) => {
+            let output = block_db_to_model(source.db, false, control)?;
+            (
+                Ok(output.semantic),
+                matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts),
+            )
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Omit => (Err(*failure.error), None),
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                (Err(error), Some(facts))
+            }
+        },
     };
-    let output = block_db_to_model(source.db, false, control)?;
     control.checkpoint()?;
-    Ok(Ok(output.semantic))
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 fn type_str_to_type(type_str: &str) -> String {
@@ -3972,10 +3988,15 @@ A --> turn
         assert!(model.class_defs.contains_key("hot"));
         assert_eq!(block_syntax_construction_count(), 1);
         assert_eq!(crate::editor::test_work::read(), Default::default());
-        let direct =
-            parse_block_semantic_model_controlled(source, &metadata, &OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let direct = parse_block_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert_eq!(direct.blocks_flat.len(), model.blocks_flat.len());
     }
 
@@ -3988,10 +4009,15 @@ space:{width}
 "
         );
         crate::editor::test_work::reset();
-        let error =
-            parse_block_semantic_model_controlled(&source, &metadata(), &OperationControl::new())
-                .unwrap()
-                .unwrap_err();
+        let error = parse_block_semantic_model_controlled(
+            &source,
+            &metadata(),
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("structured error");
         };
@@ -4014,6 +4040,7 @@ A
 B
 ",
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &control,
             )
             .is_err()

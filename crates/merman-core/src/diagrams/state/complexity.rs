@@ -229,9 +229,11 @@ mod tests {
             source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            crate::family::EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         let scalars = [
             StateStatement::Noop,

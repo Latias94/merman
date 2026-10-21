@@ -4,11 +4,17 @@
 pub(super) fn canonical_class(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::class::parse_class_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Class),
+        crate::diagrams::class::parse_class_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Class),
     )
 }
 
@@ -16,13 +22,17 @@ pub(super) fn canonical_class(
 pub(super) fn canonical_git_graph(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::git_graph::parse_git_graph_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::GitGraph),
+        .map_model(crate::SemanticDiagramModel::GitGraph),
     )
 }
 
@@ -30,13 +40,17 @@ pub(super) fn canonical_git_graph(
 pub(super) fn canonical_agentflow(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::agentflow::parse_agentflow_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Agentflow),
+        .map_model(crate::SemanticDiagramModel::Agentflow),
     )
 }
 
@@ -44,11 +58,17 @@ pub(super) fn canonical_agentflow(
 pub(super) fn canonical_kanban(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::kanban::parse_kanban_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Kanban),
+        crate::diagrams::kanban::parse_kanban_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Kanban),
     )
 }
 
@@ -56,11 +76,17 @@ pub(super) fn canonical_kanban(
 pub(super) fn canonical_mindmap(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::mindmap::parse_mindmap_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Mindmap),
+        crate::diagrams::mindmap::parse_mindmap_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Mindmap),
     )
 }
 
@@ -68,11 +94,17 @@ pub(super) fn canonical_mindmap(
 pub(super) fn canonical_xychart(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::xychart::parse_xychart_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::XyChart),
+        crate::diagrams::xychart::parse_xychart_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::XyChart),
     )
 }
 
@@ -80,11 +112,17 @@ pub(super) fn canonical_xychart(
 pub(super) fn canonical_block(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::block::parse_block_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Block),
+        crate::diagrams::block::parse_block_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Block),
     )
 }
 
@@ -92,13 +130,17 @@ pub(super) fn canonical_block(
 pub(super) fn canonical_ishikawa(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::ishikawa::parse_ishikawa_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Ishikawa),
+        .map_model(crate::SemanticDiagramModel::Ishikawa),
     )
 }
 
@@ -106,11 +148,17 @@ pub(super) fn canonical_ishikawa(
 pub(super) fn canonical_treemap(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::treemap::parse_treemap_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Treemap),
+        crate::diagrams::treemap::parse_treemap_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Treemap),
     )
 }
 
@@ -118,25 +166,33 @@ pub(super) fn canonical_treemap(
 pub(super) fn canonical_c4(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
-    Ok(
-        crate::diagrams::c4::parse_c4_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::C4),
-    )
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
+    Ok(crate::diagrams::c4::parse_c4_semantic_model_controlled(
+        code,
+        metadata,
+        editor_demand,
+        control,
+    )?
+    .map_model(crate::SemanticDiagramModel::C4))
 }
 
 #[cfg(feature = "diagram-tree-view")]
 pub(super) fn canonical_tree_view(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::tree_view::parse_tree_view_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::TreeView),
+        .map_model(crate::SemanticDiagramModel::TreeView),
     )
 }
 
@@ -144,11 +200,17 @@ pub(super) fn canonical_tree_view(
 pub(super) fn canonical_packet(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::packet::parse_packet_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Packet),
+        crate::diagrams::packet::parse_packet_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Packet),
     )
 }
 
@@ -156,25 +218,33 @@ pub(super) fn canonical_packet(
 pub(super) fn canonical_flowchart(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
-    Ok(
-        crate::diagrams::flowchart::parse_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Flowchart),
-    )
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
+    Ok(crate::diagrams::flowchart::parse_semantic_model_controlled(
+        code,
+        metadata,
+        editor_demand,
+        control,
+    )?
+    .map_model(crate::SemanticDiagramModel::Flowchart))
 }
 
 #[cfg(feature = "diagram-sequence")]
 pub(super) fn canonical_sequence(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::sequence::parse_sequence_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Sequence),
+        .map_model(crate::SemanticDiagramModel::Sequence),
     )
 }
 
@@ -182,11 +252,17 @@ pub(super) fn canonical_sequence(
 pub(super) fn canonical_cynefin(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::cynefin::parse_cynefin_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Cynefin),
+        crate::diagrams::cynefin::parse_cynefin_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Cynefin),
     )
 }
 
@@ -194,45 +270,51 @@ pub(super) fn canonical_cynefin(
 pub(super) fn canonical_info(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(crate::diagrams::info::parse_info_semantic_model_controlled(
         code,
         &metadata.diagram_type,
+        editor_demand,
         control,
     )?
-    .map(crate::SemanticDiagramModel::Info))
+    .map_model(crate::SemanticDiagramModel::Info))
 }
 
 #[cfg(feature = "diagram-pie")]
 pub(super) fn canonical_pie(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(crate::diagrams::pie::parse_pie_semantic_model_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        editor_demand,
         control,
     )?
-    .map(crate::SemanticDiagramModel::Pie))
+    .map_model(crate::SemanticDiagramModel::Pie))
 }
 
 #[cfg(feature = "diagram-journey")]
 pub(super) fn canonical_journey(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::journey::parse_journey_semantic_model_controlled(
             code,
             &metadata.diagram_type,
             &metadata.semantic_config,
+            editor_demand,
             control,
         )?
-        .map(crate::SemanticDiagramModel::Journey),
+        .map_model(crate::SemanticDiagramModel::Journey),
     )
 }
 
@@ -240,16 +322,18 @@ pub(super) fn canonical_journey(
 pub(super) fn canonical_state(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::state::parse_state_semantic_model_controlled(
             code,
             &metadata.diagram_type,
             &metadata.semantic_config,
+            editor_demand,
             control,
         )?
-        .map(crate::SemanticDiagramModel::State),
+        .map_model(crate::SemanticDiagramModel::State),
     )
 }
 
@@ -257,16 +341,18 @@ pub(super) fn canonical_state(
 pub(super) fn canonical_timeline(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::timeline::parse_timeline_semantic_model_controlled(
             code,
             &metadata.diagram_type,
             &metadata.semantic_config,
+            editor_demand,
             control,
         )?
-        .map(crate::SemanticDiagramModel::Timeline),
+        .map_model(crate::SemanticDiagramModel::Timeline),
     )
 }
 
@@ -274,13 +360,17 @@ pub(super) fn canonical_timeline(
 pub(super) fn canonical_quadrant_chart(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::quadrant_chart::parse_quadrant_chart_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::QuadrantChart),
+        .map_model(crate::SemanticDiagramModel::QuadrantChart),
     )
 }
 
@@ -288,11 +378,17 @@ pub(super) fn canonical_quadrant_chart(
 pub(super) fn canonical_radar(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::radar::parse_radar_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Radar),
+        crate::diagrams::radar::parse_radar_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Radar),
     )
 }
 
@@ -300,11 +396,17 @@ pub(super) fn canonical_radar(
 pub(super) fn canonical_sankey(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::sankey::parse_sankey_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Sankey),
+        crate::diagrams::sankey::parse_sankey_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Sankey),
     )
 }
 
@@ -312,25 +414,33 @@ pub(super) fn canonical_sankey(
 pub(super) fn canonical_venn(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
-    Ok(
-        crate::diagrams::venn::parse_venn_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Venn),
-    )
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
+    Ok(crate::diagrams::venn::parse_venn_semantic_model_controlled(
+        code,
+        metadata,
+        editor_demand,
+        control,
+    )?
+    .map_model(crate::SemanticDiagramModel::Venn))
 }
 
 #[cfg(feature = "diagram-requirement")]
 pub(super) fn canonical_requirement(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::requirement::parse_requirement_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Requirement),
+        .map_model(crate::SemanticDiagramModel::Requirement),
     )
 }
 
@@ -338,11 +448,17 @@ pub(super) fn canonical_requirement(
 pub(super) fn canonical_usecase(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::usecase::parse_usecase_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Usecase),
+        crate::diagrams::usecase::parse_usecase_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Usecase),
     )
 }
 
@@ -350,13 +466,17 @@ pub(super) fn canonical_usecase(
 pub(super) fn canonical_eventmodeling(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::eventmodeling::parse_eventmodeling_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::EventModeling),
+        .map_model(crate::SemanticDiagramModel::EventModeling),
     )
 }
 
@@ -364,11 +484,17 @@ pub(super) fn canonical_eventmodeling(
 pub(super) fn canonical_wardley(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::wardley::parse_wardley_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Wardley),
+        crate::diagrams::wardley::parse_wardley_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Wardley),
     )
 }
 
@@ -376,13 +502,17 @@ pub(super) fn canonical_wardley(
 pub(super) fn canonical_railroad(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::railroad::parse_railroad_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Railroad),
+        .map_model(crate::SemanticDiagramModel::Railroad),
     )
 }
 
@@ -390,13 +520,17 @@ pub(super) fn canonical_railroad(
 pub(super) fn canonical_railroad_ebnf(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::railroad::parse_railroad_ebnf_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Railroad),
+        .map_model(crate::SemanticDiagramModel::Railroad),
     )
 }
 
@@ -404,13 +538,17 @@ pub(super) fn canonical_railroad_ebnf(
 pub(super) fn canonical_railroad_abnf(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::railroad::parse_railroad_abnf_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Railroad),
+        .map_model(crate::SemanticDiagramModel::Railroad),
     )
 }
 
@@ -418,13 +556,17 @@ pub(super) fn canonical_railroad_abnf(
 pub(super) fn canonical_railroad_peg(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::railroad::parse_railroad_peg_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Railroad),
+        .map_model(crate::SemanticDiagramModel::Railroad),
     )
 }
 
@@ -432,11 +574,17 @@ pub(super) fn canonical_railroad_peg(
 pub(super) fn canonical_zenuml(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::zenuml::parse_zenuml_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Zenuml),
+        crate::diagrams::zenuml::parse_zenuml_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Zenuml),
     )
 }
 
@@ -444,25 +592,33 @@ pub(super) fn canonical_zenuml(
 pub(super) fn canonical_er(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
-    Ok(
-        crate::diagrams::er::parse_er_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Er),
-    )
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
+    Ok(crate::diagrams::er::parse_er_semantic_model_controlled(
+        code,
+        metadata,
+        editor_demand,
+        control,
+    )?
+    .map_model(crate::SemanticDiagramModel::Er))
 }
 
 #[cfg(feature = "diagram-architecture")]
 pub(super) fn canonical_architecture(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
         crate::diagrams::architecture::parse_architecture_semantic_model_controlled(
-            code, metadata, control,
+            code,
+            metadata,
+            editor_demand,
+            control,
         )?
-        .map(crate::SemanticDiagramModel::Architecture),
+        .map_model(crate::SemanticDiagramModel::Architecture),
     )
 }
 
@@ -470,10 +626,16 @@ pub(super) fn canonical_architecture(
 pub(super) fn canonical_gantt(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: super::EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+) -> crate::OperationControlResult<super::SemanticConstruction<crate::SemanticDiagramModel>> {
     Ok(
-        crate::diagrams::gantt::parse_gantt_semantic_model_controlled(code, metadata, control)?
-            .map(crate::SemanticDiagramModel::Gantt),
+        crate::diagrams::gantt::parse_gantt_semantic_model_controlled(
+            code,
+            metadata,
+            editor_demand,
+            control,
+        )?
+        .map_model(crate::SemanticDiagramModel::Gantt),
     )
 }

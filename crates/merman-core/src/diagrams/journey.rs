@@ -197,7 +197,6 @@ struct JourneySemanticSource {
     model: JourneyDiagramModel,
     #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -352,21 +351,35 @@ pub(crate) fn parse_journey_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<JourneyDiagramModel>> {
-    let construction = construct_journey_semantic_source_controlled(
-        code,
-        diagram_type,
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    match construction {
-        Ok(mut source) => {
-            source.model.sanitize_common_db_fields(config);
-            Ok(Ok(source.model))
+) -> OperationControlResult<crate::family::SemanticConstruction<JourneyDiagramModel>> {
+    let construction =
+        construct_journey_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.model;
+            model.sanitize_common_db_fields(config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
         }
-        Err(failure) => Ok(Err(failure.into_error())),
-    }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 #[cfg(feature = "compat-json")]
@@ -734,7 +747,6 @@ fn parse_journey_semantic_source(
         } else {
             CompatibilityOutputState::Empty
         },
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -1065,9 +1077,11 @@ A task: 5: Alice, Bob\n";
             source,
             "journey",
             &crate::MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(journey_syntax_construction_count(), 1);
@@ -1107,9 +1121,11 @@ A task: 5: Alice, Bob\n";
             "",
             "journey",
             &crate::MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         #[cfg(feature = "compat-json")]
         let meta = ParseMetadata {

@@ -3,7 +3,7 @@ use crate::diagram::CapturedPanic;
 use crate::diagram::DiagramWarningFact;
 use crate::json_value::ManagedJson as ManagedSemanticJson;
 #[cfg(feature = "compat-json")]
-use crate::{EditorSemanticFacts, Error, OperationPhase, preprocess::SourceConfigEvidence};
+use crate::{Error, OperationPhase, preprocess::SourceConfigEvidence};
 use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -148,13 +148,8 @@ pub struct ParsedDiagram {
     pub model: ManagedSemanticJson,
 }
 
-/// Parser-backed editor facts produced by a diagram parse operation.
-#[derive(Debug)]
 #[cfg(feature = "compat-json")]
-pub enum ParsedEditorFacts {
-    Available(EditorSemanticFacts),
-    Unavailable,
-}
+pub use crate::editor::ParsedEditorFacts;
 
 /// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]

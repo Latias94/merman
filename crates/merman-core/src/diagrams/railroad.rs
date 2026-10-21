@@ -547,12 +547,14 @@ pub(crate) fn parse_railroad_peg_json_and_editor_facts(
 pub(crate) fn parse_railroad_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramModel>> {
+) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Ir,
+        editor_demand,
         control,
     )
 }
@@ -560,12 +562,14 @@ pub(crate) fn parse_railroad_semantic_model_controlled(
 pub(crate) fn parse_railroad_ebnf_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramModel>> {
+) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Ebnf,
+        editor_demand,
         control,
     )
 }
@@ -573,12 +577,14 @@ pub(crate) fn parse_railroad_ebnf_semantic_model_controlled(
 pub(crate) fn parse_railroad_abnf_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramModel>> {
+) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Abnf,
+        editor_demand,
         control,
     )
 }
@@ -586,12 +592,14 @@ pub(crate) fn parse_railroad_abnf_semantic_model_controlled(
 pub(crate) fn parse_railroad_peg_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramModel>> {
+) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Peg,
+        editor_demand,
         control,
     )
 }
@@ -600,28 +608,35 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
     code: &str,
     metadata: &SemanticMetadata,
     dialect: RailroadDialect,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramModel>> {
+) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     let construction = construct_railroad_semantic_source(
         code,
         &metadata.diagram_type,
         dialect,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
     )?;
-    Ok(construction
-        .map(|mut source| {
+    Ok(match construction {
+        Ok(mut source) => {
             source
                 .model
                 .sanitize_common_db_fields(&metadata.semantic_config);
-            source.model
-        })
-        .map_err(|failure| *failure.error))
+            crate::family::SemanticConstruction {
+                model: Ok(source.model),
+                editor_facts: source.editor_facts,
+            }
+        }
+        Err(failure) => crate::family::SemanticConstruction {
+            model: Err(*failure.error),
+            editor_facts: failure.editor_facts.map(|facts| *facts),
+        },
+    })
 }
 
 struct RailroadSemanticSource {
     model: RailroadDiagramModel,
-    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -643,7 +658,6 @@ impl RailroadSemanticSource {
 
 struct RailroadParseFailure {
     error: Box<Error>,
-    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
@@ -802,7 +816,6 @@ fn construct_railroad_semantic_source(
         }
         return Ok(Err(RailroadParseFailure {
             error: Box::new(error),
-            #[cfg(any(test, feature = "compat-json"))]
             editor_facts: editor_facts.map(Box::new),
         }));
     }
@@ -810,7 +823,6 @@ fn construct_railroad_semantic_source(
     control.checkpoint()?;
     Ok(Ok(RailroadSemanticSource {
         model: parser.model,
-        #[cfg(any(test, feature = "compat-json"))]
         editor_facts,
     }))
 }
@@ -3524,8 +3536,11 @@ mod semantic_tests {
         type Parser = fn(
             &str,
             &SemanticMetadata,
+            EditorFactsDemand,
             &OperationControl,
-        ) -> OperationControlResult<Result<RailroadDiagramModel>>;
+        ) -> OperationControlResult<
+            crate::family::SemanticConstruction<RailroadDiagramModel>,
+        >;
         let cases: [(RailroadDialect, &str, Parser); 4] = [
             (
                 RailroadDialect::Ir,
@@ -3552,9 +3567,15 @@ mod semantic_tests {
         for (dialect, source, parse) in cases {
             reset_railroad_syntax_construction_count();
             crate::editor::test_work::reset();
-            let model = parse(source, &metadata(dialect), &OperationControl::new())
-                .unwrap()
-                .unwrap();
+            let model = parse(
+                source,
+                &metadata(dialect),
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
             assert_eq!(model.title.as_deref(), Some("Header"));
             assert_eq!(model.rules.len(), 1);
             assert_eq!(model.rules[0].name, "entry");
@@ -3601,10 +3622,15 @@ mod semantic_tests {
         let source = "railroad-ebnf-beta\nbroken = ( \"value\" ;\nafter = \"later\" ;\n";
         let meta = metadata(RailroadDialect::Ebnf);
         crate::editor::test_work::reset();
-        let semantic =
-            parse_railroad_ebnf_semantic_model_controlled(source, &meta, &OperationControl::new())
-                .unwrap()
-                .unwrap_err();
+        let semantic = parse_railroad_ebnf_semantic_model_controlled(
+            source,
+            &meta,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let failure = match construct_railroad_semantic_source(
             source,
@@ -3634,7 +3660,15 @@ mod semantic_tests {
 
         let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
-        assert!(parse_railroad_ebnf_semantic_model_controlled(source, &meta, &control,).is_err());
+        assert!(
+            parse_railroad_ebnf_semantic_model_controlled(
+                source,
+                &meta,
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -3643,10 +3677,15 @@ mod semantic_tests {
         let mut meta = metadata(RailroadDialect::Ir);
         meta.semantic_config
             .set_value("securityLevel", serde_json::json!("strict"));
-        let model =
-            parse_railroad_semantic_model_controlled(source, &meta, &OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let model = parse_railroad_semantic_model_controlled(
+            source,
+            &meta,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert_eq!(
             model.title.as_deref(),
             Some(sanitize_text("<b>Header</b>", &meta.semantic_config).as_str())

@@ -200,7 +200,6 @@ struct RadarDb {
 
 struct RadarSemanticSource {
     model: Option<RadarDiagramModel>,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -729,20 +728,39 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
 pub(crate) fn parse_radar_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<RadarDiagramModel>> {
-    Ok(construct_radar_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<RadarDiagramModel>> {
+    let construction = construct_radar_semantic_source_controlled(
         code,
         &metadata.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|source| {
-        let mut model = source.model.unwrap_or_default();
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
+    )?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.model.unwrap_or_default();
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
     })
-    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 fn construct_radar_semantic_source_controlled(
@@ -762,8 +780,8 @@ fn construct_radar_semantic_source_controlled(
         Ok(None) => {
             return Ok(Ok(RadarSemanticSource {
                 model: None,
-                #[cfg(feature = "compat-json")]
-                editor_facts: None,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then(EditorSemanticFacts::new),
             }));
         }
         Err(error) => {
@@ -883,7 +901,6 @@ fn construct_radar_semantic_source_controlled(
 
     Ok(Ok(RadarSemanticSource {
         model: Some(db.into_model()),
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -2188,6 +2205,32 @@ curve mycurve{1,2,3}
 mod semantic_tests {
     use super::*;
 
+    #[test]
+    fn canonical_empty_capture_keeps_an_available_empty_journal() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("radar");
+        let parsed = parse_radar_semantic_model_controlled(
+            "",
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("radar"),
+            1
+        );
+        let facts = parsed
+            .editor_facts
+            .expect("empty input still provides requested facts");
+        assert!(facts.symbols.is_empty());
+        assert!(facts.diagnostics.is_empty());
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+    }
+
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "radar".to_string(),
@@ -2215,9 +2258,11 @@ mod semantic_tests {
         let model = parse_radar_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(model.title.as_deref(), Some("Delivery"));
@@ -2243,10 +2288,15 @@ mod semantic_tests {
 
     #[test]
     fn semantic_empty_input_has_no_compatibility_sentinel() {
-        let model =
-            parse_radar_semantic_model_controlled("", &metadata(), &crate::OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let model = parse_radar_semantic_model_controlled(
+            "",
+            &metadata(),
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert!(model.axes.is_empty());
         assert!(model.curves.is_empty());
         assert_eq!(model.options.ticks, Value::from(5));
@@ -2261,9 +2311,11 @@ mod semantic_tests {
         let error = parse_radar_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected a radar parse error");
@@ -2293,7 +2345,12 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
         assert!(matches!(
-            parse_radar_semantic_model_controlled(&source, &metadata(), &control),
+            parse_radar_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }

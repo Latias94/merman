@@ -147,7 +147,6 @@ impl VennSemanticState {
 
 struct VennSemanticSource {
     model: VennDiagramModel,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -157,6 +156,7 @@ struct VennParseOutcome {
 }
 
 impl VennParseOutcome {
+    #[cfg(any(test, feature = "presentation"))]
     fn into_strict_source(self) -> Result<VennSemanticSource> {
         match self.first_error {
             Some(error) => Err(error),
@@ -542,21 +542,31 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
 pub(crate) fn parse_venn_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<VennDiagramModel>> {
-    Ok(construct_venn_parse_outcome_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<VennDiagramModel>> {
+    let VennParseOutcome {
+        source,
+        first_error,
+    } = construct_venn_parse_outcome_controlled(
         code,
         &metadata.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .into_strict_source()
-    .map(|mut source| {
-        source
-            .model
-            .sanitize_common_db_fields(&metadata.semantic_config);
-        source.model
-    }))
+    )?;
+    let editor_facts = source.editor_facts;
+    let model = match first_error {
+        Some(error) => Err(error),
+        None => {
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            Ok(model)
+        }
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 fn construct_venn_parse_outcome_controlled(
@@ -677,7 +687,6 @@ fn construct_venn_parse_outcome_controlled(
     Ok(VennParseOutcome {
         source: VennSemanticSource {
             model: state.model,
-            #[cfg(feature = "compat-json")]
             editor_facts: state.editor_facts,
         },
         first_error,
@@ -2060,9 +2069,11 @@ mod semantic_tests {
         let model = parse_venn_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(model.title.as_deref(), Some("Overlap"));
@@ -2093,9 +2104,11 @@ mod semantic_tests {
         let error = parse_venn_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected a Venn parse error");
@@ -2121,7 +2134,12 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(4);
         assert!(matches!(
-            parse_venn_semantic_model_controlled(source, &metadata(), &control),
+            parse_venn_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }

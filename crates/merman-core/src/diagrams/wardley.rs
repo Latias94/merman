@@ -1,5 +1,3 @@
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string,
@@ -10,8 +8,10 @@ use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl, OperationControlResult,
-    Result, SourceSpan, family::CombinedSemanticFailure,
+    SourceSpan, family::CombinedSemanticFailure,
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "compat-json")]
@@ -424,21 +424,39 @@ fn strings_to_json_controlled(
 pub(crate) fn parse_wardley_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<WardleyDiagramModel>> {
-    let source = match construct_wardley_semantic_source_controlled(
+) -> OperationControlResult<crate::family::SemanticConstruction<WardleyDiagramModel>> {
+    let construction = construct_wardley_semantic_source_controlled(
         code,
         &metadata.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )? {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(failure.into_error())),
-    };
-    Ok(Ok(source.into_model_controlled(
-        &metadata.semantic_config,
-        control,
-    )?))
+    )?;
+    Ok(match construction {
+        Ok(mut source) => {
+            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
+                .then(|| std::mem::take(&mut source.editor_facts));
+            let model = source.into_model_controlled(&metadata.semantic_config, control)?;
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 #[derive(Debug)]
@@ -3491,10 +3509,15 @@ mod semantic_tests {
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
         crate::editor::test_work::reset();
-        let model =
-            parse_wardley_semantic_model_controlled(source, &metadata, &OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let model = parse_wardley_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert_eq!(model.acc_title.as_deref(), Some("Public"));
         assert_eq!(model.nodes[0].id, "API");
         assert_eq!((model.nodes[0].x, model.nodes[0].y), (25.0, 50.0));
@@ -3551,9 +3574,11 @@ mod semantic_tests {
         let error = parse_wardley_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected structured parse diagnostic");
@@ -3566,6 +3591,14 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
-        assert!(parse_wardley_semantic_model_controlled(source, &metadata, &control).is_err());
+        assert!(
+            parse_wardley_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
     }
 }

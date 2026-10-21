@@ -4,14 +4,13 @@
 //! syntax borrows Flowchart's node and edge spelling, while the meaning of shapes, containers,
 //! metadata, and the three edge operators is domain specific.
 
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
-use crate::family::EditorFactsDemand;
+use crate::family::{EditorFactsDemand, SemanticConstruction};
 use crate::{
     EditorFamilySemantics, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
-    family,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, SourceSpan, family,
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -311,7 +310,6 @@ struct Construction {
     model: AgentflowDiagramModel,
     #[cfg(feature = "presentation")]
     visuals: Option<AgentflowVisuals>,
-    #[cfg(feature = "compat-json")]
     editor_facts: EditorSemanticFacts,
 }
 
@@ -364,24 +362,41 @@ pub(crate) fn parse_agentflow_with_warning_facts(
 pub(crate) fn parse_agentflow_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<AgentflowDiagramModel>> {
-    Ok(construct_source(
+) -> OperationControlResult<SemanticConstruction<AgentflowDiagramModel>> {
+    let construction = construct_source(
         code,
         &meta.diagram_type,
         &meta.semantic_config,
         meta.title.as_deref(),
-        EditorFactsDemand::Omit,
+        editor_demand,
         #[cfg(feature = "presentation")]
         false,
         control,
-    )?
-    .map(|construction| {
-        let mut model = construction.model;
-        model.sanitize_common_db_fields(&meta.semantic_config);
-        model
+    )?;
+    Ok(match construction {
+        Ok(construction) => {
+            let mut model = construction.model;
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            SemanticConstruction {
+                model: Ok(model),
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then_some(construction.editor_facts),
+            }
+        }
+        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+            let (error, editor_facts) = failure.into_parts();
+            SemanticConstruction {
+                model: Err(error),
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(failure.into_error()),
+            editor_facts: None,
+        },
     })
-    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 #[cfg(feature = "presentation")]
@@ -552,7 +567,6 @@ fn construct_source(
             model,
             #[cfg(feature = "presentation")]
             visuals: parser.visuals,
-            #[cfg(feature = "compat-json")]
             editor_facts: parser.facts.unwrap_or_default(),
         })),
         Err(ParseFailure::Cancelled(cancelled)) => Err(cancelled),
@@ -2499,6 +2513,44 @@ mod semantic_tests {
         "style A stroke:blue\n",
         "click A href \"https://example.com\" \"Open\" _blank\n",
     );
+
+    #[test]
+    fn canonical_agentflow_capture_retains_success_and_failure_facts() {
+        for (source, valid) in [
+            ("agentflow-beta\nA --> B\n", true),
+            ("agentflow-beta\nA --> B\nC ==> D\n", false),
+        ] {
+            let metadata = crate::SemanticMetadata {
+                diagram_type: "agentflow".to_string(),
+                config: crate::MermaidConfig::empty_object(),
+                semantic_config: crate::MermaidConfig::empty_object(),
+                title: None,
+            };
+            AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+            crate::editor::test_work::reset();
+            let parsed = parse_agentflow_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Agentflow facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
 
     #[test]
     fn canonical_agentflow_keeps_authored_facts_without_dom_or_editor_work() {

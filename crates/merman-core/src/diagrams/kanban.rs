@@ -186,7 +186,6 @@ struct KanbanParseFailure {
 }
 
 impl KanbanParseFailure {
-    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = self.editor_facts.unwrap_or_default();
         facts.mark_recovered_from_parse_error(
@@ -1507,19 +1506,35 @@ fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
 pub(crate) fn parse_kanban_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<KanbanDiagramModel>> {
-    Ok(construct_kanban_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<KanbanDiagramModel>> {
+    let construction = construct_kanban_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         #[cfg(feature = "presentation")]
         None,
         control,
-    )?
-    .map(|source| source.db.into_semantic_model(&metadata.semantic_config))
-    .map_err(|failure| *failure.error))
+    )?;
+    let (model, editor_facts) = match construction {
+        Ok(source) => (
+            Ok(source.db.into_semantic_model(&metadata.semantic_config)),
+            source.editor_facts,
+        ),
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Omit => (Err(*failure.error), None),
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                (Err(error), Some(facts))
+            }
+        },
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 #[cfg(feature = "presentation")]
@@ -2341,8 +2356,8 @@ mod semantic_tests {
         crate::editor::test_work::reset();
         let model = parse_kanban_semantic_model_controlled(
             "kanban\n  todo[Todo]\n    card[Caption]@{ ticket: MC-1, priority: high, custom: [1, 2] }\n    ::icon(star)\n    :::highlight\n",
-            &metadata(), &crate::OperationControl::new(),
-        ).unwrap().unwrap();
+            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+        ).unwrap().model.unwrap();
         assert_eq!(model.nodes.len(), 2);
         assert!(model.nodes[0].is_group);
         let card = &model.nodes[1];
@@ -2373,18 +2388,22 @@ mod semantic_tests {
         let model = parse_kanban_semantic_model_controlled(
             "kanban\n  a[<script>bad()</script>Safe]\n",
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.nodes[0].label, "Safe");
         let input = "kanban\n  broken[Open";
         let error = parse_kanban_semantic_model_controlled(
             input,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = &error else {
             panic!("expected exact parser diagnostic")
@@ -2422,8 +2441,13 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel();
         assert!(
-            parse_kanban_semantic_model_controlled("kanban\n  root", &metadata(), &control)
-                .is_err()
+            parse_kanban_semantic_model_controlled(
+                "kanban\n  root",
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
         );
         assert_eq!(kanban_syntax_construction_count(), 0);
     }
@@ -2459,9 +2483,11 @@ mod semantic_tests {
         let canonical = parse_kanban_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(canonical.nodes.len(), 4);
         let projected = canonical

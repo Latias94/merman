@@ -13,6 +13,8 @@ pub(crate) use full::{
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 
+#[cfg(any(feature = "editor-facts", feature = "compat-json"))]
+mod editor;
 mod source_config;
 mod source_edit_map;
 
@@ -185,6 +187,25 @@ pub(crate) fn preprocess_builtin_semantic_controlled(
             control,
         )?
         .into_result(),
+    )
+}
+
+#[cfg(feature = "editor-facts")]
+pub(crate) fn preprocess_builtin_semantic_with_evidence_controlled(
+    input: &str,
+    diagram_type: Option<&str>,
+    control: &OperationControl,
+) -> OperationControlResult<PreprocessCaptureOutcome> {
+    let detector = |text: &str, control: &OperationControl| {
+        Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
+    };
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+        input,
+        &detector,
+        diagram_type,
+        DirectiveRecoveryMode::RecoverLine,
+        SourceConfigCaptureMode::Collect,
+        control,
     )
 }
 

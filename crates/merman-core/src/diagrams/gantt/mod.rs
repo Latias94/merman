@@ -180,6 +180,7 @@ mod tests;
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+    use crate::family::EditorFactsDemand;
     use crate::{OperationControl, SemanticMetadata};
 
     fn metadata() -> SemanticMetadata {
@@ -188,6 +189,41 @@ mod semantic_tests {
             config: crate::MermaidConfig::empty_object(),
             semantic_config: crate::MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn gantt_canonical_capture_retains_same_pass_facts_on_success_and_failure() {
+        for (source, valid) in [
+            (
+                "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task,2026-01-01,1d\n",
+                true,
+            ),
+            ("gantt\nsection Delivery\nweekday someday\n", false),
+        ] {
+            reset_gantt_syntax_construction_count();
+            crate::editor::test_work::reset();
+            let parsed = parse_gantt_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Gantt facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Delivery"));
+            assert_eq!(gantt_syntax_construction_count(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
         }
     }
 
@@ -205,9 +241,11 @@ mod semantic_tests {
             let model = parse_gantt_semantic_model_controlled(
                 source,
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
             .unwrap()
+            .model
             .unwrap();
             assert_eq!(model.sections, ["Delivery"]);
             assert_eq!(model.tasks[0].start_ms, 1_772_323_200_000);
@@ -236,10 +274,15 @@ mod semantic_tests {
                 "securityLevel": level, "gantt": {"displayMode": "compact"}
             }));
             crate::editor::test_work::reset();
-            let model =
-                parse_gantt_semantic_model_controlled(source, &metadata, &OperationControl::new())
-                    .unwrap()
-                    .unwrap();
+            let model = parse_gantt_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
             assert_eq!(model.links["task"], expected_url);
             assert_eq!(model.click_events.contains_key("task"), callback_admitted);
             let serialized = serde_json::to_value(&model).unwrap();
@@ -253,10 +296,15 @@ mod semantic_tests {
     fn gantt_canonical_errors_keep_exact_spans_without_editor_work() {
         let source = "gantt\nweekday someday\n";
         crate::editor::test_work::reset();
-        let error =
-            parse_gantt_semantic_model_controlled(source, &metadata(), &OperationControl::new())
-                .unwrap()
-                .unwrap_err();
+        let error = parse_gantt_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected parse diagnostic")
         };
@@ -276,7 +324,15 @@ mod semantic_tests {
     fn gantt_canonical_construction_observes_cancellation() {
         let control = OperationControl::new();
         control.cancel();
-        assert!(parse_gantt_semantic_model_controlled("gantt\n", &metadata(), &control).is_err());
+        assert!(
+            parse_gantt_semantic_model_controlled(
+                "gantt\n",
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
     }
 
     #[cfg(feature = "presentation")]

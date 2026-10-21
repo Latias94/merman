@@ -1,6 +1,6 @@
 use super::*;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
-use crate::family::EditorFactsDemand;
+use crate::family::{EditorFactsDemand, SemanticConstruction};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
@@ -859,28 +859,45 @@ impl<'a> SpannedText<'a> {
 pub(crate) fn parse_gantt_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<GanttDiagramModel>> {
+) -> OperationControlResult<SemanticConstruction<GanttDiagramModel>> {
     let construction = construct_gantt_semantic_source_controlled(
         code,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         #[cfg(feature = "presentation")]
         false,
         control,
     )?;
     let source = match construction {
         Ok(source) => source,
-        Err(failure) => return Ok(Err(failure.into_error())),
+        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+            let (error, editor_facts) = failure.into_parts();
+            return Ok(SemanticConstruction {
+                model: Err(error),
+                editor_facts: Some(editor_facts),
+            });
+        }
+        Err(failure) => {
+            return Ok(SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            });
+        }
     };
-    let model = match source.db {
+    let GanttSemanticSource { db, editor_facts } = source;
+    let model = match db {
         Some(db) => gantt_db_to_model_controlled(db, raw_task_to_semantic_task, control)?,
         None => Ok(GanttDiagramModel::default()),
     };
-    Ok(model.map(|mut model| {
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
-    }))
+    Ok(SemanticConstruction {
+        model: model.map(|mut model| {
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            model
+        }),
+        editor_facts: (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+    })
 }
 
 #[cfg(feature = "compat-json")]

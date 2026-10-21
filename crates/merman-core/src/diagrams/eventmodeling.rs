@@ -101,8 +101,8 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )? {
-        Ok(source) => {
-            let editor_facts = source.editor_facts();
+        Ok(mut source) => {
+            let editor_facts = std::mem::take(&mut source.editor_facts);
             let json = source.into_compat_json_controlled(meta, control)?;
             Ok((json, editor_facts))
         }
@@ -164,21 +164,39 @@ pub(crate) fn parse_eventmodeling_model_for_render_controlled(
 pub(crate) fn parse_eventmodeling_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<EventModelingDiagramModel>> {
-    let source = match construct_eventmodeling_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<EventModelingDiagramModel>> {
+    let construction = construct_eventmodeling_semantic_source_controlled(
         code,
         &metadata.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )? {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(*failure.error)),
-    };
-    Ok(Ok(source.into_model_controlled(
-        &metadata.semantic_config,
-        control,
-    )?))
+    )?;
+    Ok(match construction {
+        Ok(mut source) => {
+            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
+                .then(|| std::mem::take(&mut source.editor_facts));
+            let model = source.into_model_controlled(&metadata.semantic_config, control)?;
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(*failure.error),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -328,11 +346,6 @@ impl EventModelingSyntaxFacts {
 }
 
 impl EventModelingSemanticSource {
-    #[cfg(feature = "compat-json")]
-    fn editor_facts(&self) -> EditorSemanticFacts {
-        self.editor_facts.clone()
-    }
-
     #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
     fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramModel {
         self.into_render_model_controlled(meta, &crate::OperationControl::new())
@@ -425,7 +438,6 @@ impl EventModelingSemanticSource {
 }
 
 impl EventModelingParseFailure {
-    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = *self.editor_facts;
         facts.mark_recovered_from_parse_error(
@@ -2538,9 +2550,11 @@ mod semantic_tests {
         let model = parse_eventmodeling_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.acc_title.as_deref(), Some("Public"));
         assert_eq!(model.frames[0].name, "01");
@@ -2594,9 +2608,11 @@ mod semantic_tests {
         let error = parse_eventmodeling_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected structured parse diagnostic");
@@ -2610,7 +2626,13 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel();
         assert!(
-            parse_eventmodeling_semantic_model_controlled(source, &metadata, &control).is_err()
+            parse_eventmodeling_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
         );
     }
 }

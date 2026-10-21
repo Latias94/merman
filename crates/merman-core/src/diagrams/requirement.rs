@@ -428,20 +428,40 @@ pub(crate) fn parse_requirement_json_and_editor_facts(
 pub(crate) fn parse_requirement_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<RequirementDiagramModel>> {
-    Ok(construct_requirement_semantic_source_controlled(
+) -> OperationControlResult<crate::family::SemanticConstruction<RequirementDiagramModel>> {
+    let construction = construct_requirement_semantic_source_controlled(
         code,
         &metadata.diagram_type,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|source| {
-        let mut model = source.model;
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
+    )?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts =
+                (editor_demand == EditorFactsDemand::Capture).then_some(source.editor_facts);
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
     })
-    .map_err(CombinedSemanticFailure::into_error))
 }
 
 struct RequirementSemanticSource {
@@ -3010,6 +3030,51 @@ classDef class2 color:blue
 mod semantic_tests {
     use super::*;
 
+    #[test]
+    fn canonical_capture_resolves_forward_reference_kinds() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "future - verifies -> later\n",
+            "style future,later fill:#fff\n",
+            "class future,later important\n",
+            "future:::important\n",
+            "element future {\n",
+            "}\n",
+            "requirement later {\n",
+            "}\n",
+            "classDef important fill:#fff\n",
+        );
+        reset_requirement_syntax_construction_count();
+        let parsed = parse_requirement_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        assert_eq!(requirement_syntax_construction_count(), 1);
+        let facts = parsed.editor_facts.expect("requested facts");
+        for (name, kind, count) in [
+            ("future", EditorSemanticKind::Object, 5),
+            ("later", EditorSemanticKind::Struct, 4),
+        ] {
+            let symbols = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .collect::<Vec<_>>();
+            assert_eq!(symbols.len(), count);
+            assert!(symbols.iter().all(|symbol| symbol.kind == kind));
+            assert!(
+                symbols[..count - 1]
+                    .iter()
+                    .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+            );
+            assert_eq!(symbols[count - 1].role, EditorSemanticRole::Entity);
+        }
+    }
+
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "requirement".to_string(),
@@ -3045,9 +3110,11 @@ mod semantic_tests {
         let model = parse_requirement_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.acc_title.as_deref(), Some("Public"));
         assert_eq!(model.direction, "LR");
@@ -3100,9 +3167,11 @@ mod semantic_tests {
         let error = parse_requirement_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected structured parse diagnostic");
@@ -3115,6 +3184,14 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
-        assert!(parse_requirement_semantic_model_controlled(source, &metadata, &control).is_err());
+        assert!(
+            parse_requirement_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
     }
 }

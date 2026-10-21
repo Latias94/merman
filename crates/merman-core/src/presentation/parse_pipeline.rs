@@ -28,7 +28,7 @@ use crate::presentation::PresentationConfig;
 use crate::{EditorSemanticFacts, ManagedSemanticJson, common_db, diagram};
 use crate::{
     Engine, Error, MermaidConfig, OperationControl, OperationControlResult, ParseMetadata,
-    ParseOptions, Result, SourceSpan, diagrams::error_diagram, family, runtime, sanitize, theme,
+    ParseOptions, Result, diagrams::error_diagram, family, runtime, sanitize, theme,
 };
 #[cfg(feature = "compat-json")]
 use serde::Deserialize;
@@ -253,76 +253,8 @@ impl<'a> EditorParseSourceMap<'a> {
         self.source.text()
     }
 
-    #[cfg(feature = "compat-json")]
-    fn remap_facts(
-        &self,
-        facts: &mut EditorSemanticFacts,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        let original_symbol_count = facts.symbols.len();
-        let mut remapped_symbols = Vec::with_capacity(original_symbol_count);
-        for (index, mut symbol) in std::mem::take(&mut facts.symbols).into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let Some(span) = self.try_remap_source_span(symbol.span) else {
-                continue;
-            };
-            let Some(selection) = self.try_remap_source_span(symbol.selection) else {
-                continue;
-            };
-            symbol.span = span;
-            symbol.selection = selection;
-            remapped_symbols.push(symbol);
-        }
-        facts.symbols = remapped_symbols;
-
-        let mut dropped_diagnostic_spans = 0usize;
-        for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if let Some(span) = diagnostic.span {
-                diagnostic.span = self.try_remap_source_span(span);
-                dropped_diagnostic_spans += usize::from(diagnostic.span.is_none());
-            }
-        }
-        let original_expected_count = facts.expected_syntax.len();
-        let mut remapped_expected = Vec::with_capacity(original_expected_count);
-        for (index, mut expected) in std::mem::take(&mut facts.expected_syntax)
-            .into_iter()
-            .enumerate()
-        {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if let Some(span) = self.try_remap_source_span(expected.span) {
-                expected.span = span;
-                remapped_expected.push(expected);
-            }
-        }
-        facts.expected_syntax = remapped_expected;
-
-        let dropped_symbols = original_symbol_count - facts.symbols.len();
-        let dropped_expected = original_expected_count - facts.expected_syntax.len();
-        let dropped_spans = dropped_symbols + dropped_expected + dropped_diagnostic_spans;
-        if dropped_spans > 0 {
-            facts.mark_recovered_with_diagnostic(
-                format!(
-                    "dropped {dropped_spans} editor fact span(s) that crossed a preprocessing edit"
-                ),
-                None,
-            );
-        }
-        control.checkpoint()
-    }
-
     fn remap_parse_error(&self, err: Error) -> Error {
         self.source.remap_parse_error(err)
-    }
-
-    fn try_remap_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        self.source.try_map_span(span)
     }
 }
 
@@ -652,9 +584,13 @@ impl<'a> ParsePipeline<'a> {
         control.checkpoint()?;
         let facts = match (owner, facts) {
             (Some(RegistryOwner::Custom), _) | (None, _) => ParsedEditorFacts::Unavailable,
-            (Some(RegistryOwner::BuiltIn), Some(facts)) => ParsedEditorFacts::Available(
-                self.finish_editor_semantic_facts(facts, meta, source_map, control)?,
-            ),
+            (Some(RegistryOwner::BuiltIn), Some(facts)) => {
+                ParsedEditorFacts::Available(source_map.source.finish_editor_semantic_facts(
+                    facts,
+                    &meta.diagram_type,
+                    control,
+                )?)
+            }
             (Some(RegistryOwner::BuiltIn), None) => {
                 debug_assert!(
                     family::combined_parser(&meta.diagram_type).is_none(),
@@ -791,44 +727,6 @@ impl<'a> ParsePipeline<'a> {
                 meta, output,
             ))))
         })
-    }
-
-    #[cfg(feature = "compat-json")]
-    fn finish_editor_semantic_facts(
-        &self,
-        mut facts: EditorSemanticFacts,
-        meta: &ParseMetadata,
-        source_map: &EditorParseSourceMap<'_>,
-        control: &OperationControl,
-    ) -> OperationControlResult<EditorSemanticFacts> {
-        let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
-        source_map.remap_facts(&mut facts, control)?;
-        facts.family_semantics = family::diagram_type_editor_semantics(&meta.diagram_type)
-            .expect("built-in combined semantic facts have typed editor family semantics");
-        for expected in source_map.source.global_expected_syntax().chunks(128) {
-            control.checkpoint()?;
-            facts.expected_syntax.extend_from_slice(expected);
-        }
-        facts.finalize_expected_syntax_controlled(control)?;
-        for (index, prefix) in source_map
-            .source
-            .global_directive_prefixes()
-            .iter()
-            .enumerate()
-        {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            facts.push_directive_prefix(prefix.clone());
-        }
-        for (index, prefix) in family_directive_prefixes.into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            facts.push_directive_prefix(prefix);
-        }
-        control.checkpoint()?;
-        Ok(facts)
     }
 
     // These callbacks are the explicit stages of the parse pipeline; bundling them into an
@@ -2012,7 +1910,8 @@ mod editor_parse_source_map_tests {
             SourceSpan::new(c, c + 1),
         ));
 
-        map.remap_facts(&mut facts, &OperationControl::new())
+        map.source
+            .remap_editor_facts_controlled(&mut facts, &OperationControl::new())
             .expect("a private parse control cannot be cancelled");
 
         assert_eq!(facts.symbols.len(), 1);
@@ -2058,7 +1957,8 @@ mod editor_parse_source_map_tests {
         control.cancel_after_checkpoints(1);
 
         assert!(matches!(
-            map.remap_facts(&mut facts, &control),
+            map.source
+                .remap_editor_facts_controlled(&mut facts, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());

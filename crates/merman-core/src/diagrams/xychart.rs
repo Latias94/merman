@@ -832,7 +832,8 @@ fn construct_xychart_semantic_source_controlled(
         return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
                 model: XyChartState::new(config).into_semantic_model(None, None, None),
-                editor_facts: None,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then(EditorSemanticFacts::new),
             },
             first_error: None,
         });
@@ -1001,22 +1002,41 @@ fn construct_xychart_semantic_source_controlled(
 pub(crate) fn parse_xychart_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<XyChartDiagramModel>> {
-    Ok(construct_xychart_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<XyChartDiagramModel>> {
+    let construction = construct_xychart_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
     )?
-    .into_strict_result()
-    .map(|source| {
-        let mut model = source.model;
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
+    .into_strict_result();
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
     })
-    .map_err(CombinedSemanticFailure::into_error))
 }
 
 #[cfg(feature = "compat-json")]
@@ -2743,6 +2763,29 @@ bar [1, 2]
 mod semantic_tests {
     use super::*;
 
+    #[test]
+    fn canonical_empty_capture_keeps_an_available_empty_journal() {
+        reset_xychart_syntax_construction_count();
+        let parsed = parse_xychart_semantic_model_controlled(
+            "",
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        let facts = parsed
+            .editor_facts
+            .expect("empty input still provides requested facts");
+        assert!(facts.symbols.is_empty());
+        assert!(facts.diagnostics.is_empty());
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+    }
+
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "xychart".to_string(),
@@ -2758,8 +2801,8 @@ mod semantic_tests {
         crate::editor::test_work::reset();
         let model = parse_xychart_semantic_model_controlled(
             "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Revenue 0 --> 100\nline Forecast [23 \"Low\", 45 \"High\"]\n",
-            &metadata(), &crate::OperationControl::new(),
-        ).unwrap().unwrap();
+            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+        ).unwrap().model.unwrap();
         assert_eq!(model.orientation, "horizontal");
         assert_eq!(model.title.as_deref(), Some("Revenue"));
         assert_eq!(
@@ -2807,9 +2850,11 @@ mod semantic_tests {
         let model = parse_xychart_semantic_model_controlled(
             "xychart\ntitle \"<script>bad()</script>Revenue\"\nbar [1, 2]",
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.orientation, "horizontal");
         assert_eq!(model.title.as_deref(), Some("Revenue"));
@@ -2823,9 +2868,11 @@ mod semantic_tests {
         let error = parse_xychart_semantic_model_controlled(
             input,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = &error else {
             panic!("expected exact parser diagnostic")
@@ -2859,8 +2906,13 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel();
         assert!(
-            parse_xychart_semantic_model_controlled("xychart\nbar [1]", &metadata(), &control)
-                .is_err()
+            parse_xychart_semantic_model_controlled(
+                "xychart\nbar [1]",
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
         );
         assert_eq!(xychart_syntax_construction_count(), 0);
     }

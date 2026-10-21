@@ -435,7 +435,6 @@ fn c4_other_statement_is_allowed(
 
 struct C4SemanticSource {
     db: C4Db,
-    #[cfg(feature = "compat-json")]
     editor_facts: EditorSemanticFacts,
 }
 
@@ -457,11 +456,20 @@ impl C4ParseOutcome {
         Ok(self.source)
     }
 
-    #[cfg(feature = "compat-json")]
-    fn into_combined(mut self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_semantic_construction(
+        mut self,
+        editor_demand: EditorFactsDemand,
+    ) -> crate::family::SemanticConstruction<C4SemanticSource> {
+        if editor_demand == EditorFactsDemand::Omit {
+            return crate::family::SemanticConstruction {
+                model: self.into_strict_source(),
+                editor_facts: None,
+            };
+        }
+        let mut editor_facts = std::mem::take(&mut self.source.editor_facts);
         let mut first_error = None;
         for issue in self.issues {
-            self.source.editor_facts.mark_recovered_from_parse_error(
+            editor_facts.mark_recovered_from_parse_error(
                 format!("c4 parser recovered after parse error: {}", issue.error),
                 Some(issue.span),
             );
@@ -469,16 +477,29 @@ impl C4ParseOutcome {
                 first_error = Some(issue.error);
             }
         }
-        let construction = match first_error {
-            Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+        crate::family::SemanticConstruction {
+            model: match first_error {
+                Some(error) => Err(error),
+                None => Ok(self.source),
+            },
+            editor_facts: Some(editor_facts),
+        }
+    }
+
+    #[cfg(feature = "compat-json")]
+    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+        let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
+        let editor_facts = construction.editor_facts.unwrap_or_default();
+        let construction = match construction.model {
+            Ok(source) => Ok((source, editor_facts)),
+            Err(error) => Err(crate::family::CombinedSemanticFailure::new(
                 error,
-                self.source.editor_facts,
+                editor_facts,
             )),
-            None => Ok(self.source),
         };
         crate::family::CombinedSemanticParse::from_construction(
             construction,
-            |source| (source.db.into_compat_json(meta), source.editor_facts),
+            |(source, editor_facts)| (source.db.into_compat_json(meta), editor_facts),
             crate::family::CombinedSemanticFailure::into_parts,
         )
     }
@@ -1997,24 +2018,27 @@ fn construct_c4_semantic_source_controlled(
 pub(crate) fn parse_c4_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<C4DiagramModel>> {
-    let source = match construct_c4_source_controlled(
+) -> OperationControlResult<crate::family::SemanticConstruction<C4DiagramModel>> {
+    let construction = construct_c4_source_controlled(
         code,
         &meta.diagram_type,
         &meta.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
     )?
-    .into_strict_source()
-    {
-        Ok(source) => source,
-        Err(error) => return Ok(Err(error)),
-    };
-    Ok(source.db.into_model().map(|mut model| {
-        model.sanitize_common_db_fields(&meta.semantic_config);
-        model
-    }))
+    .into_semantic_construction(editor_demand);
+    Ok(crate::family::SemanticConstruction {
+        model: construction
+            .model
+            .and_then(|source| source.db.into_model())
+            .map(|mut model| {
+                model.sanitize_common_db_fields(&meta.semantic_config);
+                model
+            }),
+        editor_facts: construction.editor_facts,
+    })
 }
 
 fn construct_c4_source_controlled(
@@ -2374,7 +2398,6 @@ fn parse_c4_semantic_source(
     Ok(C4ParseOutcome {
         source: C4SemanticSource {
             db,
-            #[cfg(feature = "compat-json")]
             editor_facts: editor_facts.unwrap_or_default(),
         },
         issues,
@@ -2597,6 +2620,49 @@ fn split_next_arg(input: &str) -> (&str, Option<(usize, &str)>) {
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    fn canonical_capture_retains_all_recovery_issues_and_later_symbols() {
+        let source = concat!(
+            "C4Context\r\n",
+            "Rel(first, )\r\n",
+            "Person(later, \"Later\")\r\n",
+            "Rel(second, )\r\n",
+        );
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "c4".into(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        reset_c4_syntax_construction_count();
+        let parsed = parse_c4_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(c4_syntax_construction_count(), 1);
+        assert!(
+            parsed
+                .model
+                .unwrap_err()
+                .to_string()
+                .contains("missing relation target")
+        );
+        let facts = parsed.editor_facts.expect("requested facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics.len(), 2);
+        assert!(
+            facts.diagnostics[0].span.unwrap().start < facts.diagnostics[1].span.unwrap().start
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Later"));
+    }
 
     #[test]
     fn canonical_c4_keeps_typed_records_and_omits_editor_observation() {

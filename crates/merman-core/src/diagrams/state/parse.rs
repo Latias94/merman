@@ -1,17 +1,16 @@
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
-use crate::family::EditorFactsDemand;
-#[cfg(feature = "compat-json")]
+use crate::family::{EditorFactsDemand, SemanticConstruction};
 use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, Result, SourceSpan,
+    ParseDiagnosticSpanKind, SourceSpan,
     parse_diagnostic::lalrpop_parse_diagnostic,
     source_span::{
         has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -90,14 +89,12 @@ impl StateSyntax {
 
 struct StateSemanticSource {
     db: StateDb,
-    #[cfg(feature = "compat-json")]
     editor_facts: EditorSemanticFacts,
 }
 
 struct StateSemanticFailure {
     error: Box<StateGrammarError>,
-    #[cfg(feature = "compat-json")]
-    editor_facts: Box<EditorSemanticFacts>,
+    editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
 impl StateSemanticFailure {
@@ -122,9 +119,8 @@ impl StateSemanticFailure {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
-    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts_for_type(
-        mut self,
+        self,
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
@@ -138,14 +134,17 @@ impl StateSemanticFailure {
                 .unwrap_or_else(|| SourceSpan::new(fallback_offset, fallback_offset)),
             _ => lalrpop_recovery_span(&self.error, fallback_offset),
         };
-        self.editor_facts.mark_recovered_from_parse_error(
+        let mut editor_facts = self
+            .editor_facts
+            .expect("State capture requests its failure journal");
+        editor_facts.mark_recovered_from_parse_error(
             format!(
                 "state parser recovered after parse error: {}",
                 format_lalrpop_parse_error(self.error.as_ref())
             ),
             Some(span),
         );
-        (error, *self.editor_facts)
+        (error, *editor_facts)
     }
 }
 
@@ -185,26 +184,37 @@ pub(crate) fn parse_state_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<StateDiagramModel>> {
-    let construction = construct_state_semantic_source(code, EditorFactsDemand::Omit, control)?;
+) -> OperationControlResult<SemanticConstruction<StateDiagramModel>> {
+    let construction = construct_state_semantic_source(code, editor_demand, control)?;
     match construction {
-        Ok(source) => {
-            match source
-                .db
-                .into_semantic_model_controlled(diagram_type, config, control)?
-            {
+        Ok(StateSemanticSource { db, editor_facts }) => {
+            let model = match db.into_semantic_model_controlled(diagram_type, config, control)? {
                 Ok(mut model) => {
                     model.sanitize_common_db_fields(config);
                     control.checkpoint()?;
-                    Ok(Ok(model))
+                    Ok(model)
                 }
-                Err(error) => Ok(Err(error)),
-            }
+                Err(error) => Err(error),
+            };
+            Ok(SemanticConstruction {
+                model,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+            })
         }
-        Err(failure) => Ok(Err(
-            failure.into_parse_error_for_type(diagram_type, code.len())
-        )),
+        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+            let (error, editor_facts) =
+                failure.into_error_and_editor_facts_for_type(diagram_type, code.len());
+            Ok(SemanticConstruction {
+                model: Err(error),
+                editor_facts: Some(editor_facts),
+            })
+        }
+        Err(failure) => Ok(SemanticConstruction {
+            model: Err(failure.into_parse_error_for_type(diagram_type, code.len())),
+            editor_facts: None,
+        }),
     }
 }
 
@@ -261,8 +271,8 @@ fn construct_state_semantic_source(
         Err(error) => {
             return Ok(Err(StateSemanticFailure {
                 error: Box::new(error),
-                #[cfg(feature = "compat-json")]
-                editor_facts: Box::new(_editor_facts),
+                editor_facts: (facts_demand == EditorFactsDemand::Capture)
+                    .then(|| Box::new(_editor_facts)),
             }));
         }
     };
@@ -275,7 +285,6 @@ fn construct_state_semantic_source(
     control.checkpoint()?;
     Ok(Ok(StateSemanticSource {
         db,
-        #[cfg(feature = "compat-json")]
         editor_facts: _editor_facts,
     }))
 }
@@ -1154,4 +1163,61 @@ fn push_state_string_payload_fact(
 
 fn is_editor_visible_state_name(id: &str) -> bool {
     !id.trim().is_empty() && id.trim() != "[*]"
+}
+
+#[cfg(test)]
+mod semantic_capture_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_state_capture_preserves_grammar_recovery_and_database_validation_facts() {
+        for (source, valid, recovered) in [
+            ("stateDiagram-v2\nA --> B\n", true, false),
+            ("stateDiagram-v2\nstate A {\nB\n", false, true),
+            (
+                "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
+                false,
+                false,
+            ),
+            (
+                "stateDiagram-v2\nnote right of A : note\nstate \"Authored\" as A----note-0\n",
+                false,
+                false,
+            ),
+        ] {
+            reset_state_syntax_construction_count();
+            crate::editor::test_work::reset();
+            let parsed = parse_state_semantic_model_controlled(
+                source,
+                "stateDiagram-v2",
+                &crate::MermaidConfig::default(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            if source.contains("A----note-0") {
+                let error = parsed.model.as_ref().unwrap_err();
+                assert!(
+                    error.to_string().contains(
+                        "Authored state id `A----note-0` conflicts with generated note id for state `A`"
+                    ),
+                    "unexpected State collision error: {error}"
+                );
+            }
+            let facts = parsed.editor_facts.expect("same-pass State facts");
+            assert!(!facts.symbols.is_empty());
+            assert_eq!(state_syntax_construction_count(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if recovered {
+                    crate::EditorSemanticCompleteness::Recovered
+                } else {
+                    crate::EditorSemanticCompleteness::Complete
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), !recovered);
+        }
+    }
 }

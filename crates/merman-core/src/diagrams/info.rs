@@ -1,5 +1,3 @@
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
 use crate::diagrams::langium_common::{
     LangiumCommonParse, parse_langium_common, push_langium_common_editor_fact,
     push_langium_common_recovery,
@@ -7,8 +5,10 @@ use crate::diagrams::langium_common::{
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, SourceSpan, family,
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
@@ -41,7 +41,6 @@ struct InfoSemanticSource {
     model: InfoDiagramModel,
     #[cfg(feature = "compat-json")]
     compat_output: InfoCompatOutput,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -134,18 +133,34 @@ pub(crate) fn parse_info_model_for_render_controlled(
 pub(crate) fn parse_info_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<InfoDiagramModel>> {
-    let construction = construct_info_semantic_source_controlled(
-        code,
-        diagram_type,
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    match construction {
-        Ok(source) => Ok(Ok(source.model)),
-        Err(failure) => Ok(Err(failure.into_error())),
-    }
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<InfoDiagramModel>> {
+    let construction =
+        construct_info_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let model = source.model;
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 fn construct_info_semantic_source_controlled(
@@ -166,8 +181,8 @@ fn construct_info_semantic_source_controlled(
                 model: InfoDiagramModel::default(),
                 #[cfg(feature = "compat-json")]
                 compat_output: InfoCompatOutput::Empty,
-                #[cfg(feature = "compat-json")]
-                editor_facts: None,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then(EditorSemanticFacts::new),
             }));
         }
         InfoHeader::ExpectedInfo(span) => {
@@ -258,7 +273,6 @@ fn construct_info_semantic_source_controlled(
         model: InfoDiagramModel { show_info },
         #[cfg(feature = "compat-json")]
         compat_output: InfoCompatOutput::Model,
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -710,9 +724,11 @@ mod tests {
             let model = parse_info_semantic_model_controlled(
                 source,
                 "info",
+                EditorFactsDemand::Omit,
                 &crate::OperationControl::new(),
             )
             .unwrap()
+            .model
             .unwrap();
             assert_eq!(model.show_info, show_info);
             assert_eq!(crate::editor::test_work::read(), Default::default());
@@ -722,9 +738,11 @@ mod tests {
                 parse_info_semantic_model_controlled(
                     source,
                     "info",
+                    EditorFactsDemand::Omit,
                     &crate::OperationControl::new()
                 )
                 .unwrap()
+                .model
                 .is_err()
             );
         }

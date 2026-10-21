@@ -37,17 +37,30 @@ struct MindmapSemanticSource {
 pub(crate) fn parse_mindmap_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<MindmapDiagramModel>> {
-    Ok(construct_mindmap_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<MindmapDiagramModel>> {
+    let construction = construct_mindmap_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|source| source.model)
-    .map_err(CombinedSemanticFailure::into_error))
+    )?;
+    let (model, editor_facts) = match construction {
+        Ok(source) => (Ok(source.model), source.editor_facts),
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Omit => (Err(failure.into_error()), None),
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                (Err(error), Some(facts))
+            }
+        },
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 #[cfg(feature = "compat-json")]
@@ -765,8 +778,8 @@ mod semantic_tests {
         crate::editor::test_work::reset();
         let model = parse_mindmap_semantic_model_controlled(
             "mindmap\n  root[Root]\n    child((Child))\n      leaf[\"`Markdown`\"]\n      ::icon(star)\n      :::highlight\n",
-            &metadata(), &crate::OperationControl::new(),
-        ).unwrap().unwrap();
+            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+        ).unwrap().model.unwrap();
         assert_eq!(model.nodes.len(), 3);
         assert_eq!(model.nodes[0].node_id, "root");
         assert_eq!(model.nodes[0].children, vec![1]);
@@ -797,9 +810,11 @@ mod semantic_tests {
         let model = parse_mindmap_semantic_model_controlled(
             "mindmap\n  root[<script>bad()</script>Safe]\n    leaf[\"`**Markdown**`\"]",
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.nodes[0].descr, "Safe");
         assert_eq!(model.nodes[1].descr, "**Markdown**");
@@ -812,9 +827,11 @@ mod semantic_tests {
         let error = parse_mindmap_semantic_model_controlled(
             input,
             &metadata(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = &error else {
             panic!("expected parser diagnostic")
@@ -851,8 +868,13 @@ mod semantic_tests {
         let control = crate::OperationControl::new();
         control.cancel();
         assert!(
-            parse_mindmap_semantic_model_controlled("mindmap\n  root", &metadata(), &control)
-                .is_err()
+            parse_mindmap_semantic_model_controlled(
+                "mindmap\n  root",
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
         );
         assert_eq!(mindmap_syntax_construction_count(), 0);
     }

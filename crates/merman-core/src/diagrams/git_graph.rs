@@ -10,7 +10,7 @@ use crate::diagrams::langium_common::{
 };
 #[cfg(feature = "compat-json")]
 use crate::family;
-use crate::family::EditorFactsDemand;
+use crate::family::{EditorFactsDemand, SemanticConstruction};
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
@@ -223,13 +223,11 @@ impl From<GitGraphCommandParseError> for GitGraphCommandParseAbort {
 
 struct GitGraphSemanticSource {
     model: GitGraphDiagramModel,
-    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct GitGraphParseFailure {
     error: Box<Error>,
-    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
@@ -1681,24 +1679,32 @@ fn push_gitgraph_reference_fact(
 pub(crate) fn parse_git_graph_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<GitGraphDiagramModel>> {
+) -> crate::OperationControlResult<SemanticConstruction<GitGraphDiagramModel>> {
     let construction = construct_git_graph_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
     )?;
     control.checkpoint()?;
-    Ok(construction
-        .map(|mut source| {
+    Ok(match construction {
+        Ok(mut source) => {
             source
                 .model
                 .sanitize_common_db_fields(&metadata.semantic_config);
-            source.model
-        })
-        .map_err(|failure| *failure.error))
+            SemanticConstruction {
+                model: Ok(source.model),
+                editor_facts: source.editor_facts,
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(*failure.error),
+            editor_facts: failure.editor_facts.map(|facts| *facts),
+        },
+    })
 }
 
 #[cfg(feature = "compat-json")]
@@ -1778,7 +1784,6 @@ fn construct_git_graph_semantic_source_controlled(
     let model = db.into_model_controlled(diagram_type, control)?;
     Ok(Ok(GitGraphSemanticSource {
         model,
-        #[cfg(any(test, feature = "compat-json"))]
         editor_facts,
     }))
 }
@@ -1808,7 +1813,6 @@ fn gitgraph_parse_failure(
     }
     GitGraphParseFailure {
         error: Box::new(error),
-        #[cfg(any(test, feature = "compat-json"))]
         editor_facts: editor_facts.map(Box::new),
     }
 }
@@ -2874,6 +2878,47 @@ mod semantic_tests {
         );
         assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
         assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn canonical_gitgraph_capture_retains_facts_on_success_and_database_failure() {
+        for (source, valid) in [
+            ("gitGraph\ncommit id:\"root\"\n", true),
+            ("gitGraph\ncommit id:\"root\"\ncheckout missing\n", false),
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "gitGraph".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::from_value(json!({"gitGraph": {"seed": 1}})),
+                title: None,
+            };
+            reset_construction_counts();
+            let parsed = parse_git_graph_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass GitGraph facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+                1
+            );
+            assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
     }
 
     #[test]

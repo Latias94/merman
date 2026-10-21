@@ -94,13 +94,6 @@ struct TreeViewParseOutcome {
 }
 
 impl TreeViewParseOutcome {
-    fn into_strict(self, diagram_type: &str) -> Result<ParsedTreeViewInput> {
-        match self.first_issue {
-            Some(issue) => Err(issue.into_error(diagram_type)),
-            None => Ok(self.snapshot),
-        }
-    }
-
     #[cfg(feature = "compat-json")]
     fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
         let Self {
@@ -264,26 +257,30 @@ pub(crate) fn parse_tree_view_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
-    construct_tree_view_model_controlled(
+    Ok(construct_tree_view_model_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
         control,
-    )
+    )?
+    .model)
 }
 
 pub(crate) fn parse_tree_view_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
     Ok(construct_tree_view_model_controlled(
         code,
         &meta.diagram_type,
         &meta.semantic_config,
+        editor_demand,
         control,
     )?
-    .map(|mut model| {
+    .map_model(|mut model| {
         model.sanitize_common_db_fields(&meta.semantic_config);
         model
     }))
@@ -293,25 +290,38 @@ fn construct_tree_view_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
-    let parsed =
-        parse_tree_view_input_controlled(code, diagram_type, EditorFactsDemand::Omit, control)?;
-    let parsed = match parsed.into_strict(diagram_type) {
-        Ok(parsed) => parsed,
-        Err(error) => return Ok(Err(error)),
-    };
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
+    let TreeViewParseOutcome {
+        snapshot,
+        first_issue,
+    } = parse_tree_view_input_controlled(code, diagram_type, editor_demand, control)?;
     let ParsedTreeViewInput {
         title,
         acc_title,
         acc_descr,
         nodes,
-        editor_facts: _,
-    } = parsed;
-    let model = tree_view_input_to_model(title, acc_title, acc_descr, nodes, config)
-        .map_err(|message| Error::diagram_parse_fallback(diagram_type.to_string(), message));
+        mut editor_facts,
+    } = snapshot;
+    if let Some(issue) = first_issue {
+        return Ok(crate::family::SemanticConstruction {
+            model: Err(issue.into_error(diagram_type)),
+            editor_facts,
+        });
+    }
+    let model =
+        tree_view_input_to_model(title, acc_title, acc_descr, nodes, config).map_err(|message| {
+            if let Some(facts) = &mut editor_facts {
+                facts.mark_recovered_from_parse_error(message.clone(), None);
+            }
+            Error::diagram_parse_fallback(diagram_type.to_string(), message)
+        });
     control.checkpoint()?;
-    Ok(model)
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 #[cfg(feature = "compat-json")]
@@ -1259,6 +1269,52 @@ fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    fn canonical_capture_preserves_spanless_model_build_recovery() {
+        let mut source = String::from("treeView-beta\n");
+        for depth in 0..=MAX_DIAGRAM_NESTING_DEPTH {
+            source.push_str(&" ".repeat(depth));
+            source.push_str(&format!("\"n{depth}\"\n"));
+        }
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "treeView".into(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("treeView");
+        let parsed = parse_tree_view_semantic_model_controlled(
+            &source,
+            &metadata,
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(
+            parsed
+                .model
+                .unwrap_err()
+                .to_string()
+                .contains("nesting depth exceeds")
+        );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("treeView"),
+            1
+        );
+        let facts = parsed.editor_facts.expect("requested facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(facts.diagnostics[0].span, None);
+        assert!(
+            facts.diagnostics[0]
+                .message
+                .contains("nesting depth exceeds")
+        );
+    }
 
     #[test]
     fn canonical_tree_keeps_authored_attributes_without_editor_work() {

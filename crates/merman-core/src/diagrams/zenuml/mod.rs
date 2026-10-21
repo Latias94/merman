@@ -11,12 +11,11 @@ mod model;
 mod parser;
 mod semantic;
 
-#[cfg(any(test, feature = "compat-json"))]
 use crate::EditorSemanticFacts;
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
 use crate::family::EditorFactsDemand;
-use crate::{Error, OperationControl, OperationControlResult, Result, SemanticMetadata};
+use crate::{Error, OperationControl, OperationControlResult, SemanticMetadata};
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
@@ -31,7 +30,6 @@ pub(crate) use model::{render_model_to_compat_json, render_model_to_compat_json_
 
 struct ZenumlSemanticSource {
     model: ZenumlDiagramModel,
-    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: EditorSemanticFacts,
     first_diagnostic: Option<ast::SyntaxDiagnostic>,
 }
@@ -114,19 +112,28 @@ fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSeman
 pub(crate) fn parse_zenuml_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<ZenumlDiagramModel>> {
-    let source = construct_semantic_source(code, EditorFactsDemand::Omit, control)?;
-    if let Some(diagnostic) = source.first_diagnostic {
-        return Ok(Err(Error::diagram_parse_exact(
+) -> OperationControlResult<crate::family::SemanticConstruction<ZenumlDiagramModel>> {
+    let source = construct_semantic_source(code, editor_demand, control)?;
+    let editor_facts =
+        matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts);
+    let model = match source.first_diagnostic {
+        Some(diagnostic) => Err(Error::diagram_parse_exact(
             metadata.diagram_type.clone(),
             diagnostic.message,
             diagnostic.span,
-        )));
-    }
-    let mut model = source.model;
-    model.sanitize_common_db_fields(&metadata.semantic_config);
-    Ok(Ok(model))
+        )),
+        None => {
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            Ok(model)
+        }
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
 fn construct_semantic_source(
@@ -145,7 +152,6 @@ fn construct_semantic_source(
     control.checkpoint()?;
     Ok(ZenumlSemanticSource {
         model: built.model,
-        #[cfg(any(test, feature = "compat-json"))]
         editor_facts: built.editor_facts,
         first_diagnostic: built.diagnostics.into_iter().next(),
     })
@@ -175,10 +181,15 @@ mod semantic_tests {
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("zenuml");
         crate::editor::test_work::reset();
-        let model =
-            parse_zenuml_semantic_model_controlled(source, &metadata(), &OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let model = parse_zenuml_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert_eq!(model.title.as_deref(), Some("Authored title"));
         assert_eq!(model.starter.as_deref(), Some("Client"));
         assert_eq!(model.groups[0].id.as_deref(), Some("Business"));
@@ -239,10 +250,15 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read().collections, 1);
         let expected = captured.first_diagnostic.unwrap();
         crate::editor::test_work::reset();
-        let error =
-            parse_zenuml_semantic_model_controlled(source, &metadata(), &OperationControl::new())
-                .unwrap()
-                .unwrap_err();
+        let error = parse_zenuml_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected diagram parse diagnostic");
         };
@@ -260,8 +276,13 @@ mod semantic_tests {
         let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
         assert!(
-            parse_zenuml_semantic_model_controlled("zenuml\nA.call()", &metadata(), &control,)
-                .is_err()
+            parse_zenuml_semantic_model_controlled(
+                "zenuml\nA.call()",
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
         );
     }
 

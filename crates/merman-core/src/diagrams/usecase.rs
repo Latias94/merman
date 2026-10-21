@@ -3,13 +3,12 @@
 //! Grammar, declaration merging, and deferred resolution follow the pinned upstream
 //! `usecase.parser.ts`, `usecase.visitor.ts`, and `usecaseModelBuilder.ts`.
 
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
 use crate::family::EditorFactsDemand;
 use crate::{
-    EditorSemanticFacts, Error, OperationControl, OperationControlResult, Result, SourceSpan,
-    family,
+    EditorSemanticFacts, Error, OperationControl, OperationControlResult, SourceSpan, family,
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
@@ -377,21 +376,37 @@ impl ParseIssue {
 pub(crate) fn parse_usecase_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<UsecaseDiagramModel>> {
-    Ok(construct_usecase_semantic_source_controlled(
+) -> OperationControlResult<family::SemanticConstruction<UsecaseDiagramModel>> {
+    let construction = construct_usecase_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         metadata.title.as_deref(),
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|source| {
-        let mut model = source.model;
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
+    )?;
+    let (model, editor_facts) = match construction {
+        Ok(source) => {
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            (
+                Ok(model),
+                matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts),
+            )
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Omit => (Err(failure.into_error()), None),
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                (Err(error), Some(facts))
+            }
+        },
+    };
+    Ok(family::SemanticConstruction {
+        model,
+        editor_facts,
     })
-    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -592,10 +607,15 @@ mod semantic_tests {
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("usecase");
         crate::editor::test_work::reset();
-        let model =
-            parse_usecase_semantic_model_controlled(source, &metadata, &OperationControl::new())
-                .unwrap()
-                .unwrap();
+        let model = parse_usecase_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
         assert_eq!(model.title.as_deref(), Some("Authentication"));
         assert_eq!(model.nodes[0].kind, UsecaseNodeKind::Actor);
         assert_eq!(model.nodes[1].label, "Sign in");
@@ -644,9 +664,11 @@ mod semantic_tests {
         let error = parse_usecase_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected structured parse diagnostic");
@@ -656,6 +678,14 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
-        assert!(parse_usecase_semantic_model_controlled(source, &metadata, &control).is_err());
+        assert!(
+            parse_usecase_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
     }
 }

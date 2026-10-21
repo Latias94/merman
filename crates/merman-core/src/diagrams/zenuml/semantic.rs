@@ -9,7 +9,6 @@ use indexmap::IndexMap;
 
 pub(super) struct SemanticBuild {
     pub(super) model: ZenumlDiagramModel,
-    #[cfg(any(test, feature = "compat-json"))]
     pub(super) editor_facts: EditorSemanticFacts,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
 }
@@ -198,7 +197,6 @@ impl SemanticBuilder {
         self.control.checkpoint()?;
         Ok(SemanticBuild {
             model,
-            #[cfg(any(test, feature = "compat-json"))]
             editor_facts: self.facts.unwrap_or_default(),
             diagnostics: self.diagnostics,
         })

@@ -825,27 +825,34 @@ pub(super) fn parse_semantic_source(
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
+#[cfg(feature = "presentation")]
 pub(super) fn parse_model_controlled(
     code: &str,
     diagram_type: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
-    control.checkpoint()?;
-    let trace = match parse_trace_controlled(
-        code,
-        diagram_type,
-        ArchitectureParseMode::Strict,
-        EditorFactsDemand::Omit,
-        control,
-    )? {
-        Ok(trace) => trace,
-        Err(error) => return Ok(Err(error)),
+    Ok(
+        parse_semantic_model_controlled(code, diagram_type, EditorFactsDemand::Omit, control)?
+            .model,
+    )
+}
+
+pub(super) fn parse_semantic_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
+    let construction =
+        construct_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    let model = match construction.model {
+        Ok(db) => Ok(db.semantic_model_controlled(control)?),
+        Err(error) => Err(error),
     };
-    let db = match trace.build_db_controlled(control)? {
-        Ok(db) => db,
-        Err(error) => return Ok(Err(error)),
-    };
-    Ok(Ok(db.semantic_model_controlled(control)?))
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts: construction.editor_facts,
+    })
 }
 
 #[cfg(feature = "compat-json")]
@@ -856,57 +863,80 @@ pub(super) fn parse_combined_semantic_source_controlled(
 ) -> crate::OperationControlResult<
     std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
 > {
-    control.checkpoint()?;
-    let trace = match parse_trace_controlled(
+    let construction = construct_semantic_source_controlled(
         code,
         &meta.diagram_type,
-        ArchitectureParseMode::Recovering,
         EditorFactsDemand::Capture,
         control,
-    )? {
-        Ok(trace) => trace,
-        Err(error) => {
-            let mut facts = EditorSemanticFacts::new();
-            push_recovery_error(&mut facts, &error);
-            return Ok(Err(crate::family::CombinedSemanticFailure::new(
-                error, facts,
-            )));
-        }
-    };
-    control.checkpoint()?;
-    let mut syntax_error = None;
-    for (index, entry) in trace.entries.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Some(diagnostic) = entry.diagnostic.clone() {
-            syntax_error = Some(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                diagnostic,
-            });
-            break;
-        }
-    }
-    control.checkpoint()?;
-    let db = trace.build_db_controlled(control)?;
-    let editor_facts =
-        trace.editor_facts_controlled(db.as_ref().ok(), db.as_ref().err(), control)?;
-    control.checkpoint()?;
-
-    if let Some(error) = syntax_error {
-        return Ok(Err(crate::family::CombinedSemanticFailure::new(
-            error,
-            editor_facts,
-        )));
-    }
-
-    control.checkpoint()?;
-    Ok(match db {
+    )?;
+    let editor_facts = construction
+        .editor_facts
+        .expect("Architecture capture requests its construction journal");
+    Ok(match construction.model {
         Ok(db) => Ok(ArchitectureSemanticSource { db, editor_facts }),
         Err(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
             editor_facts,
         )),
+    })
+}
+
+fn construct_semantic_source_controlled(
+    code: &str,
+    diagram_type: &str,
+    editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<ArchitectureDb>> {
+    control.checkpoint()?;
+    let mode = match editor_demand {
+        EditorFactsDemand::Omit => ArchitectureParseMode::Strict,
+        EditorFactsDemand::Capture => ArchitectureParseMode::Recovering,
+    };
+    let trace = match parse_trace_controlled(code, diagram_type, mode, editor_demand, control)? {
+        Ok(trace) => trace,
+        Err(error) => {
+            let editor_facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
+                let mut facts = EditorSemanticFacts::new();
+                push_recovery_error(&mut facts, &error);
+                facts
+            });
+            return Ok(crate::family::SemanticConstruction {
+                model: Err(error),
+                editor_facts,
+            });
+        }
+    };
+    control.checkpoint()?;
+    let mut syntax_error = None;
+    if editor_demand == EditorFactsDemand::Capture {
+        for (index, entry) in trace.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Some(diagnostic) = entry.diagnostic.clone() {
+                syntax_error = Some(Error::DiagramParse {
+                    diagram_type: diagram_type.to_string(),
+                    diagnostic,
+                });
+                break;
+            }
+        }
+    }
+    control.checkpoint()?;
+    let db = trace.build_db_controlled(control)?;
+    let editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            Some(trace.editor_facts_controlled(db.as_ref().ok(), db.as_ref().err(), control)?)
+        }
+    };
+    control.checkpoint()?;
+    Ok(crate::family::SemanticConstruction {
+        model: match syntax_error {
+            Some(error) => Err(error),
+            None => db,
+        },
+        editor_facts,
     })
 }
 
@@ -1234,7 +1264,6 @@ fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {
     }
 }
 
-#[cfg(feature = "compat-json")]
 fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
     match error {
         Error::DiagramParse { diagnostic, .. } => {
@@ -1366,7 +1395,6 @@ impl ArchitectureTrace {
             .expect("a private parse control cannot be cancelled")
     }
 
-    #[cfg(feature = "compat-json")]
     fn declaration_kinds_controlled<'a>(
         &'a self,
         control: &crate::OperationControl,
@@ -1396,7 +1424,6 @@ impl ArchitectureTrace {
         Ok(kinds)
     }
 
-    #[cfg(feature = "compat-json")]
     fn editor_facts_controlled(
         &self,
         db: Option<&ArchitectureDb>,

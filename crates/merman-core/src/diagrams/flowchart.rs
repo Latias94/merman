@@ -264,6 +264,29 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_flowchart_captured_semantic_model_controlled(code, meta, control)?;
+    let (model, warning_facts) = match construction.model {
+        Ok(model) => (
+            render_model_to_compat_json(&model, meta),
+            model.warning_facts,
+        ),
+        Err(error) => (Err(error), Vec::new()),
+    };
+    let parsed = crate::family::CombinedSemanticParse::from_parts(
+        model,
+        construction.editor_facts.unwrap_or_default(),
+        warning_facts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
+    code: &str,
+    meta: &M,
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     control.checkpoint()?;
     let FlowchartAccessibilityScan {
         parser_input: code,
@@ -273,7 +296,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     } = scan_flowchart_accessibility_controlled(code, control)?;
     control.checkpoint()?;
     let trace = construct_flowchart_token_trace(&code, control)?;
-    let construction = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
+    let (model, facts) = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
             control.checkpoint()?;
@@ -283,20 +306,14 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
                 control,
             )?;
             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
-            let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
+            let model = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, false, control,
             )? {
-                Ok(source) => match source.into_model_controlled(meta, control)? {
-                    Ok(model) => {
-                        let compatibility = render_model_to_compat_json(&model, meta);
-                        (compatibility, model.warning_facts)
-                    }
-                    Err(error) => (Err(error), Vec::new()),
-                },
-                Err(error) => (Err(error), Vec::new()),
+                Ok(source) => source.into_model_controlled(meta, control)?,
+                Err(error) => Err(error),
             };
             control.checkpoint()?;
-            Ok((model, facts, warning_facts))
+            (model, facts)
         }
         Err(error) => {
             let facts = flowchart_recovery_facts(
@@ -307,19 +324,17 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
                 control,
             )?;
             let error = Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
+                meta.diagram_type().to_string(),
                 flowchart_parse_diagnostic(error.as_ref(), &code, &facts),
             );
-            Err(crate::family::CombinedSemanticFailure::new(error, facts))
+            (Err(error), facts)
         }
     };
-    let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
-        construction,
-        |parts| parts,
-        crate::family::CombinedSemanticFailure::into_parts,
-    );
     control.checkpoint()?;
-    Ok(parsed)
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts: Some(facts),
+    })
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
@@ -357,13 +372,21 @@ pub(crate) fn parse_flowchart_model_with_render_context_controlled(
 pub(crate) fn parse_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: crate::family::EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<FlowchartModel>> {
-    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
-    match source {
-        Ok(source) => source.into_model_controlled(meta, control),
-        Err(error) => Ok(Err(error)),
+) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
+    if editor_demand == crate::family::EditorFactsDemand::Capture {
+        return construct_flowchart_captured_semantic_model_controlled(code, meta, control);
     }
+    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
+    let model = match source {
+        Ok(source) => source.into_model_controlled(meta, control)?,
+        Err(error) => Err(error),
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts: None,
+    })
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -2250,6 +2273,69 @@ mod tests {
             config: MermaidConfig::empty_object(),
             semantic_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn canonical_flowchart_capture_uses_one_trace_and_keeps_failure_facts() {
+        for diagram_type in ["flowchart-v2", "swimlane"] {
+            let meta = semantic_test_meta(diagram_type);
+            let source = "flowchart TD\naccTitle: Accessible\nA-->B\n";
+            reset_flowchart_token_trace_construction_count();
+            let omitted = parse_semantic_model_controlled(
+                source,
+                &meta,
+                crate::family::EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(omitted.editor_facts.is_none());
+            assert_eq!(flowchart_token_trace_construction_count(), 0);
+            reset_flowchart_accessibility_scan_count();
+            let captured = parse_semantic_model_controlled(
+                source,
+                &meta,
+                crate::family::EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(flowchart_token_trace_construction_count(), 1);
+            assert_eq!(flowchart_accessibility_scan_count(), 1);
+            let omitted = omitted.model.unwrap();
+            let model = captured.model.unwrap();
+            assert_eq!(model.nodes.len(), omitted.nodes.len());
+            assert_eq!(model.edges.len(), omitted.edges.len());
+            let facts = captured.editor_facts.unwrap();
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|prefix| prefix == "accTitle")
+            );
+
+            reset_flowchart_token_trace_construction_count();
+            reset_flowchart_accessibility_scan_count();
+            let failed = parse_semantic_model_controlled(
+                "flowchart TD\nA-->B\nC -->",
+                &meta,
+                crate::family::EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(flowchart_token_trace_construction_count(), 1);
+            assert_eq!(flowchart_accessibility_scan_count(), 1);
+            let Error::DiagramParse {
+                diagram_type: actual,
+                ..
+            } = failed.model.unwrap_err()
+            else {
+                panic!("expected captured flowchart diagnostic");
+            };
+            assert_eq!(actual, diagram_type);
+            let facts = failed.editor_facts.unwrap();
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert!(!facts.diagnostics.is_empty());
         }
     }
 

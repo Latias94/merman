@@ -93,7 +93,6 @@ struct CynefinParsedLine {
 
 struct CynefinSemanticSource {
     model: CynefinDiagramModel,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -103,6 +102,7 @@ struct CynefinParseOutcome {
 }
 
 impl CynefinParseOutcome {
+    #[cfg(any(test, feature = "presentation"))]
     fn into_strict_source(self) -> Result<CynefinSemanticSource> {
         match self.first_error {
             Some(error) => Err(error),
@@ -204,11 +204,34 @@ pub(crate) fn parse_cynefin_model_for_render_controlled(
 pub(crate) fn parse_cynefin_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
-    parse_cynefin_model_controlled(code, &meta.diagram_type, &meta.semantic_config, control)
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<CynefinDiagramModel>> {
+    let CynefinParseOutcome {
+        source,
+        first_error,
+    } = construct_cynefin_parse_outcome_controlled(
+        code,
+        &meta.diagram_type,
+        editor_demand,
+        control,
+    )?;
+    let editor_facts = source.editor_facts;
+    let model = match first_error {
+        Some(error) => Err(error),
+        None => {
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            Ok(model)
+        }
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        editor_facts,
+    })
 }
 
+#[cfg(feature = "presentation")]
 fn parse_cynefin_model_controlled(
     code: &str,
     diagram_type: &str,
@@ -464,7 +487,6 @@ fn construct_cynefin_parse_outcome_controlled(
     Ok(CynefinParseOutcome {
         source: CynefinSemanticSource {
             model,
-            #[cfg(feature = "compat-json")]
             editor_facts,
         },
         first_error,

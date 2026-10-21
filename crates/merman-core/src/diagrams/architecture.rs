@@ -115,7 +115,6 @@ pub(crate) fn architecture_syntax_construction_count() -> usize {
 }
 
 impl ArchitectureDb {
-    #[cfg(feature = "compat-json")]
     fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
         if self.groups.contains_key(id) {
             return Some(EditorSemanticKind::Namespace);
@@ -719,14 +718,19 @@ fn architecture_reserved_id_message(id: &str) -> String {
 pub(crate) fn parse_architecture_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
-    Ok(
-        parse::parse_model_controlled(code, &metadata.diagram_type, control)?.map(|mut model| {
-            model.sanitize_common_db_fields(&metadata.semantic_config);
-            model
-        }),
-    )
+) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
+    Ok(parse::parse_semantic_model_controlled(
+        code,
+        &metadata.diagram_type,
+        editor_demand,
+        control,
+    )?
+    .map_model(|mut model| {
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    }))
 }
 
 #[cfg(feature = "compat-json")]
@@ -2395,9 +2399,11 @@ mod semantic_tests {
         let model = parse_architecture_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(
             model
@@ -2426,9 +2432,11 @@ mod semantic_tests {
         let error = parse_architecture_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected parse diagnostic")
@@ -2443,6 +2451,65 @@ mod semantic_tests {
     }
 
     #[test]
+    fn architecture_canonical_capture_keeps_one_construction_and_later_recovery_facts() {
+        for source in [
+            "architecture-beta\nservice api\n",
+            "architecture-beta\nservice api\nbroken ?\nservice later\n",
+            "architecture-beta\nservice api\nservice api\n",
+        ] {
+            let omitted = parse_architecture_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(omitted.editor_facts.is_none());
+            reset_architecture_syntax_construction_count();
+            crate::editor::test_work::reset();
+            let captured = parse_architecture_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(architecture_syntax_construction_count(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            let facts = captured.editor_facts.unwrap();
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "api"));
+            match (omitted.model, captured.model) {
+                (Ok(omitted), Ok(captured)) => {
+                    assert_eq!(omitted.nodes.len(), captured.nodes.len());
+                    assert_eq!(captured.nodes[0].id, "api");
+                }
+                (Err(omitted), Err(captured)) => {
+                    assert_eq!(omitted.to_string(), captured.to_string());
+                    let (
+                        Error::DiagramParse {
+                            diagnostic: omitted,
+                            ..
+                        },
+                        Error::DiagramParse {
+                            diagnostic: captured,
+                            ..
+                        },
+                    ) = (omitted, captured)
+                    else {
+                        panic!("expected exact architecture diagnostics");
+                    };
+                    assert_eq!(omitted.span(), captured.span());
+                    assert!(!facts.diagnostics.is_empty());
+                }
+                _ => panic!("editor demand changed model admission"),
+            }
+            if source.contains("service later") {
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+            }
+        }
+    }
+
+    #[test]
     fn architecture_canonical_construction_observes_cancellation() {
         let control = OperationControl::new();
         control.cancel();
@@ -2450,6 +2517,7 @@ mod semantic_tests {
             parse_architecture_semantic_model_controlled(
                 "architecture-beta\nservice api\n",
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &control
             )
             .is_err()

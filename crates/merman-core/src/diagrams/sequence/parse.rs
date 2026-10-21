@@ -1,9 +1,8 @@
-use crate::family::EditorFactsDemand;
-#[cfg(feature = "compat-json")]
+use crate::family::{EditorFactsDemand, SemanticConstruction};
 use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
     SemanticMetadata, SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(test)]
@@ -117,7 +116,6 @@ impl SequenceSemanticFailure {
         }
     }
 
-    #[cfg(feature = "compat-json")]
     pub(super) fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
@@ -164,28 +162,37 @@ impl SequenceSemanticFailure {
 pub(crate) fn parse_sequence_semantic_model_controlled(
     code: &str,
     meta: &SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<SequenceDiagramModel>> {
+) -> OperationControlResult<SemanticConstruction<SequenceDiagramModel>> {
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(&meta.semantic_config),
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
     )?;
-    match construction {
-        Ok(source) => {
-            let SequenceSemanticSource {
-                db,
-                editor_facts: _editor_facts,
-            } = source;
+    Ok(match construction {
+        Ok(SequenceSemanticSource { db, editor_facts }) => {
             let mut model = db.into_model();
             model.sanitize_common_db_fields(&meta.semantic_config);
-            Ok(Ok(model))
+            SemanticConstruction {
+                model: Ok(model),
+                editor_facts: (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+            }
         }
-        Err(failure) => Ok(Err(
-            failure.into_parse_error_for_type(&meta.diagram_type, code.len())
-        )),
-    }
+        Err(failure) if editor_demand == EditorFactsDemand::Capture => {
+            let (error, editor_facts) =
+                failure.into_error_and_editor_facts_for_type(&meta.diagram_type, code.len());
+            SemanticConstruction {
+                model: Err(error),
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(failure.into_parse_error_for_type(&meta.diagram_type, code.len())),
+            editor_facts: None,
+        },
+    })
 }
 
 pub(super) fn construct_sequence_semantic_source(
@@ -714,6 +721,53 @@ mod tests {
     }
 
     #[test]
+    fn canonical_sequence_capture_distinguishes_grammar_and_database_failures() {
+        for (source, valid) in [
+            ("sequenceDiagram\nparticipant A\nA->>B: hello\n", true),
+            ("sequenceDiagram\nparticipant A\nA->>\n", false),
+            ("sequenceDiagram\nparticipant A\ndeactivate A\n", false),
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "sequence".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::empty_object(),
+                title: None,
+            };
+            reset_sequence_syntax_construction_count();
+            crate::editor::test_work::reset();
+            let parsed = parse_sequence_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Sequence facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert_eq!(sequence_syntax_construction_count(), 1);
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+            if !valid {
+                let expected = if source.contains("deactivate") {
+                    "sequence semantic construction failed:"
+                } else {
+                    "sequence parser recovered after parse error:"
+                };
+                assert!(facts.diagnostics[0].message.starts_with(expected));
+            }
+        }
+    }
+
+    #[test]
     fn canonical_semantic_model_retains_lifecycle_ownership_without_editor_work() {
         let source = concat!(
             "sequenceDiagram\n",
@@ -739,10 +793,15 @@ mod tests {
         reset_sequence_syntax_construction_count();
         crate::editor::test_work::reset();
 
-        let model: SequenceDiagramModel =
-            parse_sequence_semantic_model_controlled(source, &metadata, &OperationControl::new())
-                .expect("semantic construction is not cancelled")
-                .expect("canonical Sequence semantics");
+        let model: SequenceDiagramModel = parse_sequence_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .expect("semantic construction is not cancelled")
+        .model
+        .expect("canonical Sequence semantics");
 
         assert_eq!(sequence_syntax_construction_count(), 1);
         assert_eq!(crate::editor::test_work::read(), Default::default());

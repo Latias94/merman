@@ -170,7 +170,6 @@ struct TimelineSemanticSource {
     model: TimelineDiagramModel,
     #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -192,7 +191,6 @@ impl TimelineSemanticSource {
 
 struct TimelineParseIssue {
     error: Error,
-    #[cfg(feature = "compat-json")]
     span: SourceSpan,
 }
 
@@ -209,8 +207,16 @@ impl TimelineParseOutcome {
         Ok(self.source)
     }
 
-    #[cfg(feature = "compat-json")]
-    fn into_combined(mut self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_semantic_construction(
+        mut self,
+        editor_demand: EditorFactsDemand,
+    ) -> crate::family::SemanticConstruction<TimelineSemanticSource> {
+        if editor_demand == EditorFactsDemand::Omit {
+            return crate::family::SemanticConstruction {
+                model: self.into_strict_source(),
+                editor_facts: None,
+            };
+        }
         let mut editor_facts = self.source.editor_facts.take().unwrap_or_default();
         let mut first_error = None;
         for issue in self.issues {
@@ -225,18 +231,33 @@ impl TimelineParseOutcome {
                 first_error = Some(issue.error);
             }
         }
-        let construction = match first_error {
-            Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+        crate::family::SemanticConstruction {
+            model: match first_error {
+                Some(error) => Err(error),
+                None => Ok(self.source),
+            },
+            editor_facts: Some(editor_facts),
+        }
+    }
+
+    #[cfg(feature = "compat-json")]
+    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+        let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
+        let editor_facts = construction.editor_facts.unwrap_or_default();
+        let construction = match construction.model {
+            Ok(source) => Ok((source, editor_facts)),
+            Err(error) => Err(crate::family::CombinedSemanticFailure::new(
                 error,
                 editor_facts,
             )),
-            None => Ok((self.source, editor_facts)),
         };
         crate::family::CombinedSemanticParse::from_construction(
             construction,
             |(source, editor_facts)| {
-                let model = render_model_to_compat_json(&source.into_render_model(), meta);
-                (model, editor_facts)
+                (
+                    render_model_to_compat_json(&source.into_render_model(), meta),
+                    editor_facts,
+                )
             },
             crate::family::CombinedSemanticFailure::into_parts,
         )
@@ -651,17 +672,12 @@ fn push_timeline_outline_fact(
     ));
 }
 
-fn timeline_parse_issue(error: Error, _fallback: SourceSpan) -> TimelineParseIssue {
-    #[cfg(feature = "compat-json")]
+fn timeline_parse_issue(error: Error, fallback: SourceSpan) -> TimelineParseIssue {
     let span = match &error {
-        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(_fallback),
-        _ => _fallback,
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
+        _ => fallback,
     };
-    TimelineParseIssue {
-        error,
-        #[cfg(feature = "compat-json")]
-        span,
-    }
+    TimelineParseIssue { error, span }
 }
 
 #[cfg(feature = "compat-json")]
@@ -750,22 +766,16 @@ pub(crate) fn parse_timeline_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<TimelineDiagramModel>> {
-    let source = construct_timeline_semantic_source_controlled(
-        code,
-        diagram_type,
-        EditorFactsDemand::Omit,
-        control,
-    )?
-    .into_strict_source();
-    match source {
-        Ok(mut source) => {
-            source.model.sanitize_common_db_fields(config);
-            Ok(Ok(source.model))
-        }
-        Err(error) => Ok(Err(error)),
-    }
+) -> OperationControlResult<crate::family::SemanticConstruction<TimelineDiagramModel>> {
+    let construction =
+        construct_timeline_semantic_source_controlled(code, diagram_type, editor_demand, control)?
+            .into_semantic_construction(editor_demand);
+    Ok(construction.map_model(|mut source| {
+        source.model.sanitize_common_db_fields(config);
+        source.model
+    }))
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -1055,7 +1065,6 @@ fn parse_timeline_semantic_source(
             } else {
                 CompatibilityOutputState::Empty
             },
-            #[cfg(feature = "compat-json")]
             editor_facts,
         },
         issues,
@@ -1065,6 +1074,41 @@ fn parse_timeline_semantic_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_capture_retains_every_recovery_issue_in_source_order() {
+        let source = "timeline\r\nBefore:bad\r\nMiddle: Ready\r\nAfter:bad\r\n";
+        reset_timeline_syntax_construction_count();
+        let parsed = parse_timeline_semantic_model_controlled(
+            source,
+            "timeline",
+            &crate::MermaidConfig::default(),
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+            panic!("expected first Timeline parse error");
+        };
+        let first = source.find(':').unwrap() + 1;
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(first, first)));
+        let facts = parsed.editor_facts.expect("requested facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics.len(), 2);
+        assert_eq!(
+            facts.diagnostics[0].span,
+            Some(SourceSpan::new(first, first))
+        );
+        assert!(
+            facts.diagnostics[0].span.unwrap().start < facts.diagnostics[1].span.unwrap().start
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Middle"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Ready"));
+    }
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use crate::{
         EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
@@ -1512,9 +1556,11 @@ task2: event2: event3\n";
             source,
             "timeline",
             &crate::MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(timeline_syntax_construction_count(), 1);
@@ -1561,9 +1607,11 @@ task2: event2: event3\n";
             source,
             "timeline",
             &config,
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .expect("semantic parse does not evaluate theme colors");
         assert_eq!(
             (
@@ -1596,9 +1644,11 @@ task2: event2: event3\n";
             "",
             "timeline",
             &crate::MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         #[cfg(feature = "compat-json")]
         let meta = ParseMetadata {
@@ -1657,9 +1707,11 @@ task2: event2: event3\n";
             text,
             "timeline",
             &crate::MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .expect_err("semantic parse must reject a malformed event");
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected Timeline parse error");

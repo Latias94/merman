@@ -168,7 +168,6 @@ impl QuadrantDb {
 
 struct QuadrantSemanticSource {
     model: QuadrantChartDiagramModel,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -1277,7 +1276,6 @@ fn parse_quadrant_chart_semantic_source(
             points: db.points,
             classes: db.classes.into_iter().collect(),
         },
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -1370,22 +1368,40 @@ pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
 pub(crate) fn parse_quadrant_chart_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<QuadrantChartDiagramModel>> {
-    Ok(construct_quadrant_chart_semantic_source_controlled(
+) -> OperationControlResult<crate::family::SemanticConstruction<QuadrantChartDiagramModel>> {
+    let construction = construct_quadrant_chart_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|mut source| {
-        source
-            .model
-            .sanitize_common_db_fields(&metadata.semantic_config);
-        source.model
+    )?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
     })
-    .map_err(CombinedSemanticFailure::into_error))
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -1955,9 +1971,11 @@ mod semantic_tests {
         let model = parse_quadrant_chart_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(model.title.as_deref(), Some("Priorities"));
@@ -1984,9 +2002,11 @@ mod semantic_tests {
         let error = parse_quadrant_chart_semantic_model_controlled(
             source,
             &metadata(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = error else {
             panic!("expected a quadrant parse error");
@@ -2015,6 +2035,7 @@ mod semantic_tests {
             parse_quadrant_chart_semantic_model_controlled(
                 "quadrantChart\n",
                 &metadata(),
+                EditorFactsDemand::Omit,
                 &control
             ),
             Err(crate::OperationCancelled { .. })

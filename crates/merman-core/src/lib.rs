@@ -65,6 +65,8 @@ pub use diagram::{
     DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
     FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
+#[cfg(any(feature = "editor-facts", feature = "compat-json"))]
+pub use editor::ParsedEditorFacts;
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorFamilySemantics, EditorRenamePolicy,
     EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
@@ -94,7 +96,7 @@ use presentation::PresentationConfig;
 #[cfg(feature = "compat-json")]
 pub use presentation::diagram::{
     BuiltinRenderSemantic, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
-    DiagramSemanticParser, DiagramSnapshotCapture, ParsedDiagram, ParsedEditorFacts,
+    DiagramSemanticParser, DiagramSnapshotCapture, ParsedDiagram,
 };
 #[cfg(feature = "presentation")]
 pub use presentation::diagram::{
@@ -102,6 +104,8 @@ pub use presentation::diagram::{
     RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
+#[cfg(feature = "editor-facts")]
+pub use semantic::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
 pub use source_span::SourceSpan;
 pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 

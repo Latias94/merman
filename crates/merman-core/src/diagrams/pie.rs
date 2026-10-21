@@ -1,5 +1,3 @@
-#[cfg(feature = "presentation")]
-use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
@@ -8,8 +6,10 @@ use crate::diagrams::langium_common::{
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, SourceSpan, family,
 };
+#[cfg(feature = "presentation")]
+use crate::{ParseMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -82,7 +82,6 @@ struct PieSemanticSource {
     model: PieDiagramModel,
     #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -183,21 +182,35 @@ pub(crate) fn parse_pie_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<PieDiagramModel>> {
-    let construction = construct_pie_semantic_source_controlled(
-        code,
-        diagram_type,
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    match construction {
-        Ok(mut source) => {
-            source.model.sanitize_common_db_fields(config);
-            Ok(Ok(source.model))
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<PieDiagramModel>> {
+    let construction =
+        construct_pie_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.model;
+            model.sanitize_common_db_fields(config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
         }
-        Err(failure) => Ok(Err(failure.into_error())),
-    }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
+    })
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -230,8 +243,8 @@ fn construct_pie_semantic_source_controlled(
                 model: PieDiagramModel::default(),
                 #[cfg(feature = "compat-json")]
                 compatibility_output: CompatibilityOutputState::Empty,
-                #[cfg(feature = "compat-json")]
-                editor_facts: None,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then(EditorSemanticFacts::new),
             }));
         }
         PieHeader::ExpectedPie(span) => {
@@ -364,7 +377,6 @@ fn construct_pie_semantic_source_controlled(
         },
         #[cfg(feature = "compat-json")]
         compatibility_output: CompatibilityOutputState::Model,
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -596,6 +608,33 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_empty_capture_keeps_an_available_empty_journal() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        let parsed = parse_pie_semantic_model_controlled(
+            "",
+            "pie",
+            &MermaidConfig::default(),
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        let facts = parsed
+            .editor_facts
+            .expect("empty input still provides requested facts");
+        assert!(facts.symbols.is_empty());
+        assert!(facts.diagnostics.is_empty());
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+    }
     use crate::MermaidConfig;
     #[cfg(feature = "presentation")]
     use crate::ParseMetadata;
@@ -637,9 +676,11 @@ mod tests {
             "pie showData\ntitle Revenue\n\"A\": 1\n\"A\": 2\n\"B\": 3\n",
             "pie",
             &MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(
@@ -670,9 +711,11 @@ mod tests {
             source,
             "pie",
             &config,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .expect("semantic parse does not evaluate theme colors");
         assert_eq!(
             (
@@ -699,9 +742,11 @@ mod tests {
             "",
             "pie",
             &MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
 
         assert_eq!(

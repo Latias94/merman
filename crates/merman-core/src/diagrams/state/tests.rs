@@ -1,4 +1,5 @@
 use super::*;
+use crate::family::EditorFactsDemand;
 #[cfg(feature = "presentation")]
 use crate::{Engine, ParseMetadata, ParseOptions, RenderSemanticModel};
 use crate::{MermaidConfig, OperationControl};
@@ -64,9 +65,11 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
         source,
         "stateDiagram-v2",
         &MermaidConfig::default(),
+        EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
     .unwrap()
+    .model
     .unwrap();
     assert_eq!(parse::state_syntax_construction_count(), 1);
     assert_eq!(crate::editor::test_work::read(), Default::default());
@@ -140,9 +143,11 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
-        .unwrap();
+        .unwrap()
+        .model;
         let semantic_error = semantic.expect_err("canonical State validation rejects the input");
         assert!(matches!(semantic_error, crate::Error::DiagramParse { .. }));
         #[cfg(feature = "presentation")]
@@ -164,6 +169,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             &source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &control,
         )
         .is_err()
@@ -173,9 +179,11 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             &source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
+        .model
         .is_ok()
     );
 }
@@ -423,9 +431,11 @@ fn state_divider_assignment_cancellation_releases_completed_grammar_documents() 
         "stateDiagram-v2\nA\n",
         "stateDiagram-v2",
         &MermaidConfig::default(),
+        EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
     .unwrap()
+    .model
     .unwrap();
     assert_eq!(model.nodes.len(), 1);
 }
@@ -476,9 +486,11 @@ fn state_semantic_deep_documents_clone_count_and_drop_without_recursion() {
                 &source,
                 "stateDiagram-v2",
                 &MermaidConfig::default(),
+                EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
             .unwrap()
+            .model
             .unwrap();
             let clone = model.clone();
             assert_eq!(clone.document.len(), 1001);

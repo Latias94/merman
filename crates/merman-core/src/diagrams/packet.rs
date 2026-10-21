@@ -175,7 +175,6 @@ impl PacketParseOutput {
 
 struct PacketSemanticSource {
     output: PacketParseOutput,
-    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -270,21 +269,40 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
 pub(crate) fn parse_packet_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<PacketDiagramModel>> {
-    Ok(construct_packet_semantic_source_controlled(
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<PacketDiagramModel>> {
+    let construction = construct_packet_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
-        EditorFactsDemand::Omit,
+        editor_demand,
         control,
-    )?
-    .map(|source| {
-        let mut model = source.output.into_semantic_model();
-        model.sanitize_common_db_fields(&metadata.semantic_config);
-        model
+    )?;
+    Ok(match construction {
+        Ok(source) => {
+            let editor_facts = source.editor_facts;
+            let mut model = source.output.into_semantic_model();
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                editor_facts,
+            }
+        }
+        Err(failure) => match editor_demand {
+            EditorFactsDemand::Capture => {
+                let (error, facts) = failure.into_parts();
+                crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                }
+            }
+            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                editor_facts: None,
+            },
+        },
     })
-    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 fn construct_packet_semantic_source_controlled(
@@ -305,8 +323,8 @@ fn construct_packet_semantic_source_controlled(
         Ok(None) => {
             return Ok(Ok(PacketSemanticSource {
                 output: PacketParseOutput::Empty,
-                #[cfg(feature = "compat-json")]
-                editor_facts: None,
+                editor_facts: (editor_demand == EditorFactsDemand::Capture)
+                    .then(EditorSemanticFacts::new),
             }));
         }
         Err(error) => {
@@ -427,7 +445,6 @@ fn construct_packet_semantic_source_controlled(
             acc_descr: common.acc_descr,
             packet,
         }),
-        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -923,9 +940,11 @@ mod semantic_tests {
         let model = parse_packet_semantic_model_controlled(
             source,
             &metadata,
+            EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
         .unwrap()
+        .model
         .unwrap();
         assert_eq!(model.title.as_deref(), Some("Header"));
         assert_eq!(model.packet.len(), 2);

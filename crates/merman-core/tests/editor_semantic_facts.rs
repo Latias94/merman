@@ -127,6 +127,9 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
         total: fixtures.len(),
         ..Default::default()
     };
+    #[cfg(feature = "editor-facts")]
+    let semantic_base =
+        merman_core::SemanticParser::new().with_runtime_policy(base.runtime_policy().clone());
     let mut unavailable = Vec::new();
     let mut malformed_samples = Vec::new();
     let mut localized_drop_fixtures = Vec::new();
@@ -174,6 +177,31 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
 
         match engine.parse_editor_semantic_facts_with_type_sync(&metadata.diagram_type, &source) {
             Ok(Some(facts)) => {
+                #[cfg(feature = "editor-facts")]
+                {
+                    let parser = match fixture_site_config_for_path(&path) {
+                        Some(config) => semantic_base
+                            .clone()
+                            .with_site_config(config.as_config().clone()),
+                        None => semantic_base.clone(),
+                    };
+                    let capture = parser
+                        .capture_diagram_snapshot_with_type_sync(&metadata.diagram_type, &source);
+                    let merman_core::SemanticSnapshotCapture::Snapshot(snapshot) = capture else {
+                        panic!("{} lost canonical editor snapshot", relative.display());
+                    };
+                    let merman_core::ParsedEditorFacts::Available(canonical) =
+                        snapshot.editor_facts()
+                    else {
+                        panic!("{} lost canonical editor facts", relative.display());
+                    };
+                    assert_eq!(
+                        canonical,
+                        &facts,
+                        "{} canonical/full editor facts diverged",
+                        relative.display()
+                    );
+                }
                 audit.available += 1;
                 let localized_drop_diagnostics = facts
                     .diagnostics

@@ -24,44 +24,24 @@ use serde_json::Value;
 use std::fmt;
 use std::sync::OnceLock;
 
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-git-graph",
-    feature = "diagram-class",
-    feature = "diagram-kanban",
-    feature = "diagram-mindmap",
-    feature = "diagram-xychart",
-    feature = "diagram-block",
-    feature = "diagram-ishikawa",
-    feature = "diagram-treemap",
-    feature = "diagram-c4",
-    feature = "diagram-cynefin",
-    feature = "diagram-er",
-    feature = "diagram-info",
-    feature = "diagram-journey",
-    feature = "diagram-packet",
-    feature = "diagram-pie",
-    feature = "diagram-sequence",
-    feature = "diagram-state",
-    feature = "diagram-timeline",
-    feature = "diagram-tree-view",
-    feature = "diagram-quadrant-chart",
-    feature = "diagram-radar",
-    feature = "diagram-sankey",
-    feature = "diagram-venn",
-    feature = "diagram-requirement",
-    feature = "diagram-usecase",
-    feature = "diagram-event-modeling",
-    feature = "diagram-wardley",
-    feature = "diagram-railroad",
-    feature = "diagram-zenuml",
-    feature = "diagram-architecture",
-    feature = "diagram-gantt"
-))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditorFactsDemand {
     Omit,
     Capture,
+}
+
+pub(crate) struct SemanticConstruction<M> {
+    pub(crate) model: Result<M>,
+    pub(crate) editor_facts: Option<EditorSemanticFacts>,
+}
+
+impl<M> SemanticConstruction<M> {
+    pub(crate) fn map_model<N>(self, project: impl FnOnce(M) -> N) -> SemanticConstruction<N> {
+        SemanticConstruction {
+            model: self.model.map(project),
+            editor_facts: self.editor_facts,
+        }
+    }
 }
 
 #[cfg(feature = "compat-json")]
@@ -214,6 +194,18 @@ mod combined_semantic_failure_tests {
 
 #[cfg(feature = "compat-json")]
 impl CombinedSemanticParse {
+    pub(crate) fn from_parts(
+        model: Result<Value>,
+        editor_facts: EditorSemanticFacts,
+        warning_facts: Vec<DiagramWarningFact>,
+    ) -> Self {
+        Self {
+            model: model.map(ManagedSemanticJson::from),
+            editor_facts,
+            warning_facts,
+        }
+    }
+
     #[allow(
         dead_code,
         reason = "Shared parser facilities have different consumers in each family selection."
@@ -226,19 +218,11 @@ impl CombinedSemanticParse {
         match construction {
             Ok(source) => {
                 let (model, editor_facts) = success(source);
-                Self {
-                    model: model.map(ManagedSemanticJson::from),
-                    editor_facts,
-                    warning_facts: Vec::new(),
-                }
+                Self::from_parts(model, editor_facts, Vec::new())
             }
             Err(parse_failure) => {
                 let (error, editor_facts) = failure(parse_failure);
-                Self {
-                    model: Err(error),
-                    editor_facts,
-                    warning_facts: Vec::new(),
-                }
+                Self::from_parts(Err(error), editor_facts, Vec::new())
             }
         }
     }
@@ -295,19 +279,11 @@ impl CombinedSemanticParse {
         match construction {
             Ok(source) => {
                 let (model, editor_facts, warning_facts) = success(source);
-                Self {
-                    model: model.map(ManagedSemanticJson::from),
-                    editor_facts,
-                    warning_facts,
-                }
+                Self::from_parts(model, editor_facts, warning_facts)
             }
             Err(parse_failure) => {
                 let (error, editor_facts) = failure(parse_failure);
-                Self {
-                    model: Err(error),
-                    editor_facts,
-                    warning_facts: Vec::new(),
-                }
+                Self::from_parts(Err(error), editor_facts, Vec::new())
             }
         }
     }
@@ -604,7 +580,7 @@ impl FamilyCatalogProjection {
                     render_model_kind: identity.render_model_kind,
                     has_detector: identity.detector.is_some(),
                     has_semantic_parser: implementation.has_semantic_parser(),
-                    has_editor_parser: implementation.has_combined_parser(),
+                    has_editor_parser: implementation.has_editor_parser(),
                     has_combined_parser: implementation.has_combined_parser(),
                     has_render_parser: implementation.has_render_parser(),
                     has_header: !identity.headers.is_empty(),
@@ -889,8 +865,9 @@ pub(crate) type CanonicalSemanticParser =
     fn(
         code: &str,
         metadata: &crate::SemanticMetadata,
+        editor_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<crate::SemanticDiagramModel>>;
+    ) -> OperationControlResult<SemanticConstruction<crate::SemanticDiagramModel>>;
 
 impl FamilyImplementation {
     fn has_semantic_parser(&self) -> bool {
@@ -915,6 +892,9 @@ impl FamilyImplementation {
         {
             false
         }
+    }
+    fn has_editor_parser(&self) -> bool {
+        (cfg!(feature = "editor-facts") && self.canonical.is_some()) || self.has_combined_parser()
     }
     fn has_render_parser(&self) -> bool {
         #[cfg(feature = "presentation")]

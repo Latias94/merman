@@ -24,6 +24,37 @@ identity catalog still recognizes disabled families, whose strict parse returns
 See the [feature guide](../../docs/FEATURES.md#select-diagram-families) for custom registries,
 suppression, and Cargo feature-unification rules.
 
+### Semantic Editor Capture
+
+Source builds can request canonical models and parser recovery facts through `SemanticParser`.
+Enable `editor-facts` with the required diagram selectors; this API does not require
+`presentation` or `compat-json`:
+
+```toml
+merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-class", "editor-facts"] }
+```
+
+```rust
+use merman_core::{ParsedEditorFacts, SemanticParser, SemanticSnapshotCapture};
+
+let capture = SemanticParser::new()
+    .capture_diagram_snapshot_sync("classDiagram\nclass User\n");
+let SemanticSnapshotCapture::Snapshot(snapshot) = capture else {
+    panic!("valid Class input should reach its family parser");
+};
+assert!(snapshot.outcome().parsed_model().is_some());
+let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+    panic!("the enabled Class parser provides editor facts");
+};
+assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+```
+
+A family parse failure retains its original error and requested recovery facts in the snapshot.
+Failures before family metadata retain source-configuration evidence in
+`SemanticSnapshotCapture::Failed` or `Panicked`. Controlled variants return cooperative
+cancellation through the outer `OperationControlResult`; known-type variants skip detection.
+Ordinary `parse_diagram_*` calls omit editor observation.
+
 ## Quick Start
 
 Add the stable release with all built-in parsers:
