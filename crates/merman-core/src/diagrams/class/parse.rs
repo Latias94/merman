@@ -358,7 +358,11 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
             let model = source.db.into_semantic_model(&meta.diagram_type);
             let style_facts = model.style_precedence_facts.clone();
             Ok(Ok((
-                class_typed::ClassDiagram::new(model, meta.effective_config.as_config()),
+                class_typed::ClassDiagram::new_controlled(
+                    model,
+                    meta.effective_config.as_config(),
+                    control,
+                )?,
                 style_facts,
             )))
         }
@@ -1670,9 +1674,8 @@ Client --> Service
         }
     }
 
-    #[cfg(feature = "presentation")]
     #[test]
-    fn requested_class_presentation_keeps_canonical_namespaces_and_synthetic_ids() {
+    fn requested_class_topology_keeps_canonical_namespaces_and_synthetic_ids() {
         let source = r#"classDiagram
 namespace A.B {
   class Service
@@ -1694,27 +1697,100 @@ IService ()-- Service
         .unwrap();
         let mut config = MermaidConfig::empty_object();
         config.set_value("class.hierarchicalNamespaces", false.into());
-        let projection = class_typed::ClassPresentation::new(&model, &config);
-        assert!(!projection.namespaces.contains_key("A"));
-        assert_eq!(projection.namespaces["A.B"].label, "A.B");
-        assert_eq!(projection.namespaces["A.B"].parent, None);
-        assert_eq!(projection.namespace_dom_id("A.B"), Some("classId-A.B-1"));
+        let topology = model.topology(&config, &OperationControl::new()).unwrap();
+        assert!(std::ptr::eq(topology.model(), &model));
         assert_eq!(
-            projection.class_dom_id("Service"),
-            Some("classId-Service-0")
+            topology.classes().map(|(id, _)| id).collect::<Vec<_>>(),
+            model.classes.keys().map(String::as_str).collect::<Vec<_>>()
         );
-        assert_eq!(projection.note_ids, ["note0$1"]);
-        assert_eq!(projection.namespaces["A.B"].note_ids, ["note0$1"]);
-        assert_eq!(projection.interface_ids, ["interface0$1"]);
-        assert_eq!(
-            projection.relation_endpoints(&model.relations[0]),
-            ("interface0$1", "Service")
-        );
+        let service = topology.class("Service").unwrap();
+        assert!(std::ptr::eq(service.node, &model.classes["Service"]));
+        assert_eq!(service.parent, Some("A.B"));
+        assert!(topology.namespace("A").is_none());
+        assert_eq!(topology.namespaces().len(), 1);
+        let namespace = topology.namespace("A.B").unwrap();
+        assert_eq!(namespace.label, "A.B");
+        assert_eq!(namespace.parent, None);
+        assert_eq!(namespace.route_id, "classId-A.B-1");
+        assert_eq!(namespace.note_ids, ["note0$1"]);
+        assert_eq!(namespace.class_ids, ["Service"]);
+        let note = topology.notes().next().unwrap();
+        assert!(std::ptr::eq(note.note, &model.notes[0]));
+        assert_eq!(note.id, "note0$1");
+        let interface = topology.interfaces().next().unwrap();
+        assert!(std::ptr::eq(interface.interface, &model.interfaces[0]));
+        assert_eq!(interface.id, "interface0$1");
+        let relation = topology.relations().next().unwrap();
+        assert!(std::ptr::eq(relation.source, &model.relations[0]));
+        assert_eq!((relation.id1, relation.id2), ("interface0$1", "Service"));
+        #[cfg(feature = "presentation")]
+        {
+            let projection = class_typed::ClassPresentation::new(&model, &config);
+            assert!(!projection.namespaces.contains_key("A"));
+            assert_eq!(projection.namespaces["A.B"].label, "A.B");
+            assert_eq!(projection.namespaces["A.B"].parent, None);
+            assert_eq!(projection.namespace_dom_id("A.B"), Some("classId-A.B-1"));
+            assert_eq!(
+                projection.class_dom_id("Service"),
+                Some("classId-Service-0")
+            );
+            assert_eq!(projection.note_ids, ["note0$1"]);
+            assert_eq!(projection.namespaces["A.B"].note_ids, ["note0$1"]);
+            assert_eq!(projection.interface_ids, ["interface0$1"]);
+            assert_eq!(
+                projection.relation_endpoints(&model.relations[0]),
+                ("interface0$1", "Service")
+            );
+            let full = class_typed::ClassDiagram::new(model.clone(), &config);
+            let full_view = full.topology_view();
+            assert!(std::ptr::eq(full_view.model(), full.model()));
+            assert_eq!(
+                full_view.retained_bytes(),
+                full.presentation().retained_bytes()
+                    - full
+                        .presentation()
+                        .class_dom_ids
+                        .iter()
+                        .map(|(id, dom_id)| id.len() + dom_id.len())
+                        .sum::<usize>()
+            );
+            assert_eq!(
+                full_view.namespace("A.B").unwrap().route_id,
+                namespace.route_id
+            );
+        }
         assert_eq!(model.notes[0].id, "note0");
         assert_eq!(model.interfaces[0].id, "interface0");
         assert_eq!(model.relations[0].id1, "interface0");
         assert!(model.namespaces.contains_key("A"));
         assert_eq!(model.namespaces["A.B"].parent.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn requested_class_topology_observes_cancellation_without_changing_its_model() {
+        let model = parse_class_semantic_model_controlled(
+            "classDiagram\nnamespace A.B {\nclass Service\n}\nclass note0\nnote \"text\"\n",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("class.hierarchicalNamespaces", false.into());
+        for successful_checkpoints in [0, 4, 9] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(successful_checkpoints);
+            assert!(model.topology(&config, &control).is_err());
+            assert!(model.namespaces.contains_key("A"));
+            assert_eq!(model.namespaces["A.B"].parent.as_deref(), Some("A"));
+            assert_eq!(model.notes[0].id, "note0");
+        }
+        let topology = model.topology(&config, &OperationControl::new()).unwrap();
+        assert!(topology.namespace("A").is_none());
+        assert_eq!(topology.notes().next().unwrap().id, "note0$1");
     }
 
     #[cfg(feature = "presentation")]
@@ -1817,6 +1893,21 @@ IService ()-- Service
                 .assignment_before_definition_copy()
         );
         assert_eq!(decoded.model().style_precedence_facts, Default::default());
+
+        let mut detached_wire = wire;
+        detached_wire["namespaces"]["A.B"]["domId"] = "host-owned-namespace-route".into();
+        let detached: class_typed::ClassDiagram =
+            serde_json::from_value(detached_wire.clone()).unwrap();
+        let topology = detached.topology_view();
+        assert!(std::ptr::eq(topology.model(), detached.model()));
+        assert_eq!(
+            topology.namespace("A.B").unwrap().route_id,
+            "host-owned-namespace-route"
+        );
+        assert_eq!(topology.notes().next().unwrap().id, "note0$1");
+        assert_eq!(topology.interfaces().next().unwrap().id, "interface0$1");
+        assert_eq!(topology.relations().next().unwrap().id1, "interface0$1");
+        assert_eq!(serde_json::to_value(&detached).unwrap(), detached_wire);
     }
 
     #[cfg(feature = "compat-json")]

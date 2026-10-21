@@ -588,7 +588,7 @@ fn render_class_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    class::render_class_diagram_with_execution(model, options, *execution)
+    class::render_class_diagram_with_execution(&model.topology_view(), options, *execution)
 }
 
 #[cfg(feature = "diagram-er")]
@@ -663,7 +663,14 @@ fn render_gantt_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    gantt::render_gantt_diagram(model, options, local_time_zone, *execution)
+    gantt::render_gantt_diagram(
+        &model.model,
+        &model.display_mode,
+        |task| gantt::GanttTaskView::new(&task.semantic, task.render_end_ms),
+        options,
+        local_time_zone,
+        *execution,
+    )
 }
 
 #[cfg(feature = "diagram-git-graph")]
@@ -772,8 +779,8 @@ fn render_state_model_inner(
 ) -> Result<String> {
     let mut semantic_resources =
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
-    let graph = state::from_state_model_with_context_and_execution(
-        model,
+    let graph = state::from_state_view_with_context_and_execution(
+        merman_core::diagrams::state::StateTerminalView::from_render(model),
         options.terminal_width_profile,
         &mut semantic_resources,
         execution,
@@ -808,7 +815,12 @@ fn render_xychart_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    xychart::render_xychart_diagram_with_resolved_policy(model, options, layout, *execution)
+    xychart::render_xychart_diagram_with_resolved_policy(
+        &xychart::XyChartView::new(&model.semantic, model.display),
+        options,
+        layout,
+        *execution,
+    )
 }
 
 #[cfg(feature = "diagram-tree-view")]

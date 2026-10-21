@@ -1,3 +1,4 @@
+use crate::xychart::XyChartView;
 mod disclosure;
 mod empty;
 
@@ -28,9 +29,9 @@ use disclosure::{
     push_title_display_line, push_value_disclosure_lines, title_display_line_width,
     value_disclosure_line_width,
 };
-use merman_core::diagrams::xychart::{
-    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
-};
+#[cfg(test)]
+use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
+use merman_core::diagrams::xychart::{XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartPlotType};
 type ChartLine = StyledLine;
 type CategoryLabel = String;
 
@@ -190,7 +191,7 @@ impl ChartOrientation {
 }
 
 pub(crate) fn render_xychart_diagram_with_resolved_policy(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     options: &AsciiRenderOptions,
     layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
@@ -205,7 +206,7 @@ pub(crate) fn render_xychart_diagram_with_resources(
     resources: AsciiResourcePolicy,
 ) -> Result<String> {
     render_xychart_diagram_controlled(
-        model,
+        &XyChartView::new(&model.semantic, model.display),
         options,
         options.xychart_layout(),
         AsciiExecution::for_test(&resources),
@@ -221,7 +222,7 @@ fn render_xychart_diagram_with_resources_and_work(
     let base_resources = ResourceContext::new(policy);
     let meter = base_resources.clone();
     let result = render_xychart_diagram_controlled_with_base(
-        model,
+        &XyChartView::new(&model.semantic, model.display),
         options,
         options.xychart_layout(),
         AsciiExecution::for_test(&policy),
@@ -231,7 +232,7 @@ fn render_xychart_diagram_with_resources_and_work(
 }
 
 fn render_xychart_diagram_controlled(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     options: &AsciiRenderOptions,
     layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
@@ -244,7 +245,7 @@ fn render_xychart_diagram_controlled(
 }
 
 fn render_xychart_diagram_controlled_with_base(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     options: &AsciiRenderOptions,
     layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
@@ -319,7 +320,7 @@ fn render_xychart_diagram_controlled_with_base(
     )
 }
 
-fn validate_xychart_model(model: &XyChartDiagramRenderModel) -> Result<ChartOrientation> {
+fn validate_xychart_model(model: &XyChartView<'_>) -> Result<ChartOrientation> {
     let orientation =
         if model.orientation.is_empty() || model.orientation.eq_ignore_ascii_case("vertical") {
             ChartOrientation::Vertical
@@ -332,7 +333,7 @@ fn validate_xychart_model(model: &XyChartDiagramRenderModel) -> Result<ChartOrie
             });
         };
 
-    if matches!(model.y_axis, XyChartAxisRenderModel::Band { .. }) {
+    if matches!(model.y_axis, XyChartAxisModel::Band { .. }) {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "xychart",
             feature: "band y-axis",
@@ -342,7 +343,7 @@ fn validate_xychart_model(model: &XyChartDiagramRenderModel) -> Result<ChartOrie
 }
 
 fn render_vertical(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
@@ -560,7 +561,7 @@ fn render_vertical(
 }
 
 fn render_horizontal(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
@@ -762,7 +763,7 @@ fn render_horizontal(
 
 #[allow(clippy::too_many_arguments)]
 fn measure_vertical_document(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     vertical_plan: &VerticalPlotAdmissionPlan,
@@ -884,7 +885,7 @@ fn vertical_axis_baseline_retained_width(
 }
 
 fn measure_horizontal_document(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     chart: ChartRenderContext<'_>,
     metrics: HorizontalPlotMetricsContext<'_, '_>,
     horizontal_plan: &HorizontalPlotAdmissionPlan,
@@ -974,7 +975,7 @@ fn horizontal_axis_baseline_widths(
 
 fn measure_chart_header(
     document: &mut ChartDocumentPlan,
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     options: &AsciiRenderOptions,
@@ -1050,7 +1051,7 @@ fn legend_line_width(
 
 fn measure_value_disclosure_lines(
     document: &mut ChartDocumentPlan,
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     disclosure: super::plot::TerminalDisclosurePlan,
@@ -1132,7 +1133,7 @@ fn vertical_plot_document_metrics(
 }
 
 fn horizontal_plot_document_metrics(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     context: HorizontalPlotMetricsContext<'_, '_>,
     horizontal_plan: &HorizontalPlotAdmissionPlan,
     resources: &mut ResourceContext,
@@ -1368,7 +1369,7 @@ fn normalized_visible_line_metrics(
 
 fn push_title_lines(
     out: &mut ChartDocument,
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<()> {
@@ -1685,12 +1686,12 @@ fn push_horizontal_outside_data_label(
     Ok(())
 }
 
-fn uses_compact_bar_data_labels(model: &XyChartDiagramRenderModel) -> bool {
+fn uses_compact_bar_data_labels(model: &XyChartView<'_>) -> bool {
     model.plots.len() == 1 && model.plots[0].plot_type == XyChartPlotType::Bar
 }
 
 fn compact_bar_value_labels(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     plan: &TerminalChartPlan<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Option<Vec<String>>> {
@@ -1724,14 +1725,13 @@ fn compact_bar_value_labels(
     Ok(Some(labels))
 }
 
-pub(super) fn axis_title(axis: &XyChartAxisRenderModel) -> &str {
+pub(super) fn axis_title(axis: &XyChartAxisModel) -> &str {
     match axis {
-        XyChartAxisRenderModel::Linear { title, .. }
-        | XyChartAxisRenderModel::Band { title, .. } => title,
+        XyChartAxisModel::Linear { title, .. } | XyChartAxisModel::Band { title, .. } => title,
     }
 }
 
-fn nonempty_axis_title(axis: &XyChartAxisRenderModel) -> Option<&str> {
+fn nonempty_axis_title(axis: &XyChartAxisModel) -> Option<&str> {
     let title = axis_title(axis);
     (!title.is_empty()).then_some(title)
 }
@@ -2013,6 +2013,65 @@ mod tests {
         options: &AsciiRenderOptions,
     ) -> Result<String> {
         render_xychart_diagram_with_resources(model, options, AsciiResourcePolicy::default())
+    }
+
+    #[test]
+    fn canonical_xychart_view_matches_full_visibility_and_empty_projection() {
+        use crate::xychart::XyChartView;
+        use merman_core::presentation::PresentationConfig;
+        use merman_core::{
+            Engine, MermaidConfig, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
+            SemanticParser,
+        };
+
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        for chart_config in [
+            serde_json::json!({}),
+            serde_json::json!({
+                "showTitle": false, "showDataLabel": true, "showDataLabelOutsideBar": false,
+                "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false},
+                "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}
+            }),
+            serde_json::json!({"showDataLabel": true, "showDataLabelOutsideBar": true}),
+        ] {
+            let config = serde_json::json!({"xyChart": chart_config});
+            let parser =
+                SemanticParser::new().with_site_config(MermaidConfig::from_value(config.clone()));
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+            for source in [
+                "xychart\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\n",
+                "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\nline Forecast [4, 6]\n",
+                "xychart\ntitle Empty\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\n",
+            ] {
+                let canonical = parser
+                    .parse_diagram_sync(source)
+                    .expect("canonical XYChart parse");
+                let SemanticDiagramModel::XyChart(model) = &canonical.model else {
+                    panic!("expected canonical XYChart");
+                };
+                let display =
+                    XyChartDisplayPolicy::from_config(&canonical.metadata.semantic_config);
+                let full = engine
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .expect("full XYChart parse")
+                    .expect("detected XYChart");
+                let RenderSemanticModel::XyChart(full) = full.model() else {
+                    panic!("expected full XYChart");
+                };
+                assert_eq!(display, full.display);
+                let actual = super::render_xychart_diagram_with_resolved_policy(
+                    &XyChartView::new(model, display),
+                    &options,
+                    options.xychart_layout(),
+                    AsciiExecution::for_test(&policy),
+                )
+                .expect("canonical XYChart terminal output");
+                let expected =
+                    render_xychart_diagram(full, &options).expect("full XYChart terminal output");
+                assert_eq!(actual, expected, "{source}");
+            }
+        }
     }
 
     fn resources_with_limit(limit: AsciiResourceLimitId, max: usize) -> AsciiResourcePolicy {

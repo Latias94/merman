@@ -15,12 +15,12 @@ use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
 use merman_core::models::class_diagram::{
-    ClassDiagram, ClassInterfaceRenderView, Namespace, NamespaceRenderView,
+    ClassInterfaceRenderView, ClassTopologyView, Namespace, NamespaceTopologyView,
 };
 use std::collections::HashMap;
 
 struct NamespaceRenderContext<'model, 'render> {
-    model: &'model ClassDiagram,
+    model: &'model ClassTopologyView<'model>,
     settings: ClassRenderSettings<'render>,
     endpoint_index: &'render ClassEndpointIndex<'model>,
     interface_index: &'render NamespaceInterfaceIndex<'model>,
@@ -39,7 +39,7 @@ struct NamespaceInterfaceIndex<'a> {
 
 impl<'a> NamespaceInterfaceIndex<'a> {
     fn new(
-        model: &'a ClassDiagram,
+        model: &'a ClassTopologyView<'_>,
         endpoint_index: &ClassEndpointIndex<'a>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
@@ -123,9 +123,9 @@ impl<'a> NamespaceInterfaceIndex<'a> {
 
 #[derive(Debug)]
 struct NamespaceRenderPlan<'a> {
-    children: HashMap<&'a str, Vec<NamespaceRenderView<'a>>>,
-    roots: Vec<NamespaceRenderView<'a>>,
-    postorder: Vec<NamespaceRenderView<'a>>,
+    children: HashMap<&'a str, Vec<NamespaceTopologyView<'a>>>,
+    roots: Vec<NamespaceTopologyView<'a>>,
+    postorder: Vec<NamespaceTopologyView<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,7 +136,7 @@ enum NamespaceVisitState {
 
 impl<'a> NamespaceRenderPlan<'a> {
     fn new(
-        model: &'a ClassDiagram,
+        model: &'a ClassTopologyView<'_>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
@@ -144,12 +144,12 @@ impl<'a> NamespaceRenderPlan<'a> {
     }
 
     fn new_in_transaction(
-        model: &'a ClassDiagram,
+        model: &'a ClassTopologyView<'_>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
-        let namespace_count = model.presentation().namespaces.len();
+        let namespace_count = model.namespaces().len();
         let stack_capacity = namespace_count
             .checked_mul(2)
             .ok_or_else(|| work_overflow(resources))?;
@@ -259,7 +259,7 @@ impl<'a> NamespaceRenderPlan<'a> {
         })
     }
 
-    fn children(&self, namespace_id: &str) -> &[NamespaceRenderView<'a>] {
+    fn children(&self, namespace_id: &str) -> &[NamespaceTopologyView<'a>] {
         self.children
             .get(namespace_id)
             .map(Vec::as_slice)
@@ -276,7 +276,7 @@ struct NamespaceScopeIndex<'a> {
 
 impl<'a> NamespaceScopeIndex<'a> {
     fn new(
-        model: &'a ClassDiagram,
+        model: &'a ClassTopologyView<'_>,
         endpoint_index: &ClassEndpointIndex<'a>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
@@ -287,13 +287,13 @@ impl<'a> NamespaceScopeIndex<'a> {
     }
 
     fn new_in_transaction(
-        model: &'a ClassDiagram,
+        model: &'a ClassTopologyView<'_>,
         endpoint_index: &ClassEndpointIndex<'a>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
-        let namespace_capacity = model.presentation().namespaces.len();
+        let namespace_capacity = model.namespaces().len();
         let scope_walk_bound = namespace_capacity
             .checked_add(1)
             .ok_or_else(|| work_overflow(resources))?;
@@ -334,7 +334,7 @@ impl<'a> NamespaceScopeIndex<'a> {
             .map_err(|_| layout_allocation_failed())?;
         for (_, namespace) in model.namespaces() {
             checkpoint_layout(execution)?;
-            namespace_route_id.insert(namespace.namespace.id.as_str(), namespace.dom_id);
+            namespace_route_id.insert(namespace.namespace.id.as_str(), namespace.route_id);
         }
 
         let mut relation_scope = Vec::new();
@@ -503,7 +503,7 @@ fn route_layout_for_scope<'a>(
     })
 }
 
-pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
+pub(super) fn has_renderable_namespaces(model: &ClassTopologyView<'_>) -> bool {
     model.namespaces().any(|(_, namespace)| {
         !namespace.class_ids.is_empty()
             || !namespace.note_ids.is_empty()
@@ -512,10 +512,10 @@ pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
 }
 
 pub(super) fn validate_class_namespace_ownership(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    resources.charge_layout_work(model.presentation().namespaces.len())?;
+    resources.charge_layout_work(model.namespaces().len())?;
     let mut class_membership_capacity = 0usize;
     let mut note_membership_capacity = 0usize;
     for (_, namespace) in model.namespaces() {
@@ -632,7 +632,7 @@ fn inconsistent_class_namespace_ownership() -> AsciiError {
 }
 
 pub(super) fn render_namespaced_class_diagram<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     settings: ClassRenderSettings<'_>,
     endpoint_index: &ClassEndpointIndex<'a>,
     relation_labels: &[ClassRelationLabels],
@@ -864,7 +864,7 @@ fn render_namespaced_class_boxes<'a>(
 ) -> Result<Vec<RenderedClassBox>> {
     let mut rendered_namespaces = HashMap::new();
     rendered_namespaces
-        .try_reserve(context.model.presentation().namespaces.len())
+        .try_reserve(context.model.namespaces().len())
         .map_err(|_| layout_allocation_failed())?;
     for namespace in &context.render_plan.postorder {
         checkpoint_layout(context.execution)?;
@@ -950,7 +950,7 @@ fn render_namespaced_class_boxes<'a>(
 
 fn render_namespace_box<'model>(
     context: &NamespaceRenderContext<'model, '_>,
-    namespace: NamespaceRenderView<'model>,
+    namespace: NamespaceTopologyView<'model>,
     mut children: Vec<RenderedClassBox>,
     deferred_text: &mut DeferredTextRegistry<'model>,
     resources: &mut ResourceContext,
@@ -1126,7 +1126,7 @@ fn render_namespace_box<'model>(
 }
 
 pub(super) fn render_namespace_container_box<'a>(
-    namespace: NamespaceRenderView<'a>,
+    namespace: NamespaceTopologyView<'a>,
     mut children: Vec<RenderedClassBox>,
     settings: ClassRenderSettings<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
@@ -1325,7 +1325,7 @@ pub(super) fn render_namespace_container_box<'a>(
     )?);
 
     Ok(RelationGraphBox::new_with_lines(
-        namespace.dom_id.to_string(),
+        namespace.route_id.to_string(),
         lines,
         width,
         settings.options.terminal_width_profile,
@@ -1450,7 +1450,7 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::diagram::RenderSemanticModel;
-    use merman_core::models::class_diagram::ClassInterface;
+    use merman_core::models::class_diagram::{ClassDiagram, ClassInterface};
     use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
 
@@ -1495,6 +1495,7 @@ mod tests {
             .stack_size(256 * 1024)
             .spawn(|| {
                 let model = deeply_nested_namespace_model(PLAN_DEPTH);
+                let model = model.topology_view();
                 let unbounded =
                     AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
                 let measured = ResourceContext::new(unbounded);
@@ -1551,7 +1552,7 @@ mod tests {
 
                 let render_model = deeply_nested_namespace_model(RENDER_DEPTH);
                 let rendered = crate::class::render::render_class_diagram_with_execution(
-                    &render_model,
+                    &render_model.topology_view(),
                     &AsciiRenderOptions::ascii(),
                     AsciiExecution::for_test(&unbounded),
                 )
@@ -1569,6 +1570,7 @@ mod tests {
         let model = parsed_class_model(
             "classDiagram\nnamespace Platform {\n  namespace FFI {\n    class Dart\n  }\n  namespace Core {\n    class Renderer\n  }\n}\nDart --> Renderer",
         );
+        let model = model.topology_view();
         let unbounded = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
@@ -1631,6 +1633,7 @@ mod tests {
             "namespace Domain {\n  class Service\n}\n",
             "IService ()-- Domain.Service",
         ));
+        let model = model.topology_view();
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
         validate_class_namespace_ownership(&model, &mut resources)
@@ -1696,6 +1699,7 @@ mod tests {
             class_id: "Domain.Service".to_string(),
         });
         let model = ClassDiagram::new(model, &Default::default());
+        let model = model.topology_view();
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
 
@@ -1757,6 +1761,7 @@ mod tests {
         full["namespaces"]["Right"]["parent"] = serde_json::json!("Left");
         let model: ClassDiagram =
             serde_json::from_value(full).expect("cyclic namespace fixture should deserialize");
+        let model = model.topology_view();
         let policy = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );

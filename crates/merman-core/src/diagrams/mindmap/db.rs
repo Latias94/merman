@@ -1,7 +1,8 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
-/// Canonical authored Mindmap tree. Render dimensions, sections, and shape look remain presentation data.
+/// Canonical authored Mindmap tree. Shared display rules derive shapes and sections;
+/// render dimensions and DOM fields remain presentation data.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct MindmapDiagramModel {
     pub nodes: Vec<MindmapNodeModel>,

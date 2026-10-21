@@ -24,8 +24,8 @@ use crate::safe_text::{
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
 use merman_core::models::class_diagram::{
-    ClassDiagram, ClassInterfaceRenderView, ClassMember, ClassNode, ClassNoteRenderView,
-    ClassRelationRenderView,
+    ClassInterfaceRenderView, ClassMember, ClassNode, ClassNoteRenderView, ClassRelationRenderView,
+    ClassTopologyView,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -197,7 +197,7 @@ struct ClassEndpointIndex<'a> {
 }
 
 impl<'a> ClassEndpointIndex<'a> {
-    fn new(model: &'a ClassDiagram, resources: &mut ResourceContext) -> Result<Self> {
+    fn new(model: &'a ClassTopologyView<'_>, resources: &mut ResourceContext) -> Result<Self> {
         let capacity = model
             .classes()
             .len()
@@ -669,7 +669,7 @@ fn frame_authored_endpoint_label<'a>(
 }
 
 pub(crate) fn render_class_diagram_with_execution(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -690,7 +690,7 @@ pub(crate) fn render_class_diagram_with_execution(
 }
 
 fn render_class_diagram_impl(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -864,7 +864,7 @@ fn render_class_diagram_impl(
 }
 
 fn validate_unique_class_render_ids(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     let capacity = model
@@ -872,7 +872,7 @@ fn validate_unique_class_render_ids(
         .len()
         .checked_add(model.interfaces().len())
         .and_then(|value| value.checked_add(model.notes().len()))
-        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
+        .and_then(|value| value.checked_add(model.namespaces().len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(capacity)?;
 
@@ -884,7 +884,7 @@ fn validate_unique_class_render_ids(
         .map(|(_, class)| class.node.id.as_str())
         .chain(model.interfaces().map(|interface| interface.id))
         .chain(model.notes().map(|note| note.id))
-        .chain(model.namespaces().map(|(_, namespace)| namespace.dom_id));
+        .chain(model.namespaces().map(|(_, namespace)| namespace.route_id));
     for id in rendered_ids {
         if !ids.insert(id) {
             return Err(AsciiError::UnsupportedFeature {
@@ -897,7 +897,7 @@ fn validate_unique_class_render_ids(
 }
 
 fn validate_class_references(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     endpoint_index: &ClassEndpointIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
@@ -930,7 +930,7 @@ fn validate_class_references(
 }
 
 fn render_class_boxes<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     settings: ClassRenderSettings<'_>,
     endpoint_index: &ClassEndpointIndex<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
@@ -942,7 +942,7 @@ fn render_class_boxes<'a>(
         .len()
         .checked_add(model.interfaces().len())
         .and_then(|value| value.checked_add(model.notes().len()))
-        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
+        .and_then(|value| value.checked_add(model.namespaces().len()))
         .ok_or_else(|| work_overflow(resources))?;
     let mut boxes = Vec::new();
     boxes
@@ -1441,7 +1441,7 @@ fn generic_materialization_scan_work(
 }
 
 fn relation_layout<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     relation: ClassRelationRenderView<'a>,
     endpoint_index: &ClassEndpointIndex<'a>,
     labels: ClassRelationLabels,
@@ -1537,7 +1537,7 @@ fn relation_layout<'a>(
 }
 
 fn prepare_class_relation_labels<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     options: &AsciiRenderOptions,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -1630,7 +1630,7 @@ fn prepare_class_relation_labels<'a>(
 }
 
 fn note_explicit_namespace_id<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     note: ClassNoteRenderView<'a>,
     endpoint_index: &ClassEndpointIndex<'a>,
 ) -> Option<&'a str> {
@@ -1647,7 +1647,7 @@ fn note_explicit_namespace_id<'a>(
 }
 
 fn marker_for_relation_type(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     relation_type: i32,
 ) -> Result<Option<RelationMarker>> {
     let constants = &model.model().constants.relation_type;
@@ -1677,7 +1677,7 @@ fn marker_for_relation_type(
 }
 
 fn note_relation_layouts<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     endpoint_index: &ClassEndpointIndex<'a>,
     box_by_id: &RenderedClassBoxIndex<'_>,
     width_profile: TerminalWidthProfile,
@@ -1746,7 +1746,7 @@ fn note_relation_layouts_for_notes<'a>(
 }
 
 fn external_namespace_note_summary_rows<'a>(
-    model: &'a ClassDiagram,
+    model: &'a ClassTopologyView<'_>,
     endpoint_index: &ClassEndpointIndex<'a>,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
@@ -3026,19 +3026,25 @@ fn relation_line_chars(charset: ClassCharset) -> RelationLineChars {
     )
 }
 
-fn charge_class_model_work(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
+fn charge_class_model_work(
+    model: &ClassTopologyView<'_>,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     let item_count = model
         .classes()
         .len()
         .checked_add(model.interfaces().len())
         .and_then(|value| value.checked_add(model.notes().len()))
         .and_then(|value| value.checked_add(model.relations().len()))
-        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
+        .and_then(|value| value.checked_add(model.namespaces().len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(item_count.max(1))
 }
 
-fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
+fn preflight_class_text(
+    model: &ClassTopologyView<'_>,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     for (_, class) in model.classes() {
         charge_text_layout(resources, &class.id)?;
         charge_text_layout(resources, &class.text)?;
@@ -3085,7 +3091,7 @@ fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -
     for (_, namespace) in model.namespaces() {
         charge_text_layout(resources, &namespace.id)?;
         charge_text_layout(resources, &namespace.label)?;
-        charge_text_layout(resources, namespace.dom_id)?;
+        charge_text_layout(resources, namespace.route_id)?;
         if let Some(parent) = namespace.parent.as_deref() {
             charge_text_layout(resources, parent)?;
         }
@@ -3127,7 +3133,9 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
-    use merman_core::models::class_diagram::{ClassInterface, ClassNote, NamespaceRenderView};
+    use merman_core::models::class_diagram::{
+        ClassDiagram, ClassInterface, ClassNote, NamespaceTopologyView,
+    };
     use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
     use std::cell::Cell;
@@ -3282,9 +3290,9 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_namespace_container_box(
-            NamespaceRenderView {
+            NamespaceTopologyView {
                 namespace: &namespace,
-                dom_id: "namespace0",
+                route_id: "namespace0",
             },
             Vec::new(),
             settings,
@@ -3299,11 +3307,60 @@ mod tests {
     fn render_class_identity_fixture(model: &ClassDiagram) -> String {
         let policy = unbounded_policy();
         render_class_diagram_with_execution(
-            model,
+            &model.topology_view(),
             &AsciiRenderOptions::ascii(),
             AsciiExecution::for_test(&policy),
         )
         .expect("class identity fixture should render")
+    }
+
+    #[test]
+    fn canonical_class_topology_preserves_full_terminal_output_and_borrowed_payloads() {
+        for source in [
+            "classDiagram\nclass Domain\nnamespace Domain {\nclass Service\n}\nDomain --> Service",
+            "%%{init: {\"class\": {\"hierarchicalNamespaces\": false}}}%%\nclassDiagram\nnamespace Company.Project {\nclass Service\n}\n",
+            "classDiagram\nnamespace N {\nclass C\n}\nclass N.C[\"Distinct\"]\nclass D\nN.C --> D",
+            "classDiagram\nnamespace Domain {\nclass Service\n}\nclass note0\nclass interface0\nnote for Service \"Note\"\nIService ()-- Domain.Service",
+            "classDiagram\nnamespace A {\nclass Service\n}\nnamespace B {\nclass Client\n}\nB.Client --> A.Service : calls",
+            "classDiagram\nclass Service\ncssClass \"Service\" accent\nclassDef accent fill:red\nclass Client\nClient --> Service : uses",
+        ] {
+            let parsed = merman_core::SemanticParser::new()
+                .parse_diagram_sync(source)
+                .expect("canonical Class fixture should parse");
+            let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+                panic!("expected a canonical Class model");
+            };
+            let topology = model
+                .topology(
+                    &parsed.metadata.semantic_config,
+                    &merman_core::OperationControl::new(),
+                )
+                .expect("canonical Class topology should build");
+            assert!(std::ptr::eq(topology.model(), model));
+            for (id, class) in topology.classes() {
+                assert!(std::ptr::eq(class.node, &model.classes[id]));
+            }
+            let full = parsed_class_model(source);
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let policy = unbounded_policy();
+                let canonical = render_class_diagram_with_execution(
+                    &topology,
+                    &options,
+                    AsciiExecution::for_test(&policy),
+                )
+                .expect("canonical topology should render");
+                let full_output = render_class_diagram_with_execution(
+                    &full.topology_view(),
+                    &options,
+                    AsciiExecution::for_test(&policy),
+                )
+                .expect("full topology should render");
+                assert_eq!(
+                    canonical, full_output,
+                    "source={source:?}, options={options:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -3335,7 +3392,7 @@ mod tests {
 
             let policy = unbounded_policy();
             let error = render_class_diagram_with_execution(
-                &model,
+                &model.topology_view(),
                 &AsciiRenderOptions::ascii(),
                 AsciiExecution::for_test(&policy),
             )
@@ -3440,6 +3497,7 @@ mod tests {
         policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
+        let model = model.topology_view();
         let mut resources = ResourceContext::new(policy);
         let execution = AsciiExecution::for_test(&policy);
         let charset = ClassCharset::for_options(options);
@@ -3456,9 +3514,9 @@ mod tests {
         };
         let mut deferred = DeferredTextRegistry::new();
         let endpoint_index =
-            ClassEndpointIndex::new(model, &mut resources).expect("class endpoints should plan");
+            ClassEndpointIndex::new(&model, &mut resources).expect("class endpoints should plan");
         let boxes = render_class_boxes(
-            model,
+            &model,
             settings,
             &endpoint_index,
             &mut deferred,
@@ -3467,7 +3525,7 @@ mod tests {
         )
         .expect("class summary boxes should plan");
         let relation_labels =
-            prepare_class_relation_labels(model, options, &mut deferred, &resources)
+            prepare_class_relation_labels(&model, options, &mut deferred, &resources)
                 .expect("class summary labels should plan as one batch");
         let mut layouts = Vec::new();
         layouts
@@ -3476,7 +3534,7 @@ mod tests {
         for (relation_index, relation) in model.relations().enumerate() {
             layouts.push(
                 relation_layout(
-                    model,
+                    &model,
                     relation,
                     &endpoint_index,
                     relation_labels[relation_index].clone(),
@@ -3647,7 +3705,8 @@ mod tests {
         let policy = unbounded_policy();
         let resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
-        let labels = prepare_class_relation_labels(&model, &options, &mut deferred, &resources)
+        let topology = model.topology_view();
+        let labels = prepare_class_relation_labels(&topology, &options, &mut deferred, &resources)
             .expect("the authored endpoint label should plan");
         let authored_only = labels[0]
             .left_endpoint
@@ -3979,14 +4038,17 @@ mod tests {
                     OVERSIZED_GRAPHEME.len(),
                 )
                 .expect("grapheme resource limit should be valid");
-            preflight_class_text(&model, &mut ResourceContext::new(exact_policy))
-                .unwrap_or_else(|error| panic!("{field} must pass at the exact limit: {error:?}"));
+            preflight_class_text(
+                &model.topology_view(),
+                &mut ResourceContext::new(exact_policy),
+            )
+            .unwrap_or_else(|error| panic!("{field} must pass at the exact limit: {error:?}"));
 
             let policy = AsciiResourcePolicy::default()
                 .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
                 .expect("grapheme resource limit should be valid");
             let mut resources = ResourceContext::new(policy);
-            let error = match preflight_class_text(&model, &mut resources) {
+            let error = match preflight_class_text(&model.topology_view(), &mut resources) {
                 Ok(()) => panic!("{field} must be preflighted"),
                 Err(error) => error,
             };
@@ -4015,14 +4077,20 @@ mod tests {
         let exact_policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 3)
             .expect("grapheme resource limit should be valid");
-        preflight_class_text(&model, &mut ResourceContext::new(exact_policy))
-            .expect("display plus classifier should pass at the exact grapheme byte limit");
+        preflight_class_text(
+            &model.topology_view(),
+            &mut ResourceContext::new(exact_policy),
+        )
+        .expect("display plus classifier should pass at the exact grapheme byte limit");
 
         let below_policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
             .expect("grapheme resource limit should be valid");
-        let error = preflight_class_text(&model, &mut ResourceContext::new(below_policy))
-            .expect_err("display plus classifier must be planned as one grapheme stream");
+        let error = preflight_class_text(
+            &model.topology_view(),
+            &mut ResourceContext::new(below_policy),
+        )
+        .expect_err("display plus classifier must be planned as one grapheme stream");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)

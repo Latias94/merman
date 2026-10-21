@@ -9,13 +9,13 @@ use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
 };
+use crate::xychart::XyChartView;
 use merman_core::diagrams::xychart::{
-    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
-    XyChartPlotRenderModel,
+    XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartPlotModel,
 };
 
 pub(super) fn render(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartView<'_>,
     orientation: ChartOrientation,
     options: &AsciiRenderOptions,
     resources: ResourceContext,
@@ -38,12 +38,12 @@ pub(super) fn render(
 fn push_axis(
     document: &mut BudgetedTextDocument,
     key: &str,
-    axis: &XyChartAxisRenderModel,
+    axis: &XyChartAxisModel,
 ) -> Result<()> {
     document.push_line_with(|line| {
         line.push_str(key)?;
         match axis {
-            XyChartAxisRenderModel::Band { title, categories } => {
+            XyChartAxisModel::Band { title, categories } => {
                 line.push_str(": band ")?;
                 push_line_field(line, "", "title", title)?;
                 line.push_str(" ")?;
@@ -54,7 +54,7 @@ fn push_axis(
                     categories.iter().map(String::as_str),
                 )
             }
-            XyChartAxisRenderModel::Linear { title, min, max } => {
+            XyChartAxisModel::Linear { title, min, max } => {
                 line.push_str(": linear ")?;
                 push_line_field(line, "", "title", title)?;
                 line.push_str(" min=")?;
@@ -66,10 +66,7 @@ fn push_axis(
     })
 }
 
-fn push_display_policy(
-    document: &mut BudgetedTextDocument,
-    model: &XyChartDiagramRenderModel,
-) -> Result<()> {
+fn push_display_policy(document: &mut BudgetedTextDocument, model: &XyChartView<'_>) -> Result<()> {
     document.push_line_with(|line| {
         line.write_fmt(format_args!(
             "display: showTitle={} showDataLabel={} showDataLabelOutsideBar={} ",
@@ -94,7 +91,7 @@ fn push_axis_display_policy(
     ))
 }
 
-fn push_plots(document: &mut BudgetedTextDocument, plots: &[XyChartPlotRenderModel]) -> Result<()> {
+fn push_plots(document: &mut BudgetedTextDocument, plots: &[XyChartPlotModel]) -> Result<()> {
     if plots.is_empty() {
         return document.push_line("plots: []");
     }
@@ -137,7 +134,8 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::xychart::plot::TerminalChartCardinality;
     use merman_core::diagrams::xychart::{
-        XyChartDiagramModel, XyChartDisplayPolicy, XyChartPlotType,
+        XyChartAxisRenderModel, XyChartDiagramModel, XyChartDiagramRenderModel,
+        XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
     };
     use merman_core::resources::ResourceProfile;
 
@@ -180,7 +178,7 @@ mod tests {
                 .is_empty()
         );
         render(
-            model,
+            &XyChartView::new(&model.semantic, model.display),
             ChartOrientation::Vertical,
             &options,
             resources,
@@ -231,7 +229,7 @@ mod tests {
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let resources = ResourceContext::new(unbounded);
         let rendered = render(
-            &model,
+            &XyChartView::new(&model.semantic, model.display),
             ChartOrientation::Vertical,
             &options,
             resources,
@@ -243,7 +241,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
             .expect("the exact output limit should be valid");
         let exact_output = render(
-            &model,
+            &XyChartView::new(&model.semantic, model.display),
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(exact),
@@ -256,7 +254,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
             .expect("the N-1 output limit should be valid");
         let error = render(
-            &model,
+            &XyChartView::new(&model.semantic, model.display),
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(below),

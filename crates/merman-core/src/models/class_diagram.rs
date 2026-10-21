@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 /// Authored Class diagram meaning, before DOM ids and namespace render configuration.
@@ -40,21 +41,33 @@ pub struct ClassDiagramModel {
 }
 
 impl ClassDiagramModel {
+    /// Borrows the canonical graph with its requested namespace and routing topology.
+    ///
+    /// The caller supplies the already-admitted configuration and operation control. Authored
+    /// classes, relations, notes, interfaces, and style witnesses remain in this model.
+    pub fn topology(
+        &self,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<ClassTopologyView<'_>> {
+        Ok(ClassTopologyView {
+            model: self,
+            topology: Cow::Owned(ClassTopology::new_controlled(self, config, control)?),
+        })
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
 }
 
-/// Requested visual projection of a canonical Class diagram.
+/// Requested namespace and routing projection of a canonical Class diagram.
 ///
-/// The canonical model keeps authored namespace relationships and stable synthetic identities.
-/// This sidecar contains only the namespace collapse, DOM ids and collision-free routing ids
-/// used by Mermaid's full JSON and SVG boundaries.
-#[cfg(feature = "presentation")]
+/// Namespace ids historically named `namespace_dom_ids` are also the stable route identities
+/// used by terminal output. Class DOM ids are owned separately by `ClassPresentation`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ClassPresentation {
-    pub class_dom_ids: IndexMap<String, String>,
+pub struct ClassTopology {
     pub namespace_dom_ids: IndexMap<String, String>,
     pub namespaces: IndexMap<String, Namespace>,
     pub class_parents: IndexMap<String, Option<String>>,
@@ -64,49 +77,49 @@ pub struct ClassPresentation {
     interface_id_remaps: BTreeMap<String, String>,
 }
 
-#[cfg(feature = "presentation")]
-impl ClassPresentation {
-    pub fn new(model: &ClassDiagramModel, config: &crate::MermaidConfig) -> Self {
+impl ClassTopology {
+    fn new_controlled(
+        model: &ClassDiagramModel,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Self> {
         use std::collections::BTreeSet;
 
+        control.checkpoint()?;
         let prefix = crate::diagrams::class::MERMAID_DOM_ID_PREFIX;
-        let class_dom_ids = model
-            .classes
-            .keys()
-            .enumerate()
-            .map(|(ordinal, id)| (id.clone(), format!("{prefix}{id}-{ordinal}")))
-            .collect();
-        let namespace_dom_ids: IndexMap<String, String> = model
-            .namespaces
-            .keys()
-            .enumerate()
-            .map(|(ordinal, id)| (id.clone(), format!("{prefix}{id}-{ordinal}")))
-            .collect();
+        let mut namespace_dom_ids = IndexMap::with_capacity(model.namespaces.len());
+        for (ordinal, id) in model.namespaces.keys().enumerate() {
+            control.checkpoint()?;
+            namespace_dom_ids.insert(id.clone(), format!("{prefix}{id}-{ordinal}"));
+        }
         let hierarchical = config
             .get_bool("class.hierarchicalNamespaces")
             .unwrap_or(true);
-        let parent = |id: Option<&str>| {
+        let parent = |id: Option<&str>| -> crate::OperationControlResult<Option<String>> {
             if hierarchical {
-                return id.map(str::to_string);
+                return Ok(id.map(str::to_string));
             }
-            Self::explicit_ancestor(&model.namespaces, id)
+            Self::explicit_ancestor(&model.namespaces, id, control)
         };
-        let class_parents = model
-            .classes
-            .iter()
-            .map(|(id, class)| (id.clone(), parent(class.parent.as_deref())))
-            .collect();
-        let note_parents = model
-            .notes
-            .iter()
-            .map(|note| parent(note.parent.as_deref()))
-            .collect();
-        let namespaces: IndexMap<String, Namespace> = model
-            .namespaces
-            .iter()
-            .filter(|(_, namespace)| hierarchical || namespace.explicit)
-            .map(|(key, namespace)| {
-                (
+        let mut class_parents = IndexMap::with_capacity(model.classes.len());
+        for (id, class) in &model.classes {
+            control.checkpoint()?;
+            class_parents.insert(id.clone(), parent(class.parent.as_deref())?);
+        }
+        let mut note_parents = Vec::with_capacity(model.notes.len());
+        for note in &model.notes {
+            control.checkpoint()?;
+            note_parents.push(parent(note.parent.as_deref())?);
+        }
+        let mut namespaces = if hierarchical {
+            IndexMap::with_capacity(model.namespaces.len())
+        } else {
+            IndexMap::new()
+        };
+        for (key, namespace) in &model.namespaces {
+            control.checkpoint()?;
+            if hierarchical || namespace.explicit {
+                namespaces.insert(
                     key.clone(),
                     Namespace {
                         id: namespace.id.clone(),
@@ -124,48 +137,38 @@ impl ClassPresentation {
                         },
                         explicit: namespace.explicit,
                     },
-                )
-            })
-            .collect();
+                );
+            }
+        }
 
-        let mut occupied: BTreeSet<String> =
-            if model.notes.is_empty() && model.interfaces.is_empty() {
-                BTreeSet::new()
-            } else {
-                model
-                    .classes
-                    .keys()
-                    .cloned()
-                    .chain(
-                        namespaces
-                            .keys()
-                            .filter_map(|id| namespace_dom_ids.get(id))
-                            .cloned(),
-                    )
-                    .collect()
-            };
-        let note_ids = model
-            .notes
-            .iter()
-            .enumerate()
-            .map(|(ordinal, _)| Self::unique_id("note", ordinal, &mut occupied))
-            .collect();
+        let mut occupied: BTreeSet<String> = BTreeSet::new();
+        if !model.notes.is_empty() || !model.interfaces.is_empty() {
+            for id in model
+                .classes
+                .keys()
+                .chain(namespaces.keys().filter_map(|id| namespace_dom_ids.get(id)))
+            {
+                control.checkpoint()?;
+                occupied.insert(id.clone());
+            }
+        }
+        let mut note_ids = Vec::with_capacity(model.notes.len());
+        for ordinal in 0..model.notes.len() {
+            control.checkpoint()?;
+            note_ids.push(Self::unique_id("note", ordinal, &mut occupied, control)?);
+        }
         let mut interface_id_remaps = BTreeMap::new();
-        let interface_ids = model
-            .interfaces
-            .iter()
-            .enumerate()
-            .map(|(ordinal, interface)| {
-                let id = Self::unique_id("interface", ordinal, &mut occupied);
-                if id != interface.id {
-                    interface_id_remaps.insert(interface.id.clone(), id.clone());
-                }
-                id
-            })
-            .collect();
+        let mut interface_ids = Vec::with_capacity(model.interfaces.len());
+        for (ordinal, interface) in model.interfaces.iter().enumerate() {
+            control.checkpoint()?;
+            let id = Self::unique_id("interface", ordinal, &mut occupied, control)?;
+            if id != interface.id {
+                interface_id_remaps.insert(interface.id.clone(), id.clone());
+            }
+            interface_ids.push(id);
+        }
 
         let mut projection = Self {
-            class_dom_ids,
             namespace_dom_ids,
             namespaces,
             class_parents,
@@ -175,6 +178,7 @@ impl ClassPresentation {
             interface_id_remaps,
         };
         for (id, parent) in &projection.class_parents {
+            control.checkpoint()?;
             if let Some(namespace) = parent
                 .as_deref()
                 .and_then(|id| projection.namespaces.get_mut(id))
@@ -183,6 +187,7 @@ impl ClassPresentation {
             }
         }
         for (id, parent) in projection.note_ids.iter().zip(&projection.note_parents) {
+            control.checkpoint()?;
             if let Some(namespace) = parent
                 .as_deref()
                 .and_then(|id| projection.namespaces.get_mut(id))
@@ -190,12 +195,13 @@ impl ClassPresentation {
                 namespace.note_ids.push(id.clone());
             }
         }
-        projection
+        control.checkpoint()?;
+        Ok(projection)
     }
 
     pub(crate) fn retained_bytes(&self) -> usize {
         let mut bytes = 0usize;
-        for (id, dom_id) in self.class_dom_ids.iter().chain(&self.namespace_dom_ids) {
+        for (id, dom_id) in &self.namespace_dom_ids {
             bytes = bytes.saturating_add(id.len()).saturating_add(dom_id.len());
         }
         for (id, namespace) in &self.namespaces {
@@ -227,10 +233,6 @@ impl ClassPresentation {
         bytes
     }
 
-    pub fn class_dom_id(&self, id: &str) -> Option<&str> {
-        self.class_dom_ids.get(id).map(String::as_str)
-    }
-
     pub fn namespace_dom_id(&self, id: &str) -> Option<&str> {
         self.namespace_dom_ids.get(id).map(String::as_str)
     }
@@ -259,36 +261,267 @@ impl ClassPresentation {
     fn explicit_ancestor(
         namespaces: &IndexMap<String, Namespace>,
         id: Option<&str>,
-    ) -> Option<String> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Option<String>> {
         let mut current = id;
         for _ in 0..namespaces.len() {
-            let id = current?;
-            let namespace = namespaces.get(id)?;
+            control.checkpoint()?;
+            let Some(id) = current else { return Ok(None) };
+            let Some(namespace) = namespaces.get(id) else {
+                return Ok(None);
+            };
             if namespace.explicit {
-                return Some(id.to_string());
+                return Ok(Some(id.to_string()));
             }
             current = namespace.parent.as_deref();
         }
-        None
+        Ok(None)
     }
 
     fn unique_id(
         prefix: &str,
         ordinal: usize,
         occupied: &mut std::collections::BTreeSet<String>,
-    ) -> String {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<String> {
         let base = format!("{prefix}{ordinal}");
         if occupied.insert(base.clone()) {
-            return base;
+            return Ok(base);
         }
         let mut disambiguator = 1usize;
         loop {
+            control.checkpoint()?;
             let candidate = format!("{base}${disambiguator}");
             if occupied.insert(candidate.clone()) {
-                return candidate;
+                return Ok(candidate);
             }
             disambiguator = disambiguator.saturating_add(1);
         }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn flat_class_topology_does_not_reserve_slots_for_implicit_namespaces() {
+    let namespace_id = (0..128)
+        .map(|index| format!("N{index}"))
+        .collect::<Vec<_>>()
+        .join(".");
+    let parsed = crate::SemanticParser::new()
+        .parse_diagram_sync(&format!(
+            "classDiagram\nnamespace {namespace_id} {{\nclass Service\n}}\n"
+        ))
+        .unwrap();
+    let crate::SemanticDiagramModel::Class(mut model) = parsed.model else {
+        panic!("expected a canonical Class model");
+    };
+    assert_eq!(model.namespaces.len(), 128);
+    let mut config = crate::MermaidConfig::empty_object();
+    config.set_value("class.hierarchicalNamespaces", false.into());
+    {
+        let topology = model
+            .topology(&config, &crate::OperationControl::new())
+            .unwrap();
+        assert_eq!(topology.namespaces().len(), 1);
+        assert!(topology.topology.namespaces.capacity() < model.namespaces.len());
+        assert_eq!(
+            topology.namespace(&namespace_id).unwrap().route_id,
+            format!("classId-{namespace_id}-127")
+        );
+    }
+    for namespace in model.namespaces.values_mut() {
+        namespace.explicit = false;
+    }
+    let topology = model
+        .topology(&config, &crate::OperationControl::new())
+        .unwrap();
+    assert_eq!(topology.namespaces().len(), 0);
+    assert_eq!(topology.topology.namespaces.capacity(), 0);
+}
+
+/// A canonical Class graph borrowed together with its privately paired topology.
+#[derive(Debug)]
+pub struct ClassTopologyView<'a> {
+    model: &'a ClassDiagramModel,
+    topology: Cow<'a, ClassTopology>,
+}
+
+impl ClassTopologyView<'_> {
+    pub fn model(&self) -> &ClassDiagramModel {
+        self.model
+    }
+
+    /// Bytes retained by the requested topology, excluding the borrowed canonical graph.
+    pub fn retained_bytes(&self) -> usize {
+        self.topology.retained_bytes()
+    }
+
+    pub fn classes(&self) -> impl ExactSizeIterator<Item = (&str, ClassNodeTopologyView<'_>)> {
+        self.model.classes.iter().map(|(id, node)| {
+            (
+                id.as_str(),
+                ClassNodeTopologyView {
+                    node,
+                    parent: self.topology.class_parent(id),
+                },
+            )
+        })
+    }
+
+    pub fn class(&self, id: &str) -> Option<ClassNodeTopologyView<'_>> {
+        Some(ClassNodeTopologyView {
+            node: self.model.classes.get(id)?,
+            parent: self.topology.class_parent(id),
+        })
+    }
+
+    pub fn namespaces(&self) -> impl ExactSizeIterator<Item = (&str, NamespaceTopologyView<'_>)> {
+        self.topology.namespaces.iter().map(|(id, namespace)| {
+            (
+                id.as_str(),
+                NamespaceTopologyView {
+                    namespace,
+                    route_id: &self.topology.namespace_dom_ids[id],
+                },
+            )
+        })
+    }
+
+    pub fn namespace(&self, id: &str) -> Option<NamespaceTopologyView<'_>> {
+        Some(NamespaceTopologyView {
+            namespace: self.topology.namespaces.get(id)?,
+            route_id: self.topology.namespace_dom_id(id)?,
+        })
+    }
+
+    pub fn relations(&self) -> impl ExactSizeIterator<Item = ClassRelationRenderView<'_>> {
+        self.model.relations.iter().map(|source| {
+            let (id1, id2) = self.topology.relation_endpoints(source);
+            ClassRelationRenderView { source, id1, id2 }
+        })
+    }
+
+    pub fn notes(&self) -> impl ExactSizeIterator<Item = ClassNoteRenderView<'_>> {
+        self.model
+            .notes
+            .iter()
+            .enumerate()
+            .map(|(index, note)| ClassNoteRenderView {
+                note,
+                id: &self.topology.note_ids[index],
+                parent: self.topology.note_parents[index].as_deref(),
+            })
+    }
+
+    pub fn interfaces(&self) -> impl ExactSizeIterator<Item = ClassInterfaceRenderView<'_>> {
+        self.model
+            .interfaces
+            .iter()
+            .enumerate()
+            .map(|(index, interface)| ClassInterfaceRenderView {
+                interface,
+                id: &self.topology.interface_ids[index],
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClassNodeTopologyView<'a> {
+    pub node: &'a ClassNode,
+    pub parent: Option<&'a str>,
+}
+
+impl std::ops::Deref for ClassNodeTopologyView<'_> {
+    type Target = ClassNode;
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NamespaceTopologyView<'a> {
+    pub namespace: &'a Namespace,
+    pub route_id: &'a str,
+}
+
+impl std::ops::Deref for NamespaceTopologyView<'_> {
+    type Target = Namespace;
+    fn deref(&self) -> &Self::Target {
+        self.namespace
+    }
+}
+
+/// Full Class presentation with one shared topology and a requested class DOM map.
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassPresentation {
+    pub class_dom_ids: IndexMap<String, String>,
+    topology: ClassTopology,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for ClassPresentation {
+    type Target = ClassTopology;
+    fn deref(&self) -> &Self::Target {
+        &self.topology
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for ClassPresentation {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.topology
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl ClassPresentation {
+    pub fn new(model: &ClassDiagramModel, config: &crate::MermaidConfig) -> Self {
+        Self::new_controlled(model, config, &crate::OperationControl::new())
+            .expect("a private operation control cannot be cancelled")
+    }
+
+    fn new_controlled(
+        model: &ClassDiagramModel,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Self> {
+        let topology = ClassTopology::new_controlled(model, config, control)?;
+        let prefix = crate::diagrams::class::MERMAID_DOM_ID_PREFIX;
+        let mut class_dom_ids = IndexMap::with_capacity(model.classes.len());
+        for (ordinal, id) in model.classes.keys().enumerate() {
+            control.checkpoint()?;
+            class_dom_ids.insert(id.clone(), format!("{prefix}{id}-{ordinal}"));
+        }
+        control.checkpoint()?;
+        Ok(Self {
+            class_dom_ids,
+            topology,
+        })
+    }
+
+    pub fn class_dom_id(&self, id: &str) -> Option<&str> {
+        self.class_dom_ids.get(id).map(String::as_str)
+    }
+
+    pub fn namespace_dom_id(&self, id: &str) -> Option<&str> {
+        self.topology.namespace_dom_id(id)
+    }
+
+    pub fn class_parent(&self, id: &str) -> Option<&str> {
+        self.topology.class_parent(id)
+    }
+
+    pub fn relation_endpoints<'a>(&'a self, relation: &'a ClassRelation) -> (&'a str, &'a str) {
+        self.topology.relation_endpoints(relation)
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.class_dom_ids
+            .iter()
+            .fold(self.topology.retained_bytes(), |bytes, (id, dom_id)| {
+                bytes.saturating_add(id.len()).saturating_add(dom_id.len())
+            })
     }
 }
 
@@ -317,6 +550,14 @@ impl ClassDiagram {
         &self.inner.presentation
     }
 
+    /// Borrows the existing full topology, including detached wire identities, without rebuilding.
+    pub fn topology_view(&self) -> ClassTopologyView<'_> {
+        ClassTopologyView {
+            model: &self.inner.model,
+            topology: Cow::Borrowed(&self.inner.presentation.topology),
+        }
+    }
+
     /// Returns the canonical graph for editing before rebuilding its presentation.
     pub fn into_model(self) -> ClassDiagramModel {
         self.inner.model
@@ -334,6 +575,20 @@ impl ClassDiagram {
                 presentation,
             }),
         }
+    }
+
+    pub(crate) fn new_controlled(
+        model: ClassDiagramModel,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Self> {
+        let presentation = ClassPresentation::new_controlled(&model, config, control)?;
+        Ok(Self {
+            inner: Box::new(ClassDiagramInner {
+                model,
+                presentation,
+            }),
+        })
     }
 
     pub fn classes(&self) -> impl ExactSizeIterator<Item = (&str, ClassNodeRenderView<'_>)> {
@@ -515,7 +770,6 @@ impl Serialize for NamespaceRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Copy)]
 pub struct ClassRelationRenderView<'a> {
     pub source: &'a ClassRelation,
@@ -523,7 +777,6 @@ pub struct ClassRelationRenderView<'a> {
     pub id2: &'a str,
 }
 
-#[cfg(feature = "presentation")]
 impl std::ops::Deref for ClassRelationRenderView<'_> {
     type Target = ClassRelation;
     fn deref(&self) -> &Self::Target {
@@ -531,7 +784,6 @@ impl std::ops::Deref for ClassRelationRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 impl PartialEq for ClassRelationRenderView<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.id1 == other.id1
@@ -560,7 +812,6 @@ impl Serialize for ClassRelationRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Copy)]
 pub struct ClassNoteRenderView<'a> {
     pub note: &'a ClassNote,
@@ -568,7 +819,6 @@ pub struct ClassNoteRenderView<'a> {
     pub parent: Option<&'a str>,
 }
 
-#[cfg(feature = "presentation")]
 impl std::ops::Deref for ClassNoteRenderView<'_> {
     type Target = ClassNote;
     fn deref(&self) -> &Self::Target {
@@ -576,7 +826,6 @@ impl std::ops::Deref for ClassNoteRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 impl PartialEq for ClassNoteRenderView<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
@@ -602,14 +851,12 @@ impl Serialize for ClassNoteRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Copy)]
 pub struct ClassInterfaceRenderView<'a> {
     pub interface: &'a ClassInterface,
     pub id: &'a str,
 }
 
-#[cfg(feature = "presentation")]
 impl std::ops::Deref for ClassInterfaceRenderView<'_> {
     type Target = ClassInterface;
     fn deref(&self) -> &Self::Target {
@@ -617,7 +864,6 @@ impl std::ops::Deref for ClassInterfaceRenderView<'_> {
     }
 }
 
-#[cfg(feature = "presentation")]
 impl PartialEq for ClassInterfaceRenderView<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
@@ -856,21 +1102,23 @@ impl<'de> Deserialize<'de> for ClassDiagram {
                 // projection verbatim; it cannot recover authored namespaces or original ids.
                 let presentation = ClassPresentation {
                     class_dom_ids,
-                    namespace_dom_ids,
-                    namespaces: model.namespaces.clone(),
-                    class_parents: model
-                        .classes
-                        .iter()
-                        .map(|(id, node)| (id.clone(), node.parent.clone()))
-                        .collect(),
-                    note_ids: model.notes.iter().map(|note| note.id.clone()).collect(),
-                    note_parents: model.notes.iter().map(|note| note.parent.clone()).collect(),
-                    interface_ids: model
-                        .interfaces
-                        .iter()
-                        .map(|interface| interface.id.clone())
-                        .collect(),
-                    interface_id_remaps: BTreeMap::new(),
+                    topology: ClassTopology {
+                        namespace_dom_ids,
+                        namespaces: model.namespaces.clone(),
+                        class_parents: model
+                            .classes
+                            .iter()
+                            .map(|(id, node)| (id.clone(), node.parent.clone()))
+                            .collect(),
+                        note_ids: model.notes.iter().map(|note| note.id.clone()).collect(),
+                        note_parents: model.notes.iter().map(|note| note.parent.clone()).collect(),
+                        interface_ids: model
+                            .interfaces
+                            .iter()
+                            .map(|interface| interface.id.clone())
+                            .collect(),
+                        interface_id_remaps: BTreeMap::new(),
+                    },
                 };
                 Ok(ClassDiagram {
                     inner: Box::new(ClassDiagramInner {

@@ -5,15 +5,12 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Number, Value, json};
 
-use super::{
-    NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_DEFAULT, NODE_TYPE_HEXAGON,
-    NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
-};
+#[cfg(test)]
+use super::NODE_TYPE_DEFAULT;
+use super::{MindmapDisplayPolicy, NODE_TYPE_HEXAGON, NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT};
 #[cfg(feature = "compat-json")]
 use crate::{Error, json_value::ManagedJson};
 use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
-
-const MINDMAP_SECTION_COUNT: usize = 11;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -126,13 +123,10 @@ pub(super) fn model_into_render_model_controlled(
         });
     }
     let mut projection = MindmapProjection { nodes };
-    projection.assign_sections_controlled(
-        root_id,
-        None,
-        config.get_str("mindmap.colorBy") == Some("depth"),
-        control,
-    )?;
-    let nodes = projection.to_layout_nodes_for_render_controlled(root_id, config, control)?;
+    let display = MindmapDisplayPolicy::from_config(config);
+    projection.assign_sections_controlled(root_id, None, display, control)?;
+    let nodes =
+        projection.to_layout_nodes_for_render_controlled(root_id, config, display, control)?;
     let edges = projection.to_edges_for_render_controlled(root_id, config, control)?;
     control.checkpoint()?;
     Ok(Ok(MindmapDiagramRenderModel { nodes, edges }))
@@ -144,31 +138,6 @@ struct MindmapProjection {
 
 fn mindmap_look(config: &MermaidConfig) -> String {
     config.get_str("look").unwrap_or("classic").to_string()
-}
-
-fn mindmap_default_shape(config: &MermaidConfig) -> &'static str {
-    let theme = config
-        .get_str("theme")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if theme.contains("redux") {
-        "rounded"
-    } else {
-        "defaultMindmapNode"
-    }
-}
-
-fn shape_from_type(ty: i32, default_shape: &'static str) -> &'static str {
-    match ty {
-        NODE_TYPE_CIRCLE => "mindmapCircle",
-        NODE_TYPE_RECT => "rect",
-        NODE_TYPE_ROUNDED_RECT => "rounded",
-        NODE_TYPE_CLOUD => "cloud",
-        NODE_TYPE_BANG => "bang",
-        NODE_TYPE_HEXAGON => "hexagon",
-        NODE_TYPE_DEFAULT => default_shape,
-        _ => "rect",
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -207,7 +176,7 @@ fn mindmap_node_css_classes(node: &MindmapProjectionNode) -> String {
 fn mindmap_render_node(
     node: &MindmapProjectionNode,
     look: &str,
-    default_shape: &'static str,
+    display: MindmapDisplayPolicy,
 ) -> MindmapDiagramRenderNode {
     MindmapDiagramRenderNode {
         id: node.id.to_string(),
@@ -217,7 +186,7 @@ fn mindmap_render_node(
         // description flag only controls sanitization while the node enters this DB.
         label_type: "markdown".to_string(),
         is_group: false,
-        shape: shape_from_type(node.ty, default_shape).to_string(),
+        shape: display.shape(node.ty).to_string(),
         width: node.width as f64,
         height: node.height.unwrap_or(0) as f64,
         padding: node.padding as f64,
@@ -268,7 +237,7 @@ impl MindmapProjection {
         &mut self,
         node_id: i32,
         section: Option<i32>,
-        color_by_depth: bool,
+        display: MindmapDisplayPolicy,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         let mut stack = vec![(node_id, section, 0usize)];
@@ -285,13 +254,7 @@ impl MindmapProjection {
                 continue;
             };
             let node_level = node.level;
-            if node_level == 0 {
-                node.section = None;
-            } else if color_by_depth {
-                node.section = Some(((depth - 1) % MINDMAP_SECTION_COUNT) as i32);
-            } else {
-                node.section = section;
-            }
+            node.section = display.section(node_level, section, depth);
 
             let child_count = node.children.len();
             for index in (0..child_count).rev() {
@@ -299,11 +262,7 @@ impl MindmapProjection {
                     control.checkpoint()?;
                 }
                 let child_id = self.nodes[node_idx].children[index];
-                let child_section = if node_level == 0 {
-                    Some((index % MINDMAP_SECTION_COUNT) as i32)
-                } else {
-                    section
-                };
+                let child_section = display.child_section(node_level, index, section);
                 stack.push((child_id, child_section, depth + 1));
             }
         }
@@ -314,11 +273,11 @@ impl MindmapProjection {
         &self,
         root_id: i32,
         config: &MermaidConfig,
+        display: MindmapDisplayPolicy,
         control: &OperationControl,
     ) -> OperationControlResult<Vec<MindmapDiagramRenderNode>> {
         let mut out = Vec::new();
         let look = mindmap_look(config);
-        let default_shape = mindmap_default_shape(config);
         let mut stack = vec![root_id];
         let mut visited = 0usize;
         while let Some(node_id) = stack.pop() {
@@ -333,7 +292,7 @@ impl MindmapProjection {
                 continue;
             };
 
-            out.push(mindmap_render_node(node, &look, default_shape));
+            out.push(mindmap_render_node(node, &look, display));
 
             for child in node.children.iter().rev() {
                 stack.push(*child);

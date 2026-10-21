@@ -237,6 +237,9 @@ pub struct GanttTask {
     pub start_ms: i64,
     #[serde(rename = "endTime")]
     pub end_ms: i64,
+    /// The visible end retained by the same excludes-adjustment pass as `end_ms`.
+    #[serde(skip)]
+    pub render_end_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -348,7 +351,6 @@ pub(super) struct RawTask {
     pub(super) type_: String,
     pub(super) processed: bool,
     pub(super) manual_end_time: bool,
-    #[cfg(feature = "presentation")]
     pub(super) render_end_time: Option<OffsetDateTime>,
     pub(super) raw: RawTaskRaw,
     pub(super) task: String,
@@ -385,8 +387,6 @@ pub(super) struct GanttDb {
     pub(super) current_section_index: Option<usize>,
     #[cfg(feature = "presentation")]
     pub(super) display_mode: String,
-    #[cfg(feature = "presentation")]
-    pub(super) capture_presentation: bool,
 
     pub(super) inclusive_end_dates: bool,
     pub(super) top_axis: bool,
@@ -569,7 +569,6 @@ impl GanttDb {
             type_: self.current_section.clone(),
             processed: false,
             manual_end_time: false,
-            #[cfg(feature = "presentation")]
             render_end_time: None,
             raw: RawTaskRaw {
                 data: data.to_string(),
@@ -677,12 +676,7 @@ impl GanttDb {
         let (fixed_end_time, render_end_time) =
             fix_task_dates(self, start_time, end_time, &self.date_format)?;
         self.raw_tasks[pos].end_time = Some(fixed_end_time);
-        #[cfg(feature = "presentation")]
-        {
-            self.raw_tasks[pos].render_end_time = render_end_time;
-        }
-        #[cfg(not(feature = "presentation"))]
-        let _ = render_end_time;
+        self.raw_tasks[pos].render_end_time = render_end_time;
 
         Ok(())
     }

@@ -15,12 +15,16 @@ mod model;
 mod parse;
 #[cfg(feature = "presentation")]
 mod render_model;
+mod terminal;
 
 pub(super) const CSS_EDGE_NOTE_EDGE: &str = "transition note-edge";
 
 pub use model::{
     StateDiagramModel, StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord,
     StateRelation, StateStyleClass,
+};
+pub use terminal::{
+    StateTerminalEdge, StateTerminalEdges, StateTerminalNode, StateTerminalNodes, StateTerminalView,
 };
 
 #[cfg(feature = "presentation")]

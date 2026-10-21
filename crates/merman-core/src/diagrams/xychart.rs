@@ -72,7 +72,6 @@ pub struct XyChartPlotModel {
     pub point_labels: Vec<String>,
 }
 
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XyChartAxisDisplayPolicy {
     pub show_label: bool,
@@ -81,7 +80,6 @@ pub struct XyChartAxisDisplayPolicy {
     pub show_axis_line: bool,
 }
 
-#[cfg(feature = "presentation")]
 impl Default for XyChartAxisDisplayPolicy {
     fn default() -> Self {
         Self {
@@ -93,7 +91,6 @@ impl Default for XyChartAxisDisplayPolicy {
     }
 }
 
-#[cfg(feature = "presentation")]
 impl XyChartAxisDisplayPolicy {
     fn from_config(config: &MermaidConfig, axis_key: &str) -> Self {
         let default = Self::default();
@@ -114,7 +111,6 @@ impl XyChartAxisDisplayPolicy {
     }
 }
 
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XyChartDisplayPolicy {
     pub show_title: bool,
@@ -124,7 +120,6 @@ pub struct XyChartDisplayPolicy {
     pub y_axis: XyChartAxisDisplayPolicy,
 }
 
-#[cfg(feature = "presentation")]
 impl Default for XyChartDisplayPolicy {
     fn default() -> Self {
         Self {
@@ -137,9 +132,9 @@ impl Default for XyChartDisplayPolicy {
     }
 }
 
-#[cfg(feature = "presentation")]
 impl XyChartDisplayPolicy {
-    fn from_config(config: &MermaidConfig) -> Self {
+    /// Reads chart visibility from an already-admitted configuration.
+    pub fn from_config(config: &MermaidConfig) -> Self {
         let default = Self::default();
         Self {
             show_title: config
@@ -2850,6 +2845,49 @@ mod semantic_tests {
             semantic_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    #[test]
+    fn canonical_terminal_display_policy_reads_all_admitted_visibility_flags() {
+        let policy = XyChartDisplayPolicy::from_config(&MermaidConfig::from_value(
+            serde_json::json!({"xyChart": {
+                "showTitle": false,
+                "showDataLabel": true,
+                "showDataLabelOutsideBar": true,
+                "xAxis": {
+                    "showLabel": false, "showTitle": false,
+                    "showTick": false, "showAxisLine": false
+                },
+                "yAxis": {
+                    "showLabel": false, "showTitle": false,
+                    "showTick": false, "showAxisLine": false
+                }
+            }}),
+        ));
+        assert_eq!(
+            policy,
+            XyChartDisplayPolicy {
+                show_title: false,
+                show_data_label: true,
+                show_data_label_outside_bar: true,
+                x_axis: XyChartAxisDisplayPolicy {
+                    show_label: false,
+                    show_title: false,
+                    show_tick: false,
+                    show_axis_line: false,
+                },
+                y_axis: XyChartAxisDisplayPolicy {
+                    show_label: false,
+                    show_title: false,
+                    show_tick: false,
+                    show_axis_line: false,
+                },
+            }
+        );
+        assert_eq!(
+            XyChartDisplayPolicy::from_config(&MermaidConfig::empty_object()),
+            XyChartDisplayPolicy::default()
+        );
     }
 
     #[test]

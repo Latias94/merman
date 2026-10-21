@@ -138,14 +138,10 @@ fn fix_task_dates(
     validate_excludes_leave_a_working_weekday(db)?;
 
     let mut invalid = false;
-    #[cfg(feature = "presentation")]
     let mut render_end_time: Option<OffsetDateTime> = None;
-    #[cfg(not(feature = "presentation"))]
-    let render_end_time: Option<OffsetDateTime> = None;
     let mut consecutive_invalid_days = 0usize;
     while start_time <= end_time {
-        #[cfg(feature = "presentation")]
-        if db.capture_presentation && !invalid {
+        if !invalid {
             render_end_time = Some(end_time);
         }
         invalid = is_invalid_date(db, start_time, date_format);
@@ -268,6 +264,38 @@ mod semantic_tests {
             assert_eq!(gantt_syntax_construction_count(), 1);
             #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
+        });
+    }
+
+    #[test]
+    fn gantt_canonical_tasks_retain_excludes_visible_end_in_same_construction() {
+        let context = crate::runtime::RuntimePolicy::deterministic()
+            .with_local_time_zone(crate::time::LocalTimeZone::utc())
+            .begin_operation()
+            .unwrap();
+        crate::runtime::with_operation_context(&context, || {
+            reset_gantt_syntax_construction_count();
+            let model = parse_gantt_semantic_model_controlled(
+                "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nTask: task,2019-02-01,1d\n",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            let task = &model.tasks[0];
+            assert_eq!(task.start_ms, 1_548_979_200_000);
+            assert_eq!(task.end_ms, 1_549_238_400_000);
+            assert_eq!(task.render_end_ms, Some(1_549_065_600_000));
+            assert!(
+                serde_json::to_value(task)
+                    .unwrap()
+                    .get("renderEndTime")
+                    .is_none()
+            );
+            assert_eq!(gantt_syntax_construction_count(), 1);
         });
     }
 

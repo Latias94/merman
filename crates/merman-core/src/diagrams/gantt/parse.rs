@@ -1084,7 +1084,7 @@ fn construct_gantt_semantic_source_controlled(
     code: &str,
     config: &crate::MermaidConfig,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    #[cfg(feature = "presentation")] capture_presentation: bool,
+    #[cfg(feature = "presentation")] capture_display_mode: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
@@ -1097,7 +1097,7 @@ fn construct_gantt_semantic_source_controlled(
         #[cfg(feature = "editor-facts")]
         editor_demand,
         #[cfg(feature = "presentation")]
-        capture_presentation,
+        capture_display_mode,
         control,
     )
 }
@@ -1106,7 +1106,7 @@ fn parse_gantt_semantic_source_once(
     code: &str,
     config: &crate::MermaidConfig,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    #[cfg(feature = "presentation")] capture_presentation: bool,
+    #[cfg(feature = "presentation")] capture_display_mode: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
@@ -1115,8 +1115,7 @@ fn parse_gantt_semantic_source_once(
     db.set_security_level(config.get_str("securityLevel"));
     #[cfg(feature = "presentation")]
     {
-        db.capture_presentation = capture_presentation;
-        if capture_presentation && let Some(dm) = config.get_str("gantt.displayMode") {
+        if capture_display_mode && let Some(dm) = config.get_str("gantt.displayMode") {
             db.set_display_mode(dm);
         }
     }
@@ -1438,10 +1437,10 @@ fn non_empty_opt(value: String) -> Option<String> {
 
 #[cfg(feature = "presentation")]
 fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderTask> {
-    let render_end_ms = t.render_end_time.map(|date| date.timestamp_millis());
+    let semantic = raw_task_to_semantic_task(t, date_format)?;
     Ok(GanttRenderTask {
-        semantic: raw_task_to_semantic_task(t, date_format)?,
-        render_end_ms,
+        render_end_ms: semantic.render_end_ms,
+        semantic,
     })
 }
 
@@ -1496,6 +1495,7 @@ fn raw_task_to_semantic_task(t: RawTask, date_format: &str) -> Result<GanttTask>
         },
         start_ms,
         end_ms,
+        render_end_ms: t.render_end_time.map(|date| date.timestamp_millis()),
     })
 }
 

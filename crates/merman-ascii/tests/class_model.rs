@@ -395,6 +395,14 @@ fn class_render_model_rejects_inconsistent_namespace_class_ownership() {
     let model: ClassDiagram =
         serde_json::from_value(full).expect("inconsistent namespace fixture should deserialize");
 
+    assert!(
+        model
+            .topology_view()
+            .namespace("Domain")
+            .unwrap()
+            .class_ids
+            .is_empty()
+    );
     assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
 }
 
@@ -408,6 +416,14 @@ fn class_render_model_rejects_inconsistent_namespace_note_ownership() {
     let model: ClassDiagram =
         serde_json::from_value(full).expect("inconsistent namespace fixture should deserialize");
 
+    assert!(
+        model
+            .topology_view()
+            .namespace("Domain")
+            .unwrap()
+            .note_ids
+            .is_empty()
+    );
     assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
 }
 
@@ -1445,6 +1461,12 @@ fn class_typed_nested_namespace_discloses_identity_when_parent_path_cannot_recov
         full["classes"]["Member"]["parent"] = serde_json::json!(namespace_id);
         let model: ClassDiagram =
             serde_json::from_value(full).expect("full nested namespace fixture should deserialize");
+        let topology = model.topology_view();
+        assert_eq!(
+            topology.namespace(namespace_id).unwrap().route_id,
+            "namespace-child"
+        );
+        assert!(std::ptr::eq(topology.model(), model.model()));
 
         render_class_model(&model, &AsciiRenderOptions::ascii()).unwrap_or_else(|error| {
             panic!("nested namespace {namespace_id:?} should render: {error}")

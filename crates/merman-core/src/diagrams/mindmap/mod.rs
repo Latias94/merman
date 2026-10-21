@@ -1,4 +1,5 @@
 mod db;
+mod display;
 mod parse;
 #[cfg(feature = "presentation")]
 mod render_model;
@@ -8,6 +9,7 @@ mod utils;
 mod tests;
 
 pub use db::{MindmapDiagramModel, MindmapNodeModel};
+pub use display::MindmapDisplayPolicy;
 #[cfg(feature = "compat-json")]
 pub(crate) use parse::parse_mindmap;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
