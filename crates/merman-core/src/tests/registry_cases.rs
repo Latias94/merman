@@ -55,19 +55,6 @@ macro_rules! combined_family {
     };
 }
 
-macro_rules! combined_family_accepting_malformed_source {
-    ($variant_id:literal, $logical_family:literal, $representative_source:expr) => {
-        FamilyCharacterization {
-            variant_id: $variant_id,
-            logical_family: $logical_family,
-            representative_source: $representative_source,
-            malformed_source: MALFORMED_SOURCE,
-            capabilities: COMBINED_CAPABILITIES,
-            malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
-        }
-    };
-}
-
 // This is deliberately one matrix. A Mermaid baseline is a single language catalog, so every
 // family gets the same parser/editor/typed-render admission contract regardless of Cargo features.
 pub(super) const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
@@ -106,8 +93,8 @@ pub(super) const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         "gantt",
         "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n"
     ),
-    combined_family_accepting_malformed_source!("info", "info", "info\n"),
-    combined_family_accepting_malformed_source!("pie", "pie", "pie\n\"A\": 1\n"),
+    combined_family!("info", "info", "info\n"),
+    combined_family!("pie", "pie", "pie\n\"A\": 1\n"),
     combined_family!(
         "requirement",
         "requirement",

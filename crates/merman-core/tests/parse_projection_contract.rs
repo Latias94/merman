@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 #[path = "support/parse_equivalence.rs"]
 mod parse_equivalence;
-use parse_equivalence::{assert_pair, assert_parse_paths, deterministic_engine};
+use parse_equivalence::{
+    assert_known_type_parse_paths, assert_pair, assert_parse_paths, deterministic_engine,
+};
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
@@ -224,4 +226,97 @@ fn checked_in_parse_fuzz_seeds_use_the_same_complete_assertions() {
             assert_parse_paths(&engine, source);
         }
     }
+}
+
+#[test]
+fn known_type_invalid_sources_share_model_and_snapshot_acceptance() {
+    let engine = deterministic_engine();
+    for family in diagram_family_capabilities() {
+        for source in ["", "not-a-diagram", "piep", "packet", "\"雪\": -1\n"] {
+            assert_known_type_parse_paths(&engine, family.diagram_type, source);
+        }
+    }
+}
+
+#[test]
+fn malformed_family_headers_are_failures_instead_of_successful_error_json() {
+    let engine = deterministic_engine();
+    for (diagram_type, invalid) in [("pie", "piep"), ("info", "infox")] {
+        let capability = diagram_family_capabilities()
+            .iter()
+            .find(|capability| capability.diagram_type == diagram_type)
+            .unwrap();
+        if !capability.has_semantic_parser {
+            continue;
+        }
+        for source in [invalid, "packet"] {
+            assert!(
+                matches!(
+                    engine.parse_diagram_with_type_sync(
+                        diagram_type,
+                        source,
+                        ParseOptions::strict(),
+                    ),
+                    Err(Error::DiagramParse { .. })
+                ),
+                "{diagram_type}: {source}"
+            );
+            let lenient = engine
+                .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::lenient())
+                .unwrap()
+                .unwrap();
+            assert_eq!(lenient.meta.diagram_type, "error");
+            let snapshot = engine
+                .parse_diagram_snapshot_with_type_sync(diagram_type, source)
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                snapshot.outcome(),
+                merman_core::DiagramParseOutcome::Failed(_)
+            ));
+            let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("failed {diagram_type} parse lost editor facts");
+            };
+            assert_eq!(
+                facts.completeness,
+                merman_core::EditorSemanticCompleteness::Recovered
+            );
+            assert!(!facts.diagnostics.is_empty());
+        }
+    }
+}
+
+#[cfg(feature = "diagram-packet")]
+#[test]
+fn failed_snapshot_retains_parser_symbols_and_original_source_spans() {
+    let source = "packet\r\n0-7: \"valid\"\r\n  9-15: \"not contiguous\"  \r\n";
+    let snapshot = deterministic_engine()
+        .parse_diagram_snapshot_sync(source)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        snapshot.outcome(),
+        merman_core::DiagramParseOutcome::Failed(_)
+    ));
+    let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("failed packet parse lost editor facts");
+    };
+    assert_eq!(
+        facts.completeness,
+        merman_core::EditorSemanticCompleteness::Recovered
+    );
+    for name in ["valid", "not contiguous"] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap();
+        assert_eq!(&source[symbol.selection.start..symbol.selection.end], name);
+    }
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.span.is_some())
+    );
 }

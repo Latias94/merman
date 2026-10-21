@@ -1,0 +1,3 @@
+seed
+mindmap
+d mindmap
