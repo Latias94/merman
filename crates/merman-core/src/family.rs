@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-git-graph",
     feature = "diagram-class",
     feature = "diagram-kanban",
     feature = "diagram-mindmap",
@@ -1553,6 +1554,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "gitGraph",
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
+    canonical: semantic::canonical_git_graph,
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
     warning_semantic: crate::diagrams::git_graph::parse_git_graph_with_warning_facts,
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),

@@ -82,6 +82,8 @@ pub enum SemanticDiagramModel {
     XyChart(crate::diagrams::xychart::XyChartDiagramModel),
     #[cfg(feature = "diagram-agentflow")]
     Agentflow(crate::diagrams::agentflow::AgentflowDiagramModel),
+    #[cfg(feature = "diagram-git-graph")]
+    GitGraph(crate::diagrams::git_graph::GitGraphDiagramModel),
 }
 
 impl SemanticDiagramModel {
@@ -103,6 +105,8 @@ impl SemanticDiagramModel {
             Self::Flowchart(model) => &mut model.warning_facts,
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => &mut model.warning_facts,
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(model) => &mut model.warning_facts,
             _ => &mut [],
         };
         for (index, fact) in facts.iter_mut().enumerate() {
