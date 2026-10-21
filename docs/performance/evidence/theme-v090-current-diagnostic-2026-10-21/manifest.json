@@ -1,0 +1,140 @@
+{
+  "created_at_utc": "2026-10-21T05:43:46.860701+00:00",
+  "archive": "theme-v090-current-diagnostic.tar.gz",
+  "archive_bytes": 184190,
+  "archive_sha256": "e4ddbfd24fb4b1bc9fb40e88ee8ad0820a35f3d251c3c69484f77f1e58e1f44d",
+  "compression": "gzip tar; tracked evidence only; native binaries and physical SVG files are not copied",
+  "members": [
+    {
+      "path": "planning.json",
+      "bytes": 24625,
+      "sha256": "e794950ef38bbbe86b06b98a85d7ac51af1b1468117013930cb8b9b4897d3fd6"
+    },
+    {
+      "path": "raw-identity-minimal-plan.json",
+      "bytes": 7304,
+      "sha256": "8801f24a0750ac53f5a6aa492fc2b210b50ce71f78aadb33429ac8d05c1bcb72"
+    },
+    {
+      "path": "registration.json",
+      "bytes": 11509,
+      "sha256": "1bfae8ca187a0d786486d593e107175103ba2c24f1cf63cc4f5b4f4cead2b25a"
+    },
+    {
+      "path": "build-execution.json",
+      "bytes": 2929,
+      "sha256": "42f670067f05fee145b8d4c9562eb2aadf16e5f79df787c55a3d2ec7c7cd008a"
+    },
+    {
+      "path": "prebuild-artifacts.json",
+      "bytes": 16292,
+      "sha256": "7af0d293c2fcaf01b8ee56cd64b335e472ef45b6e82ab56ef05c67e72ea9688d"
+    },
+    {
+      "path": "inventory-registration.json",
+      "bytes": 5845,
+      "sha256": "04309accfa3004e2ae45ecdb78832c04b671c8d75cb4cd558299f7735cfd0573"
+    },
+    {
+      "path": "inventory-validator-amendment.json",
+      "bytes": 1963,
+      "sha256": "7bd9318e5913cb5c7160a7b82f10bc0917dd90d61da21a830666e0a48065035d"
+    },
+    {
+      "path": "inventory-validation-terminal.json",
+      "bytes": 881,
+      "sha256": "bf7450370413dd5920e53ce055fa3da3e456bff63cd1ad28b12c515481baf67b"
+    },
+    {
+      "path": "audit_inventory.py",
+      "bytes": 7444,
+      "sha256": "fc4e4da3c785c80b9293203115f9ef462517b05034855fbb9f5355eef6ff5bc0"
+    },
+    {
+      "path": "inventory.json",
+      "bytes": 680990,
+      "sha256": "fd2e18e349c3c9c9b30dfbcdc3be99bc6fad375c1288f3d38196da2002b28a90"
+    },
+    {
+      "path": "inventory-admission.json",
+      "bytes": 97971,
+      "sha256": "2a466e643620f8a60164ee705453b2f04fc87e6c074f4c34fa4ade65e9e0933a"
+    },
+    {
+      "path": "diagnostic-registration.json",
+      "bytes": 5270,
+      "sha256": "bccbf7cd459017389c12f18633c0d09db50ed17ccf17d3e11f6d33776f4b4153"
+    },
+    {
+      "path": "diagnostic-start.json",
+      "bytes": 4014,
+      "sha256": "f2304088af8d75c121d71478b53d06860a41d74d1a2dedfbcbc49d130b550d78"
+    },
+    {
+      "path": "diagnostic-post-prepare.json",
+      "bytes": 1197,
+      "sha256": "dc0ce79e98332db5a27b66cbd3099595e49bcef0aeaf4a02b8b638a25b1cee60"
+    },
+    {
+      "path": "diagnostic-pre-sample.json",
+      "bytes": 1197,
+      "sha256": "d04d911f5d5c0d364a124e556b2c5b4ecd0782a2dde6b9510f73fe1528effadf"
+    },
+    {
+      "path": "diagnostic-execution.json",
+      "bytes": 4121,
+      "sha256": "931e503d2465012243b296990f48982c50a2d9e07e991ef2db63736b4f24cfec"
+    },
+    {
+      "path": "diagnostic.json",
+      "bytes": 801958,
+      "sha256": "f562092d40c2feada300b4b9a801f085743dac871399d254ec3eeefc999ecea5"
+    },
+    {
+      "path": "diagnostic-summary.json",
+      "bytes": 46061,
+      "sha256": "13ebf0cd8401ec67c7553310729d5a60777fa91ed12bd1e1339ef2b38452abba"
+    },
+    {
+      "path": "execute_refresh.py",
+      "bytes": 7572,
+      "sha256": "77849a19e1dbb5e3354c510ca7cfc031ed3aabaca85aa95a482942e2c0ee08bc"
+    },
+    {
+      "path": "execute_inventory.py",
+      "bytes": 5587,
+      "sha256": "6f8ba4987f7b9d9b49559f3a457473cf75a4c4b814e7c8d9d132c386c0be11aa"
+    },
+    {
+      "path": "execute_diagnostic.py",
+      "bytes": 7074,
+      "sha256": "c7aa381459289580b1a04e7d052bfd4835f2d4783922a21ca68074c7c1fe3618"
+    },
+    {
+      "path": "summarize_diagnostic.py",
+      "bytes": 3767,
+      "sha256": "00caa6d143b7cf0621930f46eac7718a364989f2baf1268fb12f6cc295da898c"
+    }
+  ],
+  "external_local_artifacts": [
+    {
+      "path": "target/bench/experiments/theme-current-v090-refresh-20261021/no-hook-base",
+      "sha256": "8712a3bbd5c054fdb2c9ad5b923d867818b5ec916c33326d2f28bac67d456042",
+      "note": "0555 executable; kept only in local ignored target"
+    },
+    {
+      "path": "target/bench/experiments/theme-current-v090-refresh-20261021/no-hook-head",
+      "sha256": "2ea4a3be63a3eb1936bdfb144f93c88c6f9471001ed6aac7e15d1363539b8779",
+      "note": "0555 executable; kept only in local ignored target"
+    }
+  ],
+  "old_physical_svg_witnesses": {
+    "directory": "target/bench/experiments/theme-current-v090-raw-svg-20261020/{base,head}/",
+    "files": 152,
+    "bytes": 7175894,
+    "sha256_concat_in_sorted_name_then_side_order": "265b54af6a59f105ffca39dc76ba6425af9ae861a2f46424af510cbbe7d43f46",
+    "individual_identities": "inventory-admission.json physical_rows; files remain in ignored target"
+  },
+  "original_plan_preserved": true,
+  "historical_formal_classification_changed": false
+}

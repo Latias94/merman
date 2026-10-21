@@ -26,9 +26,19 @@ and bytes. Of 504 jointly stable site controls, 259 improve and 245 stay unchang
 controls remain inconclusive. SVG/report/callback/error controls and all integration owners pass.
 The cold construction cost remains explicit, including the maximum stack's extra allocation,
 784 cumulative bytes, 528 peak-growth bytes and 16 retained bytes. This is warm ownership/work
-evidence, not release latency recovery. Next independently measure the frozen report-transport
-candidate, including its intentional extra report allocation, then refresh the public v0.9.0
-comparison. The formal 14/2/3 release classification remains unchanged.
+evidence, not release latency recovery. The independent
+[whole-report Box transport diagnostic](theme_report_transport_macos_2026-10-21.md) did not cross its preregistered dual threshold on any of eight fixtures. It adds one allocation
+and 1416 allocated/retained bytes per stable control cell; it is rejected before formal latency
+confirmation and its source is absent from this PR. This checkpoint does not change the FontStack
+result or the formal 14/2/3 release classification.
+
+The [fresh current-head versus v0.9.0 diagnostic](theme_v090_current_fontstack_diagnostic_macos_2026-10-21.md)
+compares production `68f213f1e` with v0.9.0 on all 19 exact-SVG release controls after the FontStack
+change. Eighteen point estimates are slower and one faster; Kanban, Packet and ZenUML exceed both
+the 10% and 1 us point thresholds. All 76 input/output checks and 152 same-side physical SVG
+witnesses pass, as do per-call pre/postflight and executable identity checks. It remains an
+uncalibrated diagnostic: the historical formal 14/2/3 classification stays authoritative, and
+this comparison does not isolate FontStack's latency contribution.
 
 The [October 21 root-cause investigation](theme_regression_root_cause_macos_2026-10-21.md)
 pauses small allocation repairs and prioritizes newly introduced work against v0.9.0. Independent
