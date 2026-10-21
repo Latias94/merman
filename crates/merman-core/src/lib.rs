@@ -44,7 +44,8 @@ pub mod sanitize;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence"
+    feature = "diagram-sequence",
+    feature = "diagram-cynefin"
 ))]
 pub mod semantic;
 pub mod style;
@@ -98,7 +99,8 @@ use presentation::PresentationConfig;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence"
+    feature = "diagram-sequence",
+    feature = "diagram-cynefin"
 ))]
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
 pub use theme::{MermaidThemeId, MermaidThemeIdParseError};

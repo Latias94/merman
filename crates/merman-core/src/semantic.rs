@@ -23,6 +23,8 @@ pub enum SemanticDiagramModel {
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-sequence")]
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    #[cfg(feature = "diagram-cynefin")]
+    Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -34,8 +36,8 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart, Swimlane, and Sequence. Other enabled
-/// families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
+/// The semantic facade currently handles Flowchart, Swimlane, Sequence, and Cynefin. Other
+/// enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
     site_config: MermaidConfig,
@@ -225,6 +227,23 @@ impl SemanticParser {
             }));
         }
 
+        #[cfg(feature = "diagram-cynefin")]
+        if diagram_type == "cynefin" {
+            let model = match crate::diagrams::cynefin::parse_cynefin_semantic_model_controlled(
+                parser_input,
+                &_metadata,
+                control,
+            )? {
+                Ok(model) => model,
+                Err(error) => return Ok(Err(error)),
+            };
+            control.checkpoint()?;
+            return Ok(Ok(ParsedSemanticDiagram {
+                metadata: _metadata,
+                model: SemanticDiagramModel::Cynefin(model),
+            }));
+        }
+
         Ok(Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }))
@@ -288,8 +307,76 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(feature = "diagram-cynefin", feature = "diagram-flowchart"))]
+    use serde_json::json;
     #[cfg(feature = "diagram-flowchart")]
-    use serde_json::{json, to_value};
+    use serde_json::to_value;
+
+    #[cfg(all(feature = "diagram-cynefin", feature = "diagram-flowchart"))]
+    #[test]
+    fn semantic_cynefin_parse_matches_full_typed_model() {
+        let source =
+            "cynefin-beta\ncomplex\n\"Probe\"\nclear\n\"Classify\"\ncomplex --> clear: \"learn\"";
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync(source)
+            .expect("automatic semantic parse");
+        assert_eq!(parsed.metadata.diagram_type, "cynefin");
+        let SemanticDiagramModel::Cynefin(semantic_model) = parsed.model else {
+            panic!("expected Cynefin model");
+        };
+        let full = crate::Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "cynefin",
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .expect("full parser")
+            .expect("Cynefin result");
+        let crate::diagram::RenderSemanticModel::Cynefin(full_model) = full.model() else {
+            panic!("expected full Cynefin model");
+        };
+        assert_eq!(
+            serde_json::to_value(semantic_model).unwrap(),
+            serde_json::to_value(full_model).unwrap()
+        );
+    }
+
+    #[cfg(all(
+        feature = "diagram-cynefin",
+        not(feature = "diagram-flowchart"),
+        not(feature = "diagram-swimlane"),
+        not(feature = "diagram-sequence")
+    ))]
+    #[test]
+    fn semantic_cynefin_is_available_without_other_diagram_features() {
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("cynefin-beta\ncomplex\n\"Probe\"")
+            .expect("Cynefin-only semantic parse");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Cynefin(_)));
+    }
+
+    #[cfg(feature = "diagram-cynefin")]
+    #[test]
+    fn semantic_cynefin_parse_does_not_resolve_invalid_visual_theme_values() {
+        let input = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\ncynefin-beta\ncomplex\n\"Probe\"";
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync(input)
+            .expect("semantic parsing does not evaluate theme colors");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Cynefin(_)));
+        assert_eq!(
+            parsed.metadata.semantic_config.as_value()["themeVariables"]["primaryColor"],
+            json!("not-a-color")
+        );
+        let full = crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+            "cynefin",
+            input,
+            crate::ParseOptions::strict(),
+        );
+        assert!(
+            full.is_ok(),
+            "Cynefin typed-model construction should not resolve theme variables: {full:?}"
+        );
+    }
 
     #[cfg(all(feature = "diagram-sequence", feature = "diagram-flowchart"))]
     #[test]
@@ -482,6 +569,8 @@ mod tests {
             SemanticDiagramModel::Flowchart(model) => model,
             #[cfg(feature = "diagram-sequence")]
             SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-cynefin")]
+            SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
         };
         let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
             panic!("expected full Flowchart model");
@@ -505,6 +594,8 @@ mod tests {
             SemanticDiagramModel::Flowchart(model) => model,
             #[cfg(feature = "diagram-sequence")]
             SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-cynefin")]
+            SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
         };
         let inner = model
             .subgraphs

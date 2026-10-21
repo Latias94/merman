@@ -123,7 +123,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
             editor_facts,
         },
         first_error,
-    } = construct_cynefin_parse_outcome_controlled(code, meta, control)?;
+    } = construct_cynefin_parse_outcome_controlled(code, &meta.diagram_type, control)?;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
@@ -163,7 +163,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -178,13 +178,35 @@ pub(crate) fn parse_cynefin_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<CynefinDiagramRenderModel>> {
-    let outcome = construct_cynefin_parse_outcome_controlled(code, meta, control)?;
+    parse_cynefin_model_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        control,
+    )
+}
+
+pub(crate) fn parse_cynefin_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
+    parse_cynefin_model_controlled(code, &meta.diagram_type, &meta.semantic_config, control)
+}
+
+fn parse_cynefin_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
+    let outcome = construct_cynefin_parse_outcome_controlled(code, diagram_type, control)?;
     let source = match outcome.into_strict_source() {
         Ok(source) => source,
         Err(error) => return Ok(Err(error)),
     };
     let mut model = source.model;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    model.sanitize_common_db_fields(config);
     Ok(Ok(model))
 }
 
@@ -198,17 +220,17 @@ fn parse_cynefin_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<CynefinSemanticSource> {
-    construct_cynefin_parse_outcome(code, meta).into_strict_source()
+    construct_cynefin_parse_outcome(code, &meta.diagram_type).into_strict_source()
 }
 
-fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinParseOutcome {
-    construct_cynefin_parse_outcome_controlled(code, meta, &crate::OperationControl::new())
+fn construct_cynefin_parse_outcome(code: &str, diagram_type: &str) -> CynefinParseOutcome {
+    construct_cynefin_parse_outcome_controlled(code, diagram_type, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_cynefin_parse_outcome_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CynefinParseOutcome> {
     control.checkpoint()?;
@@ -243,7 +265,7 @@ fn construct_cynefin_parse_outcome_controlled(
                     &mut first_error,
                     &mut editor_facts,
                     Error::diagram_parse_exact(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         "expected cynefin-beta header",
                         span,
                     ),
@@ -269,7 +291,7 @@ fn construct_cynefin_parse_outcome_controlled(
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "cynefin");
             if let Some(diagnostic) = parsed.diagnostic {
                 let error = Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
+                    diagram_type.to_string(),
                     diagnostic.message.clone(),
                     diagnostic.span.start,
                 );
@@ -288,7 +310,7 @@ fn construct_cynefin_parse_outcome_controlled(
             remember_cynefin_error(
                 &mut first_error,
                 &mut editor_facts,
-                Error::diagram_parse_exact(meta.diagram_type.clone(), &message, span),
+                Error::diagram_parse_exact(diagram_type.to_string(), &message, span),
                 format!("cynefin parser recovered after parse error: {message}"),
                 Some(span),
             );
@@ -312,7 +334,7 @@ fn construct_cynefin_parse_outcome_controlled(
                             &mut first_error,
                             &mut editor_facts,
                             Error::diagram_parse_exact(
-                                meta.diagram_type.clone(),
+                                diagram_type.to_string(),
                                 "cynefin item must follow a domain",
                                 span,
                             ),
@@ -381,7 +403,7 @@ fn construct_cynefin_parse_outcome_controlled(
             &mut first_error,
             &mut editor_facts,
             Error::diagram_parse_exact(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected cynefin-beta header",
                 span,
             ),
@@ -692,15 +714,6 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 mod tests {
     use super::*;
 
-    fn metadata() -> crate::ParseMetadata {
-        crate::ParseMetadata {
-            diagram_type: "cynefin".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
-            title: None,
-        }
-    }
-
     #[test]
     fn controlled_parse_can_cancel_between_cynefin_lines() {
         let control = crate::OperationControl::new();
@@ -709,7 +722,7 @@ mod tests {
         assert!(matches!(
             construct_cynefin_parse_outcome_controlled(
                 "cynefin-beta\ncomplex\n\"Probe\"\n",
-                &metadata(),
+                "cynefin",
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
