@@ -326,6 +326,37 @@ or rich-report/error comparison. The
 Neither diagnostic certifies formal improvement or control non-regression.
 The runs use different baselines and measurement epochs; their gains must not be added.
 
+## Empty-root application guard: rejected
+
+An isolated candidate `8594f536a` was compared with `cf26d54bb` using eight public E2E fixtures,
+four balanced AB/BA pairs each and all 64 timed calls. The actual tool thresholds matched the
+10% AND 1 us screen. Inputs, capabilities and saved SVG hash/length/element identities matched;
+both physical executables were frozen and source/executable postflight passed. The stock outcome
+was `diagnostic_advisory` with exit code 0, not formal latency admission.
+
+| Fixture | Base mean (us) | Candidate mean (us) | Paired change | Mean delta (us) |
+| --- | ---: | ---: | ---: | ---: |
+| Packet | 9.987 | 10.066 | +0.785% | +0.079 |
+| ZenUML | 21.674 | 21.950 | +1.276% | +0.277 |
+| Kanban | 52.579 | 52.773 | +0.372% | +0.194 |
+| Flowchart | 1088.850 | 1086.950 | -0.170% | -1.900 |
+| Journey | 27.774 | 28.179 | +1.455% | +0.405 |
+| Sequence | 278.470 | 274.413 | -1.459% | -4.058 |
+| Block | 31.952 | 32.037 | +0.266% | +0.084 |
+| C4 | 111.147 | 109.862 | -1.157% | -1.285 |
+
+No row reached both improvement thresholds. The guard remains on the independent
+`experiment/empty-root-application-20261021` branch and is absent from the PR branch; it is
+rejected rather than retained as an unmeasured cleanup. Existing empty prelude storage was already
+allocation-free, so this experiment does not establish allocation or complexity improvement.
+
+The registration records nine focused release tests and formatting passing. The candidate's test
+source checks empty-report equality, exact/short SVG ceilings, zero extra work growth, and
+cancellation/deadline precedence. These are separate correctness evidence: the stock tool does
+not capture complete rich-report/error hashes, and this archive does not contain the test logs.
+The [archive](evidence/empty-root-application-2026-10-21/manifest.json) separately preserves the
+unchanged stock report and registration snapshot, all eight diagnostic rows and executable identities.
+
 ## Revised implementation priorities
 
 1. Diagnose and redesign generated CSS serialization as an output operation, beginning with the

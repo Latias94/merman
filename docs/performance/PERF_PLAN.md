@@ -1361,6 +1361,13 @@ Both archives contain stock diagnostic reports, not separate registrations. The
 time and mean-field corrections and the actual 50 us tool threshold versus 1 us advisory prose.
 Registration chronology is unverified. The two runs use different baselines and must not be summed.
 
+The isolated empty-root application guard is rejected: eight fixtures and 64 timed calls preserved
+input/capability/SVG identities, but none reached both the actual 10% and 1 us improvement thresholds.
+Keep its production fast path out of the PR and prioritize larger attributed consumers instead
+of another constant-work empty guard. The
+[checkpoint archive](evidence/empty-root-application-2026-10-21/manifest.json) separately retains
+the stock diagnostic and registration; correctness tests are distinct from stock report/error hashes.
+
 ### Active: alpha.7 default SVG regression
 
 The September 16 release-range audit confirms regressions in unthemed complete SVG operations
