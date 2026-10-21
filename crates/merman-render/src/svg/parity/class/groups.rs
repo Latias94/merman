@@ -23,7 +23,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
-    pub(super) relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
+    pub(super) relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub(super) diagram_marker_class: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,

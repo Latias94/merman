@@ -1097,18 +1097,17 @@ fn prepare_class_family<'parsed>(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let relation_count = model.relations.len();
-    execution.work_meter_ref().charge(model.notes.len())?;
+    let relation_count = model.relations().len();
+    execution.work_meter_ref().charge(model.notes().len())?;
     let note_attachment_count = model
-        .notes
-        .iter()
+        .notes()
         .filter(|note| {
             note.class_id
                 .as_ref()
-                .is_some_and(|id| model.classes.contains_key(id))
+                .is_some_and(|id| model.class(id).is_some())
         })
         .count();
-    let node_count = model.classes.len();
+    let node_count = model.classes().len();
     let needs_unsupported_table_evidence = execution.resolved_theme().is_some_and(|theme| {
         theme.family_mechanism_routes().iter().any(|route| {
             let targets_table = matches!(
@@ -1129,9 +1128,8 @@ fn prepare_class_family<'parsed>(
     });
     let table_group_lengths = if needs_unsupported_table_evidence {
         model
-            .classes
-            .values()
-            .flat_map(|class| [class.members.len(), class.methods.len()])
+            .classes()
+            .flat_map(|(_, class)| [class.members.len(), class.methods.len()])
             .collect::<Vec<_>>()
     } else {
         Vec::new()

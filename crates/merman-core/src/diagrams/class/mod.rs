@@ -14,24 +14,31 @@ pub(crate) const REL_DEPENDENCY: i32 = 3;
 pub(crate) const REL_LOLLIPOP: i32 = 4;
 pub(crate) const REL_NONE: i32 = -1;
 
-pub(super) const MERMAID_DOM_ID_PREFIX: &str = "classId-";
+pub(crate) const MERMAID_DOM_ID_PREFIX: &str = "classId-";
 
 mod ast;
 mod db;
 mod lexer;
 mod parse;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 mod tests;
 
+pub use crate::models::class_diagram::ClassDiagramModel;
+#[cfg(feature = "compat-json")]
+pub(crate) use parse::parse_class;
+#[cfg(feature = "compat-json")]
 pub(crate) use parse::parse_class_json_and_editor_facts;
+pub(crate) use parse::parse_class_semantic_model_controlled;
+#[cfg(feature = "presentation")]
+pub(crate) use parse::parse_class_typed_with_render_context_controlled;
 #[cfg(test)]
 pub(crate) use parse::{class_syntax_construction_count, reset_class_syntax_construction_count};
-pub(crate) use parse::{parse_class, parse_class_typed_with_render_context_controlled};
 
 pub(crate) use ast::{Action, Relation, RelationData};
 pub(crate) use lexer::{LexError, Tok};
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &crate::models::class_diagram::ClassDiagram,
     meta: &crate::ParseMetadata,

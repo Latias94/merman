@@ -346,9 +346,11 @@ fn class_parser_single_class_renders_unicode_box() {
 
 #[test]
 fn class_render_model_rejects_relations_without_endpoint_classes() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : uses");
+    let mut model =
+        parse_class_model("classDiagram\nclass A\nclass B\nA --> B : uses").into_model();
     model.classes.clear();
 
+    let model = ClassDiagram::new(model, &Default::default());
     assert_unsupported_class_model(&model, "relationships with missing endpoint classes");
 }
 
@@ -356,9 +358,11 @@ fn class_render_model_rejects_relations_without_endpoint_classes() {
 fn class_render_model_rejects_missing_relation_endpoints_before_namespace_rendering() {
     let mut model = parse_class_model(
         "classDiagram\nnamespace Domain {\n  class A\n}\nclass B\nA --> B : uses",
-    );
+    )
+    .into_model();
     model.relations[0].id2 = "Missing".to_string();
 
+    let model = ClassDiagram::new(model, &Default::default());
     assert_unsupported_class_model(&model, "relationships with missing endpoint classes");
 }
 
@@ -366,53 +370,53 @@ fn class_render_model_rejects_missing_relation_endpoints_before_namespace_render
 fn class_render_model_rejects_missing_note_targets_before_namespace_rendering() {
     let mut model = parse_class_model(
         "classDiagram\nnamespace Domain {\n  class A\n  note for A \"linked\"\n}",
-    );
+    )
+    .into_model();
     model.notes[0].class_id = Some("Missing".to_string());
 
+    let model = ClassDiagram::new(model, &Default::default());
     assert_unsupported_class_model(&model, "notes with missing target classes");
 }
 
 #[test]
 fn class_render_model_rejects_missing_interface_targets() {
-    let mut model = parse_class_model("classDiagram\nIService ()-- Service");
+    let mut model = parse_class_model("classDiagram\nIService ()-- Service").into_model();
     model.interfaces[0].class_id = "Missing".to_string();
 
+    let model = ClassDiagram::new(model, &Default::default());
     assert_unsupported_class_model(&model, "interfaces with missing target classes");
 }
 
 #[test]
 fn class_render_model_rejects_inconsistent_namespace_class_ownership() {
-    let mut model = parse_class_model("classDiagram\nnamespace Domain {\n  class A\n}");
-    model
-        .namespaces
-        .get_mut("Domain")
-        .expect("Domain namespace should exist")
-        .class_ids
-        .clear();
+    let model = parse_class_model("classDiagram\nnamespace Domain {\n  class A\n}");
+    let mut full = serde_json::to_value(model).expect("full Class fixture should serialize");
+    full["namespaces"]["Domain"]["classIds"] = serde_json::json!([]);
+    let model: ClassDiagram =
+        serde_json::from_value(full).expect("inconsistent namespace fixture should deserialize");
 
     assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
 }
 
 #[test]
 fn class_render_model_rejects_inconsistent_namespace_note_ownership() {
-    let mut model = parse_class_model(
+    let model = parse_class_model(
         "classDiagram\nnamespace Domain {\n  class A\n  note for A \"linked\"\n}",
     );
-    model
-        .namespaces
-        .get_mut("Domain")
-        .expect("Domain namespace should exist")
-        .note_ids
-        .clear();
+    let mut full = serde_json::to_value(model).expect("full Class fixture should serialize");
+    full["namespaces"]["Domain"]["noteIds"] = serde_json::json!([]);
+    let model: ClassDiagram =
+        serde_json::from_value(full).expect("inconsistent namespace fixture should deserialize");
 
     assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
 }
 
 #[test]
 fn class_render_model_rejects_duplicate_rendered_ids() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B");
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B").into_model();
     model.classes.get_mut("B").expect("class B should exist").id = "A".to_string();
 
+    let model = ClassDiagram::new(model, &Default::default());
     assert_unsupported_class_model(&model, "duplicate rendered class ids");
 }
 
@@ -466,7 +470,7 @@ fn class_parser_explicit_qualified_class_is_not_folded_into_namespace_member() {
 
 #[test]
 fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
-    let mut model = parse_class_model("classDiagram\nclass A");
+    let mut model = parse_class_model("classDiagram\nclass A").into_model();
     let mut class = model
         .classes
         .shift_remove("A")
@@ -475,6 +479,7 @@ fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width(
     class.text = "👩‍💻·".to_string();
     model.classes.insert("👩‍💻·".to_string(), class);
 
+    let model = ClassDiagram::new(model, &Default::default());
     let unicode = render_class_model(
         &model,
         &AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Unicode),
@@ -497,7 +502,7 @@ fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width(
 #[test]
 fn class_terminal_normalization_discloses_the_authored_box_identity() {
     let render_identity = |identity: &str| {
-        let mut model = parse_class_model("classDiagram\nclass A");
+        let mut model = parse_class_model("classDiagram\nclass A").into_model();
         let mut class = model
             .classes
             .shift_remove("A")
@@ -505,6 +510,7 @@ fn class_terminal_normalization_discloses_the_authored_box_identity() {
         class.id = identity.to_string();
         class.text = identity.to_string();
         model.classes.insert(identity.to_string(), class);
+        let model = ClassDiagram::new(model, &Default::default());
         render_class_model(&model, &AsciiRenderOptions::ascii())
             .expect("direct class identity should render")
     };
@@ -519,12 +525,13 @@ fn class_terminal_normalization_discloses_the_authored_box_identity() {
 #[test]
 fn class_single_line_display_projection_discloses_authored_text() {
     let render_display = |display: &str| {
-        let mut model = parse_class_model("classDiagram\nclass A");
+        let mut model = parse_class_model("classDiagram\nclass A").into_model();
         model
             .classes
             .get_mut("A")
             .expect("class A should exist")
             .text = display.to_string();
+        let model = ClassDiagram::new(model, &Default::default());
         render_class_model(&model, &AsciiRenderOptions::ascii())
             .expect("direct class display text should render")
     };
@@ -551,13 +558,15 @@ fn class_single_line_display_projection_discloses_authored_text() {
 
 #[test]
 fn class_relationship_labels_preserve_complex_graphemes() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : owns");
+    let mut model =
+        parse_class_model("classDiagram\nclass A\nclass B\nA --> B : owns").into_model();
     model
         .classes
         .get_mut("A")
         .expect("class A should exist")
         .text = "Client 👩‍💻".to_string();
     model.relations[0].title = "owns 👩‍💻".to_string();
+    let model = ClassDiagram::new(model, &Default::default());
     let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("class relationship should render");
 
@@ -612,7 +621,8 @@ fn class_parser_member_classifiers_remain_visible() {
 #[test]
 fn class_render_model_reconstructs_members_when_display_text_is_empty() {
     let mut model =
-        parse_class_model("classDiagram\nclass Service {\n  +value\n  #compute(input) Result\n}");
+        parse_class_model("classDiagram\nclass Service {\n  +value\n  #compute(input) Result\n}")
+            .into_model();
     let class = model
         .classes
         .get_mut("Service")
@@ -636,6 +646,7 @@ fn class_render_model_reconstructs_members_when_display_text_is_empty() {
     method.classifier = "*".to_string();
     method.display_text.clear();
 
+    let model = ClassDiagram::new(model, &Default::default());
     let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("typed member fields should reconstruct a terminal display");
 
@@ -718,8 +729,9 @@ fn class_parser_direction_controls_terminal_layout() {
     assert_ne!(lr, rl);
 
     let mut lowercase_model =
-        parse_class_model("classDiagram\ndirection LR\nclass A\nclass B\nA --> B");
+        parse_class_model("classDiagram\ndirection LR\nclass A\nclass B\nA --> B").into_model();
     lowercase_model.direction = "lr".to_string();
+    let lowercase_model = ClassDiagram::new(lowercase_model, &Default::default());
     assert_eq!(
         render_class_model(&lowercase_model, &AsciiRenderOptions::ascii())
             .expect("lowercase direct-model class direction should render"),
@@ -780,10 +792,10 @@ fn class_bottom_up_summary_preserves_semantic_endpoint_roles() {
 
 #[test]
 fn class_direction_bytes_are_admitted_before_parsing() {
-    let mut model = parse_class_model("classDiagram\nclass A");
+    let mut model = parse_class_model("classDiagram\nclass A").into_model();
     model.direction = format!("{}sideways", " ".repeat(1_024));
     let direction_bytes = model.direction.len();
-    let model = RenderSemanticModel::Class(model);
+    let model = RenderSemanticModel::Class(ClassDiagram::new(model, &Default::default()));
     let resources = AsciiResourcePolicy::default()
         .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
         .expect("class direction work limit should be valid");
@@ -1375,7 +1387,8 @@ fn class_parser_namespace_aliases_disclose_utf8_authored_identity() {
 #[test]
 fn class_typed_root_dotted_namespace_discloses_full_identity_behind_leaf_label() {
     let render = |namespace_id: &str| {
-        let mut model = parse_class_model("classDiagram\nnamespace Root {\n  class Member\n}");
+        let mut model =
+            parse_class_model("classDiagram\nnamespace Root {\n  class Member\n}").into_model();
         let mut namespace = model
             .namespaces
             .shift_remove("Root")
@@ -1389,6 +1402,7 @@ fn class_typed_root_dotted_namespace_discloses_full_identity_behind_leaf_label()
             .parent = Some(namespace.id.clone());
         model.namespaces.insert(namespace.id.clone(), namespace);
 
+        let model = ClassDiagram::new(model, &Default::default());
         render_class_model(&model, &AsciiRenderOptions::ascii()).unwrap_or_else(|error| {
             panic!("dotted namespace {namespace_id:?} should render: {error}")
         })
@@ -1408,29 +1422,29 @@ fn class_typed_root_dotted_namespace_discloses_full_identity_behind_leaf_label()
 #[test]
 fn class_typed_nested_namespace_discloses_identity_when_parent_path_cannot_recover_it() {
     let render = |namespace_id: &str| {
-        let mut model = parse_class_model(
+        let model = parse_class_model(
             "classDiagram\nnamespace Parent {\n  namespace Child {\n    class Member\n  }\n}",
         );
-        let child_key = model
-            .namespaces
+        let mut full = serde_json::to_value(model).expect("full Class fixture should serialize");
+        let namespaces = full["namespaces"]
+            .as_object_mut()
+            .expect("full namespace map should exist");
+        let child_key = namespaces
             .keys()
             .find(|id| id.as_str() != "Parent")
             .cloned()
             .expect("nested Child namespace should exist");
-        let mut namespace = model
-            .namespaces
-            .shift_remove(&child_key)
+        let mut namespace = namespaces
+            .remove(&child_key)
             .expect("nested Child namespace should exist");
-        namespace.id = namespace_id.to_string();
-        namespace.label = "Child".to_string();
-        namespace.dom_id = "namespace-child".to_string();
-        namespace.parent = Some("Parent".to_string());
-        model
-            .classes
-            .get_mut("Member")
-            .expect("Member class should exist")
-            .parent = Some(namespace.id.clone());
-        model.namespaces.insert(namespace.id.clone(), namespace);
+        namespace["id"] = serde_json::json!(namespace_id);
+        namespace["label"] = serde_json::json!("Child");
+        namespace["domId"] = serde_json::json!("namespace-child");
+        namespace["parent"] = serde_json::json!("Parent");
+        namespaces.insert(namespace_id.to_string(), namespace);
+        full["classes"]["Member"]["parent"] = serde_json::json!(namespace_id);
+        let model: ClassDiagram =
+            serde_json::from_value(full).expect("full nested namespace fixture should deserialize");
 
         render_class_model(&model, &AsciiRenderOptions::ascii()).unwrap_or_else(|error| {
             panic!("nested namespace {namespace_id:?} should render: {error}")
@@ -1601,19 +1615,23 @@ fn class_parser_sibling_namespace_relation_routes_through_facades() {
 fn class_typed_relation_preserves_authored_facade_endpoint() {
     let mut model = parse_class_model(
         "classDiagram\nnamespace Domain {\n  class T\n}\nclass Outside\nT --> Outside",
-    );
+    )
+    .into_model();
     let mut facade = model.classes["T"].clone();
     facade.id = "Domain.T".to_string();
-    facade.dom_id = "classDomain.T-facade".to_string();
+
     facade.parent = None;
     model.classes.insert(facade.id.clone(), facade);
     model
         .namespace_facade_aliases
         .insert("Domain.T".to_string(), "T".to_string());
 
+    let model = ClassDiagram::new(model, &Default::default());
     let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("resolved relation endpoint should render");
+    let mut model = model.into_model();
     model.relations[0].id1 = "Domain.T".to_string();
+    let model = ClassDiagram::new(model, &Default::default());
     let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("authored facade relation endpoint should render");
 
@@ -1784,19 +1802,23 @@ namespace Domain {
 #[test]
 fn class_typed_namespace_note_preserves_authored_facade_target() {
     let mut model =
-        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n  note for T \"same\"\n}");
+        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n  note for T \"same\"\n}")
+            .into_model();
     let mut facade = model.classes["T"].clone();
     facade.id = "Domain.T".to_string();
-    facade.dom_id = "classDomain.T-facade".to_string();
+
     facade.parent = None;
     model.classes.insert(facade.id.clone(), facade);
     model
         .namespace_facade_aliases
         .insert("Domain.T".to_string(), "T".to_string());
 
+    let model = ClassDiagram::new(model, &Default::default());
     let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("resolved namespace note target should render");
+    let mut model = model.into_model();
     model.notes[0].class_id = Some("Domain.T".to_string());
+    let model = ClassDiagram::new(model, &Default::default());
     let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("authored facade namespace note target should render");
 
@@ -1811,14 +1833,14 @@ fn class_external_namespace_note_summary_preserves_provenance_and_target_identit
     let render = |first_target: &str, second_target: &str| {
         let mut model = parse_class_model(
             "classDiagram\nnamespace Domain {\n  class A\n  class B\n}\nnote for A \"same\"\nnote for B \"same\"",
-        );
+        ).into_model();
         let mut first = model.classes.shift_remove("A").expect("A should exist");
         first.id = "\u{1b}".to_string();
-        first.dom_id.clone_from(&first.id);
+
         first.text.clone_from(&first.id);
         let mut second = model.classes.shift_remove("B").expect("B should exist");
         second.id = r"\u{1B}".to_string();
-        second.dom_id.clone_from(&second.id);
+
         second.text.clone_from(&second.id);
         model.classes.insert(first.id.clone(), first);
         model.classes.insert(second.id.clone(), second);
@@ -1831,6 +1853,7 @@ fn class_external_namespace_note_summary_preserves_provenance_and_target_identit
         model.notes[0].class_id = Some(first_target.to_string());
         model.notes[1].class_id = Some(second_target.to_string());
 
+        let model = ClassDiagram::new(model, &Default::default());
         render_class_model(&model, &AsciiRenderOptions::ascii())
             .expect("external namespace notes should render")
     };
@@ -1856,19 +1879,23 @@ fn class_external_namespace_note_summary_preserves_provenance_and_target_identit
 #[test]
 fn class_external_namespace_note_summary_discloses_authored_facade_target() {
     let mut model =
-        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n}\nnote for T \"same\"");
+        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n}\nnote for T \"same\"")
+            .into_model();
     let mut facade = model.classes["T"].clone();
     facade.id = "Domain.T".to_string();
-    facade.dom_id = "classDomain.T-facade".to_string();
+
     facade.parent = None;
     model.classes.insert(facade.id.clone(), facade);
     model
         .namespace_facade_aliases
         .insert("Domain.T".to_string(), "T".to_string());
 
+    let model = ClassDiagram::new(model, &Default::default());
     let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("resolved note target should render");
+    let mut model = model.into_model();
     model.notes[0].class_id = Some("Domain.T".to_string());
+    let model = ClassDiagram::new(model, &Default::default());
     let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("qualified authored note target should render through its facade");
 
@@ -1890,10 +1917,12 @@ fn class_external_namespace_note_summary_keeps_interface_endpoint() {
         "namespace Domain {\n  class Marker\n}\n",
         "IService ()-- Service\n",
         "note for Marker \"interface note\"",
-    ));
+    ))
+    .into_model();
     model.relations.clear();
     model.notes[0].class_id = Some("interface0".to_string());
 
+    let model = ClassDiagram::new(model, &Default::default());
     let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("validated interface note target should remain in the summary");
 
@@ -2667,8 +2696,9 @@ fn class_parser_qualified_lollipop_target_renders_inside_its_namespace() {
 fn class_typed_endpoint_label_cannot_render_as_endpoint_ref_provenance() {
     const SPOOF: &str = r#"endpointRef(bytes=8)="Domain.T""#;
 
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B");
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B").into_model();
     model.relations[0].relation_title_1 = Some(SPOOF.to_string());
+    let model = ClassDiagram::new(model, &Default::default());
     let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("typed authored endpoint label should render in its dedicated slot");
 
@@ -2718,7 +2748,7 @@ fn class_local_semantic_fixture_covers_standalone_note() {
 
 #[test]
 fn class_render_model_preserves_independent_relationship_markers() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B").into_model();
     let aggregation = model.constants.relation_type.aggregation;
     let composition = model.constants.relation_type.composition;
     let relation = model
@@ -2728,6 +2758,7 @@ fn class_render_model_preserves_independent_relationship_markers() {
     relation.relation.type1 = aggregation;
     relation.relation.type2 = composition;
 
+    let model = ClassDiagram::new(model, &Default::default());
     let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("independent class relationship markers should render");
 
@@ -3171,5 +3202,41 @@ fn class_local_semantic_fixture_covers_disconnected_components() {
     assert!(
         line_index("Service") < line_index("Isolated"),
         "isolated class component should remain visually separate from the connected component:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_keeps_projected_synthetic_ids_collision_free() {
+    for (input, expected) in [
+        (
+            "classDiagram\nclass A\nclass note0\nnote for A \"CollisionNote\"\n",
+            ["note0", "CollisionNote"],
+        ),
+        (
+            "classDiagram\nclass Service\nclass interface0\nIService() -- Service\n",
+            ["interface0", "IService"],
+        ),
+    ] {
+        let rendered = render_class(input, &AsciiRenderOptions::ascii())
+            .expect("authored class ids must not collide with projected notes or interfaces");
+        for label in expected {
+            assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+        }
+    }
+}
+
+#[test]
+fn class_parser_flat_namespace_uses_only_explicit_container() {
+    let rendered = render_class(
+        "%%{init: {\"class\": {\"hierarchicalNamespaces\": false}}}%%\nclassDiagram\nnamespace Company.Project {\nclass Service\n}\n",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("flat namespaces should render without implicit parent containers");
+    assert!(rendered.contains("Company.Project"), "{rendered}");
+    assert!(rendered.contains("Service"), "{rendered}");
+    assert_eq!(
+        rendered.matches('┌').count(),
+        2,
+        "one explicit namespace and one class should produce two boxes:\n{rendered}"
     );
 }

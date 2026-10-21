@@ -14,7 +14,9 @@ use crate::resource::ResourceContext;
 use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_blank};
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
-use merman_core::models::class_diagram::{ClassDiagram, ClassInterface, Namespace};
+use merman_core::models::class_diagram::{
+    ClassDiagram, ClassInterfaceRenderView, Namespace, NamespaceRenderView,
+};
 use std::collections::HashMap;
 
 struct NamespaceRenderContext<'model, 'render> {
@@ -31,8 +33,8 @@ struct NamespaceRenderContext<'model, 'render> {
 
 #[derive(Debug)]
 struct NamespaceInterfaceIndex<'a> {
-    by_owner: HashMap<&'a str, Vec<&'a ClassInterface>>,
-    root: Vec<&'a ClassInterface>,
+    by_owner: HashMap<&'a str, Vec<ClassInterfaceRenderView<'a>>>,
+    root: Vec<ClassInterfaceRenderView<'a>>,
 }
 
 impl<'a> NamespaceInterfaceIndex<'a> {
@@ -45,7 +47,7 @@ impl<'a> NamespaceInterfaceIndex<'a> {
         resources.transaction(|resources| {
             checkpoint_layout(execution)?;
             let index_work = model
-                .interfaces
+                .interfaces()
                 .len()
                 .checked_mul(2)
                 .ok_or_else(|| work_overflow(resources))?;
@@ -53,13 +55,13 @@ impl<'a> NamespaceInterfaceIndex<'a> {
 
             let mut owner_counts = HashMap::new();
             owner_counts
-                .try_reserve(model.interfaces.len())
+                .try_reserve(model.interfaces().len())
                 .map_err(|_| layout_allocation_failed())?;
             let mut root_count = 0usize;
-            for interface in &model.interfaces {
+            for interface in model.interfaces() {
                 checkpoint_layout(execution)?;
                 let endpoint = endpoint_index
-                    .resolve(interface.id.as_str())
+                    .resolve(interface.id)
                     .ok_or_else(inconsistent_class_namespace_ownership)?;
                 if let Some(owner) = endpoint.owner {
                     let count = owner_counts.entry(owner).or_insert(0usize);
@@ -88,10 +90,10 @@ impl<'a> NamespaceInterfaceIndex<'a> {
             root.try_reserve_exact(root_count)
                 .map_err(|_| layout_allocation_failed())?;
 
-            for interface in &model.interfaces {
+            for interface in model.interfaces() {
                 checkpoint_layout(execution)?;
                 let endpoint = endpoint_index
-                    .resolve(interface.id.as_str())
+                    .resolve(interface.id)
                     .ok_or_else(inconsistent_class_namespace_ownership)?;
                 if let Some(owner) = endpoint.owner {
                     by_owner
@@ -107,7 +109,7 @@ impl<'a> NamespaceInterfaceIndex<'a> {
         })
     }
 
-    fn for_owner(&self, owner: Option<&str>) -> &[&'a ClassInterface] {
+    fn for_owner(&self, owner: Option<&str>) -> &[ClassInterfaceRenderView<'a>] {
         match owner {
             Some(owner) => self
                 .by_owner
@@ -121,9 +123,9 @@ impl<'a> NamespaceInterfaceIndex<'a> {
 
 #[derive(Debug)]
 struct NamespaceRenderPlan<'a> {
-    children: HashMap<&'a str, Vec<&'a Namespace>>,
-    roots: Vec<&'a Namespace>,
-    postorder: Vec<&'a Namespace>,
+    children: HashMap<&'a str, Vec<NamespaceRenderView<'a>>>,
+    roots: Vec<NamespaceRenderView<'a>>,
+    postorder: Vec<NamespaceRenderView<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +149,7 @@ impl<'a> NamespaceRenderPlan<'a> {
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
-        let namespace_count = model.namespaces.len();
+        let namespace_count = model.presentation().namespaces.len();
         let stack_capacity = namespace_count
             .checked_mul(2)
             .ok_or_else(|| work_overflow(resources))?;
@@ -164,9 +166,9 @@ impl<'a> NamespaceRenderPlan<'a> {
         roots
             .try_reserve_exact(namespace_count)
             .map_err(|_| layout_allocation_failed())?;
-        for namespace in model.namespaces.values() {
+        for (_, namespace) in model.namespaces() {
             checkpoint_layout(execution)?;
-            if let Some(parent) = namespace.parent.as_deref() {
+            if let Some(parent) = namespace.namespace.parent.as_deref() {
                 let count = child_counts.entry(parent).or_insert(0usize);
                 *count = count
                     .checked_add(1)
@@ -187,9 +189,9 @@ impl<'a> NamespaceRenderPlan<'a> {
                 .map_err(|_| layout_allocation_failed())?;
             children.insert(parent, entries);
         }
-        for namespace in model.namespaces.values() {
+        for (_, namespace) in model.namespaces() {
             checkpoint_layout(execution)?;
-            if let Some(parent) = namespace.parent.as_deref() {
+            if let Some(parent) = namespace.namespace.parent.as_deref() {
                 children
                     .get_mut(parent)
                     .ok_or_else(inconsistent_class_namespace_ownership)?
@@ -215,11 +217,14 @@ impl<'a> NamespaceRenderPlan<'a> {
             while let Some((namespace, expanded, depth)) = stack.pop() {
                 checkpoint_layout(execution)?;
                 if expanded {
-                    states.insert(namespace.id.as_str(), NamespaceVisitState::Rendered);
+                    states.insert(
+                        namespace.namespace.id.as_str(),
+                        NamespaceVisitState::Rendered,
+                    );
                     postorder.push(namespace);
                     continue;
                 }
-                match states.get(namespace.id.as_str()).copied() {
+                match states.get(namespace.namespace.id.as_str()).copied() {
                     Some(NamespaceVisitState::Visiting) => {
                         return Err(inconsistent_class_namespace_ownership());
                     }
@@ -227,9 +232,12 @@ impl<'a> NamespaceRenderPlan<'a> {
                     None => {}
                 }
                 resources.check_nesting_depth(depth)?;
-                states.insert(namespace.id.as_str(), NamespaceVisitState::Visiting);
+                states.insert(
+                    namespace.namespace.id.as_str(),
+                    NamespaceVisitState::Visiting,
+                );
                 stack.push((namespace, true, depth));
-                if let Some(child_namespaces) = children.get(namespace.id.as_str()) {
+                if let Some(child_namespaces) = children.get(namespace.namespace.id.as_str()) {
                     let child_depth = depth
                         .checked_add(1)
                         .ok_or_else(|| nesting_overflow(resources))?;
@@ -251,7 +259,7 @@ impl<'a> NamespaceRenderPlan<'a> {
         })
     }
 
-    fn children(&self, namespace_id: &str) -> &[&'a Namespace] {
+    fn children(&self, namespace_id: &str) -> &[NamespaceRenderView<'a>] {
         self.children
             .get(namespace_id)
             .map(Vec::as_slice)
@@ -285,7 +293,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
-        let namespace_capacity = model.namespaces.len();
+        let namespace_capacity = model.presentation().namespaces.len();
         let scope_walk_bound = namespace_capacity
             .checked_add(1)
             .ok_or_else(|| work_overflow(resources))?;
@@ -297,9 +305,14 @@ impl<'a> NamespaceScopeIndex<'a> {
             .ok_or_else(|| work_overflow(resources))?;
         let index_work = namespace_capacity
             .checked_mul(2)
-            .and_then(|value| value.checked_add(model.relations.len()))
+            .and_then(|value| value.checked_add(model.relations().len()))
             .and_then(|value| {
-                value.checked_add(model.relations.len().checked_mul(scope_work_per_relation)?)
+                value.checked_add(
+                    model
+                        .relations()
+                        .len()
+                        .checked_mul(scope_work_per_relation)?,
+                )
             })
             .ok_or_else(|| work_overflow(resources))?;
         resources.charge_layout_work(index_work)?;
@@ -308,37 +321,42 @@ impl<'a> NamespaceScopeIndex<'a> {
         namespace_parent
             .try_reserve(namespace_capacity)
             .map_err(|_| layout_allocation_failed())?;
-        for namespace in model.namespaces.values() {
+        for (_, namespace) in model.namespaces() {
             checkpoint_layout(execution)?;
-            namespace_parent.insert(namespace.id.as_str(), namespace.parent.as_deref());
+            namespace_parent.insert(
+                namespace.namespace.id.as_str(),
+                namespace.namespace.parent.as_deref(),
+            );
         }
         let mut namespace_route_id = HashMap::new();
         namespace_route_id
             .try_reserve(namespace_capacity)
             .map_err(|_| layout_allocation_failed())?;
-        for namespace in model.namespaces.values() {
+        for (_, namespace) in model.namespaces() {
             checkpoint_layout(execution)?;
-            namespace_route_id.insert(namespace.id.as_str(), namespace.dom_id.as_str());
+            namespace_route_id.insert(namespace.namespace.id.as_str(), namespace.dom_id);
         }
 
         let mut relation_scope = Vec::new();
         relation_scope
-            .try_reserve_exact(model.relations.len())
+            .try_reserve_exact(model.relations().len())
             .map_err(|_| layout_allocation_failed())?;
-        for relation in &model.relations {
+        for relation in model.relations() {
             checkpoint_layout(execution)?;
-            let left = endpoint_index.resolve(relation.id1.as_str()).ok_or(
-                AsciiError::UnsupportedFeature {
-                    diagram_type: "class",
-                    feature: "relationships with missing endpoint classes",
-                },
-            )?;
-            let right = endpoint_index.resolve(relation.id2.as_str()).ok_or(
-                AsciiError::UnsupportedFeature {
-                    diagram_type: "class",
-                    feature: "relationships with missing endpoint classes",
-                },
-            )?;
+            let left =
+                endpoint_index
+                    .resolve(relation.id1)
+                    .ok_or(AsciiError::UnsupportedFeature {
+                        diagram_type: "class",
+                        feature: "relationships with missing endpoint classes",
+                    })?;
+            let right =
+                endpoint_index
+                    .resolve(relation.id2)
+                    .ok_or(AsciiError::UnsupportedFeature {
+                        diagram_type: "class",
+                        feature: "relationships with missing endpoint classes",
+                    })?;
             relation_scope.push(Self::least_common_scope(
                 left.owner,
                 right.owner,
@@ -486,7 +504,7 @@ fn route_layout_for_scope<'a>(
 }
 
 pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
-    model.namespaces.values().any(|namespace| {
+    model.namespaces().any(|(_, namespace)| {
         !namespace.class_ids.is_empty()
             || !namespace.note_ids.is_empty()
             || namespace.parent.is_some()
@@ -497,10 +515,10 @@ pub(super) fn validate_class_namespace_ownership(
     model: &ClassDiagram,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    resources.charge_layout_work(model.namespaces.len())?;
+    resources.charge_layout_work(model.presentation().namespaces.len())?;
     let mut class_membership_capacity = 0usize;
     let mut note_membership_capacity = 0usize;
-    for namespace in model.namespaces.values() {
+    for (_, namespace) in model.namespaces() {
         class_membership_capacity = class_membership_capacity
             .checked_add(namespace.class_ids.len())
             .ok_or_else(|| work_overflow(resources))?;
@@ -510,9 +528,9 @@ pub(super) fn validate_class_namespace_ownership(
     }
     let validation_work = class_membership_capacity
         .checked_add(note_membership_capacity)
-        .and_then(|value| value.checked_add(model.classes.len()))
-        .and_then(|value| value.checked_add(model.notes.len()))
-        .and_then(|value| value.checked_add(model.namespace_facade_aliases.len()))
+        .and_then(|value| value.checked_add(model.classes().len()))
+        .and_then(|value| value.checked_add(model.notes().len()))
+        .and_then(|value| value.checked_add(model.model().namespace_facade_aliases.len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(validation_work)?;
 
@@ -526,40 +544,41 @@ pub(super) fn validate_class_namespace_ownership(
         .map_err(|_| layout_allocation_failed())?;
     let mut notes_by_id = HashMap::new();
     notes_by_id
-        .try_reserve(model.notes.len())
+        .try_reserve(model.notes().len())
         .map_err(|_| layout_allocation_failed())?;
-    notes_by_id.extend(model.notes.iter().map(|note| (note.id.as_str(), note)));
+    notes_by_id.extend(model.notes().map(|note| (note.id, note)));
 
-    for (namespace_key, namespace) in &model.namespaces {
-        if namespace_key != &namespace.id
+    for (namespace_key, namespace) in model.namespaces() {
+        if namespace_key != namespace.namespace.id.as_str()
             || namespace
+                .namespace
                 .parent
                 .as_deref()
-                .is_some_and(|parent| !model.namespaces.contains_key(parent))
+                .is_some_and(|parent| model.namespace(parent).is_none())
         {
             return Err(inconsistent_class_namespace_ownership());
         }
 
-        for class_id in &namespace.class_ids {
-            let Some(class) = model.classes.get(class_id) else {
+        for class_id in &namespace.namespace.class_ids {
+            let Some(class) = model.class(class_id) else {
                 return Err(inconsistent_class_namespace_ownership());
             };
-            if class.parent.as_deref() != Some(namespace.id.as_str())
+            if class.parent != Some(namespace.namespace.id.as_str())
                 || class_owners
-                    .insert(class_id.as_str(), namespace.id.as_str())
+                    .insert(class_id.as_str(), namespace.namespace.id.as_str())
                     .is_some()
             {
                 return Err(inconsistent_class_namespace_ownership());
             }
         }
 
-        for note_id in &namespace.note_ids {
+        for note_id in &namespace.namespace.note_ids {
             let Some(note) = notes_by_id.get(note_id.as_str()).copied() else {
                 return Err(inconsistent_class_namespace_ownership());
             };
-            if note.parent.as_deref() != Some(namespace.id.as_str())
+            if note.parent != Some(namespace.namespace.id.as_str())
                 || note_owners
-                    .insert(note_id.as_str(), namespace.id.as_str())
+                    .insert(note_id.as_str(), namespace.namespace.id.as_str())
                     .is_some()
             {
                 return Err(inconsistent_class_namespace_ownership());
@@ -567,27 +586,27 @@ pub(super) fn validate_class_namespace_ownership(
         }
     }
 
-    for (class_key, class) in &model.classes {
-        if class_key != &class.id
-            || class_owners.get(class_key.as_str()).copied() != class.parent.as_deref()
+    for (class_key, class) in model.classes() {
+        if class_key != class.node.id.as_str()
+            || class_owners.get(class_key).copied() != class.parent
         {
             return Err(inconsistent_class_namespace_ownership());
         }
     }
-    for note in &model.notes {
-        if note_owners.get(note.id.as_str()).copied() != note.parent.as_deref() {
+    for note in model.notes() {
+        if note_owners.get(note.id).copied() != note.parent {
             return Err(inconsistent_class_namespace_ownership());
         }
     }
 
-    for (facade_id, target_id) in &model.namespace_facade_aliases {
-        let Some(facade) = model.classes.get(facade_id) else {
+    for (facade_id, target_id) in &model.model().namespace_facade_aliases {
+        let Some(facade) = model.class(facade_id) else {
             return Err(inconsistent_class_namespace_ownership());
         };
-        let Some(target) = model.classes.get(target_id) else {
+        let Some(target) = model.class(target_id) else {
             return Err(inconsistent_class_namespace_ownership());
         };
-        let Some(parent) = target.parent.as_deref() else {
+        let Some(parent) = target.parent else {
             return Err(inconsistent_class_namespace_ownership());
         };
         if facade_id == target_id
@@ -626,7 +645,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     let scope_index = NamespaceScopeIndex::new(model, endpoint_index, resources, execution)?;
     let interface_index =
         NamespaceInterfaceIndex::new(model, endpoint_index, resources, execution)?;
-    let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
+    let note_by_id = ClassNoteIndex::new(model.notes(), resources)?;
     let context = NamespaceRenderContext {
         model,
         settings,
@@ -641,9 +660,9 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     let boxes = render_namespaced_class_boxes(&context, deferred_text, resources)?;
     let mut external_layouts = Vec::new();
     external_layouts
-        .try_reserve_exact(model.relations.len())
+        .try_reserve_exact(model.relations().len())
         .map_err(|_| layout_allocation_failed())?;
-    for (relation_index, relation) in model.relations.iter().enumerate() {
+    for (relation_index, relation) in model.relations().enumerate() {
         checkpoint_layout(execution)?;
         if scope_index.scope_for_relation(relation_index).is_some() {
             continue;
@@ -845,11 +864,13 @@ fn render_namespaced_class_boxes<'a>(
 ) -> Result<Vec<RenderedClassBox>> {
     let mut rendered_namespaces = HashMap::new();
     rendered_namespaces
-        .try_reserve(context.model.namespaces.len())
+        .try_reserve(context.model.presentation().namespaces.len())
         .map_err(|_| layout_allocation_failed())?;
     for namespace in &context.render_plan.postorder {
         checkpoint_layout(context.execution)?;
-        let child_namespaces = context.render_plan.children(namespace.id.as_str());
+        let child_namespaces = context
+            .render_plan
+            .children(namespace.namespace.id.as_str());
         let mut children = Vec::new();
         children
             .try_reserve_exact(child_namespaces.len())
@@ -862,8 +883,8 @@ fn render_namespaced_class_boxes<'a>(
             );
         }
         let rendered =
-            render_namespace_box(context, namespace, children, deferred_text, resources)?;
-        rendered_namespaces.insert(namespace.id.as_str(), rendered);
+            render_namespace_box(context, *namespace, children, deferred_text, resources)?;
+        rendered_namespaces.insert(namespace.namespace.id.as_str(), rendered);
     }
 
     let mut boxes = Vec::new();
@@ -871,9 +892,9 @@ fn render_namespaced_class_boxes<'a>(
         .render_plan
         .roots
         .len()
-        .checked_add(context.model.classes.len())
-        .and_then(|value| value.checked_add(context.model.interfaces.len()))
-        .and_then(|value| value.checked_add(context.model.notes.len()))
+        .checked_add(context.model.classes().len())
+        .and_then(|value| value.checked_add(context.model.interfaces().len()))
+        .and_then(|value| value.checked_add(context.model.notes().len()))
         .ok_or_else(|| work_overflow(resources))?;
     boxes
         .try_reserve_exact(box_capacity)
@@ -883,7 +904,7 @@ fn render_namespaced_class_boxes<'a>(
         checkpoint_layout(context.execution)?;
         boxes.push(
             rendered_namespaces
-                .remove(namespace.id.as_str())
+                .remove(namespace.namespace.id.as_str())
                 .ok_or_else(inconsistent_class_namespace_ownership)?,
         );
     }
@@ -891,12 +912,12 @@ fn render_namespaced_class_boxes<'a>(
         return Err(inconsistent_class_namespace_ownership());
     }
 
-    for class in context.model.classes.values().filter(|class| {
+    for (_, class) in context.model.classes().filter(|(_, class)| {
         !context.endpoint_index.is_facade(class.id.as_str()) && class.parent.is_none()
     }) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_class_box(
-            class,
+            class.node,
             context.settings.options,
             context.settings.charset,
             deferred_text,
@@ -906,19 +927,14 @@ fn render_namespaced_class_boxes<'a>(
     for interface in context.interface_index.for_owner(None) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_interface_box(
-            interface,
+            *interface,
             context.settings.options,
             context.settings.charset,
             deferred_text,
             resources,
         )?);
     }
-    for note in context
-        .model
-        .notes
-        .iter()
-        .filter(|note| note.parent.is_none())
-    {
+    for note in context.model.notes().filter(|note| note.parent.is_none()) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_note_box(
             note,
@@ -934,7 +950,7 @@ fn render_namespaced_class_boxes<'a>(
 
 fn render_namespace_box<'model>(
     context: &NamespaceRenderContext<'model, '_>,
-    namespace: &'model Namespace,
+    namespace: NamespaceRenderView<'model>,
     mut children: Vec<RenderedClassBox>,
     deferred_text: &mut DeferredTextRegistry<'model>,
     resources: &mut ResourceContext,
@@ -949,7 +965,7 @@ fn render_namespace_box<'model>(
             value.checked_add(
                 context
                     .interface_index
-                    .for_owner(Some(namespace.id.as_str()))
+                    .for_owner(Some(namespace.namespace.id.as_str()))
                     .len(),
             )
         })
@@ -960,13 +976,13 @@ fn render_namespace_box<'model>(
     children
         .try_reserve(direct_box_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for class_id in &namespace.class_ids {
+    for class_id in &namespace.namespace.class_ids {
         checkpoint_layout(context.execution)?;
-        if let Some(class) = context.model.classes.get(class_id)
+        if let Some(class) = context.model.class(class_id)
             && !context.endpoint_index.is_facade(class.id.as_str())
         {
             direct_boxes.push(render_class_box(
-                class,
+                class.node,
                 context.settings.options,
                 context.settings.charset,
                 deferred_text,
@@ -977,11 +993,11 @@ fn render_namespace_box<'model>(
 
     for interface in context
         .interface_index
-        .for_owner(Some(namespace.id.as_str()))
+        .for_owner(Some(namespace.namespace.id.as_str()))
     {
         checkpoint_layout(context.execution)?;
         direct_boxes.push(render_interface_box(
-            interface,
+            *interface,
             context.settings.options,
             context.settings.charset,
             deferred_text,
@@ -989,7 +1005,7 @@ fn render_namespace_box<'model>(
         )?);
     }
 
-    for note_id in &namespace.note_ids {
+    for note_id in &namespace.namespace.note_ids {
         checkpoint_layout(context.execution)?;
         if let Some(note) = context.note_by_id.get(note_id, resources)? {
             direct_boxes.push(render_note_box(
@@ -1003,17 +1019,19 @@ fn render_namespace_box<'model>(
     }
     let direct_layout_capacity = context
         .model
-        .relations
+        .relations()
         .len()
-        .checked_add(context.model.notes.len())
+        .checked_add(context.model.notes().len())
         .ok_or_else(|| work_overflow(resources))?;
     let mut direct_layouts = Vec::new();
     direct_layouts
         .try_reserve_exact(direct_layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for (relation_index, relation) in context.model.relations.iter().enumerate() {
+    for (relation_index, relation) in context.model.relations().enumerate() {
         checkpoint_layout(context.execution)?;
-        if context.scope_index.scope_for_relation(relation_index) != Some(namespace.id.as_str()) {
+        if context.scope_index.scope_for_relation(relation_index)
+            != Some(namespace.namespace.id.as_str())
+        {
             continue;
         }
         let layout = relation_layout(
@@ -1028,7 +1046,7 @@ fn render_namespace_box<'model>(
         )?;
         direct_layouts.push(route_layout_for_scope(
             layout,
-            Some(namespace.id.as_str()),
+            Some(namespace.namespace.id.as_str()),
             context.scope_index,
             context.settings.options.terminal_width_profile,
             deferred_text,
@@ -1050,8 +1068,8 @@ fn render_namespace_box<'model>(
     scope_boxes.extend(direct_boxes.iter().cloned());
     let box_by_id = RenderedClassBoxIndex::new(&scope_boxes, resources)?;
     direct_layouts.extend(note_relation_layouts_for_notes(
-        context.model.notes.iter().filter(|note| {
-            note.parent.as_deref() == Some(namespace.id.as_str()) && note.class_id.is_some()
+        context.model.notes().filter(|note| {
+            note.parent == Some(namespace.namespace.id.as_str()) && note.class_id.is_some()
         }),
         context.endpoint_index,
         &box_by_id,
@@ -1108,7 +1126,7 @@ fn render_namespace_box<'model>(
 }
 
 pub(super) fn render_namespace_container_box<'a>(
-    namespace: &'a Namespace,
+    namespace: NamespaceRenderView<'a>,
     mut children: Vec<RenderedClassBox>,
     settings: ClassRenderSettings<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
@@ -1136,7 +1154,7 @@ pub(super) fn render_namespace_container_box<'a>(
         children.reverse();
     }
 
-    let (raw_title, has_authored_title) = namespace_title(namespace, resources)?;
+    let (raw_title, has_authored_title) = namespace_title(namespace.namespace, resources)?;
     let title_plan = ComposedTextPlan::try_new_html_decoded(raw_title, resources)?;
     let title_projection_is_lossy =
         authored_display_projection_is_lossy(&title_plan, raw_title, resources)?;
@@ -1150,14 +1168,14 @@ pub(super) fn render_namespace_container_box<'a>(
         .then(|| {
             deferred_text.try_register_framed_value(
                 "namespaceLabel(bytes=",
-                &namespace.label,
+                &namespace.namespace.label,
                 settings.options.terminal_width_profile,
                 resources,
             )
         })
         .transpose()?;
     let identity = namespace_authored_identity(
-        namespace,
+        namespace.namespace,
         raw_title,
         !has_authored_title && title_projection_is_lossy,
     )
@@ -1307,7 +1325,7 @@ pub(super) fn render_namespace_container_box<'a>(
     )?);
 
     Ok(RelationGraphBox::new_with_lines(
-        namespace.dom_id.clone(),
+        namespace.dom_id.to_string(),
         lines,
         width,
         settings.options.terminal_width_profile,
@@ -1432,6 +1450,7 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::diagram::RenderSemanticModel;
+    use merman_core::models::class_diagram::ClassInterface;
     use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
 
@@ -1447,24 +1466,22 @@ mod tests {
     }
 
     fn deeply_nested_namespace_model(depth: usize) -> ClassDiagram {
-        let mut model = parsed_class_model("classDiagram\nnamespace Seed {}");
-        model.namespaces.clear();
+        let model = parsed_class_model("classDiagram\nnamespace Seed {}");
+        let mut full = serde_json::to_value(model).expect("full Class fixture should serialize");
+        full["namespaces"] = serde_json::json!({});
         for index in 0..depth {
             let id = format!("n{index}");
-            model.namespaces.insert(
-                id.clone(),
-                Namespace {
-                    id: id.clone(),
-                    label: id.clone(),
-                    dom_id: id,
-                    class_ids: Vec::new(),
-                    note_ids: Vec::new(),
-                    parent: index.checked_sub(1).map(|parent| format!("n{parent}")),
-                    explicit: true,
-                },
-            );
+            full["namespaces"][&id] = serde_json::json!({
+                "id": id,
+                "label": id,
+                "domId": id,
+                "classIds": [],
+                "noteIds": [],
+                "parent": index.checked_sub(1).map(|parent| format!("n{parent}")),
+                "explicit": true,
+            });
         }
-        model
+        serde_json::from_value(full).expect("full namespace fixture should deserialize")
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1494,11 +1511,13 @@ mod tests {
                 assert_eq!(
                     plan.postorder
                         .first()
-                        .map(|namespace| namespace.id.as_str()),
+                        .map(|namespace| namespace.namespace.id.as_str()),
                     Some("n511")
                 );
                 assert_eq!(
-                    plan.postorder.last().map(|namespace| namespace.id.as_str()),
+                    plan.postorder
+                        .last()
+                        .map(|namespace| namespace.namespace.id.as_str()),
                     Some("n0")
                 );
 
@@ -1620,19 +1639,20 @@ mod tests {
             .expect("class endpoint index should inherit interface ownership");
 
         let interface = model
-            .interfaces
-            .first()
+            .interfaces()
+            .next()
             .expect("lollipop relation should create an interface endpoint");
         assert_eq!(interface.class_id, "Domain.Service");
         assert_eq!(
             model
+                .model()
                 .namespace_facade_aliases
                 .get("Domain.Service")
                 .map(String::as_str),
             Some("Service")
         );
         let endpoint = endpoint_index
-            .resolve(interface.id.as_str())
+            .resolve(interface.id)
             .expect("interface endpoint should be indexed");
         assert_eq!(endpoint.owner, Some("Domain"));
 
@@ -1648,7 +1668,7 @@ mod tests {
             interface_index
                 .for_owner(Some("Domain"))
                 .iter()
-                .map(|interface| interface.id.as_str())
+                .map(|interface| interface.id)
                 .collect::<Vec<_>>(),
             vec!["interface0"]
         );
@@ -1665,7 +1685,8 @@ mod tests {
 
     #[test]
     fn typed_lollipop_interface_resolves_qualified_target_alias_before_owner_lookup() {
-        let mut model = parsed_class_model("classDiagram\nnamespace Domain {\n  class Service\n}");
+        let mut model =
+            parsed_class_model("classDiagram\nnamespace Domain {\n  class Service\n}").into_model();
         model
             .namespace_facade_aliases
             .insert("Domain.Service".to_string(), "Service".to_string());
@@ -1674,6 +1695,7 @@ mod tests {
             label: "IService".to_string(),
             class_id: "Domain.Service".to_string(),
         });
+        let model = ClassDiagram::new(model, &Default::default());
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
 
@@ -1692,7 +1714,6 @@ mod tests {
         let ambiguous = Namespace {
             id: "Child".to_string(),
             label: "Child".to_string(),
-            dom_id: "namespace-child".to_string(),
             class_ids: Vec::new(),
             note_ids: Vec::new(),
             parent: Some("Parent".to_string()),
@@ -1706,7 +1727,6 @@ mod tests {
         let reconstructable = Namespace {
             id: "Parent.Child".to_string(),
             label: "Child".to_string(),
-            dom_id: "namespace-parent-child".to_string(),
             class_ids: Vec::new(),
             note_ids: Vec::new(),
             parent: Some("Parent".to_string()),
@@ -1729,19 +1749,14 @@ mod tests {
 
     #[test]
     fn namespace_scope_index_rejects_cyclic_parent_chains_before_render_descent() {
-        let mut model = parsed_class_model(
+        let model = parsed_class_model(
             "classDiagram\nnamespace Left {\n  class A\n}\nnamespace Right {\n  class B\n}\nA --> B",
         );
-        model
-            .namespaces
-            .get_mut("Left")
-            .expect("Left namespace should exist")
-            .parent = Some("Right".to_string());
-        model
-            .namespaces
-            .get_mut("Right")
-            .expect("Right namespace should exist")
-            .parent = Some("Left".to_string());
+        let mut full = serde_json::to_value(model).expect("full Class fixture should serialize");
+        full["namespaces"]["Left"]["parent"] = serde_json::json!("Right");
+        full["namespaces"]["Right"]["parent"] = serde_json::json!("Left");
+        let model: ClassDiagram =
+            serde_json::from_value(full).expect("cyclic namespace fixture should deserialize");
         let policy = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );

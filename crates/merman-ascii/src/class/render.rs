@@ -24,7 +24,8 @@ use crate::safe_text::{
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
 use merman_core::models::class_diagram::{
-    ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
+    ClassDiagram, ClassInterfaceRenderView, ClassMember, ClassNode, ClassNoteRenderView,
+    ClassRelationRenderView,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -123,24 +124,32 @@ struct ClassRenderSettings<'a> {
 
 #[derive(Debug)]
 struct ClassNoteIndex<'a> {
-    by_id: HashMap<&'a str, &'a ClassNote>,
+    by_id: HashMap<&'a str, ClassNoteRenderView<'a>>,
 }
 
 impl<'a> ClassNoteIndex<'a> {
-    fn new(notes: &'a [ClassNote], resources: &mut ResourceContext) -> Result<Self> {
-        resources.charge_layout_work(notes.len())?;
+    fn new(
+        notes: impl ExactSizeIterator<Item = ClassNoteRenderView<'a>>,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let count = notes.len();
+        resources.charge_layout_work(count)?;
         let mut by_id = HashMap::new();
         by_id
-            .try_reserve(notes.len())
+            .try_reserve(count)
             .map_err(|_| layout_allocation_failed())?;
         for note in notes {
             // Preserve the previous linear lookup's first-match behavior for duplicate ids.
-            by_id.entry(note.id.as_str()).or_insert(note);
+            by_id.entry(note.id).or_insert(note);
         }
         Ok(Self { by_id })
     }
 
-    fn get(&self, id: &str, resources: &mut ResourceContext) -> Result<Option<&'a ClassNote>> {
+    fn get(
+        &self,
+        id: &str,
+        resources: &mut ResourceContext,
+    ) -> Result<Option<ClassNoteRenderView<'a>>> {
         resources.charge_layout_work(1)?;
         Ok(self.by_id.get(id).copied())
     }
@@ -190,21 +199,21 @@ struct ClassEndpointIndex<'a> {
 impl<'a> ClassEndpointIndex<'a> {
     fn new(model: &'a ClassDiagram, resources: &mut ResourceContext) -> Result<Self> {
         let capacity = model
-            .classes
+            .classes()
             .len()
-            .checked_add(model.interfaces.len())
+            .checked_add(model.interfaces().len())
             .ok_or_else(|| work_overflow(resources))?;
         resources.charge_layout_work(capacity)?;
 
         let mut class_endpoints = HashMap::new();
         class_endpoints
-            .try_reserve(model.classes.len())
+            .try_reserve(model.classes().len())
             .map_err(|_| layout_allocation_failed())?;
-        class_endpoints.extend(model.classes.values().map(|class| {
+        class_endpoints.extend(model.classes().map(|(_, class)| {
             (
-                class.id.as_str(),
+                class.node.id.as_str(),
                 ClassEndpointMetadata {
-                    owner: class.parent.as_deref(),
+                    owner: class.parent,
                     interface_identity: None,
                 },
             )
@@ -212,14 +221,15 @@ impl<'a> ClassEndpointIndex<'a> {
 
         let mut interface_endpoints = HashMap::new();
         interface_endpoints
-            .try_reserve(model.interfaces.len())
+            .try_reserve(model.interfaces().len())
             .map_err(|_| layout_allocation_failed())?;
-        for (declaration_ordinal, interface) in model.interfaces.iter().enumerate() {
+        for (declaration_ordinal, interface) in model.interfaces().enumerate() {
             let resolved_target_id = model
+                .model()
                 .namespace_facade_aliases
-                .get(interface.class_id.as_str())
+                .get(interface.interface.class_id.as_str())
                 .map(String::as_str)
-                .unwrap_or(interface.class_id.as_str());
+                .unwrap_or(interface.interface.class_id.as_str());
             let target = class_endpoints.get(resolved_target_id).copied().ok_or(
                 AsciiError::UnsupportedFeature {
                     diagram_type: "class",
@@ -227,13 +237,13 @@ impl<'a> ClassEndpointIndex<'a> {
                 },
             )?;
             interface_endpoints.insert(
-                interface.id.as_str(),
+                interface.id,
                 ClassEndpointMetadata {
                     owner: target.owner,
                     interface_identity: Some(ClassInterfaceIdentity {
-                        render_id: interface.id.as_str(),
-                        authored_label: interface.label.as_str(),
-                        authored_target: interface.class_id.as_str(),
+                        render_id: interface.id,
+                        authored_label: interface.interface.label.as_str(),
+                        authored_target: interface.interface.class_id.as_str(),
                         declaration_ordinal: declaration_ordinal
                             .checked_add(1)
                             .ok_or_else(|| work_overflow(resources))?,
@@ -244,7 +254,7 @@ impl<'a> ClassEndpointIndex<'a> {
         Ok(Self {
             class_endpoints,
             interface_endpoints,
-            facade_aliases: &model.namespace_facade_aliases,
+            facade_aliases: &model.model().namespace_facade_aliases,
         })
     }
 
@@ -685,9 +695,9 @@ fn render_class_diagram_impl(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
-    resources.charge_layout_work(model.direction.len().max(1))?;
+    resources.charge_layout_work(model.model().direction.len().max(1))?;
     let direction = RelationDirection::try_from_model(
-        &model.direction,
+        &model.model().direction,
         "class",
         "unknown class diagram directions",
     );
@@ -733,7 +743,7 @@ fn render_class_diagram_impl(
         execution,
     )?;
     if boxes.is_empty() {
-        if !model.relations.is_empty() {
+        if model.relations().len() != 0 {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
@@ -750,15 +760,15 @@ fn render_class_diagram_impl(
     let box_by_id = RenderedClassBoxIndex::new(&boxes, &mut resources)?;
 
     let layout_capacity = model
-        .relations
+        .relations()
         .len()
-        .checked_add(model.notes.len())
+        .checked_add(model.notes().len())
         .ok_or_else(|| work_overflow(&resources))?;
     let mut layouts = Vec::new();
     layouts
         .try_reserve_exact(layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for (relation_index, relation) in model.relations.iter().enumerate() {
+    for (relation_index, relation) in model.relations().enumerate() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         layouts.push(relation_layout(
             model,
@@ -858,11 +868,11 @@ fn validate_unique_class_render_ids(
     resources: &mut ResourceContext,
 ) -> Result<()> {
     let capacity = model
-        .classes
+        .classes()
         .len()
-        .checked_add(model.interfaces.len())
-        .and_then(|value| value.checked_add(model.notes.len()))
-        .and_then(|value| value.checked_add(model.namespaces.len()))
+        .checked_add(model.interfaces().len())
+        .and_then(|value| value.checked_add(model.notes().len()))
+        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(capacity)?;
 
@@ -870,22 +880,11 @@ fn validate_unique_class_render_ids(
     ids.try_reserve(capacity)
         .map_err(|_| layout_allocation_failed())?;
     let rendered_ids = model
-        .classes
-        .values()
-        .map(|class| class.id.as_str())
-        .chain(
-            model
-                .interfaces
-                .iter()
-                .map(|interface| interface.id.as_str()),
-        )
-        .chain(model.notes.iter().map(|note| note.id.as_str()))
-        .chain(
-            model
-                .namespaces
-                .values()
-                .map(|namespace| namespace.dom_id.as_str()),
-        );
+        .classes()
+        .map(|(_, class)| class.node.id.as_str())
+        .chain(model.interfaces().map(|interface| interface.id))
+        .chain(model.notes().map(|note| note.id))
+        .chain(model.namespaces().map(|(_, namespace)| namespace.dom_id));
     for id in rendered_ids {
         if !ids.insert(id) {
             return Err(AsciiError::UnsupportedFeature {
@@ -902,10 +901,10 @@ fn validate_class_references(
     endpoint_index: &ClassEndpointIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    for relation in &model.relations {
+    for relation in model.relations() {
         resources.charge_layout_work(2)?;
-        let left = endpoint_index.resolve(relation.id1.as_str());
-        let right = endpoint_index.resolve(relation.id2.as_str());
+        let left = endpoint_index.resolve(relation.id1);
+        let right = endpoint_index.resolve(relation.id2);
         if left.is_none() || right.is_none() {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
@@ -914,8 +913,8 @@ fn validate_class_references(
         }
     }
 
-    for note in &model.notes {
-        let Some(target_id) = note.class_id.as_deref() else {
+    for note in model.notes() {
+        let Some(target_id) = note.note.class_id.as_deref() else {
             continue;
         };
         resources.charge_layout_work(1)?;
@@ -939,31 +938,30 @@ fn render_class_boxes<'a>(
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<RenderedClassBox>> {
     let capacity = model
-        .classes
+        .classes()
         .len()
-        .checked_add(model.interfaces.len())
-        .and_then(|value| value.checked_add(model.notes.len()))
-        .and_then(|value| value.checked_add(model.namespaces.len()))
+        .checked_add(model.interfaces().len())
+        .and_then(|value| value.checked_add(model.notes().len()))
+        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
         .ok_or_else(|| work_overflow(resources))?;
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for class in model
-        .classes
-        .values()
-        .filter(|class| !endpoint_index.is_facade(class.id.as_str()))
+    for (_, class) in model
+        .classes()
+        .filter(|(_, class)| !endpoint_index.is_facade(class.node.id.as_str()))
     {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_class_box(
-            class,
+            class.node,
             settings.options,
             settings.charset,
             deferred_text,
             resources,
         )?);
     }
-    for interface in &model.interfaces {
+    for interface in model.interfaces() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_interface_box(
             interface,
@@ -973,7 +971,7 @@ fn render_class_boxes<'a>(
             resources,
         )?);
     }
-    for note in &model.notes {
+    for note in model.notes() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_note_box(
             note,
@@ -983,7 +981,7 @@ fn render_class_boxes<'a>(
             resources,
         )?);
     }
-    for namespace in model.namespaces.values() {
+    for (_, namespace) in model.namespaces() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_namespace_container_box(
             namespace,
@@ -1104,15 +1102,16 @@ fn render_class_box<'a>(
 }
 
 fn render_interface_box<'a>(
-    interface: &'a ClassInterface,
+    interface: ClassInterfaceRenderView<'a>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let display_plan = ComposedTextPlan::try_new_html_decoded(&interface.label, resources)?;
+    let display_plan =
+        ComposedTextPlan::try_new_html_decoded(&interface.interface.label, resources)?;
     let disclose_label =
-        authored_display_projection_is_lossy(&display_plan, &interface.label, resources)?;
+        authored_display_projection_is_lossy(&display_plan, &interface.interface.label, resources)?;
     let header_capacity = 2usize
         .checked_add(usize::from(disclose_label))
         .ok_or_else(|| work_overflow(resources))?;
@@ -1133,7 +1132,7 @@ fn render_interface_box<'a>(
     if disclose_label {
         header.push(deferred_text.try_register_framed_value(
             "interfaceLabel(bytes=",
-            &interface.label,
+            &interface.interface.label,
             options.terminal_width_profile,
             resources,
         )?);
@@ -1143,18 +1142,24 @@ fn render_interface_box<'a>(
         .try_reserve_exact(1)
         .map_err(|_| layout_allocation_failed())?;
     sections.push(header);
-    render_box_sections(interface.id.clone(), sections, options, charset, resources)
+    render_box_sections(
+        interface.id.to_string(),
+        sections,
+        options,
+        charset,
+        resources,
+    )
 }
 
 fn render_note_box<'a>(
-    note: &'a ClassNote,
+    note: ClassNoteRenderView<'a>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
     let label = deferred_text.try_register_present_label_lines_with_authored_disclosure(
-        &note.text,
+        &note.note.text,
         "authored(bytes=",
         options.terminal_width_profile,
         resources,
@@ -1179,7 +1184,7 @@ fn render_note_box<'a>(
         .try_reserve_exact(1)
         .map_err(|_| layout_allocation_failed())?;
     sections.push(lines);
-    render_box_sections(note.id.clone(), sections, options, charset, resources)
+    render_box_sections(note.id.to_string(), sections, options, charset, resources)
 }
 
 fn render_box_sections(
@@ -1437,27 +1442,27 @@ fn generic_materialization_scan_work(
 
 fn relation_layout<'a>(
     model: &'a ClassDiagram,
-    relation: &'a ClassRelation,
+    relation: ClassRelationRenderView<'a>,
     endpoint_index: &ClassEndpointIndex<'a>,
     labels: ClassRelationLabels,
 ) -> Result<RelationLayout<'a>> {
     let left_endpoint =
         endpoint_index
-            .resolve(relation.id1.as_str())
+            .resolve(relation.id1)
             .ok_or(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
             })?;
     let right_endpoint =
         endpoint_index
-            .resolve(relation.id2.as_str())
+            .resolve(relation.id2)
             .ok_or(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
             })?;
-    let line = if relation.relation.line_type == model.constants.line_type.line {
+    let line = if relation.relation.line_type == model.model().constants.line_type.line {
         RelationLine::Solid
-    } else if relation.relation.line_type == model.constants.line_type.dotted_line {
+    } else if relation.relation.line_type == model.model().constants.line_type.dotted_line {
         RelationLine::Dotted
     } else {
         return Err(AsciiError::UnsupportedFeature {
@@ -1468,7 +1473,7 @@ fn relation_layout<'a>(
 
     let left_marker = marker_for_relation_type(model, relation.relation.type1)?;
     let right_marker = marker_for_relation_type(model, relation.relation.type2)?;
-    let none = model.constants.relation_type.none;
+    let none = model.model().constants.relation_type.none;
     if left_marker.is_none() && relation.relation.type1 != none
         || right_marker.is_none() && relation.relation.type2 != none
     {
@@ -1539,7 +1544,7 @@ fn prepare_class_relation_labels<'a>(
 ) -> Result<Vec<ClassRelationLabels>> {
     resources.transaction(|resources| {
         let capacity = model
-            .relations
+            .relations()
             .len()
             .checked_mul(3)
             .ok_or_else(|| work_overflow(resources))?;
@@ -1547,15 +1552,16 @@ fn prepare_class_relation_labels<'a>(
         plans
             .try_reserve_exact(capacity)
             .map_err(|_| layout_allocation_failed())?;
-        for relation in &model.relations {
+        for relation in model.relations() {
             plans.push(RelationGraphLabelPlan::try_new(
-                &relation.title,
+                &relation.source.title,
                 options.terminal_width_profile,
                 deferred_text,
                 resources,
             )?);
             plans.push(
                 relation
+                    .source
                     .relation_title_1
                     .as_deref()
                     .map(|label| {
@@ -1570,6 +1576,7 @@ fn prepare_class_relation_labels<'a>(
             );
             plans.push(
                 relation
+                    .source
                     .relation_title_2
                     .as_deref()
                     .map(|label| {
@@ -1591,20 +1598,20 @@ fn prepare_class_relation_labels<'a>(
         let mut labels = labels.into_iter();
         let mut prepared = Vec::new();
         prepared
-            .try_reserve_exact(model.relations.len())
+            .try_reserve_exact(model.relations().len())
             .map_err(|_| layout_allocation_failed())?;
-        for relation in &model.relations {
+        for relation in model.relations() {
             let label = labels.next().ok_or_else(layout_allocation_failed)?;
             let left_endpoint = ClassEndpointLabels::from_authored(
                 labels.next().ok_or_else(layout_allocation_failed)?,
-                relation.relation_title_1.as_deref(),
+                relation.source.relation_title_1.as_deref(),
                 options.terminal_width_profile,
                 deferred_text,
                 resources,
             )?;
             let right_endpoint = ClassEndpointLabels::from_authored(
                 labels.next().ok_or_else(layout_allocation_failed)?,
-                relation.relation_title_2.as_deref(),
+                relation.source.relation_title_2.as_deref(),
                 options.terminal_width_profile,
                 deferred_text,
                 resources,
@@ -1624,28 +1631,26 @@ fn prepare_class_relation_labels<'a>(
 
 fn note_explicit_namespace_id<'a>(
     model: &'a ClassDiagram,
-    note: &'a ClassNote,
+    note: ClassNoteRenderView<'a>,
     endpoint_index: &ClassEndpointIndex<'a>,
 ) -> Option<&'a str> {
-    let note_parent = note.parent.as_deref()?;
+    let note_parent = note.parent?;
     let note_namespace = model
-        .namespaces
-        .get(note_parent)
+        .namespace(note_parent)
         .filter(|namespace| namespace.explicit)?;
-    let target_id = note.class_id.as_deref()?;
+    let target_id = note.note.class_id.as_deref()?;
     let target_parent = endpoint_index.resolve(target_id)?.owner?;
     model
-        .namespaces
-        .get(target_parent)
+        .namespace(target_parent)
         .filter(|namespace| namespace.explicit)?;
-    (note_namespace.id == target_parent).then_some(note_namespace.id.as_str())
+    (note_namespace.id == target_parent).then_some(note_namespace.namespace.id.as_str())
 }
 
 fn marker_for_relation_type(
     model: &ClassDiagram,
     relation_type: i32,
 ) -> Result<Option<RelationMarker>> {
-    let constants = &model.constants.relation_type;
+    let constants = &model.model().constants.relation_type;
     if relation_type == constants.none {
         return Ok(None);
     }
@@ -1680,7 +1685,7 @@ fn note_relation_layouts<'a>(
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationLayout<'a>>> {
     note_relation_layouts_for_notes(
-        model.notes.iter(),
+        model.notes(),
         endpoint_index,
         box_by_id,
         width_profile,
@@ -1690,7 +1695,7 @@ fn note_relation_layouts<'a>(
 }
 
 fn note_relation_layouts_for_notes<'a>(
-    notes: impl Iterator<Item = &'a ClassNote>,
+    notes: impl Iterator<Item = ClassNoteRenderView<'a>>,
     endpoint_index: &ClassEndpointIndex<'a>,
     box_by_id: &RenderedClassBoxIndex<'_>,
     width_profile: TerminalWidthProfile,
@@ -1703,7 +1708,7 @@ fn note_relation_layouts_for_notes<'a>(
         .try_reserve(notes.size_hint().0)
         .map_err(|_| layout_allocation_failed())?;
     for note in notes {
-        let Some(target_id) = note.class_id.as_deref() else {
+        let Some(target_id) = note.note.class_id.as_deref() else {
             continue;
         };
         let Some(target) = endpoint_index.resolve(target_id) else {
@@ -1719,10 +1724,10 @@ fn note_relation_layouts_for_notes<'a>(
             layouts.push(RelationLayout {
                 transform: RelationDirection::TopDown.transform(),
                 top: RelationEndpoint {
-                    authored_id: note.id.as_str(),
-                    resolved_id: note.id.as_str(),
-                    render_id: note.id.as_str(),
-                    owner: note.parent.as_deref(),
+                    authored_id: note.id,
+                    resolved_id: note.id,
+                    render_id: note.id,
+                    owner: note.parent,
                     interface_identity: None,
                 },
                 bottom: target.into_layout_endpoint(),
@@ -1748,15 +1753,14 @@ fn external_namespace_note_summary_rows<'a>(
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphSummaryRow>> {
     let mut rows = Vec::new();
-    rows.try_reserve_exact(model.notes.len())
+    rows.try_reserve_exact(model.notes().len())
         .map_err(|_| layout_allocation_failed())?;
     for (declaration_index, note) in model
-        .notes
-        .iter()
+        .notes()
         .enumerate()
-        .filter(|(_, note)| note_explicit_namespace_id(model, note, endpoint_index).is_none())
+        .filter(|(_, note)| note_explicit_namespace_id(model, *note, endpoint_index).is_none())
     {
-        let Some(target_id) = note.class_id.as_deref() else {
+        let Some(target_id) = note.note.class_id.as_deref() else {
             continue;
         };
         let Some(target_endpoint) = endpoint_index.resolve(target_id) else {
@@ -1774,7 +1778,7 @@ fn external_namespace_note_summary_rows<'a>(
             push(DeferredTextPart::Static(", text(bytes="))?;
             push(DeferredTextPart::Decimal(note.text.len()))?;
             push(DeferredTextPart::Static(")="))?;
-            push(DeferredTextPart::QuotedText(&note.text))?;
+            push(DeferredTextPart::QuotedText(&note.note.text))?;
             push(DeferredTextPart::Static(")"))
         })?;
         let connector = deferred_text.try_register(
@@ -3024,21 +3028,21 @@ fn relation_line_chars(charset: ClassCharset) -> RelationLineChars {
 
 fn charge_class_model_work(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
     let item_count = model
-        .classes
+        .classes()
         .len()
-        .checked_add(model.interfaces.len())
-        .and_then(|value| value.checked_add(model.notes.len()))
-        .and_then(|value| value.checked_add(model.relations.len()))
-        .and_then(|value| value.checked_add(model.namespaces.len()))
+        .checked_add(model.interfaces().len())
+        .and_then(|value| value.checked_add(model.notes().len()))
+        .and_then(|value| value.checked_add(model.relations().len()))
+        .and_then(|value| value.checked_add(model.presentation().namespaces.len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(item_count.max(1))
 }
 
 fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
-    for class in model.classes.values() {
+    for (_, class) in model.classes() {
         charge_text_layout(resources, &class.id)?;
         charge_text_layout(resources, &class.text)?;
-        if let Some(parent) = class.parent.as_deref() {
+        if let Some(parent) = class.parent {
             charge_text_layout(resources, parent)?;
         }
         for annotation in &class.annotations {
@@ -3049,39 +3053,39 @@ fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -
         }
     }
 
-    for interface in &model.interfaces {
-        charge_text_layout(resources, &interface.id)?;
-        charge_text_layout(resources, &interface.label)?;
+    for interface in model.interfaces() {
+        charge_text_layout(resources, interface.id)?;
+        charge_text_layout(resources, &interface.interface.label)?;
         charge_text_layout(resources, &interface.class_id)?;
     }
 
-    for note in &model.notes {
-        charge_text_layout(resources, &note.id)?;
-        charge_text_layout(resources, &note.text)?;
-        if let Some(class_id) = note.class_id.as_deref() {
+    for note in model.notes() {
+        charge_text_layout(resources, note.id)?;
+        charge_text_layout(resources, &note.note.text)?;
+        if let Some(class_id) = note.note.class_id.as_deref() {
             charge_text_layout(resources, class_id)?;
         }
-        if let Some(parent) = note.parent.as_deref() {
+        if let Some(parent) = note.parent {
             charge_text_layout(resources, parent)?;
         }
     }
 
-    for relation in &model.relations {
-        charge_text_layout(resources, &relation.id1)?;
-        charge_text_layout(resources, &relation.id2)?;
-        charge_text_layout(resources, &relation.title)?;
-        if let Some(label) = relation.relation_title_1.as_deref() {
+    for relation in model.relations() {
+        charge_text_layout(resources, relation.id1)?;
+        charge_text_layout(resources, relation.id2)?;
+        charge_text_layout(resources, &relation.source.title)?;
+        if let Some(label) = relation.source.relation_title_1.as_deref() {
             charge_text_layout(resources, label)?;
         }
-        if let Some(label) = relation.relation_title_2.as_deref() {
+        if let Some(label) = relation.source.relation_title_2.as_deref() {
             charge_text_layout(resources, label)?;
         }
     }
 
-    for namespace in model.namespaces.values() {
+    for (_, namespace) in model.namespaces() {
         charge_text_layout(resources, &namespace.id)?;
         charge_text_layout(resources, &namespace.label)?;
-        charge_text_layout(resources, &namespace.dom_id)?;
+        charge_text_layout(resources, namespace.dom_id)?;
         if let Some(parent) = namespace.parent.as_deref() {
             charge_text_layout(resources, parent)?;
         }
@@ -3123,6 +3127,7 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
+    use merman_core::models::class_diagram::{ClassInterface, ClassNote, NamespaceRenderView};
     use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
     use std::cell::Cell;
@@ -3240,7 +3245,10 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_interface_box(
-            &interface,
+            ClassInterfaceRenderView {
+                interface: &interface,
+                id: &interface.id,
+            },
             &options,
             ClassCharset::for_options(&options),
             &mut deferred,
@@ -3258,7 +3266,6 @@ mod tests {
         let namespace = merman_core::models::class_diagram::Namespace {
             id: id.to_string(),
             label: label.to_string(),
-            dom_id: "namespace0".to_string(),
             class_ids: Vec::new(),
             note_ids: Vec::new(),
             parent: None,
@@ -3275,7 +3282,10 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_namespace_container_box(
-            &namespace,
+            NamespaceRenderView {
+                namespace: &namespace,
+                dom_id: "namespace0",
+            },
             Vec::new(),
             settings,
             &mut deferred,
@@ -3299,8 +3309,10 @@ mod tests {
     #[test]
     fn class_interface_targets_reject_interface_ids_independent_of_declaration_order() {
         for reversed in [false, true] {
-            let mut model = parsed_class_model("classDiagram\nclass Target");
-            model.interfaces = vec![
+            let model = parsed_class_model("classDiagram\nclass Target");
+            let mut full =
+                serde_json::to_value(model).expect("full Class fixture should serialize");
+            let mut interfaces = vec![
                 ClassInterface {
                     id: "interface0".to_string(),
                     label: "IBase".to_string(),
@@ -3313,8 +3325,13 @@ mod tests {
                 },
             ];
             if reversed {
-                model.interfaces.reverse();
+                interfaces.reverse();
             }
+
+            full["interfaces"] =
+                serde_json::to_value(interfaces).expect("interface fixture should serialize");
+            let model: ClassDiagram =
+                serde_json::from_value(full).expect("full Class fixture should deserialize");
 
             let policy = unbounded_policy();
             let error = render_class_diagram_with_execution(
@@ -3386,16 +3403,17 @@ mod tests {
 
     fn class_summary_model() -> ClassDiagram {
         let mut model =
-            parsed_class_model("classDiagram\nclass A\nclass B\nA --> A : self\nA --> B : linked");
+            parsed_class_model("classDiagram\nclass A\nclass B\nA --> A : self\nA --> B : linked")
+                .into_model();
         let mut source = model.classes.shift_remove("A").expect("A should exist");
         source.id = "Source<&中".to_string();
-        source.dom_id = source.id.clone();
+
         source.text = source.id.clone();
         let source_id = source.id.clone();
         model.classes.insert(source_id.clone(), source);
         let mut target = model.classes.shift_remove("B").expect("B should exist");
         target.id = "Target<&中".to_string();
-        target.dom_id = target.id.clone();
+
         target.text = target.id.clone();
         let target_id = target.id.clone();
         model.classes.insert(target_id.clone(), target);
@@ -3413,7 +3431,7 @@ mod tests {
         model.relations[0].relation_title_1 = Some("a<&中<br>b".to_string());
         model.relations[0].relation_title_2 = Some("a/b<&中".to_string());
         model.relations[1].title = "linked<&中".to_string();
-        model
+        ClassDiagram::new(model, &Default::default())
     }
 
     fn render_class_summary_fixture(
@@ -3426,7 +3444,7 @@ mod tests {
         let execution = AsciiExecution::for_test(&policy);
         let charset = ClassCharset::for_options(options);
         let direction = RelationDirection::try_from_model(
-            &model.direction,
+            &model.model().direction,
             "class",
             "unknown class diagram directions",
         )
@@ -3453,9 +3471,9 @@ mod tests {
                 .expect("class summary labels should plan as one batch");
         let mut layouts = Vec::new();
         layouts
-            .try_reserve_exact(model.relations.len())
+            .try_reserve_exact(model.relations().len())
             .expect("class summary layout allocation should succeed");
-        for (relation_index, relation) in model.relations.iter().enumerate() {
+        for (relation_index, relation) in model.relations().enumerate() {
             layouts.push(
                 relation_layout(
                     model,
@@ -3508,7 +3526,8 @@ mod tests {
         const DISCLOSURE: &str = r#"authored(bytes=1)="\u{1B}""#;
 
         let routed = |value: &str| {
-            let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+            let mut model =
+                parsed_class_model("classDiagram\nclass A\nclass B\nA --> B").into_model();
             model.notes.push(note("note0", value));
             let relation = model
                 .relations
@@ -3516,6 +3535,7 @@ mod tests {
                 .expect("routed fixture should contain a relation");
             relation.title = value.to_string();
             relation.relation_title_1 = Some(value.to_string());
+            let model = ClassDiagram::new(model, &Default::default());
             render_class_identity_fixture(&model)
         };
         let authored_routed = routed(AUTHORED);
@@ -3562,12 +3582,13 @@ mod tests {
         assert_ne!(controls_first, controls_last);
 
         let summary = |value: &str| {
-            let mut model = class_summary_model();
+            let mut model = class_summary_model().into_model();
             for relation in &mut model.relations {
                 relation.title = value.to_string();
                 relation.relation_title_1 = Some(value.to_string());
                 relation.relation_title_2 = Some(value.to_string());
             }
+            let model = ClassDiagram::new(model, &Default::default());
             render_class_summary_fixture(
                 &model,
                 &AsciiRenderOptions::ascii(),
@@ -3595,12 +3616,14 @@ mod tests {
         assert!(line_break_summary.contains(r#"authored(bytes=10)="left\nright""#));
 
         let endpoint = |value: Option<&str>| {
-            let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+            let mut model =
+                parsed_class_model("classDiagram\nclass A\nclass B\nA --> B").into_model();
             let relation = model
                 .relations
                 .first_mut()
                 .expect("endpoint identity fixture should contain a relation");
             relation.relation_title_1 = value.map(str::to_string);
+            let model = ClassDiagram::new(model, &Default::default());
             render_class_identity_fixture(&model)
         };
         let absent_endpoint = endpoint(None);
@@ -3617,8 +3640,9 @@ mod tests {
         const AUTHORED_REF: &str = "Domain.T";
         const SPOOF: &str = r#"endpointRef(bytes=8)="Domain.T""#;
 
-        let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+        let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B").into_model();
         model.relations[0].relation_title_1 = Some(SPOOF.to_string());
+        let model = ClassDiagram::new(model, &Default::default());
         let options = AsciiRenderOptions::ascii();
         let policy = unbounded_policy();
         let resources = ResourceContext::new(policy);
@@ -3712,20 +3736,20 @@ mod tests {
     #[test]
     fn class_summary_frames_swapped_control_and_literal_escape_endpoint_ids_injectively() {
         let summary = |first_id: &str, second_id: &str| {
-            let mut model = class_summary_model();
+            let mut model = class_summary_model().into_model();
             let mut first = model
                 .classes
                 .shift_remove("Source<&中")
                 .expect("source should exist");
             first.id = first_id.to_string();
-            first.dom_id.clone_from(&first.id);
+
             first.text.clone_from(&first.id);
             let mut second = model
                 .classes
                 .shift_remove("Target<&中")
                 .expect("target should exist");
             second.id = second_id.to_string();
-            second.dom_id.clone_from(&second.id);
+
             second.text.clone_from(&second.id);
             model.classes.insert(first.id.clone(), first);
             model.classes.insert(second.id.clone(), second);
@@ -3741,6 +3765,7 @@ mod tests {
             model.relations[0].title = "self".to_string();
             model.relations[1].title = "ab".to_string();
 
+            let model = ClassDiagram::new(model, &Default::default());
             let rendered = render_class_summary_fixture(
                 &model,
                 &AsciiRenderOptions::ascii(),
@@ -3842,7 +3867,7 @@ mod tests {
 
     #[test]
     fn class_sections_admit_exact_encoded_output_before_deferred_materialization() {
-        let mut model = parsed_class_model("classDiagram\nclass Service");
+        let mut model = parsed_class_model("classDiagram\nclass Service").into_model();
         let class = model
             .classes
             .get_mut("Service")
@@ -3931,7 +3956,7 @@ mod tests {
             "return_type",
             "classifier",
         ] {
-            let mut model = parsed.clone();
+            let mut model = parsed.clone().into_model();
             let member = model
                 .classes
                 .get_mut("Service")
@@ -3947,6 +3972,7 @@ mod tests {
                 _ => unreachable!(),
             }
 
+            let model = ClassDiagram::new(model, &Default::default());
             let exact_policy = AsciiResourcePolicy::default()
                 .with_limit(
                     AsciiResourceLimitId::MaxGraphemeBytes,
@@ -3975,7 +4001,8 @@ mod tests {
 
     #[test]
     fn displayed_member_classifier_is_preflighted_with_the_canonical_text_plan() {
-        let mut model = parsed_class_model("classDiagram\nclass Service {\n  +value*\n}");
+        let mut model =
+            parsed_class_model("classDiagram\nclass Service {\n  +value*\n}").into_model();
         let member = model
             .classes
             .get_mut("Service")
@@ -3984,6 +4011,7 @@ mod tests {
         member.display_text = "A".to_string();
         member.classifier = "\u{301}".to_string();
 
+        let model = ClassDiagram::new(model, &Default::default());
         let exact_policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 3)
             .expect("grapheme resource limit should be valid");
@@ -4007,7 +4035,8 @@ mod tests {
     #[test]
     fn reconstructed_generic_member_admits_layout_work_before_materializing() {
         let mut model =
-            parsed_class_model("classDiagram\nclass Service {\n  #compute(input) Result\n}");
+            parsed_class_model("classDiagram\nclass Service {\n  #compute(input) Result\n}")
+                .into_model();
         let member = model
             .classes
             .get_mut("Service")
@@ -4067,7 +4096,8 @@ mod tests {
     #[test]
     fn reconstructed_member_rejects_cross_field_grapheme_before_materializing() {
         let mut model =
-            parsed_class_model("classDiagram\nclass Service {\n  +compute(input) Result\n}");
+            parsed_class_model("classDiagram\nclass Service {\n  +compute(input) Result\n}")
+                .into_model();
         let member = model
             .classes
             .get_mut("Service")
@@ -4139,8 +4169,15 @@ mod tests {
         let notes = vec![note("note-a", "first"), note("note-b", "second")];
 
         let mut exact = resources_with_layout_work_limit(4);
-        let index = ClassNoteIndex::new(&notes, &mut exact)
-            .expect("two notes should consume two index build work units");
+        let index = ClassNoteIndex::new(
+            notes.iter().map(|note| ClassNoteRenderView {
+                note,
+                id: &note.id,
+                parent: note.parent.as_deref(),
+            }),
+            &mut exact,
+        )
+        .expect("two notes should consume two index build work units");
         assert_eq!(
             index
                 .get("note-a", &mut exact)
@@ -4158,8 +4195,15 @@ mod tests {
         assert_eq!(exact.layout_work_used(), 4);
 
         let mut below = resources_with_layout_work_limit(3);
-        let index = ClassNoteIndex::new(&notes, &mut below)
-            .expect("index build should fit below the full lookup budget");
+        let index = ClassNoteIndex::new(
+            notes.iter().map(|note| ClassNoteRenderView {
+                note,
+                id: &note.id,
+                parent: note.parent.as_deref(),
+            }),
+            &mut below,
+        )
+        .expect("index build should fit below the full lookup budget");
         index
             .get("note-a", &mut below)
             .expect("first lookup should reach the configured budget");

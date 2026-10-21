@@ -33,51 +33,50 @@ pub(super) struct ClassRenderDetails {
 }
 
 pub(super) struct ClassRenderLookups<'a> {
-    pub class_nodes_by_id: FxHashMap<&'a str, &'a ClassSvgNode>,
+    pub class_nodes_by_id: FxHashMap<&'a str, ClassSvgNode<'a>>,
     pub class_color_indices: FxHashMap<&'a str, usize>,
-    pub relations_by_id: FxHashMap<&'a str, &'a ClassSvgRelation>,
+    pub relations_by_id: FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub relation_index_by_id: FxHashMap<&'a str, usize>,
-    pub note_by_id: FxHashMap<&'a str, &'a ClassSvgNote>,
-    pub iface_by_id: FxHashMap<&'a str, &'a ClassSvgInterface>,
+    pub note_by_id: FxHashMap<&'a str, ClassSvgNote<'a>>,
+    pub iface_by_id: FxHashMap<&'a str, ClassSvgInterface<'a>>,
 }
 
 impl<'a> ClassRenderLookups<'a> {
     pub(super) fn new(model: &'a ClassSvgModel) -> Self {
-        let mut class_nodes_by_id: FxHashMap<&str, &ClassSvgNode> = FxHashMap::default();
-        class_nodes_by_id.reserve(model.classes.len());
-        for (id, n) in &model.classes {
-            class_nodes_by_id.insert(id.as_str(), n);
+        let mut class_nodes_by_id: FxHashMap<&str, ClassSvgNode<'_>> = FxHashMap::default();
+        class_nodes_by_id.reserve(model.classes().len());
+        for (id, n) in model.classes() {
+            class_nodes_by_id.insert(id, n);
         }
 
-        let mut relations_by_id: FxHashMap<&str, &ClassSvgRelation> = FxHashMap::default();
-        relations_by_id.reserve(model.relations.len());
-        for r in &model.relations {
-            relations_by_id.insert(r.id.as_str(), r);
+        let mut relations_by_id: FxHashMap<&str, ClassSvgRelation<'_>> = FxHashMap::default();
+        relations_by_id.reserve(model.relations().len());
+        for r in model.relations() {
+            relations_by_id.insert(r.source.id.as_str(), r);
         }
 
         let mut relation_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
-        relation_index_by_id.reserve(model.relations.len());
-        for (idx, r) in model.relations.iter().enumerate() {
-            relation_index_by_id.insert(r.id.as_str(), idx + 1);
+        relation_index_by_id.reserve(model.relations().len());
+        for (idx, r) in model.relations().enumerate() {
+            relation_index_by_id.insert(r.source.id.as_str(), idx + 1);
         }
 
-        let mut note_by_id: FxHashMap<&str, &ClassSvgNote> = FxHashMap::default();
-        note_by_id.reserve(model.notes.len());
-        for n in &model.notes {
-            note_by_id.insert(n.id.as_str(), n);
+        let mut note_by_id: FxHashMap<&str, ClassSvgNote<'_>> = FxHashMap::default();
+        note_by_id.reserve(model.notes().len());
+        for n in model.notes() {
+            note_by_id.insert(n.id, n);
         }
 
-        let mut iface_by_id: FxHashMap<&str, &ClassSvgInterface> = FxHashMap::default();
-        iface_by_id.reserve(model.interfaces.len());
-        for i in &model.interfaces {
-            iface_by_id.insert(i.id.as_str(), i);
+        let mut iface_by_id: FxHashMap<&str, ClassSvgInterface<'_>> = FxHashMap::default();
+        iface_by_id.reserve(model.interfaces().len());
+        for i in model.interfaces() {
+            iface_by_id.insert(i.id, i);
         }
 
         let class_color_indices = model
-            .classes
-            .keys()
+            .classes()
             .enumerate()
-            .map(|(index, id)| (id.as_str(), index))
+            .map(|(index, (id, _))| (id, index))
             .collect();
         Self {
             class_nodes_by_id,

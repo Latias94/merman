@@ -34,7 +34,7 @@ pub(super) struct ClassInterfaceRenderResult {
 
 pub(super) fn render_class_interface_node<O: SvgOutput>(
     state: ClassInterfaceRenderState<'_, O>,
-    iface: &ClassSvgInterface,
+    iface: ClassSvgInterface<'_>,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,

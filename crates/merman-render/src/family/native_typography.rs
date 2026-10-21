@@ -225,7 +225,7 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => {
-            for class in model.classes.values() {
+            for (_, class) in model.classes() {
                 control.checkpoint()?;
                 if let Some(property) = declaration_scan::declarations(
                     class
@@ -240,10 +240,15 @@ fn unsupported_native_model_text_style(
             }
             declaration_scan::style_lists(
                 model
+                    .model()
                     .style_classes
                     .values()
                     .flat_map(|class| [class.styles.as_slice(), class.text_styles.as_slice()])
-                    .chain(model.classes.values().map(|class| class.styles.as_slice())),
+                    .chain(
+                        model
+                            .classes()
+                            .map(|(_, class)| class.node.styles.as_slice()),
+                    ),
                 &control,
             )
         }

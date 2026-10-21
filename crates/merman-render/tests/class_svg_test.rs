@@ -1300,7 +1300,7 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
             "Class detection must follow Mermaid 12's syntax-only detector contract for {source:?}"
         );
         assert_eq!(
-            class_model(&parsed).diagram_type,
+            class_model(&parsed).model().diagram_type,
             parsed.metadata().diagram_type,
             "the typed Class model must preserve the detector-selected diagram id for {source:?}"
         );

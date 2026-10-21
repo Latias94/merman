@@ -240,12 +240,11 @@ fn class_marker_has_transparent_terminal_fill(marker_name: &str) -> bool {
     )
 }
 
-pub(super) fn class_marker_paint_bindings(
-    relations: &[ClassSvgRelation],
+pub(super) fn class_marker_paint_bindings<'a>(
+    relations: impl Iterator<Item = ClassSvgRelation<'a>>,
     include_margin_markers: bool,
 ) -> Vec<crate::class::ClassMarkerPaintBinding> {
     let referenced = relations
-        .iter()
         .flat_map(|relation| {
             [
                 class_marker_name(relation.relation.type1, true),

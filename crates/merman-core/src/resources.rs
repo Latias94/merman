@@ -28,7 +28,7 @@ use crate::diagrams::sequence::SequenceDiagramModel;
 use crate::diagrams::treemap::TreemapDiagramModel;
 #[cfg(feature = "diagram-zenuml")]
 use crate::diagrams::zenuml::{ZenumlDiagramModel, ZenumlStatementKind};
-#[cfg(feature = "diagram-class")]
+#[cfg(all(feature = "diagram-class", feature = "presentation"))]
 use crate::models::class_diagram::ClassDiagram;
 use serde::Serialize;
 use serde::ser::{
@@ -495,7 +495,7 @@ impl InputResourcePolicy {
         Ok(complexity)
     }
 
-    #[cfg(feature = "diagram-class")]
+    #[cfg(all(feature = "diagram-class", feature = "presentation"))]
     pub fn check_class_complexity(
         &self,
         model: &ClassDiagram,
@@ -650,7 +650,12 @@ impl ModelComplexity {
             RenderSemanticModel::Architecture(model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-class")]
             RenderSemanticModel::Class(model) => {
-                ClassComplexity::from_model(model).as_model_complexity()
+                let mut complexity =
+                    ClassComplexity::topology_from_model(model).as_model_complexity();
+                complexity.text_bytes = Self::from_serializable(model.model())
+                    .text_bytes
+                    .saturating_add(model.presentation().retained_bytes());
+                complexity
             }
             #[cfg(feature = "diagram-c4")]
             RenderSemanticModel::C4(model) => Self::from_serializable(model),
@@ -717,6 +722,14 @@ impl ModelComplexity {
             crate::SemanticDiagramModel::Agentflow(ref model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-git-graph")]
             crate::SemanticDiagramModel::GitGraph(ref model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-class")]
+            crate::SemanticDiagramModel::Class(ref model) => {
+                let mut complexity = Self::from_serializable(model);
+                complexity.nesting_depth = complexity
+                    .nesting_depth
+                    .max(class_namespace_depth(&model.namespaces));
+                complexity
+            }
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             crate::SemanticDiagramModel::Flowchart(ref model) => {
                 FlowchartComplexity::from_model(model).as_model_complexity()
@@ -1599,7 +1612,7 @@ impl IshikawaComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-class")]
+#[cfg(all(feature = "diagram-class", feature = "presentation"))]
 pub struct ClassComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1705,13 +1718,12 @@ impl MindmapComplexity {
     }
 }
 
-#[cfg(feature = "diagram-class")]
+#[cfg(all(feature = "diagram-class", feature = "presentation"))]
 impl ClassComplexity {
     pub fn from_model(model: &ClassDiagram) -> Self {
         let class_label_bytes = model
-            .classes
-            .values()
-            .map(|node| {
+            .classes()
+            .map(|(_, node)| {
                 node.id
                     .len()
                     .saturating_add(node.label.len())
@@ -1739,8 +1751,7 @@ impl ClassComplexity {
             })
             .sum::<usize>();
         let relation_label_bytes = model
-            .relations
-            .iter()
+            .relations()
             .map(|rel| {
                 rel.id
                     .len()
@@ -1752,8 +1763,7 @@ impl ClassComplexity {
             })
             .sum::<usize>();
         let note_label_bytes = model
-            .notes
-            .iter()
+            .notes()
             .map(|note| {
                 note.id
                     .len()
@@ -1762,8 +1772,7 @@ impl ClassComplexity {
             })
             .sum::<usize>();
         let interface_label_bytes = model
-            .interfaces
-            .iter()
+            .interfaces()
             .map(|iface| {
                 iface
                     .id
@@ -1773,9 +1782,8 @@ impl ClassComplexity {
             })
             .sum::<usize>();
         let namespace_label_bytes = model
-            .namespaces
-            .values()
-            .map(|namespace| {
+            .namespaces()
+            .map(|(_, namespace)| {
                 namespace
                     .id
                     .len()
@@ -1785,26 +1793,30 @@ impl ClassComplexity {
             .sum::<usize>();
 
         Self {
-            nodes: model
-                .classes
-                .len()
-                .saturating_add(model.notes.len())
-                .saturating_add(model.interfaces.len())
-                .saturating_add(model.namespaces.len()),
-            edges: model.relations.len().saturating_add(
-                model
-                    .notes
-                    .iter()
-                    .filter(|note| note.class_id.is_some())
-                    .count(),
-            ),
-            namespaces: model.namespaces.len(),
             label_bytes: class_label_bytes
                 .saturating_add(relation_label_bytes)
                 .saturating_add(note_label_bytes)
                 .saturating_add(interface_label_bytes)
                 .saturating_add(namespace_label_bytes),
-            namespace_depth: class_namespace_depth(model),
+            ..Self::topology_from_model(model)
+        }
+    }
+
+    fn topology_from_model(model: &ClassDiagram) -> Self {
+        Self {
+            nodes: model
+                .classes()
+                .len()
+                .saturating_add(model.notes().len())
+                .saturating_add(model.interfaces().len())
+                .saturating_add(model.namespaces().len()),
+            edges: model
+                .relations()
+                .len()
+                .saturating_add(model.notes().filter(|note| note.class_id.is_some()).count()),
+            namespaces: model.namespaces().len(),
+            label_bytes: 0,
+            namespace_depth: class_namespace_depth(&model.presentation().namespaces),
         }
     }
 
@@ -2248,18 +2260,18 @@ fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
 }
 
 #[cfg(feature = "diagram-class")]
-fn class_namespace_depth(model: &ClassDiagram) -> usize {
-    if model.namespaces.is_empty() {
+fn class_namespace_depth(
+    namespaces: &indexmap::IndexMap<String, crate::models::class_diagram::Namespace>,
+) -> usize {
+    if namespaces.is_empty() {
         return 0;
     }
-    let indices = model
-        .namespaces
+    let indices = namespaces
         .keys()
         .enumerate()
         .map(|(index, id)| (id.as_str(), index))
         .collect::<std::collections::HashMap<_, _>>();
-    let parents = model
-        .namespaces
+    let parents = namespaces
         .values()
         .map(|namespace| {
             namespace
@@ -2921,6 +2933,70 @@ mod tests {
             .unwrap()
             .check_render_model(&full)
             .unwrap();
+    }
+
+    #[cfg(feature = "diagram-class")]
+    #[test]
+    fn class_semantic_complexity_counts_raw_namespace_depth() {
+        let namespace = (0..20)
+            .map(|index| format!("n{index}"))
+            .collect::<Vec<_>>()
+            .join(".");
+        let source = format!("classDiagram\nnamespace {namespace} {{\nclass Service\n}}\n");
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(&source)
+            .unwrap();
+        let complexity = ModelComplexity::from_semantic_model(&parsed.model);
+        assert_eq!(complexity.nesting_depth, 20);
+        let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(InputResourceLimitId::MaxModelNestingDepth, 19)
+            .unwrap()
+            .check_semantic_model(&parsed.model)
+            .unwrap_err();
+        assert_eq!(error.limit, "max_model_nesting_depth");
+        assert_eq!(error.actual, 20);
+    }
+
+    #[cfg(all(feature = "diagram-class", feature = "presentation"))]
+    #[test]
+    fn class_full_complexity_preserves_projection_and_charges_owned_text_once() {
+        let source = concat!(
+            "%%{init: {\"class\":{\"hierarchicalNamespaces\":false}}}%%\n",
+            "classDiagram\nnamespace A.B {\nclass Service\nnote \"namespace note\"\n}\n",
+            "class note0\nclass interface0\nIService ()-- Service\n",
+        );
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("Class model");
+        };
+        let projected = ClassComplexity::from_model(model);
+        assert_eq!(projected.nodes, 6);
+        assert_eq!(projected.edges, 1);
+        assert_eq!(projected.namespaces, 1);
+        assert_eq!(projected.namespace_depth, 1);
+        let canonical_text = ModelComplexity::from_serializable(model.model()).text_bytes;
+        // The published DOM ordinals, collapsed membership and collision remaps own 194 bytes.
+        assert_eq!(
+            ModelComplexity::from_render_model(parsed.model()).text_bytes,
+            canonical_text + 194
+        );
+        let exact_text = ModelComplexity::from_parsed_render(&parsed).text_bytes;
+        let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        policy
+            .with_limit(InputResourceLimitId::MaxModelTextBytes, exact_text)
+            .unwrap()
+            .check_parsed_render(&parsed)
+            .unwrap();
+        let error = policy
+            .with_limit(InputResourceLimitId::MaxModelTextBytes, exact_text - 1)
+            .unwrap()
+            .check_parsed_render(&parsed)
+            .unwrap_err();
+        assert_eq!(error.limit, "max_model_text_bytes");
+        assert_eq!(error.actual, exact_text);
     }
 
     #[cfg(all(feature = "diagram-xychart", feature = "presentation"))]

@@ -84,6 +84,8 @@ pub enum SemanticDiagramModel {
     Agentflow(crate::diagrams::agentflow::AgentflowDiagramModel),
     #[cfg(feature = "diagram-git-graph")]
     GitGraph(crate::diagrams::git_graph::GitGraphDiagramModel),
+    #[cfg(feature = "diagram-class")]
+    Class(crate::diagrams::class::ClassDiagramModel),
 }
 
 impl SemanticDiagramModel {

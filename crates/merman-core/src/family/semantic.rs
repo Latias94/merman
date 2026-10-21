@@ -1,5 +1,17 @@
 //! Canonical parser callbacks bound by the family catalog.
 
+#[cfg(feature = "diagram-class")]
+pub(super) fn canonical_class(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+    Ok(
+        crate::diagrams::class::parse_class_semantic_model_controlled(code, metadata, control)?
+            .map(crate::SemanticDiagramModel::Class),
+    )
+}
+
 #[cfg(feature = "diagram-git-graph")]
 pub(super) fn canonical_git_graph(
     code: &str,

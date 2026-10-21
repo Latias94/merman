@@ -38,10 +38,10 @@ mod root;
 mod viewbox;
 
 type ClassSvgModel = merman_core::models::class_diagram::ClassDiagram;
-type ClassSvgNode = merman_core::models::class_diagram::ClassNode;
-type ClassSvgRelation = merman_core::models::class_diagram::ClassRelation;
-type ClassSvgNote = merman_core::models::class_diagram::ClassNote;
-type ClassSvgInterface = merman_core::models::class_diagram::ClassInterface;
+type ClassSvgNode<'a> = merman_core::models::class_diagram::ClassNodeRenderView<'a>;
+type ClassSvgRelation<'a> = merman_core::models::class_diagram::ClassRelationRenderView<'a>;
+type ClassSvgNote<'a> = merman_core::models::class_diagram::ClassNoteRenderView<'a>;
+type ClassSvgInterface<'a> = merman_core::models::class_diagram::ClassInterfaceRenderView<'a>;
 
 mod render;
 pub(super) use render::render_class_diagram_svg_model_with_config;

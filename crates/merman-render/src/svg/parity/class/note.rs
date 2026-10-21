@@ -50,7 +50,7 @@ pub(super) struct ClassNoteRenderStats {
 
 pub(super) fn render_class_note_node<O: SvgOutput>(
     state: ClassNoteRenderState<'_, O>,
-    note: &ClassSvgNote,
+    note: ClassSvgNote<'_>,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNoteRenderContext<'_>,

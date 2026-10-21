@@ -180,7 +180,7 @@ fn write_class_color_slot(
 
 pub(super) fn render_class_node_shell_open(
     out: &mut impl SvgOutput,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     position: ClassNodeRenderPosition,
     ctx: &ClassNodeShellContext<'_>,
 ) -> crate::Result<bool> {
@@ -264,7 +264,7 @@ pub(super) fn render_class_node_shell_open(
 
 pub(super) fn render_class_node_basic_container<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNodeBasicContainerContext<'_>,
@@ -440,7 +440,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
 pub(super) fn render_class_html_node_body<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     geometry: ClassNodeBoxGeometry,
     label_plan: Option<&ClassNodeLabelPlan>,
     ctx: &ClassHtmlNodeBodyContext<'_>,
@@ -747,7 +747,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
 pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     geometry: ClassNodeBoxGeometry,
     ctx: &ClassSvgNodeBodyContext<'_>,
 ) -> ClassNodeRenderStats {
