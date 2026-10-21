@@ -521,7 +521,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 mod tests {
     use super::*;
     use crate::environment::RenderEnvironment;

@@ -80,6 +80,39 @@ pub enum SemanticDiagramModel {
     Mindmap(crate::diagrams::mindmap::MindmapDiagramModel),
     #[cfg(feature = "diagram-xychart")]
     XyChart(crate::diagrams::xychart::XyChartDiagramModel),
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow(crate::diagrams::agentflow::AgentflowDiagramModel),
+}
+
+impl SemanticDiagramModel {
+    fn remap_source_positions(
+        &mut self,
+        source: &crate::PreprocessedSource,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        control.checkpoint()?;
+        #[allow(unreachable_patterns)]
+        let facts: &mut [crate::DiagramWarningFact] = match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => {
+                let (line_offset, column_offset) = source.parser_position_offset();
+                model.offset_diagnostic_positions(line_offset, column_offset);
+                &mut model.warning_facts
+            }
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            Self::Flowchart(model) => &mut model.warning_facts,
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => &mut model.warning_facts,
+            _ => &mut [],
+        };
+        for (index, fact) in facts.iter_mut().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            source.remap_warning_fact_spans(fact);
+        }
+        control.checkpoint()
+    }
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -198,9 +231,7 @@ impl SemanticParser {
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        let source = pre.source;
-        let parser_input = source.text();
-        if parser_input.trim_start().starts_with("---") {
+        if pre.code().trim_start().starts_with("---") {
             return Ok(Err(Error::MalformedFrontMatter));
         }
 
@@ -222,27 +253,33 @@ impl SemanticParser {
             .title
             .as_deref()
             .map(|title| crate::sanitize::sanitize_text(title, &semantic_config));
-        let _metadata = SemanticMetadata {
+        let metadata = SemanticMetadata {
             diagram_type: diagram_type.to_string(),
             config,
             semantic_config,
             title,
         };
+        let source = crate::preprocess::select_family_parser_source_controlled(
+            pre.source,
+            pre.with_comments,
+            diagram_type,
+            &metadata.semantic_config,
+            control,
+        )?;
+        let parser_input = source.text();
 
         let Some(parser) = crate::family::canonical_parser(diagram_type) else {
             return Ok(Err(Error::UnsupportedDiagram {
                 diagram_type: diagram_type.to_string(),
             }));
         };
-        let model = match parser(parser_input, &_metadata, control)? {
+        let mut model = match parser(parser_input, &metadata, control)? {
             Ok(model) => model,
-            Err(error) => return Ok(Err(error)),
+            Err(error) => return Ok(Err(source.remap_parse_error(error))),
         };
+        model.remap_source_positions(&source, control)?;
         control.checkpoint()?;
-        Ok(Ok(ParsedSemanticDiagram {
-            metadata: _metadata,
-            model,
-        }))
+        Ok(Ok(ParsedSemanticDiagram { metadata, model }))
     }
 
     fn effective_semantic_config(
@@ -280,6 +317,80 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "diagram-agentflow")]
+    #[test]
+    fn semantic_agentflow_preserves_quoted_comment_lines() {
+        let source = "agentflow-beta\nA[\"One\n%% Two\nThree\"]\n";
+        let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
+        let model = match parsed.model {
+            SemanticDiagramModel::Agentflow(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected Agentflow semantics"),
+        };
+        assert_eq!(
+            model.vertices[0].label.as_deref(),
+            Some("One\n%% Two\nThree")
+        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::Agentflow(full) = full.model() else {
+                panic!("expected full Agentflow model");
+            };
+            assert_eq!(model.vertices[0].label, full.vertices[0].label);
+        }
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    #[test]
+    fn semantic_agentflow_preserves_comment_aware_diagnostic_positions() {
+        let source = "---\r\ntitle: \"\u{4e2d}\u{6587}\u{1f600}\"\r\n---\r\nagentflow-beta\r\n%% comment\r\na[\"\u{4e2d}\u{6587}\u{1f600}\"]; b@{ shape: cloud }\r\n";
+        let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
+        let model = match parsed.model {
+            SemanticDiagramModel::Agentflow(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected Agentflow semantics"),
+        };
+        let position = model.diagnostics[0].position.as_ref().unwrap();
+        assert_eq!((position.start_line, position.start_column), (6, 11));
+        assert_eq!((position.end_line, position.end_column), (6, 28));
+        let span = model.warning_facts[0].span.unwrap();
+        assert_eq!(&source[span.start..span.end], "b@{ shape: cloud }");
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    #[test]
+    fn semantic_source_positions_map_parse_errors_to_original_input() {
+        let source = "---\ntitle: Source\n---\nagentflow-beta\nA ==> B\n";
+        let error = SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a structured Agentflow parse error");
+        };
+        let span = diagnostic.span().expect("exact error span");
+        assert_eq!(&source[span.start..span.end], "A ==> B");
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    #[test]
+    fn semantic_source_positions_map_warnings_to_original_input() {
+        let source = "\u{feff}---\r\ntitle: Source\r\n---\r\nagentflow-beta\r\n A((Circle))\r\n";
+        let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
+        let SemanticDiagramModel::Agentflow(model) = parsed.model else {
+            panic!("expected Agentflow semantics");
+        };
+        let warning = &model.warning_facts[0];
+        let span = warning.span.expect("warning span");
+        assert_eq!(&source[span.start..span.end], "A((Circle))");
+        let position = model.diagnostics[0].position.as_ref().unwrap();
+        assert_eq!((position.start_line, position.start_column), (5, 1));
+    }
+
     #[cfg(feature = "diagram-timeline")]
     #[test]
     fn semantic_timeline_is_available_without_presentation_or_editor_work() {

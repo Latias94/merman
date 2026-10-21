@@ -123,6 +123,43 @@ impl PreprocessedSource {
         self.edit_map.try_map_span(span)
     }
 
+    pub(crate) fn remap_parse_error(&self, error: crate::Error) -> crate::Error {
+        match error {
+            crate::Error::DiagramParse {
+                diagram_type,
+                diagnostic,
+            } => {
+                let diagnostic = match diagnostic.span() {
+                    Some(span) => match self.try_map_span(span) {
+                        Some(remapped) => diagnostic.map_span(|_| remapped),
+                        None => diagnostic.without_span(),
+                    },
+                    None => diagnostic,
+                };
+                crate::Error::DiagramParse {
+                    diagram_type,
+                    diagnostic,
+                }
+            }
+            error => error,
+        }
+    }
+
+    pub(crate) fn remap_warning_fact_spans(&self, fact: &mut crate::DiagramWarningFact) {
+        let source_span = fact.span;
+        let remapped_span = source_span.and_then(|span| self.try_map_span(span));
+        fact.span = remapped_span;
+        fact.fix_span = match (fact.fix_span, source_span, remapped_span) {
+            (Some(fix_span), Some(source_span), Some(remapped_span))
+                if fix_span.start == fix_span.end && fix_span.start == source_span.end =>
+            {
+                Some(SourceSpan::new(remapped_span.end, remapped_span.end))
+            }
+            (Some(fix_span), _, _) => self.try_map_span(fix_span),
+            (None, _, _) => None,
+        };
+    }
+
     pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
         if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
             return None;

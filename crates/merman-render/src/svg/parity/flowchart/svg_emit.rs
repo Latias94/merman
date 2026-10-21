@@ -529,7 +529,7 @@ fn push_flowchart_gradient(
         gradient_stop.as_str()
     );
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 mod integration_tests {
     use super::super::render_input::prepare_flowchart_render_inputs;
     use super::*;

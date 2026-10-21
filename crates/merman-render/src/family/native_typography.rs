@@ -371,7 +371,7 @@ fn unsupported_native_model_text_style(
         RenderSemanticModel::Wardley(_) => Ok(None),
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
-            declaration_scan::style_lists(model.presentation.declaration_styles(), &control)
+            declaration_scan::style_lists(model.authored.declaration_styles(), &control)
         }
         // Another consumer can widen core features without enabling this renderer's handler.
         // Family planning retains responsibility for rejecting an unavailable renderer.

@@ -713,6 +713,8 @@ impl ModelComplexity {
 
     pub fn from_semantic_model(model: &crate::SemanticDiagramModel) -> Self {
         match *model {
+            #[cfg(feature = "diagram-agentflow")]
+            crate::SemanticDiagramModel::Agentflow(ref model) => Self::from_serializable(model),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             crate::SemanticDiagramModel::Flowchart(ref model) => {
                 FlowchartComplexity::from_model(model).as_model_complexity()

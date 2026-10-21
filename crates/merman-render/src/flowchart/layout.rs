@@ -4238,17 +4238,20 @@ fn layout_flowchart_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{
-        CancelReason, Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
-    };
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    #[cfg(feature = "diagram-flowchart")]
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::sync::mpsc;
     use std::time::Duration;
 
     const DEEP_SUBGRAPH_DEPTH: usize = 10_000;
+    #[cfg(feature = "diagram-flowchart")]
     const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
 
+    #[cfg(feature = "diagram-flowchart")]
     struct NonLatticeComputedLengthMeasurer;
 
+    #[cfg(feature = "diagram-flowchart")]
     impl TextMeasurer for NonLatticeComputedLengthMeasurer {
         fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
             crate::text::TextMetrics {
@@ -4263,6 +4266,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_wrapped_labels_fit_rectangle_and_diamond_nodes() {
         let parsed = Engine::new()
@@ -4324,6 +4328,7 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_preserves_operation_computed_length_precision() {
         // Isolate host precision from Mermaid 12's minimum label width.
@@ -4353,6 +4358,7 @@ flowchart TD
         assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
         let parsed = Engine::new()
@@ -4402,6 +4408,7 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_html_nbsp_only_edge_labels_respect_source_provenance() {
         let nbsp = '\u{00A0}';
@@ -4439,6 +4446,7 @@ flowchart TD
         assert!(direct_label.is_none(), "{direct_label:?}");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_operation_meter_honors_below_equal_and_above_boundaries() {
         let parsed = Engine::new()
@@ -4650,6 +4658,7 @@ flowchart TD
         assert_eq!(meter.used(), 0);
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_kernel_arithmetic_overflow_maps_to_the_resource_contract() {
         let parsed = Engine::new()
@@ -4678,6 +4687,7 @@ flowchart TD
         assert_eq!(limit.limit, "max_layout_work_units");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn unknown_shape_is_rejected_instead_of_becoming_a_rectangle() {
         let parsed = Engine::new()
@@ -4708,6 +4718,7 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn shape_validation_scan_is_admitted_before_invalid_model_reporting() {
         let parsed = Engine::new()

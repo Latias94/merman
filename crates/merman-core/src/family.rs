@@ -25,6 +25,7 @@ use std::fmt;
 use std::sync::OnceLock;
 
 #[cfg(any(
+    feature = "diagram-agentflow",
     feature = "diagram-class",
     feature = "diagram-kanban",
     feature = "diagram-mindmap",
@@ -1883,6 +1884,7 @@ const AGENTFLOW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "agentflow",
     catalog_order: 43,
     detector: Some(ordered(43, crate::detect::detector_agentflow)),
+    canonical: semantic::canonical_agentflow,
     semantic: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow)),
     warning_semantic: crate::diagrams::agentflow::parse_agentflow_with_warning_facts,
     combined: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow_json_and_editor_facts)),

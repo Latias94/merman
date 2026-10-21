@@ -106,6 +106,29 @@ impl PreprocessResult {
     }
 }
 
+pub(crate) fn select_family_parser_source_controlled(
+    source: PreprocessedSource,
+    with_comments: Option<PreprocessedSource>,
+    diagram_type: &str,
+    config: &MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<PreprocessedSource> {
+    control.checkpoint()?;
+    if matches!(diagram_type, "agentflow" | "eventmodeling")
+        && let Some(with_comments) = with_comments
+    {
+        let max_text_size = config
+            .as_value()
+            .get("maxTextSize")
+            .and_then(Value::as_u64)
+            .unwrap_or(50_000);
+        if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
+            return prepare_parser_text_controlled(with_comments, control);
+        }
+    }
+    Ok(source)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrontmatterByteSpan {
     pub start: usize,

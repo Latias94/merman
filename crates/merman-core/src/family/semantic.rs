@@ -1,5 +1,19 @@
 //! Canonical parser callbacks bound by the family catalog.
 
+#[cfg(feature = "diagram-agentflow")]
+pub(super) fn canonical_agentflow(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::Result<crate::SemanticDiagramModel>> {
+    Ok(
+        crate::diagrams::agentflow::parse_agentflow_semantic_model_controlled(
+            code, metadata, control,
+        )?
+        .map(crate::SemanticDiagramModel::Agentflow),
+    )
+}
+
 #[cfg(feature = "diagram-kanban")]
 pub(super) fn canonical_kanban(
     code: &str,

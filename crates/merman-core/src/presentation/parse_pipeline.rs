@@ -318,34 +318,11 @@ impl<'a> EditorParseSourceMap<'a> {
     }
 
     fn remap_parse_error(&self, err: Error) -> Error {
-        match err {
-            Error::DiagramParse {
-                diagram_type,
-                diagnostic,
-            } => Error::DiagramParse {
-                diagram_type,
-                diagnostic: self.remap_parse_diagnostic(diagnostic),
-            },
-            err => err,
-        }
-    }
-
-    fn remap_parse_diagnostic(&self, diagnostic: crate::ParseDiagnostic) -> crate::ParseDiagnostic {
-        let Some(span) = diagnostic.span() else {
-            return diagnostic;
-        };
-        match self.try_remap_source_span(span) {
-            Some(remapped) => diagnostic.map_span(|_| remapped),
-            None => diagnostic.without_span(),
-        }
+        self.source.remap_parse_error(err)
     }
 
     fn try_remap_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
         self.source.try_map_span(span)
-    }
-
-    fn try_remap_warning_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        self.try_remap_source_span(span)
     }
 }
 
@@ -1049,19 +1026,7 @@ impl<'a> ParsePipeline<'a> {
         fact: &mut DiagramWarningFact,
         source_map: &EditorParseSourceMap<'_>,
     ) {
-        let source_span = fact.span;
-        let remapped_span =
-            source_span.and_then(|span| source_map.try_remap_warning_source_span(span));
-        fact.span = remapped_span;
-        fact.fix_span = match (fact.fix_span, source_span, remapped_span) {
-            (Some(fix_span), Some(source_span), Some(remapped_span))
-                if fix_span.start == fix_span.end && fix_span.start == source_span.end =>
-            {
-                Some(SourceSpan::new(remapped_span.end, remapped_span.end))
-            }
-            (Some(fix_span), _, _) => source_map.try_remap_warning_source_span(fix_span),
-            (None, _, _) => None,
-        };
+        source_map.source.remap_warning_fact_spans(fact);
     }
 
     fn parse_render_semantic_model(
@@ -1298,7 +1263,7 @@ impl<'a> ParsePipeline<'a> {
 
     fn finish_preprocessed_controlled(
         &self,
-        mut pre: crate::PreprocessResult,
+        pre: crate::PreprocessResult,
         known_type: Option<&str>,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
@@ -1349,22 +1314,16 @@ impl<'a> ParsePipeline<'a> {
         let title = sanitized_title(pre.title.as_deref(), effective_config.as_config());
         control.checkpoint()?;
 
-        if matches!(diagram_type.as_str(), "agentflow" | "eventmodeling")
-            && let Some(with_comments) = pre.with_comments.take()
-        {
-            let max_text_size = effective_config
-                .as_value()
-                .get("maxTextSize")
-                .and_then(Value::as_u64)
-                .unwrap_or(50_000);
-            if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
-                pre.source =
-                    crate::preprocess::prepare_parser_text_controlled(with_comments, control)?;
-            }
-        }
+        let source = crate::preprocess::select_family_parser_source_controlled(
+            pre.source,
+            pre.with_comments,
+            &diagram_type,
+            effective_config.as_config(),
+            control,
+        )?;
 
         Ok(Ok((
-            pre.source,
+            source,
             ParseMetadata {
                 diagram_type,
                 config: source_config,
