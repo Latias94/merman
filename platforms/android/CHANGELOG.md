@@ -15,6 +15,13 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
 - Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
+### Fixed
+
+- Host themes preserve filled C4 boundaries and relationships, Wardley anchors, and ZenUML colors and fonts. Diagram-source Mermaid themes retain their derived palettes under host styling. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Custom artifacts with native font support exclude symbolic faces from implicit font and missing-glyph fallback while retaining explicitly named fonts. [#234](https://github.com/Latias94/merman/pull/234), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Repeated Flowchart `classDef` styles accumulate in source order, and unsupported Unicode characters retain valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Look selectors and Block/Requirement styles reject unsafe values; SVG CSS cleanup removes unterminated strings, comments, and URLs while retaining safe neighboring declarations. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+
 ## [0.9.1] - 2026-10-18
 
 - ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
@@ -100,10 +107,7 @@ This section describes alpha.6, whose matching Android AAR was attached to the G
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
 - Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose independent semantic coverage and primary projection fields,
-  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
-  diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
-  native slices together.
+- ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and native slices together.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
