@@ -106,7 +106,10 @@ impl<'a> FlowchartSemanticContext<'a> {
                         if index % 128 == 0 {
                             self.control.checkpoint()?;
                         }
-                        self.class_defs.insert(id.clone(), c.styles.clone());
+                        self.class_defs
+                            .entry(id.clone())
+                            .or_default()
+                            .extend(c.styles.iter().cloned());
                     }
                 }
                 Stmt::ClassAssign(c) => {

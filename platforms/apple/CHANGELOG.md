@@ -4,11 +4,12 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.9.2] - 2026-10-21
+## [0.9.2] - 2026-10-22
 
-- Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#229](https://github.com/Latias94/merman/issues/229), [#230](https://github.com/Latias94/merman/issues/230), [#231](https://github.com/Latias94/merman/issues/231), [#232](https://github.com/Latias94/merman/issues/232)
-- Native exports skip symbolic and pictorial fonts during implicit font and missing-glyph fallback; explicitly named fonts remain selectable. [#228](https://github.com/Latias94/merman/issues/228)
-- Look selectors and Block/Requirement source CSS are validated before SVG emission.
+- Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Custom artifacts with native font support skip symbolic and pictorial fonts during implicit font and missing-glyph fallback; explicitly named fonts remain selectable. [#235](https://github.com/Latias94/merman/pull/235), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Look selectors and Block/Requirement source CSS are validated before SVG emission. SVG CSS cleanup rejects unterminated strings, comments, and URLs while preserving safe neighboring declarations. [#227](https://github.com/Latias94/merman/pull/227), [#235](https://github.com/Latias94/merman/pull/235), [#237](https://github.com/Latias94/merman/pull/237)
+- Repeated Flowchart `classDef` declarations retain earlier styles, and unsupported Unicode characters preserve valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
 
 The existing Presentation and binding options contracts are unchanged. Review regenerated SVG and exported-image snapshots; see the [workspace changelog](../../CHANGELOG.md) for the complete maintenance release.
 
@@ -133,8 +134,7 @@ This section describes alpha.6, whose matching XCFramework archive and checksum 
 ### Added
 
 - Documented Apple host text-measurement guidance for `MermanReusableEngine` callbacks.
-- Added Swift `MermanTextMeasureCallback`, `MermanTextMeasureRequest`, and
-  `MermanTextMeasureResult` aliases for host text-measurement callbacks.
+- Added Swift `MermanTextMeasureCallback`, `MermanTextMeasureRequest`, and `MermanTextMeasureResult` aliases for host text-measurement callbacks.
 
 ### Changed
 

@@ -76,13 +76,13 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "0da0842ca4e0e4fc164086e6b8c38a86b8395e77976910be5174e092d5b847dd",
+    "cargo_lock_sha256": "2f79b53b0859ca312e47e4b85176edfe9f860d391973b19b8de57d53cb268533",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "caaa99d16f01ecc804757b206a5d4d1eaf3d4f0d6c7e22ac4a27e239ee7a0dd1"
   },
   "dependency_closure": {
     "package_count": 172,
-    "packages_sha256": "7bf6f76ccef8b9df6b4deed2381a45bc9a347afe52475663e5b3590486434c65"
+    "packages_sha256": "8e8189a9431d23d3e28a5b664e7efa4fc85c2629c5f2ddd49dd94e0879962528"
   },
   "licenses": [
     {
@@ -319,7 +319,7 @@
         },
         {
           "name": "syn",
-          "version": "3.0.8",
+          "version": "3.0.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -622,7 +622,7 @@
         },
         {
           "name": "equivalent",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -706,7 +706,7 @@
         },
         {
           "name": "lalrpop-util",
-          "version": "0.23.1",
+          "version": "0.23.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -931,9 +931,9 @@
         },
         {
           "name": "unicode-normalization",
-          "version": "0.1.25",
+          "version": "0.1.26",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
+          "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
           "authors": [
             "Manish Goregaokar <manishsmail@gmail.com>",
             "kwantam <kwantam@gmail.com>"
@@ -1082,7 +1082,7 @@
         },
         {
           "name": "sha2",
-          "version": "0.11.0",
+          "version": "0.11.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1627,7 +1627,7 @@
         },
         {
           "name": "ratex-font",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1635,7 +1635,7 @@
         },
         {
           "name": "ratex-font-loader",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1643,7 +1643,7 @@
         },
         {
           "name": "ratex-katex-fonts",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1651,7 +1651,7 @@
         },
         {
           "name": "ratex-layout",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1659,7 +1659,7 @@
         },
         {
           "name": "ratex-lexer",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1667,7 +1667,7 @@
         },
         {
           "name": "ratex-parser",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1675,7 +1675,7 @@
         },
         {
           "name": "ratex-svg",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1683,7 +1683,7 @@
         },
         {
           "name": "ratex-types",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1691,7 +1691,7 @@
         },
         {
           "name": "ratex-unicode-font",
-          "version": "0.1.14",
+          "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1726,7 +1726,7 @@
       "packages": [
         {
           "name": "json5",
-          "version": "1.3.1",
+          "version": "1.3.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -2114,6 +2114,17 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/unicode-ident"
+        },
+        {
+          "name": "unicode-normalization",
+          "version": "0.1.26",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-normalization"
         }
       ]
     },

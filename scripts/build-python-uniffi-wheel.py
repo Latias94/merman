@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from email.parser import Parser
+import json
 import os
 import shutil
 import subprocess
@@ -48,7 +49,20 @@ PYTHON_STAGING_IGNORE = shutil.ignore_patterns(
 )
 
 
-def production_cdylib_path(recipe: CargoArtifactRecipe, target: str) -> Path:
+def cargo_target_directory() -> Path:
+    completed = subprocess.run(
+        ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return Path(json.loads(completed.stdout)["target_directory"])
+
+
+def production_cdylib_path(
+    recipe: CargoArtifactRecipe, target: str, target_directory: Path
+) -> Path:
     library_stem = recipe.target_name.replace("-", "_")
     if "windows" in target:
         filename = f"{library_stem}.dll"
@@ -56,17 +70,17 @@ def production_cdylib_path(recipe: CargoArtifactRecipe, target: str) -> Path:
         filename = f"lib{library_stem}.dylib"
     else:
         filename = f"lib{library_stem}.so"
-    return REPO_ROOT / "target" / target / recipe.cargo_profile / filename
+    return target_directory / target / recipe.cargo_profile / filename
 
 
 def production_metadata_library_path(
     recipe: CargoArtifactRecipe,
     target: str,
+    target_directory: Path,
 ) -> Path:
     library_stem = recipe.target_name.replace("-", "_")
     return (
-        REPO_ROOT
-        / "target"
+        target_directory
         / target
         / recipe.cargo_profile
         / f"lib{library_stem}.rlib"
@@ -312,13 +326,14 @@ def main() -> int:
     validate_python_native_recipe(recipe)
     target = select_python_wheel_target(recipe)
     run(cargo_build_args(recipe, locked=True, target=target))
-    metadata_library = production_metadata_library_path(recipe, target)
+    target_directory = cargo_target_directory()
+    metadata_library = production_metadata_library_path(recipe, target, target_directory)
     if not metadata_library.is_file():
         raise RuntimeError(
             "expected production UniFFI metadata library not found: "
             f"{metadata_library}"
         )
-    cdylib = production_cdylib_path(recipe, target)
+    cdylib = production_cdylib_path(recipe, target, target_directory)
     if not cdylib.is_file():
         raise RuntimeError(f"expected production UniFFI library not found: {cdylib}")
     with staged_python_package(package_source) as package_dir:

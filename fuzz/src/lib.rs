@@ -150,6 +150,9 @@ fn is_event_handler_attribute(name: &str) -> bool {
 }
 
 #[cfg(test)]
+mod tree_sitter_edits;
+
+#[cfg(test)]
 mod tests {
     use super::assert_resvg_safe_svg;
 
