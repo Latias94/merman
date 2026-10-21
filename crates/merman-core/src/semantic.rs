@@ -660,9 +660,46 @@ mod tests {
             recovery.recovered_incomplete_directive(),
             rich.recovered_incomplete_directive()
         );
+        let outcome_fields = |outcome: &SemanticParseOutcome| match outcome {
+            #[cfg(feature = "diagram-state")]
+            SemanticParseOutcome::Parsed(SemanticDiagramModel::State(model)) => {
+                let crate::diagrams::state::StateDiagramModel {
+                    document,
+                    direction,
+                    acc_title,
+                    acc_descr,
+                    nodes,
+                    edges,
+                    relations,
+                    links,
+                    states,
+                    style_classes,
+                } = model;
+                // HashMap iteration is not part of State meaning. Preserve every field and
+                // every ordered sequence while comparing these two maps by key.
+                let links = links.iter().collect::<std::collections::BTreeMap<_, _>>();
+                let states = states.iter().collect::<std::collections::BTreeMap<_, _>>();
+                format!(
+                    "State{:?}",
+                    (
+                        document,
+                        direction,
+                        acc_title,
+                        acc_descr,
+                        nodes,
+                        edges,
+                        relations,
+                        links,
+                        states,
+                        style_classes,
+                    )
+                )
+            }
+            _ => format!("{outcome:?}"),
+        };
         assert_eq!(
-            format!("{:?}", recovery.outcome()),
-            format!("{:?}", rich.outcome()),
+            outcome_fields(recovery.outcome()),
+            outcome_fields(rich.outcome()),
             "{source}"
         );
         let crate::ParsedEditorFacts::Available(rich_facts) = rich.editor_facts() else {
