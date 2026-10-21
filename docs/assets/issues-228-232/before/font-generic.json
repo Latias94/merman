@@ -1,0 +1,12 @@
+{
+  "family": "serif",
+  "text": "Hello serif / manage call",
+  "font_fixtures": [
+    "MermanSymbolicTest.ttf",
+    "Cousine-Regular.ttf"
+  ],
+  "painted_faces": [
+    "MermanSymbolicTest"
+  ],
+  "path": "NativeFontContext::apply_to_usvg_options -> usvg -> resvg"
+}
