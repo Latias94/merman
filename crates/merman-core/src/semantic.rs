@@ -25,6 +25,8 @@ pub enum SemanticDiagramModel {
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
     #[cfg(feature = "diagram-cynefin")]
     Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
+    #[cfg(feature = "diagram-info")]
+    Info(crate::diagrams::info::InfoDiagramModel),
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -36,7 +38,7 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart, Swimlane, Sequence, and Cynefin. Other
+/// The semantic facade currently handles Flowchart, Swimlane, Sequence, Cynefin, and Info. Other
 /// enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
@@ -244,6 +246,23 @@ impl SemanticParser {
             }));
         }
 
+        #[cfg(feature = "diagram-info")]
+        if diagram_type == "info" {
+            let model = match crate::diagrams::info::parse_info_semantic_model_controlled(
+                parser_input,
+                diagram_type,
+                control,
+            )? {
+                Ok(model) => model,
+                Err(error) => return Ok(Err(error)),
+            };
+            control.checkpoint()?;
+            return Ok(Ok(ParsedSemanticDiagram {
+                metadata: _metadata,
+                model: SemanticDiagramModel::Info(model),
+            }));
+        }
+
         Ok(Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }))
@@ -307,7 +326,11 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(any(feature = "diagram-cynefin", feature = "diagram-flowchart"))]
+    #[cfg(any(
+        feature = "diagram-cynefin",
+        feature = "diagram-flowchart",
+        feature = "diagram-info"
+    ))]
     use serde_json::json;
     #[cfg(feature = "diagram-flowchart")]
     use serde_json::to_value;
@@ -376,6 +399,62 @@ mod tests {
             full.is_ok(),
             "Cynefin typed-model construction should not resolve theme variables: {full:?}"
         );
+    }
+
+    #[cfg(feature = "diagram-info")]
+    #[test]
+    fn semantic_info_matches_full_typed_model_without_editor_or_compat_state() {
+        crate::editor::test_work::reset();
+        let source = "info\nshowInfo\ntitle Version\n";
+        let parsed = SemanticParser::new()
+            .parse_diagram_with_type_sync("info", source)
+            .expect("semantic Info parse");
+        assert_eq!(parsed.metadata.diagram_type, "info");
+        let semantic_model = match parsed.model {
+            SemanticDiagramModel::Info(model) => model,
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-sequence",
+                feature = "diagram-cynefin"
+            ))]
+            _ => panic!("expected semantic Info model"),
+        };
+        assert!(semantic_model.show_info);
+        assert_eq!(
+            serde_json::to_value(&semantic_model).unwrap(),
+            json!({"showInfo": true})
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        let full = crate::Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "info",
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .expect("full parser")
+            .expect("Info result");
+        let crate::diagram::RenderSemanticModel::Info(full_model) = full.model() else {
+            panic!("expected full Info model");
+        };
+        assert_eq!(semantic_model.show_info, full_model.show_info);
+        crate::editor::test_work::reset();
+    }
+
+    #[cfg(all(
+        feature = "diagram-info",
+        not(feature = "diagram-flowchart"),
+        not(feature = "diagram-swimlane"),
+        not(feature = "diagram-sequence"),
+        not(feature = "diagram-cynefin")
+    ))]
+    #[test]
+    fn semantic_info_is_available_without_other_diagram_features() {
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("info\nshowInfo")
+            .expect("Info-only semantic parse");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Info(_)));
     }
 
     #[cfg(all(feature = "diagram-sequence", feature = "diagram-flowchart"))]
@@ -461,7 +540,12 @@ mod tests {
             .expect("semantic parse");
         match parsed.model {
             SemanticDiagramModel::Sequence(model) => assert!(model.actors["Alice"].wrap),
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-cynefin",
+                feature = "diagram-info"
+            ))]
             _ => panic!("expected Sequence model"),
         }
     }
@@ -571,6 +655,8 @@ mod tests {
             SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-cynefin")]
             SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-info")]
+            SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
         };
         let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
             panic!("expected full Flowchart model");
@@ -596,6 +682,8 @@ mod tests {
             SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-cynefin")]
             SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-info")]
+            SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
         };
         let inner = model
             .subgraphs

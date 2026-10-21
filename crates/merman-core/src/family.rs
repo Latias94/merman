@@ -23,6 +23,7 @@ use std::sync::OnceLock;
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-er",
+    feature = "diagram-info",
     feature = "diagram-pie",
     feature = "diagram-sequence",
     feature = "diagram-state"
