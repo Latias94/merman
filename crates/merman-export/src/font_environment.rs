@@ -334,6 +334,7 @@ fn system_font_resolver(
 ) -> usvg::FontResolver<'static> {
     let select_fontdb = Arc::clone(&fontdb);
     let select_recorder = Arc::clone(&recorder);
+    let fallback_selection = Arc::clone(&selection);
 
     usvg::FontResolver {
         select_font: Box::new(move |font, combined_db| {
@@ -354,20 +355,7 @@ fn system_font_resolver(
             None
         }),
         select_fallback: Box::new(move |character, excluded, combined_db| {
-            let base_face = excluded.first().and_then(|id| combined_db.face(*id));
-            let selected = fontdb.faces().find_map(|face| {
-                if excluded.contains(&face.id) {
-                    return None;
-                }
-                if let Some(base) = base_face
-                    && base.style != face.style
-                    && base.weight != face.weight
-                    && base.stretch != face.stretch
-                {
-                    return None;
-                }
-                face_has_char(&fontdb, face.id, character).then_some(face.id)
-            });
+            let selected = fallback_selection.glyph_fallback(character, excluded, combined_db);
             if selected.is_some() {
                 recorder.glyph_fallback_used.store(true, Ordering::Relaxed);
             } else {
@@ -378,17 +366,6 @@ fn system_font_resolver(
             selected
         }),
     }
-}
-
-fn face_has_char(database: &usvg::fontdb::Database, id: usvg::fontdb::ID, character: char) -> bool {
-    database
-        .with_face_data(id, |data, face_index| {
-            ttf_parser::Face::parse(data, face_index)
-                .ok()
-                .and_then(|face| face.glyph_index(character))
-                .is_some()
-        })
-        .unwrap_or(false)
 }
 
 fn shared_system_fonts() -> &'static (Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>) {
@@ -511,6 +488,64 @@ mod tests {
                 assert!(
                     glyphs.iter().all(|glyph| glyph.font == expected),
                     "family {family}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn system_export_glyph_fallback_filters_symbols_and_reports_missing_coverage() {
+        for fixture in [
+            include_bytes!("../tests/fonts/MermanSymbolicTest.ttf").as_slice(),
+            include_bytes!("../tests/fonts/MermanPictorialTest.ttf").as_slice(),
+        ] {
+            for include_text_fallback in [false, true] {
+                let mut database = usvg::fontdb::Database::new();
+                database.load_font_data(
+                    include_bytes!("../tests/fonts/NotoSans-Latin-subset.ttf").to_vec(),
+                );
+                database.load_font_data(fixture.to_vec());
+                if include_text_fallback {
+                    database.load_font_data(
+                        include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec(),
+                    );
+                }
+                let selection = Arc::new(FontSelectionPolicy::from_database(&database));
+                let database = Arc::new(database);
+                let recorder = Arc::new(FontResolutionRecorder::default());
+                let options = usvg::Options {
+                    fontdb: Arc::clone(&database),
+                    font_resolver: system_font_resolver(database, selection, Arc::clone(&recorder)),
+                    ..Default::default()
+                };
+                let tree = usvg::Tree::from_str(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="Noto Sans">Aam</text></svg>"#,
+                    &options,
+                ).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("partial text must still be painted");
+                };
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                let glyphs: Vec<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .collect();
+                assert!(!glyphs.is_empty());
+                assert!(glyphs.iter().all(|glyph| {
+                    tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
+                }));
+                assert_eq!(
+                    recorder.glyph_fallback_used.load(Ordering::Relaxed),
+                    include_text_fallback
+                );
+                assert_eq!(
+                    recorder.unresolved_glyph_fallback.load(Ordering::Relaxed),
+                    !include_text_fallback
                 );
             }
         }

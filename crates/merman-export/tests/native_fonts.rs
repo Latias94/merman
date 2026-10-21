@@ -487,6 +487,40 @@ fn implicit_fonts_reject_symbolic_and_pictorial_faces_in_either_source_order() {
 }
 
 #[test]
+fn glyph_fallback_rejects_symbolic_and_pictorial_faces() {
+    for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+        for include_text_fallback in [false, true] {
+            let mut fonts = NativeFontOptions::default()
+                .with_font_file(font("NotoSans-Latin-subset.ttf"))
+                .with_font_file(font(fixture));
+            if include_text_fallback {
+                fonts = fonts.with_font_file(font("Cousine-Regular.ttf"));
+            }
+            let context = fonts.load(&OperationControl::new()).unwrap();
+            for family in ["Noto Sans", "sans-serif"] {
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                assert_eq!(
+                    painted_families(&context, family, "Aam"),
+                    BTreeSet::from([expected.to_owned()]),
+                    "{fixture}, include_text_fallback={include_text_fallback}, family={family}"
+                );
+                let mut text_style = style("400", "normal");
+                text_style.font_family = Some(family.to_owned());
+                assert_eq!(
+                    measure(&context, "Aam", &text_style).unwrap().is_some(),
+                    include_text_fallback
+                );
+            }
+            context.check().unwrap();
+        }
+    }
+}
+
+#[test]
 fn named_symbolic_fonts_remain_available_without_an_implicit_text_face() {
     for (fixture, family) in [
         ("MermanSymbolicTest.ttf", "Merman Symbolic Test"),

@@ -212,6 +212,9 @@ pub(super) fn resolver(
                         let face = database.face(id).cloned().ok_or_else(|| {
                             NativeFontError::Measurement("missing materialized fallback".to_owned())
                         })?;
+                        if !super::super::font_selection::allows_implicit_binary_face(&face) {
+                            return Ok(None);
+                        }
                         let candidate_id = probe.push_face_info(face);
                         let selected = (usvg::FontResolver::default_fallback_selector())(
                             character,

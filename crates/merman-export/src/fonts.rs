@@ -593,6 +593,7 @@ fn native_export_font_resolver(
 ) -> usvg::FontResolver<'static> {
     let select_observer = observer.clone();
     let fallback_observer = observer.clone();
+    let fallback_selection = Arc::clone(&selection);
     usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
             if let Some(id) = selection.requested(font, fontdb.as_ref()) {
@@ -607,8 +608,7 @@ fn native_export_font_resolver(
             selected
         }),
         select_fallback: Box::new(move |character, excluded, fontdb| {
-            let selected =
-                (usvg::FontResolver::default_fallback_selector())(character, excluded, fontdb);
+            let selected = fallback_selection.glyph_fallback(character, excluded, fontdb);
             if selected.is_some() {
                 fallback_observer.mark_glyph_fallback();
             } else {
@@ -1290,6 +1290,49 @@ mod tests {
             NativeFontOptions::default().load(&OperationControl::new()),
             Err(NativeFontError::EmptyFontSet)
         ));
+    }
+
+    #[test]
+    fn native_export_glyph_fallback_filters_symbols_and_records_the_outcome() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+            for include_text_fallback in [false, true] {
+                let mut fonts = NativeFontOptions::default()
+                    .with_font_file(root.join("NotoSans-Latin-subset.ttf"))
+                    .with_font_file(root.join(fixture));
+                if include_text_fallback {
+                    fonts = fonts.with_font_file(root.join("Cousine-Regular.ttf"));
+                }
+                let control = OperationControl::new();
+                let context = fonts.load(&control).unwrap();
+                let mut options = usvg::Options::default();
+                let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+                let tree = usvg::Tree::from_str(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="Noto Sans">Aam</text></svg>"#,
+                    &options,
+                ).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("partial text must still be painted");
+                };
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                let glyphs: Vec<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .collect();
+                assert!(!glyphs.is_empty());
+                assert!(glyphs.iter().all(|glyph| {
+                    tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
+                }));
+                assert_eq!(observer.glyph_fallback_used(), include_text_fallback);
+                assert_eq!(observer.unresolved_glyph_fallback(), !include_text_fallback);
+                context.check().unwrap();
+            }
+        }
     }
 
     #[test]
