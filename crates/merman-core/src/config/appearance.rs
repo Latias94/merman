@@ -114,11 +114,9 @@ impl<'a> AppearanceDecision<'a> {
     }
 
     pub(crate) fn apply_to(&self, effective: &mut MermaidConfig) {
-        effective.set_external_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
-            matches!(
-                winner.origin,
-                AppearanceOrigin::Source | AppearanceOrigin::Initialize
-            ) && winner.value.as_str().is_some_and(|name| name != "null")
+        effective.set_source_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
+            matches!(winner.origin, AppearanceOrigin::Source)
+                && winner.value.as_str().is_some_and(|name| name != "null")
         }));
         for (key, winner) in APPEARANCE_KEYS.into_iter().zip(&self.winners) {
             let Some(winner) = winner else {
@@ -195,13 +193,13 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn authored_palette_owns_paint_without_claiming_typography_or_geometry() {
+    fn source_selected_palette_owns_paint_without_claiming_typography_or_geometry() {
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
         let empty = MermaidConfig::empty_object();
         for (source, initialize, compatibility, expected) in [
             (json!({"theme": "base"}), json!({}), json!({}), true),
             (json!({"theme": "default"}), json!({}), json!({}), true),
-            (json!({}), json!({"theme": "forest"}), json!({}), true),
+            (json!({}), json!({"theme": "forest"}), json!({}), false),
             (json!({}), json!({}), json!({"theme": "dark"}), false),
             (json!({}), json!({}), json!({}), false),
             (json!({"theme": "null"}), json!({}), json!({}), false),

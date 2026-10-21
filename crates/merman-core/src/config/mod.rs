@@ -90,7 +90,7 @@ pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
 pub struct MermaidConfig {
     value: Arc<Value>,
     theme_compatibility: Option<ThemeCompatibilityState>,
-    external_theme_palette: bool,
+    source_theme_palette: bool,
     explicit_config_paths: Arc<BTreeSet<Arc<str>>>,
     mutation_paths: Arc<BTreeMap<Arc<str>, MutationStamp>>,
     mutation_revision: u64,
@@ -457,7 +457,7 @@ impl ThemeParseBinding {
         MermaidConfig {
             value: self.compatibility_config,
             theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
-            external_theme_palette: false,
+            source_theme_palette: false,
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
@@ -795,7 +795,7 @@ impl MermaidConfig {
         Self {
             value: Arc::new(value),
             theme_compatibility: None,
-            external_theme_palette: false,
+            source_theme_palette: false,
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
@@ -1031,13 +1031,13 @@ impl MermaidConfig {
     /// Typography and geometry continue to use their property-specific input ownership.
     pub(crate) fn config_paint_overrides_typed_default(&self, dotted_path: &str) -> bool {
         self.config_path_overrides_typed_default(dotted_path)
-            || (self.external_theme_palette
+            || (self.source_theme_palette
                 && dotted_path.starts_with("themeVariables.")
                 && config_value_at(self.as_value(), dotted_path).is_some())
     }
 
-    pub(crate) fn set_external_theme_palette(&mut self, external: bool) {
-        self.external_theme_palette = external;
+    pub(crate) fn set_source_theme_palette(&mut self, source_selected: bool) {
+        self.source_theme_palette = source_selected;
     }
 
     pub(crate) fn theme_variable_has_calculation_owner(&self, variable: &str) -> bool {

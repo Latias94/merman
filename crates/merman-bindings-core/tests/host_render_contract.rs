@@ -204,6 +204,72 @@ fn explicit_fill(node: roxmltree::Node<'_, '_>) -> String {
 }
 
 #[test]
+fn typed_host_styles_override_site_theme_palettes_and_preserve_source_styles() {
+    let source = "classDiagram\nclass Account\nclass Owned\nAccount --> Owned : link\nstyle Owned fill:#334455,stroke:#778899,stroke-width:4px\n";
+    for pipeline in ["parity", "resvg-safe"] {
+        let opts = json!({
+            "theme": {"spec": {"styles": [{
+                "kind": "rule", "target": "node", "family": "class",
+                "style": {"fill": "#22354d", "stroke": {"paint": "#fb7185"}}
+            }]}},
+            "site_config": {"theme": "dark", "htmlLabels": false},
+            "svg": {"diagram_id": ID, "pipeline": pipeline}
+        });
+        let svg = render(source, &opts);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (label, fill, stroke) in [
+            ("Account", "#22354d", "#fb7185"),
+            ("Owned", "#334455", "#778899"),
+        ] {
+            let group = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-classId-{label}-")))
+                })
+                .unwrap();
+            let shapes = group
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path")
+                        && node
+                            .parent()
+                            .is_some_and(|parent| has_class(parent, "outer-path"))
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                shapes
+                    .iter()
+                    .any(|shape| shape.attribute("fill") == Some(fill)),
+                "{pipeline}: {label} fill"
+            );
+            assert!(
+                shapes
+                    .iter()
+                    .any(|shape| shape.attribute("stroke") == Some(stroke)),
+                "{pipeline}: {label} stroke"
+            );
+        }
+    }
+}
+
+#[test]
+fn editor_dark_state_note_text_overrides_site_default_palette() {
+    let source = "stateDiagram-v2\n  A\n  note right of A : Terminal note";
+    for pipeline in ["parity", "resvg-safe"] {
+        let mut opts = preset_options(Some("editor-dark"), pipeline);
+        opts["site_config"] = json!({"theme": "default", "htmlLabels": false});
+        let svg = render(source, &opts);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            explicit_fill(text_labeled(&document, "Terminal note")),
+            "#fef3c7",
+            "{pipeline}"
+        );
+    }
+}
+
+#[test]
 fn bindings_apply_explicit_light_and_dark_configuration_to_reported_paint_surfaces() {
     for dark in [false, true] {
         let text = if dark { "#dfe1e5" } else { "#1f2937" };

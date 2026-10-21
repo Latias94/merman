@@ -8,7 +8,7 @@ use super::{
 };
 
 impl MermaidConfig {
-    /// Freezes surviving raw inputs and externally selected palette authority for final paint.
+    /// Freezes surviving raw inputs and source-selected palette authority for final paint.
     pub(crate) fn freeze_family_paint_inputs(
         &mut self,
         family: &str,
@@ -44,7 +44,7 @@ impl MermaidConfig {
         let mut owned = 0;
         for (index, path) in paths.iter().enumerate() {
             control.checkpoint()?;
-            if (self.external_theme_palette
+            if (self.source_theme_palette
                 && super::config_value_at(self.as_value(), path).is_some())
                 || detector_changes.is_some_and(|changes| {
                     changes
@@ -210,7 +210,7 @@ mod tests {
             "themeVariables.textColor",
             serde_json::json!("#123456"),
         );
-        config.set_external_theme_palette(true);
+        config.set_source_theme_palette(true);
         config
             .freeze_family_paint_inputs("er", &empty, &empty, None, &OperationControl::new())
             .unwrap();
