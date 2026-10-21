@@ -10,13 +10,13 @@ Download and open [index.html](index.html) locally for the self-contained compar
 
 ## Reproduce the captures
 
-From the repository root, use the matching checkout's comparison manifest and the fixed font fixtures:
+From the repository root, use the matching checkout's comparison manifest and the fixed font fixtures; the output directory can be any ignored or temporary path:
 
 ```text
 cargo run --locked --offline --manifest-path docs/assets/issues-228-232/Cargo.toml -- main docs/assets/issues-228-232/inputs target/issue-228-232-capture crates/merman-export/tests/fonts
 ```
 
-Use `maintenance` in place of `main` in the maintenance checkout. `capture.rs` calls the public binding SVG/PNG API for diagrams and the public native font context for font probes. Dependencies use relative paths to this checkout, so the same manifest works on either branch. The font fixtures, licenses and derivation notes live in `crates/merman-export/tests/fonts/` and `crates/merman-render/tests/fixtures/fonts/`.
+Use `maintenance` in place of `main` in the maintenance checkout. `capture.rs` calls the public binding SVG/PNG API for diagrams and the public native font context for font probes. Dependencies use relative paths to this checkout, so the same manifest works on either branch. The font fixtures, licenses and derivation notes live in `crates/merman-export/tests/fonts/`.
 
 The font panels intentionally constrain the font database. Generic fallback loads the Symbol fixture before the complete Cousine text fixture; glyph fallback loads Noto Sans (a partial subset), Symbol, then Cousine. The selected painting faces are recorded in each font JSON. This reproduces both resolver failures with controlled fixtures on Windows; it does not claim a Linux Fontconfig integration run.
 
