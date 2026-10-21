@@ -287,18 +287,22 @@ those repeated predicates while retaining the typed projection, XML boundary, by
 resource limits and cancellation behavior. Raw test identifiers continue to use the adapter in
 the private writer tests.
 
-A fresh preregistered diagnostic compared `4657e6017` with `b18c436a2` using four end-to-end SVG
+A fresh diagnostic compared `4657e6017` with `b18c436a2` using four end-to-end SVG
 fixtures and four balanced AB/BA pairs per fixture (32 timed calls). ZenUML moved from 24.02 us to
 22.79 us, with paired bounds of -4.19% to -6.06% and -1.008 to -1.452 us. Packet, Kanban and
-Flowchart controls stayed within noise. All four SVG byte hashes, element counts and input hashes
-matched exactly; both physical benchmark executables were frozen and the run had no contract
-errors. The reduction is below the registered 10% formal admission screen, so it is retained as a
+Flowchart control diagnostic bounds span zero; this is not calibrated non-regression admission.
+All four SVG byte hashes, element counts and input hashes matched exactly; both physical benchmark
+executables were frozen and the run had no contract errors. The reduction is below the 10% relative
+materiality screen, so it is retained as a
 low-risk source cleanup without changing the v0.9.0 classification or claiming full-gap recovery.
 
 The [ZenUML normalization archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json)
-retains the registration and compact stock report. The next investigation should target the
-remaining ZenUML completion/layout cost rather than adding another selector cache or generalized
-normalization layer.
+retains the compact stock report, not a separate registration. The
+[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) records the corrected
+commit and mean fields, unknown registration chronology, and actual 50 us tool threshold versus
+the 1 us advisory prose. This diagnostic does not establish formal latency admission.
+The next investigation should target the remaining ZenUML completion/layout cost rather than
+adding another selector cache or generalized normalization layer.
 
 ## ZenUML default CSS: retain the static fast path
 
@@ -310,13 +314,17 @@ custom CSS encoding, byte admission, cancellation and terminal evidence remain u
 
 A fresh diagnostic compared `ff4c78c3` with `ef0b8a85` over the same four fixtures and 32 timed
 calls. ZenUML moved from 23.13 us to 22.33 us, with paired bounds of -2.11% to -4.75% and
--0.486 to -1.111 us. Packet, Kanban and Flowchart stayed within noise; all SVG byte hashes,
-element counts and input hashes matched. The frozen benchmark executable grew by 128 bytes. This
-is a low-risk default-path cleanup below the 10% formal screen, retained without changing the
-v0.9.0 classification.
+-0.486 to -1.111 us. Packet, Kanban and Flowchart control diagnostic bounds span zero; all SVG
+hashes, element counts and input hashes matched. The frozen benchmark executable grew by 128 bytes.
+This is a low-risk default-path cleanup below the 10% relative materiality screen, retained without
+changing the v0.9.0 classification.
 
 The [default CSS fast-path archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json)
-retains the registration, stock report, identity checks and size comparison.
+retains the stock report with SVG identity checks and executable sizes, not a separate registration
+or rich-report/error comparison. The
+[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) also applies here.
+Neither diagnostic certifies formal improvement or control non-regression.
+The runs use different baselines and measurement epochs; their gains must not be added.
 
 ## Revised implementation priorities
 

@@ -1,14 +1,17 @@
 {
-  "created_at_utc": "2026-10-21T00:00:00+00:00",
+  "created_at_utc": null,
+  "original_recorded_created_at_utc": "2026-10-21T00:00:00+00:00",
+  "correction_notice": "../zenuml-diagnostic-corrections-2026-10-21.md",
+  "preregistration_timing_verified": false,
   "base_revision": "4657e6017507b965026e9f35182f375dc418d855",
-  "candidate_revision": "b18c436a2b9d0fcb39a3a8f548f88cc2b404a0e7",
+  "candidate_revision": "b18c436a20e43ac2c8672592322b254270eefa59",
   "fixtures": 4,
   "pairs_per_fixture": 4,
   "timed_calls": 32,
   "decision": "keep low-risk redundant-normalization removal; no formal latency admission",
   "zenuml_result": {
-    "base_median_ns": 24020.0,
-    "candidate_median_ns": 22790.0,
+    "base_mean_ns": 24018.0,
+    "candidate_mean_ns": 22785.25,
     "paired_relative_bounds": [
       -0.0606,
       -0.0419
@@ -19,10 +22,12 @@
     ]
   },
   "controls": {
-    "packet": "within noise",
-    "kanban": "within noise",
-    "flowchart": "within noise"
+    "packet": "diagnostic bounds span zero",
+    "kanban": "diagnostic bounds span zero",
+    "flowchart": "diagnostic bounds span zero"
   },
+  "configured_absolute_threshold_ns": 50000.0,
+  "advisory_prose_absolute_screen_ns": 1000.0,
   "compressed_sha256": "d607aa12f7d41ba7fef62e7efc3663b7c8c626fa1ee9b02787e271055b980ed0",
   "uncompressed_sha256": "f7353dc7001e31451de2f9b0314b340a71b67e5e9f85587b5ddaff294d4b0e3c",
   "compressed_bytes": 67417,

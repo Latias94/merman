@@ -1345,16 +1345,21 @@ Use calibrated confirmation for subsequent latency claims; see the
 The October 21 ZenUML selector-owner cleanup forwards the already normalized `SvgDiagramId`
 into the stylesheet writer instead of repeating the selector eligibility scan for its 35 CSS
 occurrences. Four balanced public E2E controls preserve exact SVG identities and show a 4.19% to
-6.06% ZenUML reduction, about 1.0 to 1.45 us, with no control regression. It is retained as a
-safe local cleanup below the 10% formal latency gate; it does not change the v0.9.0 classification.
+6.06% ZenUML reduction, about 1.0 to 1.45 us. Control diagnostic bounds span zero, without
+calibrated non-regression admission. It is retained as a safe local cleanup below the 10% relative
+materiality screen; it does not change the v0.9.0 classification.
 See the [compact evidence archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json).
 
 The follow-up default CSS fast path reuses the exact source-backed default stylesheet whenever
 ZenUML has no configured source colors or typography and the title fill is the default. Four
-balanced E2E controls preserve exact SVG identities and show a further 2.11% to 4.75% ZenUML
+balanced E2E controls preserve exact SVG identities and show a separate 2.11% to 4.75% ZenUML
 reduction, about 0.49 to 1.11 us, for a 128-byte executable increase. Configured theme values
-remain on the dynamic path. This is retained below the formal latency gate; see the
+remain on the dynamic path. This is retained without formal latency admission; see the
 [compact evidence archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json).
+Both archives contain stock diagnostic reports, not separate registrations. The
+[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) records the identity,
+time and mean-field corrections and the actual 50 us tool threshold versus 1 us advisory prose.
+Registration chronology is unverified. The two runs use different baselines and must not be summed.
 
 ### Active: alpha.7 default SVG regression
 
