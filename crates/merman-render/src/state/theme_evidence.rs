@@ -44,10 +44,9 @@ impl StateThemeOutcomes {
         }
     }
 
-    pub(crate) fn finish_evidence(&self, planned: &FamilyThemeEvidence) -> FamilyThemeEvidence {
-        let mut evidence = planned.clone();
+    pub(crate) fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         let Some(&(include_nodes, include_edges)) = self.visibility.get() else {
-            return evidence;
+            return;
         };
         for (key, outcome) in &self.selected {
             let filtered = outcome.occurrences.iter().any(|surface| match surface {
@@ -67,6 +66,5 @@ impl StateThemeOutcomes {
                 );
             }
         }
-        evidence
     }
 }

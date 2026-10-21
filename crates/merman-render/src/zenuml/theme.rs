@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, ResolvedDiagramTheme, ThemeTarget,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, SingleTitleFillPlan,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, SingleTitleFillPlan,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -88,6 +88,10 @@ impl ZenumlSourceStyle {
     pub(crate) fn configured_color(&self, key: &str) -> Option<&str> {
         self.colors.get(key).map(String::as_str)
     }
+
+    pub(crate) fn uses_default_css(&self) -> bool {
+        self.colors.is_empty() && self.typography.uses_default_css()
+    }
 }
 
 /// Final ZenUML frame-title fill shared by stylesheet emission and terminal evidence.
@@ -114,7 +118,7 @@ impl ZenumlTitleThemePlan {
         };
         let title_present = resolve_zenuml_title(model, diagram_title).is_some();
         let non_title_text_present = has_visible_non_title_text(layout);
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::BaseTypography(_) => {
@@ -191,8 +195,8 @@ impl ZenumlTitleThemePlan {
             .is_some_and(|fill_css| receipt.proves(fill_css) && self.fill.record_proven_terminal())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.fill.finish_evidence()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.fill.record_evidence(evidence);
     }
 }
 

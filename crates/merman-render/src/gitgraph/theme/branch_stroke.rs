@@ -9,8 +9,8 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -57,7 +57,7 @@ impl GitGraphBranchStrokePlan {
         effective_config: &MermaidConfig,
         expected_branch_line_count: usize,
         work_meter: &OperationWorkMeter,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(expected_branch_line_count);
         let config_owns_stroke = mermaid_owns_branch_stroke(effective_config);
@@ -257,7 +257,7 @@ impl GitGraphBranchStrokePlan {
         receipt.proves(self) && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(super) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if let (Some(key), Some(stroke), Some(receipt)) = (
             self.pending_key.clone(),
             self.stroke.as_ref(),

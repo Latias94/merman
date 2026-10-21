@@ -7,7 +7,9 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+};
 
 /// Resolves Timeline's base typography once for layout, CSS emission, and evidence.
 #[derive(Debug)]
@@ -18,7 +20,7 @@ pub(crate) struct TimelineTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal: OnceLock<TimelineTypographyOutcome>,
 }
 
@@ -90,7 +92,7 @@ impl TimelineTypographyThemePlan {
             inherited_font_stack,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeEvidence::outcomes(),
+            evidence: FamilyThemeOutcomes::default(),
             terminal: OnceLock::new(),
         }
     }
@@ -120,15 +122,15 @@ impl TimelineTypographyThemePlan {
         let _ = self.terminal.set(outcome);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(outcome) = self.terminal.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             for (property, requested, active) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -151,11 +153,11 @@ impl TimelineTypographyThemePlan {
                     evidence.mark_not_applicable(key);
                 }
             }
-            return evidence;
+            return;
         };
 
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, outcome.has_visible_base_text);
+            .record_unsupported_typography_evidence(evidence, outcome.has_visible_base_text);
         for (property, requested, active) in [
             (
                 ThemeTypographyProperty::FontStack,
@@ -178,7 +180,6 @@ impl TimelineTypographyThemePlan {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
             }
         }
-        evidence
     }
 }
 

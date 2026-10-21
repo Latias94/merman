@@ -1,0 +1,14 @@
+{
+  "created_at_utc": "2026-10-20T18:48:37.503284+00:00",
+  "base_revision": "f46f751f512600789dd6b3cf3cd734c747dae2f2",
+  "decision": "rejected",
+  "gate": "Kanban paired point improvement >10% AND >1us; actual5.5390413% and2.95825us fails joint gate.",
+  "entries": 41,
+  "file": "diagnostic.json.gz",
+  "compressed_sha256": "c6988e45114b5d8142b9ed6ebe3911e6664c87bf4d4486670ee4b185f1dad710",
+  "uncompressed_sha256": "ecc0b1c3c6e8db0c75781202b874028d66a3fc49fde0a34bb160b501bb14274f",
+  "compressed_bytes": 357585,
+  "uncompressed_bytes": 2134622,
+  "raw_scope": "32 normalized Criterion process estimates and exact commands/identities retained by unchanged stock helper. Full32 Criterion stdout physical files are unavailable; hashes are not raw stdout. Build/driver/test logs are included.",
+  "candidate_not_integrated": true
+}

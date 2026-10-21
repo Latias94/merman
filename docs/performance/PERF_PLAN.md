@@ -17,6 +17,102 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 21 font-stack checkpoint](theme_font_stack_sharing_macos_2026-10-21.md) shares
+validated immutable compiled font lists instead of cloning their vectors and strings at each
+typed style resolution. Source CSS parsing keeps its transient Vec and the same validator;
+base/computed Clear semantics remain distinct. Across all 418 stable catalog cells, 356 improve
+and 62 are unchanged, with no four-metric regression; 350 themed cells strictly reduce count
+and bytes. Of 504 jointly stable site controls, 259 improve and 245 stay unchanged; 141 variable
+controls remain inconclusive. SVG/report/callback/error controls and all integration owners pass.
+The cold construction cost remains explicit, including the maximum stack's extra allocation,
+784 cumulative bytes, 528 peak-growth bytes and 16 retained bytes. This is warm ownership/work
+evidence, not release latency recovery. The independent
+[whole-report Box transport diagnostic](theme_report_transport_macos_2026-10-21.md) did not cross its preregistered dual threshold on any of eight fixtures. It adds one allocation
+and 1416 allocated/retained bytes per stable control cell; it is rejected before formal latency
+confirmation and its source is absent from this PR. This checkpoint does not change the FontStack
+result or the formal 14/2/3 release classification.
+
+The [fresh current-head versus v0.9.0 diagnostic](theme_v090_current_fontstack_diagnostic_macos_2026-10-21.md)
+compares production `68f213f1e` with v0.9.0 on all 19 exact-SVG release controls after the FontStack
+change. Eighteen point estimates are slower and one faster; Kanban, Packet and ZenUML exceed both
+the 10% and 1 us point thresholds. All 76 input/output checks and 152 same-side physical SVG
+witnesses pass, as do per-call pre/postflight and executable identity checks. It remains an
+uncalibrated diagnostic: the historical formal 14/2/3 classification stays authoritative, and
+this comparison does not isolate FontStack's latency contribution.
+
+The [October 21 root-cause investigation](theme_regression_root_cause_macos_2026-10-21.md)
+pauses small allocation repairs and prioritizes newly introduced work against v0.9.0. Independent
+history audits and full-public-E2E diagnostic interventions identify the generated CSS/XML and
+bounded append protocols as important candidates: combined bypass changes Packet by -1.368 us,
+ZenUML by -0.565 us and Kanban by -13.914 us. The interventions deliberately omit contracts and
+are not production candidates or formal recovery. They do not support a unified writer explanation
+of ZenUML. Its matched typed-parse diagnostic is only +0.340 us, while a separate default CSS
+producer intervention removes 60 non-ID substitutions and changes rich E2E by -0.831 us. All
+points and controls are preserved; no independent-stage or intervention deltas are added.
+The same audit finds repeated compiled-theme request/index ownership and five-set coverage
+reconstruction; None does not execute their nonempty work. PreparedSource Arc/metadata cleanup
+is parked because a pre-redraw release checkpoint already had similar Packet/ZenUML gaps.
+Next redesign these larger mechanisms with complete normal contracts, then obtain adjacent
+formal E2E evidence. The latest admitted release classification remains 14/2/3 on b9.
+
+The safe literal CSS candidate in the same root-cause report is retired: 32 fixed diagnostic
+calls give Kanban 53.406 to 50.44775 us (-5.539%, -2.95825 us), below its preregistered 10%
+relative screen despite passing 1 us. All four SVG identities match; 5241 renderer tests and
+two new seam controls pass. Full classification-bypass diagnostics did not predict this safe
+subset's materiality. Preserve the rejected patch and records; do not retain its new literal
+type/macro or lower the gate. Next implement the independently registered all-family ledger
+ownership repair for warm memory/work, retaining all source, terminal and error semantics and
+explicit bounded cold-cache state. It does not close the None release regressions.
+
+The registered all-family ledger ownership refactor is now kept for warm allocation/work: the
+compiled family program owns one immutable request domain, local plans hold outcomes only, terminal
+paths merge into one checked ledger, and coverage no longer reconstructs five sets. Across 418
+stable theme cells, 416 improve all four allocation metrics and 2 are unchanged; all 380 non-empty
+themed cells reduce allocation count and bytes. Across 645 site controls, 482 of 505 jointly stable
+sites improve and none regresses; 140 variable sites remain inconclusive. SVG, report, callback and
+error contracts match, and the full release/DOM/WASM/theme acceptance checks pass. This remains a
+memory/work ownership result with an explicit O(R+B) retained-key bound, not a latency or v0.9.0
+convergence claim. Run a fresh balanced timing confirmation before reclassifying release regressions.
+
+A fresh eight-fixture diagnostic after the ledger refactor shows no material latency admission: Kanban
+-0.81%, Packet -1.83%, ZenUML -0.67%, Journey -1.42%, while Flowchart, C4, Block and Sequence
+remain within small diagnostic noise. Keep `e76736165` for the verified warm allocation/work
+reduction; do not reclassify the v0.9.0 latency regressions. The next isolated candidate is the
+ZenUML production CSS call that repeats normalized-ID classification 35 times after the public
+SVG boundary has already normalized the ID.
+
+The [October 20 JSON disposal checkpoint](json_disposal_frontier_macos_2026-10-20.md) removes
+scalar values from the nonrecursive disposal worklist and keeps the next child container inline.
+On the clean `b8a5f59c1` base, all 418 catalog cells across 35 logical families improve allocations;
+all 505 jointly stable site controls improve without a four-metric regression, while 140 variable
+controls remain inconclusive. Venn/None catalog peak falls 183387 to 180461 B, with 64152 fewer
+allocated bytes; Packet/None saves four allocations and 288 B. All output/report/callback/error
+controls match. Release tests pass 8101 (seven skipped), with Clippy, 37 DOM entries, optimized
+full WASM, 34 theme acceptance tests, compiled pipeline discovery and native-memory smoke.
+The helper also exists unchanged in v0.9.0: this is shared memory/work removal, without a latency
+or theme-regression attribution. The earlier metadata-owner candidate remains rejected for its
+stable Venn peak regressions; its code is absent from this checkpoint. Reevaluate it independently
+against this new disposal baseline only after the root-cause priorities above. Tag-shared
+editor facts and fresh-source ownership are parked. All-family release convergence remains
+incomplete.
+
+The [October 20 appearance/CSS release checkpoint](theme_v090_appearance_css_macos_2026-10-20.md)
+compares production `b9a58731c` with v0.9.0 using fresh 608 A/A and 304 fixed balanced A/B
+observations: 14 within the joint budget, two confirmed regressions and three inconclusive scenes,
+with zero consumer contract failures. ZenUML remains +17.51% / +3.499 us and Packet +28.83% /
++2.332 us. Kanban is +18.95% / +8.521 us but remains inconclusive because its absolute A/A order
+certificate is unqualified; it is not recovered. Sankey and Wardley relative bounds cross 10%.
+All 76 fresh input/output inventories and physical raw replays remain exact to their receipts:
+19 comparable scenes, 57 changed-output scenes with source-backed reasons. The first timing
+attempt is rejected for shared-target reuse of a hook executable; its records are preserved and
+none of its observations is reused. Bounded rebuild and independent physical executable admission
+precede this accepted run, and both actual no-hook binaries are archived before later native work.
+PR #226 is merged as `a933b02c1`, whose complete source tree equals tested `b9a58731c`; the tested
+revision remains explicit. These release-range observations do not attribute latency to an
+individual repair. The later JSON disposal checkpoint and rejected metadata candidate retain
+their own admission boundaries; neither reclassifies this release comparison. The all-family
+convergence goal remains incomplete.
+
 The [October 20 CSS identifier checkpoint](css_identifier_borrow_macos_2026-10-20.md) borrows
 unchanged identifiers inside the existing serializer. On the fresh `7e0582307` base, Packet medium /
 None saves one allocation and 19 bytes; all 418 catalog cells are stable, with 132 improvements,
@@ -25,8 +121,8 @@ errors match. Full release nextest passes 8100 tests (seven skipped), with stric
 archived DOM reports, optimized full WASM and 34 theme acceptance tests. A test-only formatting
 failure is preserved explicitly; all five final-format supplemental stages pass. Final source
 verification uses two explicit test-format overrides, preserving all other measured source and
-frozen inputs. This is allocation/work removal, without a latency claim. Refresh the full release
-comparison against the final clean revision after integrating main.
+frozen inputs. This is allocation/work removal, without a latency claim. The separate accepted release
+comparison above retains its own production revision and qualification boundaries.
 
 The [October 20 scoped appearance checkpoint](scoped_appearance_path_macos_2026-10-20.md)
 defers scoped path construction until the existing scoped-assignment branch consumes it. On the
@@ -38,7 +134,7 @@ All 8100 full release tests pass (seven skipped), together with strict Clippy, 3
 reports, optimized full WASM, 34 release theme acceptance tests and format/path checks. All 15
 serial stages finish successfully and all 15,303 frozen source hashes remain unchanged. This is
 allocation/work removal, without a timing or v0.9.0 convergence claim. CSS identifier ownership
-now has the separate admitted checkpoint above; release comparison still needs a fresh run.
+and the full release comparison now have their separate admitted checkpoints above.
 
 The [October 20 main-resync checkpoint](theme_main_resync_macos_2026-10-20.md)
 validates merge `6badd5444` of upstream `daa7c812d`, whose tested source tree is
@@ -1247,18 +1343,53 @@ cancellation and measurement callbacks. Engine borrowing, root style borrowing a
 root-outcome ownership are complete. The October 19 family-preparation ownership batch is recorded
 in its [checkpoint](family_theme_preparation_macos_2026-10-19.md). All 418 warm
 compiled-preset/default coverage cells preserve the frozen adjacent output/report contract. The
-latest full 19-scene same-SVG confirmation at `a6742779c` establishes 15 within the joint budget,
-three regressions (ZenUML, Packet and Kanban) and one inconclusive scene (Class tiny). Attribute
-actual consumers before selecting further repairs. Empty explicit-owner queries now have an
-independent admitted allocation checkpoint. Absent scoped appearance paths now have a separate
-admitted checkpoint. Unchanged CSS identifiers now borrow from their existing serializer in an
-independent admitted checkpoint. Frozen path storage remains a separate candidate; a newly observed
-intermediate metadata clone has a source-backed consumer audit but no measured benefit. Refresh
-all 76 release output identities and collect fresh A/A plus fixed AB/BA for the prospectively
-selected exact-output cohort. Use fresh adjacent evidence and calibrated confirmation for latency
-claims; see the
+latest admitted full 19-scene same-SVG confirmation at `b9a58731c` establishes 14 within the joint
+budget, two confirmed regressions (ZenUML and Packet) and three inconclusive scenes (Sankey,
+Kanban and Wardley). Kanban's +18.95% / +8.521 us remains a priority despite its unqualified
+absolute A/A certificate. The earlier b9 attempt is rejected for source/executable mismatch;
+the accepted identity repair uses entirely fresh observations and physical no-hook admission.
+Attribute actual consumers before selecting further repairs. Empty explicit-owner queries,
+absent scoped appearance paths and borrowed unchanged CSS identifiers now have independent
+admitted allocation checkpoints. Frozen path storage remains separate. The intermediate metadata
+clone was independently measured and rejected: its Packet allocation win accompanies stable
+Venn peak regressions. Its patch and failed records are preserved and its code is absent. The
+separate JSON disposal repair passes all 418 catalog/645 site behavior controls and its original
+stable-memory gate. The October 21 root-cause investigation now takes precedence over that
+allocation queue: redesign generated CSS/XML and bounded fragment protocol, isolate ZenUML's
+default producer and remaining completion/layout work, then unify immutable compiled-theme
+request ownership and freeze coverage once for unchanged evidence. Its diagnostic interventions
+retain full rich E2E/drop but are not safe production candidates or formal recovery. Pre-PR224
+observations refute PreparedSource Arc as the original root cause. Keep metadata/fresh-owner,
+440-slot reporting and unused editor-facts candidates parked; the latter two existed in the tag.
+Use calibrated confirmation for subsequent latency claims; see the
 [scope checkpoint](engine_borrow_theme_scope_macos_2026-10-18.md) and
 [release-context refresh](theme_v090_same_svg_refresh_macos_2026-10-18.md).
+
+The October 21 ZenUML selector-owner cleanup forwards the already normalized `SvgDiagramId`
+into the stylesheet writer instead of repeating the selector eligibility scan for its 35 CSS
+occurrences. Four balanced public E2E controls preserve exact SVG identities and show a 4.19% to
+6.06% ZenUML reduction, about 1.0 to 1.45 us. Control diagnostic bounds span zero, without
+calibrated non-regression admission. It is retained as a safe local cleanup below the 10% relative
+materiality screen; it does not change the v0.9.0 classification.
+See the [compact evidence archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json).
+
+The follow-up default CSS fast path reuses the exact source-backed default stylesheet whenever
+ZenUML has no configured source colors or typography and the title fill is the default. Four
+balanced E2E controls preserve exact SVG identities and show a separate 2.11% to 4.75% ZenUML
+reduction, about 0.49 to 1.11 us, for a 128-byte executable increase. Configured theme values
+remain on the dynamic path. This is retained without formal latency admission; see the
+[compact evidence archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json).
+Both archives contain stock diagnostic reports, not separate registrations. The
+[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) records the identity,
+time and mean-field corrections and the actual 50 us tool threshold versus 1 us advisory prose.
+Registration chronology is unverified. The two runs use different baselines and must not be summed.
+
+The isolated empty-root application guard is rejected: eight fixtures and 64 timed calls preserved
+input/capability/SVG identities, but none reached both the actual 10% and 1 us improvement thresholds.
+Keep its production fast path out of the PR and prioritize larger attributed consumers instead
+of another constant-work empty guard. The
+[checkpoint archive](evidence/empty-root-application-2026-10-21/manifest.json) separately retains
+the stock diagnostic and registration; correctness tests are distinct from stock report/error hashes.
 
 ### Active: alpha.7 default SVG regression
 

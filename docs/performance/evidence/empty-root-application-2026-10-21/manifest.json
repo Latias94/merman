@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "archived_at_utc": "2026-10-21T03:31:27.559549+00:00",
+  "kind": "Rejected empty-root application diagnostic checkpoint; archival time is not registration or sampling completion",
+  "base_revision": "cf26d54bbcbbc7436858270f659404f52af02378",
+  "candidate_revision": "8594f536ace2e1204bb8f8e0e49e3a7cbaafef6d",
+  "candidate_branch": "experiment/empty-root-application-20261021",
+  "candidate_merged_into_pr": false,
+  "decision": "rejected: no selected row crosses both registered point-improvement thresholds",
+  "evidence_mode": "diagnostic",
+  "official_outcome": "diagnostic_advisory",
+  "diagnostic_exit_code": 0,
+  "formal_latency_admission": false,
+  "fixtures": 8,
+  "pairs_per_fixture": 4,
+  "timed_calls": 64,
+  "thresholds": {
+    "relative_improvement_percent": 10,
+    "absolute_improvement_ns": 1000
+  },
+  "executables": {
+    "base": {
+      "revision": "cf26d54bbcbbc7436858270f659404f52af02378",
+      "tree": "e1f9ac365b22e6d44e5313f4efbfa19b4e433b9c",
+      "sha256": "b3ddfdbb1ab975de60ae707c36b65959132de16cabd351a98e16d6fc322b88b3",
+      "bytes": 34218800,
+      "mode": "0555",
+      "source_and_executable_postflight": "verified"
+    },
+    "head": {
+      "revision": "8594f536ace2e1204bb8f8e0e49e3a7cbaafef6d",
+      "tree": "4e2c6aceabc0690e5a96c0dfbee2131ab093fe89",
+      "sha256": "a1351b56ef1b04407899ab7c04afd3655cce3cc721dbfb8c71bbfffbc2572d99",
+      "bytes": 34265392,
+      "mode": "0555",
+      "source_and_executable_postflight": "verified"
+    }
+  },
+  "rows": [
+    {
+      "fixture": "packet_medium",
+      "base_mean_ns": 9987,
+      "candidate_mean_ns": 10066.025,
+      "paired_mean_delta_ns": 79.02500000000009,
+      "paired_relative_percent": 0.7846147194084993,
+      "paired_relative_percent_bounds": [
+        -0.9112614405093589,
+        2.8456060347338714
+      ],
+      "paired_absolute_ns_bounds": [
+        -91.60000000000036,
+        283.2999999999993
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "zenuml_medium",
+      "base_mean_ns": 21673.5,
+      "candidate_mean_ns": 21950.25,
+      "paired_mean_delta_ns": 276.75,
+      "paired_relative_percent": 1.2758309886229708,
+      "paired_relative_percent_bounds": [
+        -0.1745280852431863,
+        2.145902855024096
+      ],
+      "paired_absolute_ns_bounds": [
+        -38,
+        462.75
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "kanban_medium",
+      "base_mean_ns": 52579.25,
+      "candidate_mean_ns": 52772.75,
+      "paired_mean_delta_ns": 193.5,
+      "paired_relative_percent": 0.37191098530786465,
+      "paired_relative_percent_bounds": [
+        -0.5434841331635862,
+        1.095864120525869
+      ],
+      "paired_absolute_ns_bounds": [
+        -425,
+        571
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "flowchart_medium",
+      "base_mean_ns": 1088850,
+      "candidate_mean_ns": 1086950,
+      "paired_mean_delta_ns": -1900,
+      "paired_relative_percent": -0.1699753631462199,
+      "paired_relative_percent_bounds": [
+        -1.8250813155041512,
+        1.5526217924879182
+      ],
+      "paired_absolute_ns_bounds": [
+        -20200,
+        16700
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "journey_medium",
+      "base_mean_ns": 27774,
+      "candidate_mean_ns": 28179,
+      "paired_mean_delta_ns": 405,
+      "paired_relative_percent": 1.4550173640661352,
+      "paired_relative_percent_bounds": [
+        0.4183798600591482,
+        2.2033229267592436
+      ],
+      "paired_absolute_ns_bounds": [
+        116,
+        614
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "sequence_medium",
+      "base_mean_ns": 278470,
+      "candidate_mean_ns": 274412.5,
+      "paired_mean_delta_ns": -4057.5,
+      "paired_relative_percent": -1.4588869926662018,
+      "paired_relative_percent_bounds": [
+        -2.2495982860203494,
+        0.13335255532329615
+      ],
+      "paired_absolute_ns_bounds": [
+        -6300,
+        370
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "block_medium",
+      "base_mean_ns": 31952.25,
+      "candidate_mean_ns": 32036.75,
+      "paired_mean_delta_ns": 84.49999999999909,
+      "paired_relative_percent": 0.2659242902051225,
+      "paired_relative_percent_bounds": [
+        -0.6664806720605209,
+        1.523130774810011
+      ],
+      "paired_absolute_ns_bounds": [
+        -154.75000000000364,
+        483.00000000000364
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    },
+    {
+      "fixture": "c4_medium",
+      "base_mean_ns": 111147.5,
+      "candidate_mean_ns": 109862.5,
+      "paired_mean_delta_ns": -1285,
+      "paired_relative_percent": -1.1570894488544297,
+      "paired_relative_percent_bounds": [
+        -1.9921033740129213,
+        -0.11709601873536313
+      ],
+      "paired_absolute_ns_bounds": [
+        -2220,
+        -322.5
+      ],
+      "passes_joint_point_screen": false,
+      "official_outcome": "diagnostic_advisory"
+    }
+  ],
+  "files": [
+    {
+      "file": "diagnostic.json.gz",
+      "source_file": "diagnostic.json",
+      "contents": "Unchanged original stock compare_self-v2 report, including all 8 rows and 64 recorded timed-call estimates, SVG/input/capability and runner receipts. Does not include separate rich-report/error/callback identity evidence.",
+      "compressed_sha256": "62acb00c3a6744c0c2dff8452465ffba5089f14621ade27b67ed3790490fd4bf",
+      "uncompressed_sha256": "39d86b94d8b69794e5751ce137eff10339724aaab6eb9fbdffbca14ae4ff3460",
+      "compressed_bytes": 74131,
+      "uncompressed_bytes": 662750
+    },
+    {
+      "file": "registration-snapshot.json.gz",
+      "source_file": "experiment.yaml",
+      "contents": "Separately named byte-exact original registration snapshot. Its historical outcome remains pending; this retrospective rejection decision does not modify the original registration or certify formal latency admission.",
+      "compressed_sha256": "f827afb38e41d47f252c32768fead23d29cebf799dc83711dca5284190632c9b",
+      "uncompressed_sha256": "68f9464b74d8db02fe943ed4173bd4b9326a76aee799b41753a230a9d40a42ec",
+      "compressed_bytes": 1890,
+      "uncompressed_bytes": 4004
+    }
+  ],
+  "semantic_evidence_scope": "Stock report verifies input/capability/SVG hash, byte length and element count. The registration records9 focused tests and formatting; their test-source checks are separate evidence, not stock rich-report/error hash comparisons.",
+  "source_policy": "Original ignored registration, report, driver log and candidate patch remain unchanged. Archive gzip streams use deterministic mtime0; archived_at_utc records this archival event."
+}

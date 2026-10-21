@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    DirectStaticSelectorDomain, FamilyThemeOutcomes, FamilyThemeResidualReason,
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
@@ -53,7 +53,7 @@ impl ArchitectureEdgeStrokePlan {
         effective_config: &MermaidConfig,
         edge_count: usize,
         work_meter: &OperationWorkMeter,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline();
         let config_owns_stroke = mermaid_owns_edge_stroke(effective_config);
@@ -207,7 +207,7 @@ impl ArchitectureEdgeStrokePlan {
         self.stroke.as_ref().map(|stroke| stroke.css.as_ref())
     }
 
-    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence, emitted: bool) {
+    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeOutcomes, emitted: bool) {
         if emitted
             && let (Some(key), Some(stroke)) = (self.pending_key.clone(), self.stroke.as_ref())
         {

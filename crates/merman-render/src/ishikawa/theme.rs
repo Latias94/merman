@@ -8,9 +8,9 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::IshikawaDiagramLayout;
@@ -34,7 +34,7 @@ pub(crate) struct IshikawaTextThemePlan {
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
 }
 
@@ -132,7 +132,7 @@ impl IshikawaTextThemePlan {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, TextRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -281,7 +281,7 @@ impl IshikawaTextThemePlan {
             font_size_css,
             typed_font_size_requested: false,
             typed_font_size_active: false,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
         }
     }
@@ -310,26 +310,25 @@ impl IshikawaTextThemePlan {
         &self.css_binding
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for (key, capabilities) in &self.pending {
             evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
         }
-        self.finish_typography_evidence(&mut evidence);
-        evidence
+        self.record_typography_evidence(evidence);
     }
 
     fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
-    fn finish_typography_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    fn record_typography_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if !self.typography_requested() {
             return;
         }
         let font_size_has_terminal = self.base_size_text_count != 0;
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(evidence, self.text_count != 0);
+            .record_unsupported_typography_evidence(evidence, self.text_count != 0);
         for (property, requested, applied) in [
             (
                 ThemeTypographyProperty::FontStack,
@@ -405,6 +404,15 @@ struct TextRuleObservation {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -483,7 +491,7 @@ mod tests {
         let mut css = String::new();
         plan.write_text_rules(&mut css, "ishikawa-title", "#333333");
 
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
         let expected = [
             FamilyThemeMechanismKey::Rule {
                 index: 0,

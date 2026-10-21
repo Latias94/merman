@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use super::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -18,7 +19,7 @@ use crate::resources::OperationWorkMeter;
 pub(crate) struct SingleTitleFillPlan {
     fill_css: Option<Box<str>>,
     typed_fill_capability: Option<ThemeCapability>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending_fill_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
 }
@@ -28,7 +29,7 @@ impl SingleTitleFillPlan {
         theme: &ResolvedDiagramTheme,
         title_present: bool,
         config_owns_fill: bool,
-        mut evidence: FamilyThemeEvidence,
+        mut evidence: FamilyThemeOutcomes,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let title_count = usize::from(title_present);
@@ -183,15 +184,14 @@ impl SingleTitleFillPlan {
         self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(key) = self.pending_fill_key.clone()
             && self.terminal_receipt.get().is_some()
             && let Some(capability) = self.typed_fill_capability
         {
             evidence.mark_applied_with_capabilities(key, [capability]);
         }
-        evidence
     }
 }
 

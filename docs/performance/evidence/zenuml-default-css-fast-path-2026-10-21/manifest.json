@@ -1,0 +1,42 @@
+{
+  "created_at_utc": null,
+  "original_recorded_created_at_utc": "2026-10-21T00:00:00+00:00",
+  "correction_notice": "../zenuml-diagnostic-corrections-2026-10-21.md",
+  "preregistration_timing_verified": false,
+  "base_revision": "ff4c78c3965d2bef101eea040c38b63ef6a2318b",
+  "candidate_revision": "ef0b8a859ffc71be90b33729c9354a0eb3388823",
+  "fixtures": 4,
+  "pairs_per_fixture": 4,
+  "timed_calls": 32,
+  "decision": "keep exact-default static CSS fast path; no formal latency admission",
+  "zenuml_result": {
+    "base_mean_ns": 23126.25,
+    "candidate_mean_ns": 22330.5,
+    "paired_relative_bounds": [
+      -0.0475,
+      -0.0211
+    ],
+    "paired_absolute_bounds_ns": [
+      -1110.75,
+      -485.5
+    ]
+  },
+  "controls": {
+    "packet": "diagnostic bounds span zero",
+    "kanban": "diagnostic bounds span zero",
+    "flowchart": "diagnostic bounds span zero"
+  },
+  "configured_absolute_threshold_ns": 50000.0,
+  "advisory_prose_absolute_screen_ns": 1000.0,
+  "output_identity": "all four SVG byte hashes and element counts matched",
+  "executable_size_bytes": {
+    "base": 34218672,
+    "candidate": 34218800,
+    "delta": 128
+  },
+  "compressed_sha256": "c9448aa445dbb57e24d827e897d26e60fdec24cb7a5c9df88bcf87341e7fa8b1",
+  "uncompressed_sha256": "8840b3ac6d37b723ce5cb86c217b1acc9d14c97401285f6939c4237b7a017363",
+  "compressed_bytes": 67376,
+  "uncompressed_bytes": 552879,
+  "file": "diagnostic.json.gz"
+}

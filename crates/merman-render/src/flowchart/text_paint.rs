@@ -281,17 +281,16 @@ impl FlowchartTextPaintPlan {
         Ok(())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::outcomes();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         let Some(theme) = &self.theme else {
-            return evidence;
+            return;
         };
         let terminal = self
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !terminal.css_emitted {
-            return evidence;
+            return;
         }
         let mut observations = BTreeMap::<usize, (bool, Option<FamilyThemeResidualReason>)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -369,7 +368,6 @@ impl FlowchartTextPaintPlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 }
 
@@ -395,6 +393,12 @@ mod tests {
                 .unwrap();
         plan.record_stylesheet_emission();
         (plan, meter)
+    }
+
+    fn collected_evidence(plan: &FlowchartTextPaintPlan) -> FamilyThemeEvidence {
+        let mut evidence = FamilyThemeEvidence::from_theme(plan.theme.as_ref());
+        plan.record_evidence(&mut evidence);
+        evidence
     }
 
     fn fill(target: ThemeTarget) -> ThemeRule {
@@ -442,7 +446,7 @@ mod tests {
                 "<span class=\"unknown\">unverified</span>",
                 &meter,
             );
-            let evidence = plan.finish_evidence();
+            let evidence = collected_evidence(&plan);
             assert!(evidence.applied().is_empty());
             assert_eq!(evidence.residuals().len(), 1);
         }
@@ -467,7 +471,7 @@ mod tests {
             "<img src=\"asset\"/>",
             &meter,
         );
-        let evidence = plan.finish_evidence();
+        let evidence = collected_evidence(&plan);
         assert!(evidence.applied().is_empty());
         assert!(
             evidence
@@ -489,8 +493,8 @@ mod tests {
         );
         let (plan, meter) = resolve(ThemeRuleSet::default().with_rule(rule));
         record(&plan, FlowchartTextPaintChannel::Node, "text", &meter);
-        assert!(plan.finish_evidence().applied().is_empty());
-        assert_eq!(plan.finish_evidence().residuals().len(), 1);
+        assert!(collected_evidence(&plan).applied().is_empty());
+        assert_eq!(collected_evidence(&plan).residuals().len(), 1);
     }
 
     #[test]
@@ -503,7 +507,7 @@ mod tests {
                 ),
         );
         record(&plan, FlowchartTextPaintChannel::Node, "text", &meter);
-        let evidence = plan.finish_evidence();
+        let evidence = collected_evidence(&plan);
         assert!(evidence.applied().is_empty());
         assert_eq!(evidence.residuals().len(), 1);
         assert!(
@@ -521,10 +525,10 @@ mod tests {
         let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
         let (plan, meter) =
             resolve(ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette));
-        assert!(plan.finish_evidence().residuals().is_empty());
+        assert!(collected_evidence(&plan).residuals().is_empty());
         record(&plan, FlowchartTextPaintChannel::Edge, "label", &meter);
-        assert_eq!(plan.finish_evidence().residuals().len(), 1);
-        assert!(plan.finish_evidence().applied().is_empty());
+        assert_eq!(collected_evidence(&plan).residuals().len(), 1);
+        assert!(collected_evidence(&plan).applied().is_empty());
     }
 
     #[test]
@@ -546,7 +550,7 @@ mod tests {
             // One visible run, the receipt, and one winning property need work per label.
             assert_eq!(meter.used() - before, 3);
         }
-        assert!(plan.finish_evidence().applied().is_empty());
+        assert!(collected_evidence(&plan).applied().is_empty());
     }
 
     #[test]
@@ -571,9 +575,9 @@ mod tests {
             meter.used() - before > 3,
             "ordinal candidate resolution must be metered"
         );
-        assert!(plan.finish_evidence().applied().is_empty());
+        assert!(collected_evidence(&plan).applied().is_empty());
         record(&plan, FlowchartTextPaintChannel::Cluster, "second", &meter);
-        assert_eq!(plan.finish_evidence().applied().len(), 1);
+        assert_eq!(collected_evidence(&plan).applied().len(), 1);
     }
 
     #[test]
@@ -592,7 +596,7 @@ mod tests {
         assert!(cluster.ordinal_rules);
         record(&plan, FlowchartTextPaintChannel::Cluster, "first", &meter);
         record(&plan, FlowchartTextPaintChannel::Cluster, "second", &meter);
-        let evidence = plan.finish_evidence();
+        let evidence = collected_evidence(&plan);
         assert!(evidence.applied().is_empty());
         assert!(
             evidence
@@ -624,12 +628,14 @@ mod tests {
             "configured"
         );
         record(&plan, FlowchartTextPaintChannel::Cluster, "cluster", &meter);
-        assert!(plan.finish_evidence().applied().is_empty());
-        assert!(plan.finish_evidence().not_applicable_mechanisms().contains(
-            &FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Text,
-            }
-        ));
+        assert!(collected_evidence(&plan).applied().is_empty());
+        assert!(
+            collected_evidence(&plan)
+                .not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Text,
+                })
+        );
     }
 }

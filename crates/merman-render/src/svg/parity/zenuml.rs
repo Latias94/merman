@@ -47,7 +47,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     out.push_str("<defs><style>");
     write_zenuml_css(
         &mut super::output::XmlTextOutput::new(&mut out),
-        super::util::css_selector_diagram_id(diagram_id),
+        diagram_id,
         title_theme
             .fill_css()
             .unwrap_or_else(|| theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL)),
@@ -1140,7 +1140,15 @@ fn resolve_emoji_in_text(text: &str) -> String {
     resolve_zenuml_emojis_in_text(text)
 }
 
-fn zenuml_css(
+fn default_zenuml_css(diagram_id: impl std::fmt::Display) -> String {
+    format!(
+        r#"
+#{diagram_id} .frame-border-outer{{fill:#666}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:#fff}}#{diagram_id} .frame-header-line{{stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}}#{diagram_id} .participant-box{{fill:#fff;stroke:#666;stroke-width:2}}#{diagram_id} .participant-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .participant-icon{{color:#222}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:#666;stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:16px}}#{diagram_id} .stereotype-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .lifeline{{stroke:#666;stroke-width:1}}#{diagram_id} .message-line{{stroke:#000;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .arrow-head{{fill:#000;stroke:#000;stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:#dedede;stroke:#666;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:#dedede;fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:Helvetica,Verdana,serif;font-size:14px;font-weight:600;fill:#000}}#{diagram_id} .fragment-condition{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .fragment-separator{{stroke:#e5e7eb;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .return-line{{stroke:#000;stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:#000;stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .return-icon{{fill:#222}}#{diagram_id} .divider-line{{stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-bg{{fill:#fff5ad;stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333}}#{diagram_id} .comment-text{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333;opacity:.5}}#{diagram_id} .seq-number{{font-family:Helvetica,Verdana,serif;font-size:12px;font-weight:100;fill:#6b7280}}#{diagram_id} .group-outline{{fill:none;stroke:#666}}#{diagram_id} .group-title-bg{{fill:#fff;stroke:none}}#{diagram_id} .group-title-text{{font-family:Helvetica,Verdana,serif;font-size:13px;font-weight:400;fill:#222}}
+"#
+    )
+}
+
+fn themed_zenuml_css(
     diagram_id: impl std::fmt::Display,
     theme: &ZenumlSourceStyle,
     title_fill: &str,
@@ -1186,6 +1194,18 @@ fn zenuml_css(
     css
 }
 
+fn zenuml_css(
+    diagram_id: impl std::fmt::Display,
+    theme: &ZenumlSourceStyle,
+    title_fill: &str,
+) -> String {
+    if theme.uses_default_css() && title_fill == ZENUML_DEFAULT_TITLE_FILL {
+        default_zenuml_css(diagram_id)
+    } else {
+        themed_zenuml_css(diagram_id, theme, title_fill)
+    }
+}
+
 const ZENUML_DEFAULT_TITLE_FILL: &str = "#222";
 
 fn write_zenuml_css(
@@ -1201,6 +1221,16 @@ fn write_zenuml_css(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn zenuml_default_css_fast_path_matches_dynamic_template() {
+        let theme = ZenumlSourceStyle::new(&serde_json::Value::Null);
+
+        assert_eq!(
+            default_zenuml_css("test"),
+            themed_zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL)
+        );
+    }
 
     #[test]
     fn zenuml_css_has_one_final_frame_title_fill_owner() {

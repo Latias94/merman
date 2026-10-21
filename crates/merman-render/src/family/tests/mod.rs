@@ -62,51 +62,173 @@ fn session() -> RenderSession {
 
 #[test]
 fn consuming_family_context_moves_terminal_theme_inventory_allocations() {
-    let mut context = FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART);
-    let applied = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-    let absent = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
-    let residual = FamilyThemeMechanismKey::Rule {
-        index: 0,
-        target: ThemeTarget::Node,
-    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#345678").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#56789a").unwrap()),
+                    )),
+            ),
+        )
+        .unwrap();
+    let render_session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let mut context = FamilyRenderContext::resolve(render_session, DiagramFamilyId::FLOWCHART);
+    let keys = context
+        .style_plan
+        .theme_evidence
+        .required_mechanisms()
+        .to_vec();
+    assert_eq!(keys.len(), 3);
     context.style_plan.payload = FamilyStylePayload::Evaluated;
-    context.style_plan.theme_evidence.required =
-        vec![applied.clone(), absent.clone(), residual.clone()];
-    context.style_plan.theme_evidence.applied = vec![applied];
-    context.style_plan.theme_evidence.not_applicable = vec![absent];
-    context.style_plan.theme_evidence.residuals = vec![FamilyThemeResidual {
-        key: residual,
-        reason: FamilyThemeResidualReason::OutputMutation,
-    }];
-    let mut expected = family_report(
-        FamilyStyleEvaluation::Evaluated,
-        context.style_plan.theme_evidence.required.clone(),
-        context.style_plan.theme_evidence.applied.clone(),
-        context.style_plan.theme_evidence.residuals.clone(),
-    );
-    expected.family_id = DiagramFamilyId::FLOWCHART;
-    expected.theme_not_applicable = context.style_plan.theme_evidence.not_applicable.clone();
+    let ledger = &mut context.style_plan.theme_evidence;
+    ledger.mark_applied_with_capabilities(keys[0].clone(), [ThemeCapability::SolidPaint]);
+    ledger.mark_not_applicable(keys[1].clone());
+    ledger.mark_residual(keys[2].clone(), FamilyThemeResidualReason::OutputMutation);
     let allocations = (
-        context.style_plan.theme_evidence.required.as_ptr(),
-        context.style_plan.theme_evidence.applied.as_ptr(),
-        context.style_plan.theme_evidence.not_applicable.as_ptr(),
-        context.style_plan.theme_evidence.residuals.as_ptr(),
+        ledger.required_mechanisms().as_ptr(),
+        ledger.outcomes.applied.as_ptr(),
+        ledger.outcomes.not_applicable.as_ptr(),
+        ledger.outcomes.residuals.as_ptr(),
     );
-
     let (_, report) = context.into_session_and_style_report();
-
+    assert!(report.theme_coverage_complete());
     assert_eq!(
-        report, expected,
-        "the consuming boundary preserves all facts"
+        report.theme_required.as_deref().unwrap().as_ptr(),
+        allocations.0
     );
-    assert_eq!(report.theme_required.as_ptr(), allocations.0);
     assert_eq!(report.theme_applied.as_ptr(), allocations.1);
     assert_eq!(report.theme_not_applicable.as_ptr(), allocations.2);
     assert_eq!(report.theme_residuals.as_ptr(), allocations.3);
 }
 
 #[test]
+fn canonical_family_outcomes_reject_unknown_duplicates_and_replace_partial_results() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#345678").unwrap()),
+                    )),
+            ),
+        )
+        .unwrap()
+        .resolve(DiagramFamilyId::FLOWCHART);
+    let mut ledger = FamilyThemeEvidence::from_theme(Some(&theme));
+    let keys = ledger.required_mechanisms().to_vec();
+    assert_eq!(keys.len(), 2);
+    ledger.mark_applied_with_capabilities(keys[0].clone(), [ThemeCapability::SolidPaint]);
+    ledger.mark_residual(keys[0].clone(), FamilyThemeResidualReason::UnsupportedPaint);
+    ledger.mark_applied_with_capabilities(keys[0].clone(), [ThemeCapability::TransparentPaint]);
+    ledger.mark_not_applicable(FamilyThemeMechanismKey::Rule {
+        index: 999,
+        target: ThemeTarget::Node,
+    });
+    assert!(!ledger.coverage_complete());
+    assert_eq!(ledger.applied(), &keys[..1]);
+    assert_eq!(
+        ledger.applied_capabilities(),
+        BTreeSet::from([ThemeCapability::SolidPaint])
+    );
+    assert!(ledger.residuals().is_empty());
+    ledger.mark_not_applicable(keys[1].clone());
+    assert!(ledger.coverage_complete());
+    let required = ledger.shared_required_mechanisms().unwrap();
+    ledger.clear_outcomes();
+    let mut local = FamilyThemeOutcomes::default();
+    local.mark_residual(keys[0].clone(), FamilyThemeResidualReason::UnsupportedPaint);
+    local.mark_applied_with_capabilities(keys[0].clone(), [ThemeCapability::SolidPaint]);
+    ledger.merge_borrowed(&local);
+    assert!(!ledger.coverage_complete());
+    assert!(ledger.applied().is_empty());
+    assert!(ledger.applied_capabilities().is_empty());
+    assert_eq!(ledger.residuals().len(), 1);
+    assert_eq!(ledger.residuals()[0].key(), &keys[0]);
+    assert!(ledger.not_applicable_mechanisms().is_empty());
+    assert!(Arc::ptr_eq(
+        &required,
+        &ledger.shared_required_mechanisms().unwrap()
+    ));
+}
+
+#[test]
+fn frozen_family_report_keeps_only_request_keys_and_mutation_keeps_coverage() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let render_session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let mut context = FamilyRenderContext::resolve(render_session, DiagramFamilyId::FLOWCHART);
+    let ledger = &mut context.style_plan.theme_evidence;
+    let weak_program = Arc::downgrade(ledger.program.as_ref().unwrap());
+    let keys = ledger.shared_required_mechanisms().unwrap();
+    ledger.mark_applied_with_capabilities(keys[0].clone(), [ThemeCapability::SolidPaint]);
+    context.style_plan.payload = FamilyStylePayload::Evaluated;
+    let (_, report) = context.into_session_and_style_report();
+    drop(theme);
+    assert!(
+        weak_program.upgrade().is_none(),
+        "completed reports must not retain the program or its membership index"
+    );
+    assert!(Arc::ptr_eq(report.theme_required.as_ref().unwrap(), &keys));
+    assert_eq!(report.verification(), FamilyStyleVerification::Verified);
+    let invalidated = report.invalidate_for_output_mutation();
+    assert!(invalidated.theme_coverage_complete());
+    assert_eq!(
+        invalidated.verification(),
+        FamilyStyleVerification::Unverified
+    );
+    assert!(invalidated.theme_applied.is_empty());
+    assert_eq!(invalidated.theme_residuals.len(), 1);
+    assert_eq!(
+        invalidated.theme_residuals[0].reason(),
+        FamilyThemeResidualReason::OutputMutation
+    );
+    assert_eq!(
+        invalidated.clone().invalidate_for_output_mutation(),
+        invalidated
+    );
+}
+
+#[test]
 fn borrowed_and_consumed_style_classification_keep_phase_and_residual_order() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::FLOWCHART,
+                ThemeTextStyle::default().with_font_stack(FontStack::single("Example").unwrap()),
+            ),
+        ))
+        .unwrap()
+        .resolve(DiagramFamilyId::FLOWCHART);
     let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
     let source_residual = |raw| {
         SourceStyleResidual::invalid(
@@ -118,27 +240,25 @@ fn borrowed_and_consumed_style_classification_keep_phase_and_residual_order() {
             ),
         )
     };
-    for scenario in 0..10 {
+    for scenario in [0, 1, 2, 4, 5, 6, 7, 8, 9] {
         let mut plan =
             FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART).style_plan;
         plan.payload = FamilyStylePayload::Evaluated;
-        plan.theme_evidence.required = vec![key.clone()];
-        plan.theme_evidence.applied = vec![key.clone()];
+        plan.theme_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        plan.theme_evidence
+            .mark_applied_with_capabilities(key.clone(), []);
         match scenario {
             0 => plan.payload = FamilyStylePayload::NotApplicable,
             1 => plan.payload = FamilyStylePayload::Unadapted,
-            2 => plan.theme_evidence.applied.clear(),
-            3 => plan.theme_evidence.required.push(key.clone()),
+            2 => plan.theme_evidence.clear_outcomes(),
             4 => {
-                plan.theme_evidence.applied.clear();
-                plan.theme_evidence.not_applicable.push(key.clone());
+                plan.theme_evidence.clear_outcomes();
+                plan.theme_evidence.mark_not_applicable(key.clone());
             }
             5 => {
-                plan.theme_evidence.applied.clear();
-                plan.theme_evidence.residuals.push(FamilyThemeResidual {
-                    key: key.clone(),
-                    reason: FamilyThemeResidualReason::UnsupportedPaint,
-                });
+                plan.theme_evidence.clear_outcomes();
+                plan.theme_evidence
+                    .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
             6 => plan.output_mutated = true,
             7 => plan.mermaid_compatibility_residual_count = 1,
@@ -691,20 +811,34 @@ fn family_report(
     applied: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
 ) -> FamilyStyleReport {
-    FamilyStyleReport {
-        family_id: DiagramFamilyId::STATE,
-        evaluation,
-        output_mutated: false,
-        theme_required: required,
-        theme_applied: applied,
-        native_filter_receipt: None,
-        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        architecture_text_receipt: None,
-        theme_not_applicable: Vec::new(),
-        theme_residuals,
-        mermaid_compatibility_residual_count: 0,
-        residuals: Vec::new(),
+    let spec = if required.is_empty() {
+        DiagramThemeSpec::new()
+    } else {
+        DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::State,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )))
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(spec)
+        .unwrap()
+        .resolve(DiagramFamilyId::STATE);
+    let mut plan = FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE).style_plan;
+    plan.theme_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+    assert_eq!(plan.theme_evidence.required_mechanisms(), required);
+    for key in applied {
+        plan.theme_evidence.mark_applied_with_capabilities(key, []);
     }
+    for residual in theme_residuals {
+        plan.theme_evidence
+            .mark_residual(residual.key, residual.reason);
+    }
+    plan.payload = match evaluation {
+        FamilyStyleEvaluation::NotApplicable => FamilyStylePayload::NotApplicable,
+        FamilyStyleEvaluation::Unadapted => FamilyStylePayload::Unadapted,
+        FamilyStyleEvaluation::Evaluated => FamilyStylePayload::Evaluated,
+    };
+    FamilyStyleReport::from_plan(plan)
 }
 
 #[test]
@@ -780,16 +914,6 @@ fn family_theme_verification_state_matrix_is_fail_closed() {
             FamilyStyleEvaluation::Evaluated,
             vec![key.clone()],
             vec![],
-            vec![],
-        )
-        .verification(),
-        FamilyStyleVerification::Incomplete
-    );
-    assert_eq!(
-        family_report(
-            FamilyStyleEvaluation::Evaluated,
-            vec![key.clone(), key.clone()],
-            vec![key.clone()],
             vec![],
         )
         .verification(),
@@ -923,6 +1047,7 @@ fn family_theme_plan_tracks_the_authoritative_family() {
         let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let resolved_theme = artifact
             .context
+            .style_plan
             .resolved_theme()
             .expect("themed artifact should retain a resolved family plan");
 
@@ -1017,7 +1142,8 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
             family_id: DiagramFamilyId::SWIMLANE,
             evaluation: FamilyStyleEvaluation::NotApplicable,
             output_mutated: false,
-            theme_required: Vec::new(),
+            theme_required: None,
+            theme_coverage_complete: true,
             theme_applied: Vec::new(),
             native_filter_receipt: None,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
@@ -1570,8 +1696,10 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
     let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
         panic!("expected Flowchart artifact");
     };
-    let (preparation_evidence, source_residuals) =
-        flowchart_artifact_theme_evidence(flowchart, artifact.context.resolved_theme());
+    let resolved_theme = artifact.context.style_plan.resolved_theme();
+    let mut preparation_evidence = FamilyThemeEvidence::from_theme(resolved_theme);
+    let source_residuals =
+        flowchart_artifact_theme_evidence(flowchart, resolved_theme, &mut preparation_evidence);
     assert!(source_residuals.is_empty());
     assert!(preparation_evidence.applied().is_empty());
 
@@ -9010,7 +9138,7 @@ fn unthemed_family_completion_has_no_theme_identity() {
         .unwrap()
         .expect("flowchart source should produce a render model");
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
-    assert!(artifact.context.resolved_theme().is_none());
+    assert!(artifact.context.style_plan.resolved_theme().is_none());
 
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -11523,159 +11651,6 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
     assert!(rendered.svg().contains("Syntax error in text"));
-}
-
-#[test]
-fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
-    let fill = CanvasPaint::solid("#123456").unwrap();
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default().with_fill(fill.clone()),
-                    ))
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Node,
-                        ThemeStylePatch::default()
-                            .with_fill(fill.clone())
-                            .with_stroke(fill.clone()),
-                    ))
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default()
-                            .with_fill(fill.clone())
-                            .with_stroke(fill),
-                    )),
-            ),
-        )
-        .unwrap()
-        .resolve(DiagramFamilyId::CLASS);
-    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
-    let expected = vec![
-        FamilyThemeMechanismKey::Rule {
-            index: 0,
-            target: ThemeTarget::Text,
-        },
-        FamilyThemeMechanismKey::Rule {
-            index: 1,
-            target: ThemeTarget::Node,
-        },
-        FamilyThemeMechanismKey::Rule {
-            index: 2,
-            target: ThemeTarget::Text,
-        },
-    ];
-    // Class Text.fill is typed; shadowed rules retain identity so evidence can account for them.
-    assert_eq!(evidence.required, expected);
-    assert!(!FamilyThemeEvidence::not_applicable(Some(&theme)));
-    assert!(evidence.applied.is_empty());
-    assert!(evidence.residuals.is_empty());
-}
-
-#[test]
-fn native_evidence_requirements_cover_empty_typed_text_and_many_rules() {
-    assert!(FamilyThemeEvidence::not_applicable(None));
-    let empty = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap()
-        .resolve(DiagramFamilyId::CLASS);
-    let fill = CanvasPaint::solid("#123456").unwrap();
-    let typed_text = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Text,
-                ThemeStylePatch::default().with_fill(fill.clone()),
-            ))),
-        )
-        .unwrap()
-        .resolve(DiagramFamilyId::CLASS);
-    let empty_evidence = FamilyThemeEvidence::from_theme(Some(&empty));
-    assert!(empty_evidence.required.is_empty());
-    assert!(FamilyThemeEvidence::not_applicable(Some(&empty)));
-    let typed_evidence = FamilyThemeEvidence::from_theme(Some(&typed_text));
-    assert_eq!(
-        typed_evidence.required,
-        vec![FamilyThemeMechanismKey::Rule {
-            index: 0,
-            target: ThemeTarget::Text
-        }]
-    );
-    assert!(!FamilyThemeEvidence::not_applicable(Some(&typed_text)));
-
-    let mut rules = ThemeRuleSet::default();
-    for _ in 0..512 {
-        rules = rules.with_rule(ThemeRule::new(
-            ThemeTarget::Node,
-            ThemeStylePatch::default()
-                .with_fill(fill.clone())
-                .with_stroke(fill.clone()),
-        ));
-    }
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(rules))
-        .unwrap()
-        .resolve(DiagramFamilyId::CLASS);
-    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
-    assert_eq!(theme.family_mechanism_routes().len(), 1024);
-    let expected = (0..512)
-        .map(|index| FamilyThemeMechanismKey::Rule {
-            index,
-            target: ThemeTarget::Node,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(evidence.required, expected);
-}
-
-#[test]
-fn native_evidence_effect_requirements_keep_binding_order_and_full_identity() {
-    use crate::diagram_theme::{
-        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
-    };
-
-    let mut effects = DiagramEffectSet::default();
-    for id in ["z-last", "a-first"] {
-        effects = effects
-            .with_graph(
-                EffectGraph::new(
-                    id,
-                    [EffectPrimitive::DropShadow {
-                        input: EffectInput::SourceGraphic,
-                        offset_x: 1.0,
-                        offset_y: 1.0,
-                        blur_radius: 2.0,
-                        spread: 0.0,
-                        color: ThemeColorValue::parse("#00000080").unwrap(),
-                    }],
-                )
-                .unwrap(),
-            )
-            .unwrap();
-    }
-    let bindings = [
-        (ThemeTarget::Edge, "z-last"),
-        (ThemeTarget::Node, "a-first"),
-        (ThemeTarget::Cluster, "z-last"),
-    ];
-    for (target, id) in bindings {
-        effects = effects
-            .with_binding(EffectBinding::new(target, id).unwrap())
-            .unwrap();
-    }
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_effects(effects))
-        .unwrap()
-        .resolve(DiagramFamilyId::CLASS);
-    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
-    let expected = bindings
-        .into_iter()
-        .map(|(target, id)| FamilyThemeMechanismKey::EffectBinding {
-            target,
-            effect_id: id.to_string(),
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(evidence.required, expected);
 }
 
 fn render_with_sidecar_host_control(

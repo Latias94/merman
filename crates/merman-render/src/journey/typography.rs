@@ -7,7 +7,9 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+};
 use crate::model::JourneyDiagramLayout;
 
 /// Resolves Journey's inherited base typography once for layout, CSS, and evidence.
@@ -22,7 +24,7 @@ pub(crate) struct JourneyTypographyThemePlan {
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_seal: OnceLock<JourneyTypographyTerminalSeal>,
 }
 
@@ -101,7 +103,7 @@ impl JourneyTypographyThemePlan {
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_seal: OnceLock::new(),
         }
     }
@@ -145,17 +147,17 @@ impl JourneyTypographyThemePlan {
             .is_some_and(|seal| self.terminal_seal.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(seal) = self.terminal_seal.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontStack,
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
@@ -163,20 +165,20 @@ impl JourneyTypographyThemePlan {
                 false,
             );
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontSize,
                 self.typed_font_size_requested,
                 self.typed_font_size_active,
                 false,
                 false,
             );
-            return evidence;
+            return;
         };
 
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, seal.has_visible_base_text);
+            .record_unsupported_typography_evidence(evidence, seal.has_visible_base_text);
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
@@ -184,14 +186,13 @@ impl JourneyTypographyThemePlan {
             true,
         );
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontSize,
             self.typed_font_size_requested,
             self.typed_font_size_active,
             seal.has_visible_base_text,
             true,
         );
-        evidence
     }
 
     fn mark_typed_property_evidence(

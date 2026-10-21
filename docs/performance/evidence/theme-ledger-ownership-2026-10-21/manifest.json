@@ -1,0 +1,13 @@
+{
+  "created_at_utc": "2026-10-20T20:24:14.540696+00:00",
+  "base_revision": "f46f751f512600789dd6b3cf3cd734c747dae2f2",
+  "candidate_source_paths": 78,
+  "entry_count": 33,
+  "file": "evidence.json.gz",
+  "compressed_sha256": "0fda04b984047775c5457221fbafb0a19b49ecd1c8b306ac6a19b3018d1aa3f8",
+  "uncompressed_sha256": "65c6cbdd8e7b9e9c8c617b9397bf9abb1043eff481f0548d7a369f850779ab2f",
+  "compressed_bytes": 159354,
+  "uncompressed_bytes": 2122890,
+  "scope": "Compact decision receipts, summary comparisons, terminal checks and exact source identity. Full per-site/catalog raw rows remain under the ignored target experiment directory. Native smoke is protocol-only.",
+  "decision": "kept_for_memory_and_work; no latency or v0.9.0 convergence claim"
+}
