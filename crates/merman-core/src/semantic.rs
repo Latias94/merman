@@ -136,6 +136,7 @@ pub struct ParsedSemanticDiagram {
 pub struct SemanticParser {
     site_config: MermaidConfig,
     site_config_overrides: MermaidConfig,
+    runtime_policy: crate::runtime::RuntimePolicy,
 }
 
 impl Default for SemanticParser {
@@ -143,6 +144,7 @@ impl Default for SemanticParser {
         Self {
             site_config: crate::generated::default_site_config(),
             site_config_overrides: MermaidConfig::empty_object(),
+            runtime_policy: crate::runtime::RuntimePolicy::deterministic(),
         }
     }
 }
@@ -151,6 +153,30 @@ impl SemanticParser {
     /// Creates a parser with Mermaid defaults and Merman's hardened source-config policy.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Replaces the runtime policy used to begin future parse operations.
+    pub fn with_runtime_policy(mut self, policy: crate::runtime::RuntimePolicy) -> Self {
+        self.runtime_policy = policy;
+        self
+    }
+
+    /// Replays a frozen runtime context without consulting system state.
+    pub fn with_operation_context(self, context: crate::runtime::OperationContext) -> Self {
+        self.with_runtime_policy(crate::runtime::RuntimePolicy::from_operation_context(
+            context,
+        ))
+    }
+
+    pub fn runtime_policy(&self) -> &crate::runtime::RuntimePolicy {
+        &self.runtime_policy
+    }
+
+    pub fn begin_operation(
+        &self,
+    ) -> std::result::Result<crate::runtime::OperationContext, crate::runtime::RuntimePolicyError>
+    {
+        self.runtime_policy.begin_operation()
     }
 
     /// Applies host-level config before parsing. An explicit `secure` array replaces the
@@ -190,17 +216,7 @@ impl SemanticParser {
         input: &str,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
-        control.checkpoint()?;
-        let pre = match preprocess_builtin_semantic_controlled(input, None, control)? {
-            Ok(pre) => pre,
-            Err(error) => return Ok(Err(error)),
-        };
-        let diagram_type =
-            match crate::detect::detect_builtin_precleaned_controlled(pre.code(), control)? {
-                Ok(fact) => fact.id,
-                Err(error) => return Ok(Err(error)),
-            };
-        self.parse_preprocessed_controlled(diagram_type, pre, control)
+        self.parse_input_controlled(input, None, control)
     }
 
     /// Parses a diagram when its Mermaid type is already known and supported by this facade.
@@ -221,13 +237,37 @@ impl SemanticParser {
         input: &str,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
+        self.parse_input_controlled(input, Some(diagram_type), control)
+    }
+
+    fn parse_input_controlled(
+        &self,
+        input: &str,
+        diagram_type: Option<&str>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        let pre = match preprocess_builtin_semantic_controlled(input, Some(diagram_type), control)?
-        {
-            Ok(pre) => pre,
-            Err(error) => return Ok(Err(error)),
+        let context = match self.begin_operation() {
+            Ok(context) => context,
+            Err(error) => return Ok(Err(error.into())),
         };
-        self.parse_preprocessed_controlled(diagram_type, pre, control)
+        crate::runtime::with_operation_context(&context, || {
+            let pre = match preprocess_builtin_semantic_controlled(input, diagram_type, control)? {
+                Ok(pre) => pre,
+                Err(error) => return Ok(Err(error)),
+            };
+            let diagram_type = match diagram_type {
+                Some(diagram_type) => diagram_type,
+                None => {
+                    match crate::detect::detect_builtin_precleaned_controlled(pre.code(), control)?
+                    {
+                        Ok(fact) => fact.id,
+                        Err(error) => return Ok(Err(error)),
+                    }
+                }
+            };
+            self.parse_preprocessed_controlled(diagram_type, pre, control)
+        })
     }
 
     fn parse_preprocessed_controlled(
@@ -323,6 +363,150 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "diagram-git-graph")]
+    fn semantic_gitgraph_ids(parser: &SemanticParser, known_type: bool) -> Vec<String> {
+        let source = "gitGraph\ncommit\ncommit\n";
+        let parsed = if known_type {
+            parser.parse_diagram_with_type_sync("gitGraph", source)
+        } else {
+            parser.parse_diagram_sync(source)
+        }
+        .expect("GitGraph semantic parse");
+        let SemanticDiagramModel::GitGraph(model) = parsed.model else {
+            panic!("expected GitGraph semantics");
+        };
+        model.commits.into_iter().map(|commit| commit.id).collect()
+    }
+
+    #[cfg(feature = "diagram-git-graph")]
+    #[test]
+    fn semantic_parser_owns_its_runtime_inside_an_ambient_operation() {
+        let parser = SemanticParser::new();
+        let expected = semantic_gitgraph_ids(&parser, false);
+        let outer = crate::runtime::RuntimePolicy::deterministic()
+            .with_fixed_seed(1)
+            .with_fixed_unix_millis(1_771_113_600_000)
+            .begin_operation()
+            .unwrap();
+        crate::runtime::with_operation_context(&outer, || {
+            assert_eq!(semantic_gitgraph_ids(&parser, false), expected);
+            assert_eq!(semantic_gitgraph_ids(&parser, true), expected);
+            assert_eq!(crate::runtime::today_local(), outer.today_local());
+        });
+    }
+
+    #[cfg(feature = "diagram-git-graph")]
+    #[test]
+    fn semantic_runtime_seed_and_captured_context_control_commit_ids() {
+        let policy = crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(1);
+        let first = SemanticParser::new().with_runtime_policy(policy.clone());
+        let second = SemanticParser::new()
+            .with_runtime_policy(crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(2));
+        let replay = SemanticParser::new().with_operation_context(first.begin_operation().unwrap());
+        let expected = semantic_gitgraph_ids(&first, false);
+        assert_eq!(first.runtime_policy(), &policy);
+        assert_ne!(semantic_gitgraph_ids(&second, false), expected);
+        for known_type in [false, true] {
+            assert_eq!(semantic_gitgraph_ids(&first, known_type), expected);
+            assert_eq!(semantic_gitgraph_ids(&replay, known_type), expected);
+        }
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::MermaidEngine::new()
+                .with_runtime_policy(policy)
+                .parse_diagram_for_render_model_sync(
+                    "gitGraph\ncommit\ncommit\n",
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::GitGraph(model) = full.model() else {
+                panic!("expected full GitGraph model");
+            };
+            assert_eq!(
+                model.commits.iter().map(|c| &c.id).collect::<Vec<_>>(),
+                expected.iter().collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[cfg(feature = "diagram-gantt")]
+    #[test]
+    fn semantic_runtime_clock_and_timezone_resolve_gantt_dates() {
+        let source = "gantt\ndateFormat MM-DD\nMissing year: id1,03-01,1d\nMissing ref: id2,after missing,1d\n";
+        for (offset, adjustment) in [(0, 0), (480, -28_800_000)] {
+            let policy = crate::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_771_113_600_000)
+                .try_with_fixed_local_offset_minutes(offset)
+                .unwrap();
+            let parser = SemanticParser::new().with_runtime_policy(policy);
+            for known_type in [false, true] {
+                crate::diagrams::gantt::reset_gantt_syntax_construction_count();
+                let parsed = if known_type {
+                    parser.parse_diagram_with_type_sync("gantt", source)
+                } else {
+                    parser.parse_diagram_sync(source)
+                }
+                .unwrap();
+                let SemanticDiagramModel::Gantt(model) = parsed.model else {
+                    panic!("expected Gantt semantics");
+                };
+                assert_eq!(model.tasks[0].start_ms, 1_772_323_200_000 + adjustment);
+                assert_eq!(model.tasks[1].start_ms, 1_771_113_600_000 + adjustment);
+                assert_eq!(crate::diagrams::gantt::gantt_syntax_construction_count(), 1);
+            }
+        }
+    }
+
+    #[cfg(feature = "diagram-gantt")]
+    #[test]
+    fn semantic_runtime_restores_ambient_context_after_errors_and_cancellation() {
+        let policy = crate::runtime::RuntimePolicy::deterministic()
+            .with_fixed_unix_millis(1_771_113_600_000);
+        let parser = SemanticParser::new().with_runtime_policy(policy);
+        let outer = crate::runtime::RuntimePolicy::deterministic()
+            .with_fixed_today(Some(crate::time::CivilDate::new(2030, 1, 2).unwrap()))
+            .begin_operation()
+            .unwrap();
+        let valid = "gantt\ndateFormat MM-DD\nMissing year: id1,03-01,1d\n";
+        let invalid = "gantt\nweekday someday\n";
+        crate::runtime::with_operation_context(&outer, || {
+            for known_type in [false, true] {
+                let parse = |input: &str, control: &OperationControl| {
+                    if known_type {
+                        parser.parse_diagram_with_type_controlled_sync("gantt", input, control)
+                    } else {
+                        parser.parse_diagram_controlled_sync(input, control)
+                    }
+                };
+                for _ in 0..2 {
+                    let parsed = parse(valid, &OperationControl::new()).unwrap().unwrap();
+                    let SemanticDiagramModel::Gantt(model) = parsed.model else {
+                        panic!("expected Gantt semantics");
+                    };
+                    assert_eq!(model.tasks[0].start_ms, 1_772_323_200_000);
+                    assert_eq!(crate::runtime::today_local(), outer.today_local());
+                    let error = parse(invalid, &OperationControl::new())
+                        .unwrap()
+                        .unwrap_err();
+                    let Error::DiagramParse { diagnostic, .. } = error else {
+                        panic!("expected Gantt parse diagnostic");
+                    };
+                    let start = invalid.find("someday").unwrap();
+                    assert_eq!(
+                        diagnostic.span(),
+                        Some(crate::SourceSpan::new(start, start + "someday".len()))
+                    );
+                    assert_eq!(crate::runtime::today_local(), outer.today_local());
+                    let control = OperationControl::new();
+                    control.cancel_after_checkpoints(2);
+                    assert!(parse(valid, &control).is_err());
+                    assert_eq!(crate::runtime::today_local(), outer.today_local());
+                }
+            }
+        });
+    }
 
     #[cfg(feature = "diagram-agentflow")]
     #[test]

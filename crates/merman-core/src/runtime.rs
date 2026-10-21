@@ -637,6 +637,33 @@ fn active_operation_context() -> OperationContext {
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "system-clock"))]
+    #[test]
+    fn semantic_pre_cancel_precedes_runtime_error_and_runtime_precedes_detection() {
+        let parser = crate::SemanticParser::new().with_runtime_policy(RuntimePolicy {
+            clock: ClockPolicy::System,
+            ..RuntimePolicy::deterministic()
+        });
+        for known_type in [false, true] {
+            let parse = |control: &crate::OperationControl| {
+                if known_type {
+                    parser.parse_diagram_with_type_controlled_sync("unknown", "unknown", control)
+                } else {
+                    parser.parse_diagram_controlled_sync("unknown", control)
+                }
+            };
+            let cancelled = crate::OperationControl::new();
+            cancelled.cancel();
+            assert!(parse(&cancelled).is_err());
+            assert!(matches!(
+                parse(&crate::OperationControl::new()).unwrap(),
+                Err(crate::Error::RuntimePolicy(
+                    RuntimePolicyError::MissingCapability(RuntimeCapability::SystemClock)
+                ))
+            ));
+        }
+    }
+
     fn date(year: i32, month: u32, day: u32) -> CivilDate {
         CivilDate::new(year, month, day).expect("valid test date")
     }
