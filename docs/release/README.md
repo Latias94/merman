@@ -12,6 +12,10 @@ Current source also makes math explicit and retires the complete SVG feature agg
 see [ADR-0097](../adr/0097-explicit-math-capability.md). CLI release archives still select math,
 while source-default CLI and generic SVG/Web recipes omit it. Published artifacts are unchanged.
 
+## 0.9 maintenance line
+
+`release/0.9.x` carries compatible patch releases, including the prepared 0.9.2 fixes. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+
 ## Merman 0.9.1
 
 This patch was released from `release/0.9.1`, with selected fixes from development applied to the

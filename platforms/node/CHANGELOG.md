@@ -13,6 +13,12 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 - Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
 - Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
 
+### Fixed
+
+- Host themes preserve filled C4 boundaries and relationships, Wardley anchors, and ZenUML colors and fonts. Diagram-source Mermaid themes retain their derived palettes under host styling. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Repeated Flowchart `classDef` styles accumulate in source order, and unsupported Unicode characters retain valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Look selectors and Block/Requirement styles reject unsafe values; SVG CSS cleanup removes unterminated strings, comments, and URLs while retaining safe neighboring declarations. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+
 ## [0.9.1] - 2026-10-18
 
 - ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.
