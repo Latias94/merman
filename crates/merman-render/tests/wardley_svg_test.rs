@@ -343,20 +343,31 @@ fn wardley_supported_fill_does_not_hide_unsupported_sibling_opacity() {
 }
 
 #[test]
-fn wardley_authored_palette_owns_host_anchor_foreground() {
+fn wardley_site_palette_yields_to_host_anchor_paint_but_raw_colors_keep_ownership() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();
-    for (site_config, expected) in [
-        (serde_json::json!({"theme": "default"}), "#131300"),
+    for (origin, site_config, expected) in [
         (
+            "site-palette",
+            serde_json::json!({"theme": "default"}),
+            "#e5e7eb",
+        ),
+        (
+            "site-variable",
             serde_json::json!({"themeVariables": {"primaryTextColor": "#123456"}}),
             "#123456",
         ),
+        ("source-palette", serde_json::json!({}), "#131300"),
     ] {
         let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+        let source = if origin == "source-palette" {
+            format!("%%{{init: {{\"theme\": \"default\"}}}}%%\n{WARDLEY_ANCHOR_SOURCE}")
+        } else {
+            WARDLEY_ANCHOR_SOURCE.to_owned()
+        };
         let (_, rendered) = try_render_wardley_with_theme(
-            WARDLEY_ANCHOR_SOURCE,
+            &source,
             &theme,
             engine,
             &RenderEnvironment::deterministic(),
@@ -371,7 +382,8 @@ fn wardley_authored_palette_owns_host_anchor_foreground() {
                 .find(|node| node.has_tag_name("text"))
                 .unwrap()
                 .attribute("fill"),
-            Some(expected)
+            Some(expected),
+            "{origin}"
         );
     }
 }

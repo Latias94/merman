@@ -407,7 +407,7 @@ style AB1 color:#654321
 
 #[test]
 fn venn_text_fill_uses_final_venn_role_ownership() {
-    for external in [false, true] {
+    for origin in ["recipe", "site", "source"] {
         for base in ["default", "base"] {
             let rule = ThemeRule::new(
                 ThemeTarget::Text,
@@ -415,7 +415,7 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
             )
             .for_family(DiagramFamilyId::VENN);
             let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
-            let spec = if external {
+            let spec = if origin != "recipe" {
                 spec
             } else {
                 spec.with_mermaid_compatibility(
@@ -426,31 +426,41 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
             };
             let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
             let mut config = serde_json::json!({"themeVariables":{"textColor":"#654321"}});
-            if external {
+            if origin != "recipe" {
                 config["theme"] = serde_json::json!(base);
             }
+            let source = if origin == "source" {
+                format!("%%{{init: {config}}}%%\n{THEME_TYPOGRAPHY_SOURCE}")
+            } else {
+                THEME_TYPOGRAPHY_SOURCE.to_owned()
+            };
+            let engine = if origin == "source" {
+                Engine::new()
+            } else {
+                Engine::new().with_site_config(MermaidConfig::from_value(config))
+            };
             let rendered = render_venn_with_theme_requirement(
-                THEME_TYPOGRAPHY_SOURCE,
+                &source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(config)),
-                if !external {
+                engine,
+                if origin == "recipe" {
                     ThemePortabilityRequirement::BestEffort
                 } else {
                     ThemePortabilityRequirement::RequirePortable
                 },
             )
             .unwrap();
-            let owned = external || base == "base";
+            let owned = origin == "source" || base == "base";
             let expected = if base == "base" {
                 "#654321"
-            } else if external {
+            } else if origin == "source" {
                 "#333"
             } else {
                 "#123456"
             };
             assert!(
                 rendered.svg().contains(&format!("fill:{expected};")),
-                "external={external}, base={base}: {}",
+                "origin={origin}, base={base}: {}",
                 rendered.svg()
             );
             let evidence =
@@ -458,7 +468,7 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
             assert_eq!(evidence.required_count(), 1);
             assert_eq!(
                 evidence.mermaid_compatibility_residual_count(),
-                usize::from(!external)
+                usize::from(origin == "recipe")
             );
             assert_eq!(evidence.applied_count(), usize::from(!owned));
             assert_eq!(evidence.not_applicable_count(), usize::from(owned));

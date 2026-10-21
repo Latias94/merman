@@ -294,7 +294,7 @@ fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() 
 }
 
 #[test]
-fn swimlane_source_and_site_selected_palettes_own_lane_stroke() {
+fn swimlane_source_palette_wins_while_site_palette_yields_to_lane_stroke() {
     let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
     let baseline = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
@@ -315,8 +315,10 @@ fn swimlane_source_and_site_selected_palettes_own_lane_stroke() {
             );
             let rendered =
                 render_swimlane_cluster(&source, &theme, MermaidConfig::from_value(config));
-            assert_eq!(rendered.svg(), unstyled.svg(), "{selected}/{origin}");
-            assert!(!rendered.svg().contains("#654321"));
+            if origin == "source" {
+                assert_eq!(rendered.svg(), unstyled.svg(), "{selected}/{origin}");
+            }
+            assert_eq!(rendered.svg().contains("#654321"), origin == "site");
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             let lane = document
                 .descendants()
@@ -326,7 +328,16 @@ fn swimlane_source_and_site_selected_palettes_own_lane_stroke() {
                 lane.attribute("data-color-id").is_some(),
                 selected == "redux-color"
             );
-            if selected == "default" {
+            if origin == "site" {
+                for class_name in ["swimlane-body", "swimlane-title"] {
+                    assert!(
+                        lane_rect_style(&document, class_name)
+                            .0
+                            .contains("stroke:#654321 !important"),
+                        "{selected}/{origin}/{class_name}"
+                    );
+                }
+            } else if selected == "default" {
                 for class_name in ["swimlane-body", "swimlane-title"] {
                     assert_eq!(lane_rect_style(&document, class_name).2, "#aaaa33");
                 }
@@ -336,8 +347,11 @@ fn swimlane_source_and_site_selected_palettes_own_lane_stroke() {
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.required_count(), 1);
             assert_eq!(evidence.accounted_count(), 1);
-            assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(origin == "site"));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(origin == "source")
+            );
             assert_eq!(evidence.theme_residual_count(), 0);
             assert_eq!(evidence.source_residual_count(), 0);
             assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);

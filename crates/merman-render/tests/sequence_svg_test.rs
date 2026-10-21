@@ -2986,7 +2986,7 @@ fn render_sequence_paint_owner_case(
 }
 
 #[test]
-fn sequence_external_palette_owns_derived_actor_text_under_typed_paint() {
+fn sequence_source_palette_owns_actor_text_while_site_palette_is_a_fallback() {
     for origin in ["site", "source"] {
         let rendered = render_sequence_paint_owner_case(
             "sequenceDiagram\nparticipant Alice\nAlice->>Bob: Message\n",
@@ -2996,7 +2996,7 @@ fn sequence_external_palette_owns_derived_actor_text_under_typed_paint() {
             origin,
             "external-palette",
         );
-        assert!(!rendered.svg().contains("#123456"));
+        assert_eq!(rendered.svg().contains("#123456"), origin == "site");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let css = document
             .descendants()
@@ -3012,10 +3012,20 @@ fn sequence_external_palette_owns_derived_actor_text_under_typed_paint() {
             )
             .last()
             .copied(),
-            Some("#333")
+            Some(if origin == "source" {
+                "#333"
+            } else {
+                "#123456"
+            })
         );
         drop(document);
-        assert_sequence_paint_owner_evidence(rendered, false, origin, "external-palette", "fill");
+        assert_sequence_paint_owner_evidence(
+            rendered,
+            origin == "site",
+            origin,
+            "external-palette",
+            "fill",
+        );
     }
 }
 
@@ -3766,6 +3776,8 @@ end"#;
             let partially_owned_terminal = theme_id == "default"
                 && target == ThemeTarget::ActorLabel
                 && config_key == "textColor";
+            let terminal_owned =
+                origin == "source" || (mermaid_owns_terminal && !partially_owned_terminal);
             let property = if stroke { "stroke" } else { "fill" };
             let (selector_suffix, dom_tag, dom_class, text_fragment) = match target {
                 ThemeTarget::Actor => (".actor", "rect", "actor", None),
@@ -3866,7 +3878,11 @@ end"#;
                 css_property_values_for_exact_selector(css, &selector, property)
                     .last()
                     .copied(),
-                Some(expected),
+                Some(if terminal_owned {
+                    expected
+                } else {
+                    TYPED_COLOR
+                }),
                 "{origin} {case} final {selector} {property} terminal: {css}",
             );
             assert!(
@@ -3887,13 +3903,12 @@ end"#;
                 }),
                 "missing {origin} {case} terminal {dom_tag}.{dom_class}"
             );
-            {
-                assert!(
-                    !rendered.svg().contains(TYPED_COLOR),
-                    "typed paint must yield completely to {origin} {case}: {}",
-                    rendered.svg(),
-                );
-            }
+            assert_eq!(
+                rendered.svg().contains(TYPED_COLOR),
+                !terminal_owned,
+                "typed paint follows the actual {origin} {case} terminal owner: {}",
+                rendered.svg(),
+            );
             if partially_owned_terminal {
                 let root_selector = format!("#sequence-{origin}-{case}");
                 assert_eq!(
@@ -3913,7 +3928,13 @@ end"#;
                 );
             }
             drop(document);
-            assert_sequence_paint_owner_evidence(rendered, false, origin, &case, property);
+            assert_sequence_paint_owner_evidence(
+                rendered,
+                !terminal_owned,
+                origin,
+                &case,
+                property,
+            );
         }
     }
 }

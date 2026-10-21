@@ -1697,7 +1697,7 @@ fn mindmap_explicit_mermaid_color_scale_slot_outranks_the_typed_palette() {
 }
 
 #[test]
-fn mindmap_source_and_site_selected_themes_own_the_complete_branch_palette() {
+fn mindmap_source_palette_wins_while_site_palette_is_a_fallback() {
     let plain = "mindmap\n  Root\n    First\n    Second\n";
     let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "default");
     for (owner, source, config) in [
@@ -1727,20 +1727,40 @@ fn mindmap_source_and_site_selected_themes_own_the_complete_branch_palette() {
                     &format!("{diagram_id}-node_{node}"),
                     "data-mindmap-section",
                 ),
-                None,
-                "{owner} selected the complete palette",
+                if owner == "source" {
+                    None
+                } else {
+                    Some(section.to_string())
+                },
+                "{owner} branch palette owner",
             );
-            assert_eq!(
-                mindmap_mermaid_section_shape_fill(&stylesheet, &diagram_id, section),
-                expected,
-                "{owner} section={section}",
-            );
+            if owner == "source" {
+                assert_eq!(
+                    mindmap_mermaid_section_shape_fill(&stylesheet, &diagram_id, section),
+                    expected,
+                    "{owner} section={section}",
+                );
+            } else {
+                assert_eq!(
+                    mindmap_typed_section_shape_fill(&stylesheet, &diagram_id, section),
+                    if section == 0 { "#123456" } else { "#abcdef" },
+                    "{owner} section={section}",
+                );
+            }
         }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1, "{owner}");
-        assert_eq!(evidence.applied_count(), 0, "{owner}");
-        assert_eq!(evidence.not_applicable_count(), 1, "{owner}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(owner == "site"),
+            "{owner}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(owner == "source"),
+            "{owner}"
+        );
         assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
     }
 }

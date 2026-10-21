@@ -993,8 +993,8 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         (
             serde_json::json!({"theme":"base","themeVariables":{"textColor":"#abcdef"}}),
             "#abcdef",
-            "rgb(8.5000000002, 5.7500000001, 0)",
-            false,
+            "#123456",
+            true,
         ),
         (
             serde_json::json!({"themeVariables":{"titleColor":"#abcdef"}}),
@@ -1034,6 +1034,18 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
         assert_eq!(evidence.theme_residual_count(), 0);
     }
+
+    let source = format!(
+        "%%{{init: {{\"theme\": \"base\", \"themeVariables\": {{\"textColor\": \"#abcdef\"}}}}}}%%\n{RADAR_TEXT_SOURCE}"
+    );
+    let rendered = render_radar_with_theme_and_engine(&source, &theme, Engine::new());
+    let css = radar_stylesheet(rendered.svg());
+    assert!(css.split_once('}').unwrap().0.ends_with("fill:#abcdef;"));
+    assert!(css.contains(".radarTitle{font-size:16px;color:rgb(8.5000000002, 5.7500000001, 0);fill:rgb(8.5000000002, 5.7500000001, 0);"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

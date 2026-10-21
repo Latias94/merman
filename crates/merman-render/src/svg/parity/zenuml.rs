@@ -275,7 +275,9 @@ pub(super) fn render_zenuml_diagram_svg_model(
     }
     for comment in &layout.comments {
         render_comment(&mut out, comment, theme)?;
-        theme_receipt.record_colors(&["subtleTextColor"]);
+        if !comment.style.contains_key("fill") {
+            theme_receipt.record_colors(&["subtleTextColor"]);
+        }
         theme_receipt.record_text(&comment.text);
     }
     out.push_str("</g></svg>");

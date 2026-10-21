@@ -344,6 +344,63 @@ fn requirement_stylesheet(svg: &str) -> String {
         .to_string()
 }
 
+fn requirement_palette_property(
+    document: &roxmltree::Document<'_>,
+    node_id: &str,
+    property: &str,
+) -> Option<String> {
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .expect("visible Requirement palette node");
+    let look = node.attribute("data-look").expect("Requirement look");
+    let color = node
+        .attribute("data-color-id")
+        .expect("Requirement palette slot");
+    let selector =
+        format!("#requirement-theme [data-look=\"{look}\"][data-color-id=\"{color}\"].node path{{");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Requirement stylesheet");
+    css.split(&selector)
+        .nth(1)?
+        .split('}')
+        .next()?
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .find_map(|(name, value)| (name == property).then(|| value.to_owned()))
+}
+
+fn assert_requirement_has_no_typed_paint_override(
+    document: &roxmltree::Document<'_>,
+    node_id: &str,
+    property: &str,
+    typed: &str,
+) {
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .expect("visible Requirement paint node");
+    for path in node.descendants().filter(|node| node.has_tag_name("path")) {
+        for (name, value) in path
+            .attribute("style")
+            .unwrap_or_default()
+            .split(';')
+            .filter_map(|declaration| declaration.split_once(':'))
+        {
+            if name.trim() == property {
+                assert_ne!(
+                    value.trim().trim_end_matches("!important").trim_end(),
+                    typed,
+                    "{node_id} must retain its {property} palette owner"
+                );
+            }
+        }
+    }
+}
+
 fn requirement_source() -> &'static str {
     r#"requirementDiagram
   requirement req1 {
@@ -1536,7 +1593,7 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
 }
 
 #[test]
-fn requirement_family_default_keeps_redux_color_paint_ownership() {
+fn requirement_family_default_palette_yields_to_typed_paint() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -1544,7 +1601,8 @@ fn requirement_family_default_keeps_redux_color_paint_ownership() {
                     ThemeRule::new(
                         ThemeTarget::Requirement,
                         ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
                     )
                     .for_family(DiagramFamilyId::REQUIREMENT),
                 ),
@@ -1556,15 +1614,19 @@ fn requirement_family_default_keeps_redux_color_paint_ownership() {
     let document = roxmltree::Document::parse(rendered.svg()).expect("default Requirement SVG");
     assert_eq!(
         terminal_fill_for(&document, "requirement-theme-req1"),
-        "#ffffff"
+        "#123456"
+    );
+    assert_eq!(
+        terminal_stroke_for(&document, "requirement-theme-req1"),
+        "#654321"
     );
     assert!(rendered.svg().contains(r#"data-look="neo""#));
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
@@ -2176,7 +2238,7 @@ fn extended_dark_primary_color_does_not_own_requirement_main_background() {
 }
 
 #[test]
-fn requirement_source_and_site_selected_themes_own_the_complete_palette() {
+fn requirement_source_palette_wins_while_site_palette_is_a_fallback() {
     let theme = requirement_fill_and_stroke_theme(
         CanvasPaint::solid("#123456").unwrap(),
         CanvasPaint::solid("#654321").unwrap(),
@@ -2209,25 +2271,413 @@ fn requirement_source_and_site_selected_themes_own_the_complete_palette() {
                 roxmltree::Document::parse(rendered.svg()).expect("valid Requirement SVG");
             assert_eq!(
                 terminal_fill_for(&document, "requirement-theme-req1"),
-                fill,
+                if owner == "source" { fill } else { "#123456" },
                 "{baseline} {owner}"
             );
             assert_eq!(
                 terminal_stroke_for(&document, "requirement-theme-req1"),
-                stroke,
+                if owner == "source" { stroke } else { "#654321" },
                 "{baseline} {owner}"
             );
             drop(document);
             let completion = rendered.into_completion();
             let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(evidence.required_count(), 1, "{baseline} {owner}");
-            assert_eq!(evidence.applied_count(), 0, "{baseline} {owner}");
-            assert_eq!(evidence.not_applicable_count(), 1, "{baseline} {owner}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(owner == "site"),
+                "{baseline} {owner}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(owner == "source"),
+                "{baseline} {owner}"
+            );
             assert_eq!(evidence.theme_residual_count(), 0, "{baseline} {owner}");
             assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
             assert_eq!(evidence.source_residual_count(), 0);
         }
     }
+}
+
+#[test]
+fn requirement_redux_fallback_palettes_yield_to_typed_paint() {
+    for palette in ["redux-color", "redux-dark-color"] {
+        for origin in ["site", "recipe", "source"] {
+            let mut spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            );
+            if origin == "recipe" {
+                spec = spec.with_mermaid_compatibility(
+                    MermaidThemeCompatibility::default()
+                        .with_theme(palette)
+                        .unwrap(),
+                );
+            }
+            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+            let source = if origin == "source" {
+                format!(
+                    "%%{{init: {{\"theme\": \"{palette}\"}}}}%%\n{}",
+                    requirement_source()
+                )
+            } else {
+                requirement_source().to_owned()
+            };
+            let engine = if origin == "site" {
+                classic_engine().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"theme": palette}),
+                ))
+            } else {
+                classic_engine()
+            };
+            let rendered = render_requirement_with_theme_requirement(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            );
+            assert_eq!(
+                rendered.metadata().effective_config.get_str("theme"),
+                Some(palette)
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if origin == "source" {
+                for (property, typed) in [("fill", "#123456"), ("stroke", "#654321")] {
+                    let terminal = if property == "fill" {
+                        terminal_fill_for(&document, "requirement-theme-req1")
+                    } else {
+                        terminal_stroke_for(&document, "requirement-theme-req1")
+                    };
+                    let config = rendered.metadata().effective_config.as_value();
+                    if let Some(palette_paint) =
+                        requirement_palette_property(&document, "requirement-theme-req1", property)
+                    {
+                        let channel = if property == "fill" {
+                            "bkgColorArray"
+                        } else {
+                            "borderColorArray"
+                        };
+                        let expected = config["themeVariables"][channel]
+                            .as_array()
+                            .and_then(|colors| {
+                                colors.iter().filter_map(serde_json::Value::as_str).next()
+                            })
+                            .expect("the matched source palette has a first color");
+                        assert_eq!(palette_paint, expected, "{origin} {palette} {property}");
+                    } else {
+                        let channel = if property == "fill" {
+                            "mainBkg"
+                        } else {
+                            "nodeBorder"
+                        };
+                        assert_eq!(
+                            Some(terminal.as_str()),
+                            config["themeVariables"][channel].as_str(),
+                            "{origin} {palette} {property}"
+                        );
+                    }
+                    assert_ne!(terminal, typed, "{origin} {palette} {property}");
+                    assert_requirement_has_no_typed_paint_override(
+                        &document,
+                        "requirement-theme-req1",
+                        property,
+                        typed,
+                    );
+                }
+            } else {
+                assert_eq!(
+                    terminal_fill_for(&document, "requirement-theme-req1"),
+                    "#123456",
+                    "{origin} {palette}"
+                );
+                assert_eq!(
+                    terminal_stroke_for(&document, "requirement-theme-req1"),
+                    "#654321",
+                    "{origin} {palette}"
+                );
+            }
+            assert!(
+                document
+                    .descendants()
+                    .filter_map(|node| node.text())
+                    .any(|text| text.contains("Themed requirement"))
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {palette}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(origin != "source"),
+                "{origin} {palette}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(origin == "source"),
+                "{origin} {palette}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {palette}");
+            assert_eq!(
+                evidence.mermaid_compatibility_residual_count(),
+                usize::from(origin == "recipe"),
+                "{origin} {palette}"
+            );
+        }
+    }
+}
+
+#[test]
+fn requirement_explicit_palette_arrays_own_only_valid_paint_channels() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for (case, variables, owned_fill, owned_stroke) in [
+        (
+            "background-only",
+            serde_json::json!({"bkgColorArray": ["#fedcba"]}),
+            Some("#fedcba"),
+            None,
+        ),
+        (
+            "border-only",
+            serde_json::json!({"borderColorArray": ["#abcdef"]}),
+            None,
+            Some("#abcdef"),
+        ),
+        (
+            "empty",
+            serde_json::json!({"bkgColorArray": [], "borderColorArray": []}),
+            None,
+            None,
+        ),
+        (
+            "non-string",
+            serde_json::json!({"bkgColorArray": [7], "borderColorArray": [false]}),
+            None,
+            None,
+        ),
+    ] {
+        for origin in ["site", "directive"] {
+            let mut config = serde_json::json!({"theme": "redux-color"});
+            let source = if origin == "site" {
+                config["themeVariables"] = variables.clone();
+                requirement_source().to_owned()
+            } else {
+                format!(
+                    "%%{{init: {{\"themeVariables\": {variables}}}}}%%\n{}",
+                    requirement_source()
+                )
+            };
+            let rendered = render_requirement_with_theme_and_engine(
+                &source,
+                &theme,
+                classic_engine().with_site_config(MermaidConfig::from_value(config)),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if origin == "directive" {
+                for (channel, values) in variables.as_object().unwrap() {
+                    for color in values
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                    {
+                        assert!(
+                            !rendered.metadata().effective_config.as_value()["themeVariables"]
+                                [channel]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|value| value.as_str() == Some(color)),
+                            "directive admission must reject {channel}: {color}"
+                        );
+                    }
+                }
+            }
+            for (property, owner, typed) in [
+                ("fill", owned_fill, "#123456"),
+                ("stroke", owned_stroke, "#654321"),
+            ] {
+                // Mermaid rejects palette arrays in init directives before paint ownership.
+                let owner = if origin == "directive" { None } else { owner };
+                let terminal = if property == "fill" {
+                    terminal_fill_for(&document, "requirement-theme-req1")
+                } else {
+                    terminal_stroke_for(&document, "requirement-theme-req1")
+                };
+                if owner.is_some() {
+                    let channel = if property == "fill" {
+                        "bkgColorArray"
+                    } else {
+                        "borderColorArray"
+                    };
+                    let expected =
+                        rendered.metadata().effective_config.as_value()["themeVariables"][channel]
+                            .as_array()
+                            .and_then(|colors| {
+                                colors.iter().filter_map(serde_json::Value::as_str).next()
+                            })
+                            .expect("the explicit palette channel has a first final color");
+                    assert_eq!(
+                        requirement_palette_property(&document, "requirement-theme-req1", property)
+                            .as_deref(),
+                        Some(expected),
+                        "{case} {origin} {property}"
+                    );
+                    assert_ne!(terminal, typed, "{case} {origin} {property}");
+                    assert_requirement_has_no_typed_paint_override(
+                        &document,
+                        "requirement-theme-req1",
+                        property,
+                        typed,
+                    );
+                } else {
+                    assert_eq!(terminal, typed, "{case} {origin} {property}");
+                }
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{case} {origin}");
+            assert_eq!(evidence.applied_count(), 1, "{case} {origin}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{case} {origin}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{case} {origin}");
+        }
+    }
+}
+
+#[test]
+fn requirement_palette_ownership_follows_each_visible_color_slot() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    let source = format!(
+        "{}\nrequirement req2 {{\n id: 2\n text: Second\n risk: low\n verifymethod: test\n}}\n",
+        requirement_source()
+    );
+    for limit in [0, 1, 2] {
+        let rendered = render_requirement_with_theme_and_engine(
+            &source,
+            &theme,
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "theme": "redux-color",
+                "themeVariables": {
+                    "bkgColorArray": ["#fedcba"],
+                    "borderColorArray": ["#abcdef", "#aabbcc"],
+                    "THEME_COLOR_LIMIT": limit
+                }
+            }))),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (id, slot, border) in [
+            ("requirement-theme-req1", 0, "#abcdef"),
+            ("requirement-theme-req2", 1, "#aabbcc"),
+        ] {
+            let owns_fill = slot == 0 && slot < limit;
+            let owns_stroke = slot < limit;
+            if owns_fill {
+                assert_eq!(
+                    requirement_palette_property(&document, id, "fill").as_deref(),
+                    Some("#fedcba"),
+                    "limit={limit} {id}"
+                );
+                assert_ne!(
+                    terminal_fill_for(&document, id),
+                    "#123456",
+                    "limit={limit} {id}"
+                );
+                assert_requirement_has_no_typed_paint_override(&document, id, "fill", "#123456");
+            } else {
+                assert_eq!(
+                    terminal_fill_for(&document, id),
+                    "#123456",
+                    "limit={limit} {id}"
+                );
+            }
+            if owns_stroke {
+                assert_eq!(
+                    requirement_palette_property(&document, id, "stroke").as_deref(),
+                    Some(border),
+                    "limit={limit} {id}"
+                );
+                assert_ne!(
+                    terminal_stroke_for(&document, id),
+                    "#654321",
+                    "limit={limit} {id}"
+                );
+                assert_requirement_has_no_typed_paint_override(&document, id, "stroke", "#654321");
+            } else {
+                assert_eq!(
+                    terminal_stroke_for(&document, id),
+                    "#654321",
+                    "limit={limit} {id}"
+                );
+            }
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "limit={limit}");
+        assert_eq!(evidence.applied_count(), 1, "limit={limit}");
+        assert_eq!(evidence.not_applicable_count(), 0, "limit={limit}");
+        assert_eq!(evidence.theme_residual_count(), 0, "limit={limit}");
+    }
+
+    let rendered = render_requirement_with_theme_and_engine(
+        same_named_requirement_and_element_source(),
+        &theme,
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "bkgColorArray": ["#fedcba", "#aabbcc"],
+                "borderColorArray": ["#abcdef", "#ddeeff"],
+                "THEME_COLOR_LIMIT": 1
+            }
+        }))),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let terminals = document
+        .descendants()
+        .filter(|node| node.attribute("id") == Some("requirement-theme-shared"))
+        .collect::<Vec<_>>();
+    assert_eq!(terminals.len(), 1);
+    assert_eq!(terminals[0].attribute("data-color-id"), Some("color-1"));
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-shared"),
+        "#123456"
+    );
+    assert_eq!(
+        terminal_stroke_for(&document, "requirement-theme-shared"),
+        "#654321"
+    );
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

@@ -191,10 +191,11 @@ impl ZenumlSourceStyle {
                 .colors
                 .insert("backgroundColor", "transparent".to_owned());
         }
+        // Source actor colors remain local; typed actor strokes also supply the frame fallback.
         if !style.colors.contains_key("borderColor")
-            && let Some(color) = style.colors.get("actorBorderColor").cloned()
+            && let Some(paint) = style.typed_colors.get("actorBorderColor")
         {
-            style.colors.insert("borderColor", color);
+            style.colors.insert("borderColor", paint.css().to_owned());
         }
         let base = theme.typography();
         if style.typography.font_family.is_none()
@@ -386,7 +387,7 @@ pub(crate) struct ZenumlThemePlan {
     evidence: FamilyThemeEvidence,
     rules: Vec<(FamilyThemeMechanismKey, usize)>,
     font_routes: Vec<ThemeTypographyProperty>,
-    fallback_not_applicable: Vec<FamilyThemeMechanismKey>,
+    fallback_not_applicable: std::collections::BTreeSet<FamilyThemeMechanismKey>,
     terminal: std::sync::OnceLock<ZenumlThemeReceipt>,
 }
 
@@ -402,7 +403,7 @@ impl ZenumlThemePlan {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
         let mut rules = Vec::new();
         let mut font_routes = Vec::new();
-        let mut fallback_not_applicable = Vec::new();
+        let mut fallback_not_applicable = std::collections::BTreeSet::new();
         if let Some(theme) = theme {
             for route in theme.family_mechanism_routes().iter().copied() {
                 let key = theme.family_mechanism_key(route);
@@ -435,31 +436,37 @@ impl ZenumlThemePlan {
             for slot in PAINT_SLOTS {
                 targets.insert(slot.target);
             }
-            let terminal_owners = targets
-                .into_iter()
-                .map(|target| {
-                    let (fill, stroke) =
-                        terminal_source_owners(target, model, layout, diagram_title, &source_style);
-                    (target, fill, stroke)
-                })
-                .collect::<Vec<_>>();
-            let domains = terminal_owners
-                .iter()
-                .map(|(target, fill, stroke)| {
-                    UnsupportedTerminalDomain::direct(
-                        *target,
-                        TerminalVariantDomain::uniform(fill.len(), ThemeVariant::Default),
-                    )
-                    .with_source_owned_fill(fill)
-                    .with_source_owned_stroke(stroke)
-                })
-                .collect::<Vec<_>>();
-            let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
-            reconcile_unsupported_terminal_domains(theme, &mut fallbacks, &domains, work_meter)?;
-            for residual in fallbacks.residuals() {
-                evidence.mark_residual(residual.key().clone(), residual.reason());
+            for target in targets {
+                let (fill, stroke) =
+                    terminal_source_owners(target, model, layout, diagram_title, &source_style);
+                let variants = TerminalVariantDomain::uniform(fill.len(), ThemeVariant::Default);
+                let owned_targets = [ThemeTarget::Text, target];
+                let domain = if target != ThemeTarget::Text
+                    && PAINT_SLOTS
+                        .iter()
+                        .any(|slot| slot.target == target && slot.textual)
+                {
+                    UnsupportedTerminalDomain::textual(target, &owned_targets, variants)
+                } else {
+                    UnsupportedTerminalDomain::direct(target, variants)
+                }
+                .with_source_owned_fill(&fill)
+                .with_source_owned_stroke(&stroke);
+                // Text is a fallback for several independent roles. Reconcile each role
+                // separately, and retain any residual before applying absence receipts.
+                let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+                reconcile_unsupported_terminal_domains(
+                    theme,
+                    &mut fallbacks,
+                    &[domain],
+                    work_meter,
+                )?;
+                for residual in fallbacks.residuals() {
+                    evidence.mark_residual(residual.key().clone(), residual.reason());
+                }
+                fallback_not_applicable
+                    .extend(fallbacks.not_applicable_mechanisms().iter().cloned());
             }
-            fallback_not_applicable.extend(fallbacks.not_applicable_mechanisms().iter().cloned());
         }
         Ok(Self {
             source_style,
@@ -580,6 +587,13 @@ fn terminal_source_owners(
                     .chain(layout.returns.iter().map(|_| false))
                     .collect();
             }
+            ThemeTarget::Text => {
+                fill = layout
+                    .comments
+                    .iter()
+                    .map(|comment| comment.style.contains_key("fill"))
+                    .collect();
+            }
             _ => {}
         }
     }
@@ -672,7 +686,7 @@ fn terminal_count(
             layout.fragments.len()
         }
         ThemeTarget::Activation => layout.occurrences.len(),
-        ThemeTarget::Text => usize::from(has_visible_text(layout)),
+        ThemeTarget::Text => layout.comments.len(),
         _ => 0,
     }
 }

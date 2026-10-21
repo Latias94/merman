@@ -2930,7 +2930,7 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
         ),
     ] {
         for case in &cases {
-            for external_palette in [false, true] {
+            for origin in ["recipe", "site", "source"] {
                 let mut config = case.config.clone();
                 let mut spec = DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
@@ -2942,7 +2942,7 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
                         .for_family(family),
                     ),
                 );
-                if !external_palette {
+                if origin == "recipe" {
                     let selected = config.as_object_mut().unwrap().remove("theme").unwrap();
                     spec = spec.with_mermaid_compatibility(
                         MermaidThemeCompatibility::default()
@@ -2950,12 +2950,18 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
                             .unwrap(),
                     );
                 }
-                let typed_applies = !external_palette && case.typed_applies;
+                let source = if origin == "source" {
+                    config = serde_json::json!({});
+                    format!("{source}\n%%{{init: {}}}%%\n", case.config)
+                } else {
+                    source.to_owned()
+                };
+                let typed_applies = origin != "source" && case.typed_applies;
                 let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
                 let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
                 let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
                     prepare_flowchart_family_with_theme_engine_and_portability(
-                        source,
+                        &source,
                         &theme,
                         engine,
                         ThemePortabilityRequirement::BestEffort,

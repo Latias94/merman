@@ -4255,7 +4255,7 @@ fn gitgraph_edge_fill_preserves_its_config_owner_and_visible_branch_domain() {
 }
 
 #[test]
-fn gitgraph_external_palette_preserves_derived_paint_across_typed_roles() {
+fn gitgraph_source_palette_wins_while_site_palette_keeps_property_local_owners() {
     let source = "---\ntitle: Authored palette\n---\ngitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n  branch next\n  commit id: \"B\"\n";
     let typed = gitgraph_edge_rules_theme([
         ThemeRule::new(
@@ -4293,7 +4293,39 @@ fn gitgraph_external_palette_preserves_derived_paint_across_typed_roles() {
             "git-external-palette",
             |owner, rendered| {
                 let baseline = &baselines.iter().find(|(case, _)| case == owner).unwrap().1;
-                assert_eq!(rendered.svg(), baseline, "{theme_name}/{owner}");
+                if owner == "source" {
+                    assert_eq!(rendered.svg(), baseline, "{theme_name}/{owner}");
+                } else {
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let lines = branch_lines(&document);
+                    assert!(!lines.is_empty());
+                    assert!(
+                        lines.iter().all(|line| line
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("stroke:#987654"))),
+                        "{theme_name}/{owner}"
+                    );
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| has_class(&node, "tag-label-bkg"))
+                    );
+                    let css = gitgraph_stylesheet(rendered.svg());
+                    let id = format!("git-external-palette-{owner}");
+                    assert_eq!(
+                        css_property_winner(
+                            &gitgraph_css_rule(&css, &format!("#{id} .tag-label-bkg")),
+                            "stroke"
+                        ),
+                        Some("#654321"),
+                        "{theme_name}/{owner}: the tag border has no explicit raw owner"
+                    );
+                    assert_eq!(
+                        css_property_winner(&gitgraph_css_rule(&css, &format!("#{id}")), "fill"),
+                        Some("#456789"),
+                        "{theme_name}/{owner}: the root text has no explicit raw owner"
+                    );
+                }
                 if matches!(theme_name, "base" | "default") {
                     let selector = format!("#git-external-palette-{owner} .commit-reverse");
                     assert_eq!(
@@ -4308,8 +4340,16 @@ fn gitgraph_external_palette_preserves_derived_paint_across_typed_roles() {
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.required_count(), 3, "{theme_name}/{owner}");
-                assert_eq!(evidence.applied_count(), 0, "{theme_name}/{owner}");
-                assert_eq!(evidence.not_applicable_count(), 3, "{theme_name}/{owner}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    if owner == "source" { 0 } else { 3 },
+                    "{theme_name}/{owner}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if owner == "source" { 3 } else { 0 },
+                    "{theme_name}/{owner}"
+                );
                 assert_eq!(evidence.theme_residual_count(), 0, "{theme_name}/{owner}");
             },
         );

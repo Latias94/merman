@@ -636,9 +636,10 @@ impl ErEntityThemePlan {
                     visible_subgraph_styles
                         .get(id.as_ref())
                         .is_some_and(ErEntitySourceStyle::owns_text_color)
-                        || effective_config
-                            .get_str("themeVariables.titleColor")
-                            .is_some()
+                        || merman_core::__private::config_paint_overrides_typed_default(
+                            effective_config,
+                            "themeVariables.titleColor",
+                        )
                         || mermaid_owns_paint_input(
                             effective_config,
                             merman_core::__private::ErPaintInput::Text,
@@ -1305,9 +1306,8 @@ fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
         || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || (mermaid_owns_entity_palette(config, "bkgColorArray")
-                && entity_palette_has_colors(config, "borderColorArray"))))
+        ) && mermaid_owns_entity_palette(config, "bkgColorArray")
+            && entity_palette_has_colors(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
@@ -1317,8 +1317,7 @@ fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
     ) || (matches!(
         config.get_str("theme"),
         Some("redux-color" | "redux-dark-color")
-    ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-        || mermaid_owns_entity_palette(config, "borderColorArray")))
+    ) && mermaid_owns_entity_palette(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -> bool {
@@ -1385,7 +1384,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn redux_entity_palette_owns_typed_paint_only_when_authored() {
+    fn redux_entity_palette_owns_typed_paint_only_when_source_selected() {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(crate::diagram_theme::DiagramThemeSpec::new())
             .unwrap();
@@ -1398,7 +1397,7 @@ mod tests {
             (
                 serde_json::json!({"theme": "redux-color"}),
                 "erDiagram\nA ||--o{ B : links\n",
-                true,
+                false,
             ),
             (
                 serde_json::json!({}),

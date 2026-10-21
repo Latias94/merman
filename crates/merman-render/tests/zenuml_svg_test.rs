@@ -573,6 +573,7 @@ fn zenuml_pure_dark_preset_styles_all_visible_family_surfaces() {
     }
     for (class, paint) in [
         ("frame-border-inner", "fill:transparent"),
+        ("frame-header-line", "stroke:#475569"),
         ("frame-title", "fill:#e5e7eb"),
         ("participant-box", "fill:#1f2937"),
         ("participant-label", "fill:#e5e7eb"),
@@ -601,6 +602,7 @@ fn zenuml_pure_light_preset_preserves_family_surface_foregrounds() {
     let rendered = render_zenuml_with_theme(ZENUML_PAINT, &theme, false);
     for (class, paint) in [
         ("frame-border-inner", "fill:transparent"),
+        ("frame-header-line", "stroke:#94a3b8"),
         ("participant-box", "fill:#f8fafc"),
         ("participant-label", "fill:#0f172a"),
         ("message-label", "fill:#0f172a"),
@@ -617,6 +619,170 @@ fn zenuml_pure_light_preset_preserves_family_surface_foregrounds() {
             themed_zenuml_css_rule(rendered.svg(), class).contains(paint),
             "{class}: {paint}"
         );
+    }
+}
+
+#[test]
+fn zenuml_non_paint_themes_preserve_source_actor_and_frame_border_owners() {
+    let empty = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let typography = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::ZENUML,
+                    ThemeTextStyle::default()
+                        .with_font_stack(FontStack::single("ZenUML Border Test").unwrap()),
+                ),
+            ),
+        )
+        .unwrap();
+    for (common_border, expected_frame) in
+        [("", "#666"), ("      borderColor: '#008800'\n", "#008800")]
+    {
+        let source = format!(
+            "---\nconfig:\n  themeVariables:\n    zenuml:\n      actorBorderColor: '#ff0000'\n{common_border}---\nzenuml\nA->B: request\n== Divider ==\n"
+        );
+        let baseline = render_zenuml_source_config(&source, serde_json::json!({}));
+        assert!(
+            source_css_rule(&baseline, "frame-header-line")
+                .contains(&format!("stroke:{expected_frame}"))
+        );
+        for (theme, applied) in [(&empty, 0), (&typography, 1)] {
+            let rendered = render_zenuml_with_theme(&source, theme, true);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for class in ["frame-border-outer", "frame-header-line", "participant-box"] {
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("class") == Some(class))
+                );
+                assert_eq!(
+                    themed_zenuml_css_rule(rendered.svg(), class),
+                    source_css_rule(&baseline, class)
+                );
+            }
+            assert!(
+                themed_zenuml_css_rule(rendered.svg(), "participant-box")
+                    .contains("stroke:#ff0000")
+            );
+            if !common_border.is_empty() {
+                assert!(
+                    themed_zenuml_css_rule(rendered.svg(), "divider-bg").contains("stroke:#008800")
+                );
+            }
+            drop(document);
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn zenuml_inline_comment_fill_reports_only_actual_host_text_consumers() {
+    let theme = zenuml_title_rule_theme(ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    ));
+    for (comment_style, source_note, applied) in
+        [("<red>", true, 0), ("", true, 1), ("<red>", false, 1)]
+    {
+        let config = if source_note {
+            "---\nconfig:\n  themeVariables:\n    zenuml:\n      noteTextColor: '#111111'\n---\n"
+        } else {
+            ""
+        };
+        let source =
+            format!("{config}zenuml\n// {comment_style} Authored comment\n== Divider ==\n");
+        let rendered = render_zenuml_with_theme(&source, &theme, true);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let comment = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("comment-text"))
+            .unwrap();
+        assert_eq!(
+            comment.attribute("style"),
+            (!comment_style.is_empty()).then_some("fill:red")
+        );
+        assert!(themed_zenuml_css_rule(rendered.svg(), "comment-text").contains("fill:#123456"));
+        assert!(
+            themed_zenuml_css_rule(rendered.svg(), "divider-label").contains(if source_note {
+                "fill:#111111"
+            } else {
+                "fill:#123456"
+            })
+        );
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn zenuml_inline_comment_fill_preserves_unsupported_text_terminal_domains() {
+    let owned_divider = "---\nconfig:\n  themeVariables:\n    zenuml:\n      noteTextColor: '#111111'\n---\nzenuml\n// <red> Authored comment\n== Divider ==\n";
+    let owned_message = "---\nconfig:\n  themeVariables:\n    zenuml:\n      actorTextColor: '#111111'\n      sequenceNumberTextColor: '#111111'\n---\nzenuml\n// [red] Authored comment\nA->B: request\n";
+    let gradient = CanvasPaint::LinearGradient(
+        LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    for (source, opacity, residual) in [
+        (owned_divider, false, 0),
+        (owned_message, false, 0),
+        (owned_divider, true, 1),
+        (owned_message, true, 1),
+        (
+            "zenuml\n// <red> Authored comment\n== Divider ==\n",
+            false,
+            1,
+        ),
+        ("zenuml\nA->B: request\n", false, 1),
+        ("zenuml\nA->B: request\n", true, 1),
+    ] {
+        let mut patch = ThemeStylePatch::default().with_fill(gradient.clone());
+        if opacity {
+            patch.paint.opacity = Specified::Value(0.5);
+        }
+        let theme = zenuml_title_rule_theme(ThemeRule::new(ThemeTarget::Text, patch));
+        let result = try_render_zenuml_with_theme(source, &theme, true);
+        if residual == 0 {
+            assert!(
+                result.is_ok(),
+                "source-owned text must suppress unsupported fill"
+            );
+        } else {
+            assert_eq!(
+                result.err().unwrap().unverified_family_theme(),
+                Some((DiagramFamilyId::ZENUML, 1))
+            );
+        }
+        let rendered = render_zenuml_with_theme(source, &theme, false);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        if let Some(comment) = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("comment-text"))
+        {
+            assert_eq!(comment.attribute("style"), Some("fill:red"));
+        }
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1 - residual);
+        assert_eq!(evidence.theme_residual_count(), residual);
     }
 }
 

@@ -3325,14 +3325,19 @@ fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
                     origin,
                 );
                 let baseline = render_unhosted_state_svg_with_config(SOURCE, config, origin);
+                let owned = origin == "source" || config_key == "background";
+                let css = state_svg_stylesheet(&svg);
+                if owned {
+                    assert_eq!(
+                        css,
+                        state_svg_stylesheet(&baseline),
+                        "the {origin} {theme_id}/{config_key} owner retains its derived terminal"
+                    );
+                }
                 assert_eq!(
-                    state_svg_stylesheet(&svg),
-                    state_svg_stylesheet(&baseline),
-                    "host paint must preserve the selected {origin} {theme_id}/{config_key} palette"
-                );
-                assert!(
-                    !svg.contains(TYPED_COLOR),
-                    "external {origin} {theme_id}/{config_key} must own transition paint: {svg}"
+                    state_transition_inline_stroke(&svg),
+                    (!owned).then(|| format!("{TYPED_COLOR} !important")),
+                    "{origin} {theme_id}/{config_key}"
                 );
                 if config_key == "background" {
                     assert!(
@@ -3345,8 +3350,8 @@ fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
                     StateThemeEvidenceCounts {
                         required: 1,
                         accounted: 1,
-                        applied: 0,
-                        not_applicable: 1,
+                        applied: usize::from(!owned),
+                        not_applicable: usize::from(owned),
                         residual: 0,
                     },
                     "{origin} {theme_id}/{config_key}"
@@ -3387,6 +3392,23 @@ fn state_svg_stylesheet(svg: &str) -> String {
         .to_owned()
 }
 
+fn state_transition_inline_stroke(svg: &str) -> Option<String> {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG");
+    let edges = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    let [edge] = edges.as_slice() else {
+        panic!("expected one State transition terminal: {svg}");
+    };
+    edge.attribute("style")
+        .unwrap_or_default()
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .find(|(property, _)| property.trim() == "stroke")
+        .map(|(_, value)| value.trim().to_owned())
+}
+
 #[test]
 fn state_transition_stroke_follows_source_backed_theme_ownership() {
     const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
@@ -3421,14 +3443,18 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
             );
             let baseline = render_unhosted_state_svg_with_config(SOURCE, config, origin);
             let css = state_svg_stylesheet(&svg);
+            let owned = origin == "source" || derived_owner;
+            if owned {
+                assert_eq!(
+                    css,
+                    state_svg_stylesheet(&baseline),
+                    "the {origin} {theme_id}/{config_key} owner retains its final terminal"
+                );
+            }
             assert_eq!(
-                css,
-                state_svg_stylesheet(&baseline),
-                "host paint must preserve the selected {origin} {theme_id}/{config_key} palette"
-            );
-            assert!(
-                !svg.contains(TYPED_COLOR),
-                "external {origin} {theme_id}/{config_key} must own transition paint: {svg}"
+                state_transition_inline_stroke(&svg),
+                (!owned).then(|| format!("{TYPED_COLOR} !important")),
+                "{origin} {theme_id}/{config_key}"
             );
             if origin == "source" && config_key == "mainContrastColor" {
                 assert!(
@@ -3446,8 +3472,8 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
                 StateThemeEvidenceCounts {
                     required: 1,
                     accounted: 1,
-                    applied: 0,
-                    not_applicable: 1,
+                    applied: usize::from(!owned),
+                    not_applicable: usize::from(owned),
                     residual: 0,
                 },
                 "{origin} {theme_id}/{config_key}"

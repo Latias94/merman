@@ -4688,16 +4688,21 @@ fn class_cluster_scalar_preserves_independent_and_derived_source_ownership() {
         ("dark", "mainBkg", true, false),
         ("dark", "border2", false, true),
     ] {
-        for external_palette in [false, true] {
+        for origin in ["recipe", "site", "source"] {
             let theme = class_edge_rules_theme_with_theme([rule()], selected);
             let mut config = json!({"themeVariables": { variable: "#456789" }});
-            if external_palette {
+            if origin == "site" {
                 config["theme"] = json!(selected);
             }
-            let fill_owned = external_palette || derived_fill_owned;
-            let stroke_owned = external_palette || derived_stroke_owned;
+            let source = if origin == "source" {
+                format!("%%{{init: {{\"theme\": \"{selected}\"}}}}%%\n{source}")
+            } else {
+                source.to_owned()
+            };
+            let fill_owned = origin == "source" || derived_fill_owned;
+            let stroke_owned = origin == "source" || derived_stroke_owned;
             let rendered = try_render_class_svg_with_theme_requirement(
-                source,
+                &source,
                 &theme,
                 Engine::new().with_site_config(MermaidConfig::from_value(config)),
                 ThemePortabilityRequirement::BestEffort,
@@ -5147,15 +5152,20 @@ fn class_namespace_title_preserves_derived_source_ownership() {
         ("base", "tertiaryTextColor", true),
         ("base", "primaryBorderColor", false),
     ] {
-        for external_palette in [false, true] {
+        for origin in ["recipe", "site", "source"] {
             let theme = class_edge_rules_theme_with_theme([rule()], selected);
             let mut config = json!({"themeVariables": {variable: "#456789"}});
-            if external_palette {
+            if origin == "site" {
                 config["theme"] = json!(selected);
             }
-            let owned = external_palette || derived_owned;
+            let source = if origin == "source" {
+                format!("%%{{init: {{\"theme\": \"{selected}\"}}}}%%\n{source}")
+            } else {
+                source.to_owned()
+            };
+            let owned = origin == "source" || derived_owned;
             let rendered = try_render_class_svg_with_theme_requirement(
-                source,
+                &source,
                 &theme,
                 Engine::new().with_site_config(MermaidConfig::from_value(config)),
                 ThemePortabilityRequirement::BestEffort,

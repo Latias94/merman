@@ -363,7 +363,7 @@ fn timeline_text_fill_preserves_config_and_independent_label_colors() {
 }
 
 #[test]
-fn timeline_external_palette_preserves_derived_paint_under_typed_roles() {
+fn timeline_source_palette_wins_while_site_palette_yields_to_typed_roles() {
     let theme = timeline_event_rules_theme([
         ThemeRule::new(
             ThemeTarget::Text,
@@ -409,26 +409,61 @@ fn timeline_external_palette_preserves_derived_paint_under_typed_roles() {
                         .to_owned()
                 };
                 let css = stylesheet(rendered.svg());
-                assert_eq!(
-                    css,
-                    stylesheet(&baseline),
-                    "{selected}/{origin}/{direction}"
-                );
-                assert!(
-                    css.split_once('}')
-                        .unwrap()
-                        .0
-                        .ends_with(&format!("fill:{text_color};"))
-                );
-                for typed_color in ["#123456", "#654321", "#abcdef"] {
-                    assert!(!rendered.svg().contains(typed_color));
+                if origin == "source" {
+                    assert_eq!(
+                        css,
+                        stylesheet(&baseline),
+                        "{selected}/{origin}/{direction}"
+                    );
+                }
+                assert!(css.split_once('}').unwrap().0.ends_with(&format!(
+                    "fill:{};",
+                    if origin == "source" {
+                        text_color
+                    } else {
+                        "#123456"
+                    }
+                )));
+                if origin == "source" {
+                    for typed_color in ["#123456", "#654321", "#abcdef"] {
+                        assert!(!rendered.svg().contains(typed_color));
+                    }
+                } else {
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let event = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("g")
+                                && node.attribute("class") == Some("eventWrapper")
+                        })
+                        .flat_map(|wrapper| wrapper.descendants())
+                        .find(|node| {
+                            node.has_tag_name("path")
+                                && node.attribute("class") == Some("node-bkg node-undefined")
+                        })
+                        .expect("visible Timeline event fill terminal");
+                    assert_eq!(
+                        event.attribute("style"),
+                        Some("fill:#654321;"),
+                        "{selected}/{direction}"
+                    );
+                    assert_eq!(
+                        css.contains(".lineWrapper line{stroke:#abcdef;"),
+                        selected == "redux-color"
+                    );
                 }
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.required_count(), 2);
                 assert_eq!(evidence.accounted_count(), 2);
-                assert_eq!(evidence.applied_count(), 0);
-                assert_eq!(evidence.not_applicable_count(), 2);
+                assert_eq!(
+                    evidence.applied_count(),
+                    if origin == "source" { 0 } else { 2 }
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if origin == "source" { 2 } else { 0 }
+                );
                 assert_eq!(evidence.theme_residual_count(), 0);
                 assert_eq!(evidence.source_residual_count(), 0);
                 assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
