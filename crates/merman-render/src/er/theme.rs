@@ -636,10 +636,13 @@ impl ErEntityThemePlan {
                     visible_subgraph_styles
                         .get(id.as_ref())
                         .is_some_and(ErEntitySourceStyle::owns_text_color)
-                        || merman_core::__private::config_paint_overrides_typed_default(
-                            effective_config,
-                            "themeVariables.titleColor",
-                        )
+                        || (effective_config
+                            .get_str("themeVariables.titleColor")
+                            .is_some()
+                            && merman_core::__private::config_paint_overrides_typed_default(
+                                effective_config,
+                                "themeVariables.titleColor",
+                            ))
                         || mermaid_owns_paint_input(
                             effective_config,
                             merman_core::__private::ErPaintInput::Text,
