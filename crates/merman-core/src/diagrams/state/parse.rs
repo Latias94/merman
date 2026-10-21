@@ -14,7 +14,9 @@ use std::cell::Cell;
 use std::collections::HashSet;
 
 use super::db::StateDb;
-use super::{Lexer, StateDiagramRenderModel, StateDocument, StateStatement, Tok};
+use super::{
+    Lexer, StateDiagramModel, StateDiagramRenderModel, StateDocument, StateStatement, Tok,
+};
 
 #[cfg(test)]
 thread_local! {
@@ -93,8 +95,12 @@ struct StateSemanticFailure {
 
 impl StateSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_parse_error_for_type(self, diagram_type: &str, fallback_offset: usize) -> Error {
         Error::diagram_parse_diagnostic(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             state_parse_diagnostic(&self.error, fallback_offset),
         )
     }
@@ -160,6 +166,33 @@ pub(crate) fn parse_state_model_for_render_controlled(
     match construction {
         Ok(source) => source.db.into_model_controlled(meta, control),
         Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
+    }
+}
+
+pub(crate) fn parse_state_semantic_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Result<StateDiagramModel>> {
+    let construction = construct_state_semantic_source(code, EditorFactsDemand::Omit, control)?;
+    match construction {
+        Ok(source) => {
+            match source
+                .db
+                .into_semantic_model_controlled(diagram_type, config, control)?
+            {
+                Ok(mut model) => {
+                    model.sanitize_common_db_fields(config);
+                    control.checkpoint()?;
+                    Ok(Ok(model))
+                }
+                Err(error) => Ok(Err(error)),
+            }
+        }
+        Err(failure) => Ok(Err(
+            failure.into_parse_error_for_type(diagram_type, code.len())
+        )),
     }
 }
 

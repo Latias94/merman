@@ -23,6 +23,10 @@ pub enum SemanticDiagramModel {
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-sequence")]
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    #[cfg(feature = "diagram-state")]
+    State(crate::diagrams::state::StateDiagramModel),
+    #[cfg(feature = "diagram-timeline")]
+    Timeline(crate::diagrams::timeline::TimelineDiagramModel),
     #[cfg(feature = "diagram-cynefin")]
     Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
     #[cfg(feature = "diagram-info")]
@@ -42,8 +46,8 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart, Swimlane, Sequence, Cynefin, Info, Journey,
-/// and Pie.
+/// The semantic facade currently handles Flowchart, Swimlane, Sequence, State, Cynefin, Info,
+/// Journey, Pie, and Timeline.
 /// Other enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
@@ -304,6 +308,42 @@ impl SemanticParser {
             }));
         }
 
+        #[cfg(feature = "diagram-state")]
+        if matches!(diagram_type, "stateDiagram" | "stateDiagram-v2") {
+            let model = match crate::diagrams::state::parse_state_semantic_model_controlled(
+                parser_input,
+                diagram_type,
+                &_metadata.semantic_config,
+                control,
+            )? {
+                Ok(model) => model,
+                Err(error) => return Ok(Err(error)),
+            };
+            control.checkpoint()?;
+            return Ok(Ok(ParsedSemanticDiagram {
+                metadata: _metadata,
+                model: SemanticDiagramModel::State(model),
+            }));
+        }
+
+        #[cfg(feature = "diagram-timeline")]
+        if diagram_type == "timeline" {
+            let model = match crate::diagrams::timeline::parse_timeline_semantic_model_controlled(
+                parser_input,
+                diagram_type,
+                &_metadata.semantic_config,
+                control,
+            )? {
+                Ok(model) => model,
+                Err(error) => return Ok(Err(error)),
+            };
+            control.checkpoint()?;
+            return Ok(Ok(ParsedSemanticDiagram {
+                metadata: _metadata,
+                model: SemanticDiagramModel::Timeline(model),
+            }));
+        }
+
         Ok(Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }))
@@ -367,6 +407,31 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "diagram-timeline")]
+    #[test]
+    fn semantic_timeline_is_available_without_presentation_or_editor_work() {
+        crate::editor::test_work::reset();
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("timeline\nsection Phase\n2026 : Launch\n")
+            .expect("Timeline semantics");
+        assert_eq!(parsed.metadata.diagram_type, "timeline");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Timeline(_)));
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+    #[cfg(feature = "diagram-state")]
+    #[test]
+    fn semantic_state_parses_without_presentation_or_editor_work() {
+        crate::editor::test_work::reset();
+        let parsed = SemanticParser::new()
+            .parse_diagram_with_type_sync(
+                "stateDiagram-v2",
+                "stateDiagram-v2\nstate Outer {\n[*] --> A: ready\n}\nOuter --> Done\n",
+            )
+            .expect("State semantics are available without presentation");
+        assert_eq!(parsed.metadata.diagram_type, "stateDiagram-v2");
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
     #[cfg(any(
         feature = "diagram-cynefin",
         feature = "diagram-flowchart",
@@ -460,7 +525,9 @@ mod tests {
                 feature = "diagram-sequence",
                 feature = "diagram-cynefin",
                 feature = "diagram-journey",
-                feature = "diagram-pie"
+                feature = "diagram-pie",
+                feature = "diagram-state",
+                feature = "diagram-timeline"
             ))]
             _ => panic!("expected semantic Info model"),
         };
@@ -517,7 +584,9 @@ mod tests {
                 feature = "diagram-sequence",
                 feature = "diagram-cynefin",
                 feature = "diagram-info",
-                feature = "diagram-journey"
+                feature = "diagram-journey",
+                feature = "diagram-state",
+                feature = "diagram-timeline"
             ))]
             _ => panic!("expected semantic Pie model"),
         };
@@ -597,7 +666,9 @@ mod tests {
                 feature = "diagram-sequence",
                 feature = "diagram-cynefin",
                 feature = "diagram-info",
-                feature = "diagram-pie"
+                feature = "diagram-pie",
+                feature = "diagram-state",
+                feature = "diagram-timeline"
             ))]
             _ => panic!("expected semantic Journey model"),
         };
@@ -725,7 +796,11 @@ mod tests {
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
                 feature = "diagram-cynefin",
-                feature = "diagram-info"
+                feature = "diagram-info",
+                feature = "diagram-state",
+                feature = "diagram-timeline",
+                feature = "diagram-journey",
+                feature = "diagram-pie"
             ))]
             _ => panic!("expected Sequence model"),
         }
@@ -842,6 +917,10 @@ mod tests {
             SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-journey")]
             SemanticDiagramModel::Journey(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-state")]
+            SemanticDiagramModel::State(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-timeline")]
+            SemanticDiagramModel::Timeline(_) => panic!("expected semantic Flowchart model"),
         };
         let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
             panic!("expected full Flowchart model");
@@ -873,6 +952,10 @@ mod tests {
             SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-journey")]
             SemanticDiagramModel::Journey(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-state")]
+            SemanticDiagramModel::State(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-timeline")]
+            SemanticDiagramModel::Timeline(_) => panic!("expected semantic Flowchart model"),
         };
         let inner = model
             .subgraphs

@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
+use super::CSS_EDGE_NOTE_EDGE;
+use super::model::{StateDiagramModel, StateNode};
+pub use super::model::{
+    StateLink as StateDiagramRenderLink, StateLinks as StateDiagramRenderLinks,
+    StateNote as StateDiagramRenderNote, StateRecord as StateDiagramRenderState,
+    StateRelation as StateDiagramRenderRelation, StateStyleClass as StateDiagramRenderStyleClass,
+};
 use super::{StateDocument, StateDocumentId, StateStatement};
 use crate::resources::ModelComplexity;
 use crate::{ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result};
@@ -35,6 +42,84 @@ pub struct StateDiagramRenderModel {
     pub links: HashMap<String, StateDiagramRenderLinks>,
     pub states: HashMap<String, StateDiagramRenderState>,
     pub style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
+}
+
+pub(super) struct StateNodePresentation {
+    pub dom_id: String,
+    pub padding: Option<f64>,
+    pub rx: Option<f64>,
+    pub ry: Option<f64>,
+    pub color_index: Option<usize>,
+    pub wrapping_width: Option<f64>,
+    pub min_width: Option<f64>,
+}
+
+pub(super) struct StateModelConstruction {
+    pub model: StateDiagramModel,
+    pub presentation: Vec<StateNodePresentation>,
+}
+
+impl StateModelConstruction {
+    pub(super) fn into_render_model(
+        self,
+        config: &crate::MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<StateDiagramRenderModel> {
+        let StateDiagramModel {
+            document,
+            direction,
+            acc_title,
+            acc_descr,
+            nodes,
+            edges,
+            relations,
+            links,
+            states,
+            style_classes,
+        } = self.model;
+        debug_assert_eq!(nodes.len(), self.presentation.len());
+        let mut render_nodes = Vec::with_capacity(nodes.len());
+        for (index, (node, presentation)) in nodes.into_iter().zip(self.presentation).enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            render_nodes.push(StateDiagramRenderNode::from_semantic(node, presentation));
+        }
+        let mut render_edges = Vec::with_capacity(edges.len());
+        for (index, edge) in edges.into_iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let arrow_type_end = if edge.classes == CSS_EDGE_NOTE_EDGE {
+                ""
+            } else if config.get_str("look") == Some("neo") {
+                "arrow_barb_neo"
+            } else {
+                "arrow_barb"
+            };
+            render_edges.push(StateDiagramRenderEdge {
+                id: edge.id,
+                start: edge.start,
+                end: edge.end,
+                classes: edge.classes,
+                label: edge.label,
+                arrow_type_end: arrow_type_end.to_string(),
+            });
+        }
+        control.checkpoint()?;
+        Ok(StateDiagramRenderModel {
+            document,
+            direction,
+            acc_title,
+            acc_descr,
+            nodes: render_nodes,
+            edges: render_edges,
+            relations,
+            links,
+            states,
+            style_classes,
+        })
+    }
 }
 
 impl StateDiagramRenderModel {
@@ -298,67 +383,6 @@ impl StateDocument {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderStyleClass {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct StateDiagramRenderState {
-    pub id: String,
-    pub state_type: String,
-    pub descriptions: Vec<String>,
-    /// References this state's statements in the owning model's `document`.
-    /// Use the semantic compatibility projector when nested document arrays are needed.
-    pub doc: Option<StateDocumentId>,
-    pub note: Option<StateDiagramRenderNote>,
-    pub classes: Vec<String>,
-    pub styles: Vec<String>,
-    pub text_styles: Vec<String>,
-    pub start: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderRelation {
-    pub id1: String,
-    pub id2: String,
-    #[serde(default, rename = "relationTitle")]
-    pub relation_title: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderNote {
-    #[serde(default)]
-    pub position: Option<String>,
-    #[serde(default)]
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderLink {
-    #[serde(default)]
-    pub url: String,
-    #[serde(default)]
-    pub tooltip: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StateDiagramRenderLinks {
-    /// Preserve the historical compatibility shape for a single declaration.
-    One(StateDiagramRenderLink),
-    /// Preserve every repeated declaration in source order.
-    Many(Vec<StateDiagramRenderLink>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StateDiagramRenderNode {
     pub id: String,
     #[serde(default, rename = "labelStyle")]
@@ -405,6 +429,34 @@ pub struct StateDiagramRenderNode {
     /// Minimum label width for non-container state nodes; populated from `state.minNodeWidth`.
     #[serde(default, rename = "minWidth")]
     pub min_width: Option<f64>,
+}
+
+impl StateDiagramRenderNode {
+    fn from_semantic(node: StateNode, presentation: StateNodePresentation) -> Self {
+        Self {
+            id: node.id,
+            label_style: String::new(),
+            label: node.label,
+            description: node.description,
+            dom_id: presentation.dom_id,
+            is_group: node.is_group,
+            node_type: node.node_type,
+            parent_id: node.parent_id,
+            css_classes: node.css_classes,
+            css_compiled_styles: node.css_compiled_styles,
+            css_styles: node.css_styles,
+            dir: node.dir,
+            explicit_dir: node.explicit_dir,
+            padding: presentation.padding,
+            rx: presentation.rx,
+            ry: presentation.ry,
+            shape: node.shape,
+            position: node.position,
+            color_index: presentation.color_index,
+            wrapping_width: presentation.wrapping_width,
+            min_width: presentation.min_width,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -611,7 +663,7 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
 }
 
 fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Value {
-    let note_edge = edge.classes == "transition note-edge";
+    let note_edge = edge.classes == CSS_EDGE_NOTE_EDGE;
     let mut out = Map::with_capacity(13);
     out.insert("id".to_string(), Value::String(edge.id.clone()));
     out.insert("start".to_string(), Value::String(edge.start.clone()));

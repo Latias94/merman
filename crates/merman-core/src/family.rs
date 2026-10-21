@@ -27,7 +27,8 @@ use std::sync::OnceLock;
     feature = "diagram-journey",
     feature = "diagram-pie",
     feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-state",
+    feature = "diagram-timeline"
 ))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditorFactsDemand {

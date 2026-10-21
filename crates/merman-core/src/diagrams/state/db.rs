@@ -8,11 +8,11 @@ use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
+use super::render_model::{StateModelConstruction, StateNodePresentation};
 use super::{
-    StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
-    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
-    StateDocument, StateDocumentId, StateStatement, StateStatementNote, StateStatementState,
+    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDiagramRenderModel, StateDocument, StateDocumentId,
+    StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation,
+    StateStatement, StateStatementNote, StateStatementState, StateStyleClass,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -30,7 +30,7 @@ struct RelationEdge {
 }
 
 #[derive(Debug, Clone)]
-struct StateRecord {
+struct StateDbRecord {
     id: String,
     ty: String,
     descriptions: Vec<String>,
@@ -44,7 +44,7 @@ struct StateRecord {
 #[derive(Debug, Default)]
 pub(super) struct StateDb {
     document: StateDocument,
-    states: HashMap<String, StateRecord>,
+    states: HashMap<String, StateDbRecord>,
     state_order: Vec<String>,
     relations: Vec<RelationEdge>,
     style_classes: IndexMap<String, StyleClass>,
@@ -245,13 +245,13 @@ impl StateDb {
             });
     }
 
-    fn ensure_state(&mut self, id: &str) -> &mut StateRecord {
+    fn ensure_state(&mut self, id: &str) -> &mut StateDbRecord {
         let id = id.trim().to_string();
         match self.states.entry(id.clone()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 self.state_order.push(id.clone());
-                entry.insert(StateRecord {
+                entry.insert(StateDbRecord {
                     id,
                     ty: "default".to_string(),
                     descriptions: Vec::new(),
@@ -419,18 +419,54 @@ impl StateDb {
         meta: &ParseMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
-        let (nodes, edges) = match build_layout_data_typed(
+        match self.into_canonical_model_controlled(
+            &meta.diagram_type,
+            meta.effective_config.as_config(),
+            true,
+            control,
+        )? {
+            Ok(construction) => Ok(Ok(
+                construction.into_render_model(meta.effective_config.as_config(), control)?
+            )),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+
+    pub(super) fn into_semantic_model_controlled(
+        self,
+        diagram_type: &str,
+        config: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateDiagramModel>> {
+        Ok(self
+            .into_canonical_model_controlled(diagram_type, config, false, control)?
+            .map(|construction| construction.model))
+    }
+
+    fn into_canonical_model_controlled(
+        self,
+        diagram_type: &str,
+        config: &MermaidConfig,
+        collect_presentation: bool,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateModelConstruction>> {
+        let StateGraphConstruction {
+            nodes,
+            edges,
+            presentation,
+        } = match build_state_graph(
             &self.document,
             &self.states,
             &self.style_classes,
-            meta.effective_config.as_config(),
+            config,
+            collect_presentation,
             control,
         ) {
             Ok(data) => data,
             Err(StateBuildError::Cancelled(error)) => return Err(error),
             Err(StateBuildError::Semantic(message)) => {
                 return Ok(Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
+                    diagram_type.to_string(),
                     message,
                 )));
             }
@@ -468,13 +504,13 @@ impl StateDb {
                 continue;
             };
             let doc = doc_by_state_id.remove(state.id.as_str());
-            let note = state.note.map(|note| StateDiagramRenderNote {
+            let note = state.note.map(|note| StateNote {
                 position: note.position,
                 text: note.text,
             });
             states.insert(
                 key,
-                StateDiagramRenderState {
+                StateRecord {
                     id: state.id,
                     state_type: state.ty,
                     descriptions: compact(state.descriptions),
@@ -493,7 +529,7 @@ impl StateDb {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            relations.push(StateDiagramRenderRelation {
+            relations.push(StateRelation {
                 id1: relation.id1,
                 id2: relation.id2,
                 relation_title: relation.relation_title,
@@ -506,7 +542,7 @@ impl StateDb {
             }
             style_classes.insert(
                 key,
-                StateDiagramRenderStyleClass {
+                StateStyleClass {
                     id: class.id,
                     styles: compact(class.styles),
                     text_styles: compact(class.text_styles),
@@ -519,7 +555,7 @@ impl StateDb {
                 control.checkpoint()?;
             }
             let declarations = match <[Link; 1]>::try_from(declarations) {
-                Ok([link]) => StateDiagramRenderLinks::One(StateDiagramRenderLink {
+                Ok([link]) => StateLinks::One(StateLink {
                     url: link.url,
                     tooltip: link.tooltip,
                 }),
@@ -529,29 +565,32 @@ impl StateDb {
                         if index.is_multiple_of(128) {
                             control.checkpoint()?;
                         }
-                        out.push(StateDiagramRenderLink {
+                        out.push(StateLink {
                             url: link.url,
                             tooltip: link.tooltip,
                         });
                     }
-                    StateDiagramRenderLinks::Many(out)
+                    StateLinks::Many(out)
                 }
             };
             links.insert(key, declarations);
         }
 
         control.checkpoint()?;
-        Ok(Ok(StateDiagramRenderModel {
-            document,
-            direction: direction.unwrap_or_else(|| "TB".to_string()),
-            acc_title,
-            acc_descr,
-            nodes,
-            edges,
-            relations,
-            links,
-            states,
-            style_classes,
+        Ok(Ok(StateModelConstruction {
+            model: StateDiagramModel {
+                document,
+                direction: direction.unwrap_or_else(|| "TB".to_string()),
+                acc_title,
+                acc_descr,
+                nodes,
+                edges,
+                relations,
+                links,
+                states,
+                style_classes,
+            },
+            presentation,
         }))
     }
 }
@@ -582,13 +621,29 @@ const SHAPE_NOTE: &str = "note";
 const SHAPE_NOTEGROUP: &str = "noteGroup";
 
 const CSS_EDGE: &str = "transition";
-const CSS_EDGE_NOTE_EDGE: &str = "transition note-edge";
 const CSS_DIAGRAM_STATE: &str = "statediagram-state";
 const CSS_DIAGRAM_NOTE: &str = "statediagram-note";
 const CSS_DIAGRAM_CLUSTER: &str = "statediagram-cluster";
 const CSS_DIAGRAM_CLUSTER_ALT: &str = "statediagram-cluster-alt";
 
+#[cfg(test)]
+thread_local! {
+    static STATE_DOM_ID_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn reset_dom_id_count() {
+    STATE_DOM_ID_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(super) fn dom_id_count() -> usize {
+    STATE_DOM_ID_COUNT.get()
+}
+
 fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
+    #[cfg(test)]
+    STATE_DOM_ID_COUNT.set(STATE_DOM_ID_COUNT.get() + 1);
     let type_str = ty
         .filter(|t| !t.is_empty())
         .map(|t| format!("{DOMID_TYPE_SPACER}{t}"))
@@ -699,47 +754,69 @@ fn compiled_styles(css_classes: &str, classes: &IndexMap<String, StyleClass>) ->
     out
 }
 
+struct ConstructedStateNode {
+    model: StateNode,
+    presentation: Option<StateNodePresentation>,
+}
+
+struct StateGraphConstruction {
+    nodes: Vec<StateNode>,
+    edges: Vec<StateEdge>,
+    presentation: Vec<StateNodePresentation>,
+}
+
 fn upsert_node_typed(
-    nodes: &mut Vec<StateDiagramRenderNode>,
+    nodes: &mut Vec<StateNode>,
+    presentation: &mut Vec<StateNodePresentation>,
     index: &mut HashMap<String, usize>,
-    node: StateDiagramRenderNode,
+    node: ConstructedStateNode,
 ) {
-    match index.entry(node.id.clone()) {
+    match index.entry(node.model.id.clone()) {
         Entry::Occupied(o) => {
             if let Some(dst) = nodes.get_mut(*o.get()) {
-                *dst = node;
+                *dst = node.model;
+                if let Some(fields) = node.presentation {
+                    presentation[*o.get()] = fields;
+                }
             }
         }
         Entry::Vacant(v) => {
             v.insert(nodes.len());
-            nodes.push(node);
+            nodes.push(node.model);
+            if let Some(fields) = node.presentation {
+                presentation.push(fields);
+            }
         }
     }
 }
 
 fn insert_generated_node_typed(
-    nodes: &mut Vec<StateDiagramRenderNode>,
+    nodes: &mut Vec<StateNode>,
+    presentation: &mut Vec<StateNodePresentation>,
     index: &mut HashMap<String, usize>,
-    authored_states: &HashMap<String, StateRecord>,
-    node: StateDiagramRenderNode,
+    authored_states: &HashMap<String, StateDbRecord>,
+    node: ConstructedStateNode,
     generated_kind: &str,
     owner_id: &str,
 ) -> std::result::Result<(), String> {
-    if authored_states.contains_key(&node.id) {
+    if authored_states.contains_key(&node.model.id) {
         return Err(format!(
             "Authored state id `{}` conflicts with generated {generated_kind} id for state `{owner_id}`",
-            node.id
+            node.model.id
         ));
     }
 
-    match index.entry(node.id.clone()) {
+    match index.entry(node.model.id.clone()) {
         Entry::Occupied(_) => Err(format!(
             "Generated {generated_kind} id `{}` for state `{owner_id}` conflicts with an existing render node",
-            node.id
+            node.model.id
         )),
         Entry::Vacant(entry) => {
             entry.insert(nodes.len());
-            nodes.push(node);
+            nodes.push(node.model);
+            if let Some(fields) = node.presentation {
+                presentation.push(fields);
+            }
             Ok(())
         }
     }
@@ -749,14 +826,6 @@ fn value_as_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
         .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-fn arrow_type_end_for_look_name(look: Option<&str>) -> &'static str {
-    if look == Some("neo") {
-        "arrow_barb_neo"
-    } else {
-        "arrow_barb"
-    }
 }
 
 #[derive(Debug)]
@@ -777,30 +846,33 @@ impl From<OperationCancelled> for StateBuildError {
     }
 }
 
-fn build_layout_data_typed(
+fn build_state_graph(
     document: &StateDocument,
-    states: &HashMap<String, StateRecord>,
+    states: &HashMap<String, StateDbRecord>,
     classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
+    collect_presentation: bool,
     control: &OperationControl,
-) -> std::result::Result<(Vec<StateDiagramRenderNode>, Vec<StateDiagramRenderEdge>), StateBuildError>
-{
-    let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
-    let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
+) -> std::result::Result<StateGraphConstruction, StateBuildError> {
+    let mut nodes: Vec<StateNode> = Vec::new();
+    let mut edges: Vec<StateEdge> = Vec::new();
+    let mut presentation = Vec::new();
     let mut node_index: HashMap<String, usize> = HashMap::new();
 
     let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
     let mut graph_item_count: usize = 0;
 
-    struct TypedLayoutContext<'a> {
+    struct StateGraphContext<'a> {
         document: &'a StateDocument,
         control: &'a OperationControl,
-        states: &'a HashMap<String, StateRecord>,
+        states: &'a HashMap<String, StateDbRecord>,
         classes: &'a IndexMap<String, StyleClass>,
         config: &'a MermaidConfig,
-        nodes: &'a mut Vec<StateDiagramRenderNode>,
+        collect_presentation: bool,
+        nodes: &'a mut Vec<StateNode>,
+        presentation: &'a mut Vec<StateNodePresentation>,
         node_index: &'a mut HashMap<String, usize>,
-        edges: &'a mut Vec<StateDiagramRenderEdge>,
+        edges: &'a mut Vec<StateEdge>,
         node_db: &'a mut HashMap<String, NodeScratch>,
         graph_item_count: &'a mut usize,
         next_color_index: usize,
@@ -808,7 +880,7 @@ fn build_layout_data_typed(
     }
 
     fn setup_doc(
-        ctx: &mut TypedLayoutContext<'_>,
+        ctx: &mut StateGraphContext<'_>,
         parent: Option<&StateStatementState>,
         doc: StateDocumentId,
         alt_flag: bool,
@@ -860,12 +932,10 @@ fn build_layout_data_typed(
 
                     let edge_label_raw = relation.description.clone().unwrap_or_default();
                     let edge_label = sanitize_text(&edge_label_raw, ctx.config);
-                    ctx.edges.push(StateDiagramRenderEdge {
+                    ctx.edges.push(StateEdge {
                         id: format!("edge{}", *ctx.graph_item_count),
                         start: relation.state1.id.clone(),
                         end: relation.state2.id.clone(),
-                        arrow_type_end: arrow_type_end_for_look_name(ctx.config.get_str("look"))
-                            .to_string(),
                         classes: CSS_EDGE.to_string(),
                         label: edge_label,
                     });
@@ -910,7 +980,7 @@ fn build_layout_data_typed(
     }
 
     fn data_fetcher(
-        ctx: &mut TypedLayoutContext<'_>,
+        ctx: &mut StateGraphContext<'_>,
         parent: Option<&StateStatementState>,
         parsed_item: &StateStatementState,
         alt_flag: bool,
@@ -928,10 +998,17 @@ fn build_layout_data_typed(
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
         let user_styled = !class_str.trim().is_empty() || !styles.is_empty();
-        let wrapping_width = config_state_number(config, "wrappingWidth");
-        let min_width = config_state_number(config, "minNodeWidth");
-        let needs_color_slot =
-            parsed_item.doc.is_some() && !ctx.container_color_index.contains_key(&item_id);
+        let (wrapping_width, min_width) = if ctx.collect_presentation {
+            (
+                config_state_number(config, "wrappingWidth"),
+                config_state_number(config, "minNodeWidth"),
+            )
+        } else {
+            (None, None)
+        };
+        let needs_color_slot = ctx.collect_presentation
+            && parsed_item.doc.is_some()
+            && !ctx.container_color_index.contains_key(&item_id);
 
         let mut entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
@@ -1026,18 +1103,15 @@ fn build_layout_data_typed(
             entry.color_index = color_index;
         }
 
-        let dom_id = state_dom_id(&item_id, *ctx.graph_item_count, None);
         let mut label = Some(entry.label.clone());
         if entry.shape == SHAPE_DIVIDER {
             label = Some(Value::String(String::new()));
         }
 
-        let mut node = StateDiagramRenderNode {
+        let mut model = StateNode {
             id: entry.id.clone(),
-            label_style: String::new(),
             label,
             description: None,
-            dom_id,
             is_group: entry.is_group,
             node_type: entry.node_type.clone(),
             parent_id: entry.parent_id.clone(),
@@ -1046,26 +1120,37 @@ fn build_layout_data_typed(
             css_styles: entry.css_styles.clone(),
             dir: entry.dir.clone(),
             explicit_dir: entry.explicit_dir,
-            padding: Some(8.0),
-            rx: Some(10.0),
-            ry: Some(10.0),
             shape: entry.shape.clone(),
             position: None,
-            color_index: entry.color_index,
-            wrapping_width,
-            min_width: (!entry.is_group).then_some(min_width).flatten(),
         };
-        node.css_compiled_styles = compiled_styles(&node.css_classes, classes);
+        model.css_compiled_styles = compiled_styles(&model.css_classes, classes);
+        let node = ConstructedStateNode {
+            model,
+            presentation: ctx.collect_presentation.then(|| StateNodePresentation {
+                dom_id: state_dom_id(&item_id, *ctx.graph_item_count, None),
+                padding: Some(8.0),
+                rx: Some(10.0),
+                ry: Some(10.0),
+                color_index: entry.color_index,
+                wrapping_width,
+                min_width: (!entry.is_group).then_some(min_width).flatten(),
+            }),
+        };
 
         // Notes create a note node + note group + note edge
         if let Some(mut n) = parsed_item.note.clone() {
-            let flowchart_padding = config
-                .as_value()
-                .as_object()
-                .and_then(|o| o.get("flowchart"))
-                .and_then(|v| v.as_object())
-                .and_then(|o| o.get("padding"))
-                .and_then(value_as_f64);
+            let flowchart_padding = ctx
+                .collect_presentation
+                .then(|| {
+                    config
+                        .as_value()
+                        .as_object()
+                        .and_then(|o| o.get("flowchart"))
+                        .and_then(|v| v.as_object())
+                        .and_then(|o| o.get("padding"))
+                        .and_then(value_as_f64)
+                })
+                .flatten();
 
             n.text = sanitize_text(&n.text, config);
 
@@ -1078,40 +1163,39 @@ fn build_layout_data_typed(
             } else {
                 parent_base_id
             };
-            let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
-            let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
-
-            let mut group_node = StateDiagramRenderNode {
+            let mut group_model = StateNode {
                 id: parent_node_id.clone(),
-                label_style: String::new(),
                 label: Some(Value::String(n.text.clone())),
                 description: None,
-                dom_id: group_dom_id,
                 is_group: true,
                 node_type: Some("group".to_string()),
                 parent_id: None,
-                css_classes: node.css_classes.clone(),
+                css_classes: node.model.css_classes.clone(),
                 css_compiled_styles: Vec::new(),
                 css_styles: Vec::new(),
                 dir: None,
                 explicit_dir: None,
-                padding: Some(16.0),
-                rx: None,
-                ry: None,
                 shape: SHAPE_NOTEGROUP.to_string(),
                 position: n.position.clone(),
-                color_index: None,
-                wrapping_width,
-                min_width: None,
             };
-            group_node.css_compiled_styles = compiled_styles(&group_node.css_classes, classes);
+            group_model.css_compiled_styles = compiled_styles(&group_model.css_classes, classes);
+            let group_node = ConstructedStateNode {
+                model: group_model,
+                presentation: ctx.collect_presentation.then(|| StateNodePresentation {
+                    dom_id: state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT)),
+                    padding: Some(16.0),
+                    rx: None,
+                    ry: None,
+                    color_index: None,
+                    wrapping_width,
+                    min_width: None,
+                }),
+            };
 
-            let mut note_node = StateDiagramRenderNode {
+            let mut note_model = StateNode {
                 id: note_id.clone(),
-                label_style: String::new(),
                 label: Some(Value::String(n.text.clone())),
                 description: None,
-                dom_id: note_dom_id,
                 // Mermaid's generated note node is always a leaf, even when the
                 // annotated state is a composite.
                 is_group: false,
@@ -1122,19 +1206,26 @@ fn build_layout_data_typed(
                 css_styles: Vec::new(),
                 dir: None,
                 explicit_dir: None,
-                padding: flowchart_padding,
-                rx: None,
-                ry: None,
                 shape: SHAPE_NOTE.to_string(),
                 position: n.position.clone(),
-                color_index: None,
-                wrapping_width,
-                min_width,
             };
-            note_node.css_compiled_styles = compiled_styles(&note_node.css_classes, classes);
+            note_model.css_compiled_styles = compiled_styles(&note_model.css_classes, classes);
+            let note_node = ConstructedStateNode {
+                model: note_model,
+                presentation: ctx.collect_presentation.then(|| StateNodePresentation {
+                    dom_id: state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE)),
+                    padding: flowchart_padding,
+                    rx: None,
+                    ry: None,
+                    color_index: None,
+                    wrapping_width,
+                    min_width,
+                }),
+            };
 
             insert_generated_node_typed(
                 ctx.nodes,
+                ctx.presentation,
                 ctx.node_index,
                 ctx.states,
                 group_node,
@@ -1143,43 +1234,45 @@ fn build_layout_data_typed(
             )?;
             insert_generated_node_typed(
                 ctx.nodes,
+                ctx.presentation,
                 ctx.node_index,
                 ctx.states,
                 note_node,
                 "note",
                 &item_id,
             )?;
-            upsert_node_typed(ctx.nodes, ctx.node_index, node.clone());
+            upsert_node_typed(ctx.nodes, ctx.presentation, ctx.node_index, node);
 
             let (mut from, mut to) = (item_id.clone(), note_id);
             if n.position.as_deref() == Some("left of") {
                 std::mem::swap(&mut from, &mut to);
             }
 
-            ctx.edges.push(StateDiagramRenderEdge {
+            ctx.edges.push(StateEdge {
                 id: format!("{from}-{to}"),
                 start: from,
                 end: to,
-                arrow_type_end: String::new(),
                 classes: CSS_EDGE_NOTE_EDGE.to_string(),
                 label: String::new(),
             });
             *ctx.graph_item_count += 1;
         } else {
-            upsert_node_typed(ctx.nodes, ctx.node_index, node);
+            upsert_node_typed(ctx.nodes, ctx.presentation, ctx.node_index, node);
         }
 
         Ok(())
     }
 
     {
-        let mut ctx = TypedLayoutContext {
+        let mut ctx = StateGraphContext {
             document,
             control,
             states,
             classes,
             config,
+            collect_presentation,
             nodes: &mut nodes,
+            presentation: &mut presentation,
             node_index: &mut node_index,
             edges: &mut edges,
             node_db: &mut node_db,
@@ -1219,7 +1312,11 @@ fn build_layout_data_typed(
         node.description = Some(rest);
     }
 
-    Ok((nodes, edges))
+    Ok(StateGraphConstruction {
+        nodes,
+        edges,
+        presentation,
+    })
 }
 
 fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
@@ -1571,11 +1668,11 @@ mod tests {
             let (key, links) = model.links.get_key_value(&id).unwrap();
             assert_eq!(key.as_ptr(), key_pointer);
             let links = match links {
-                StateDiagramRenderLinks::One(link) => {
+                StateLinks::One(link) => {
                     assert_eq!(id, "Done");
                     std::slice::from_ref(link)
                 }
-                StateDiagramRenderLinks::Many(links) => {
+                StateLinks::Many(links) => {
                     assert_eq!(id, "Ready");
                     links.as_slice()
                 }
@@ -1588,12 +1685,12 @@ mod tests {
                 pointers
             );
         }
-        let StateDiagramRenderLinks::One(link) = &model.links["Done"] else {
+        let StateLinks::One(link) = &model.links["Done"] else {
             panic!("one link retains the historical One representation");
         };
         assert_eq!(link.url, "https://example.com/only");
         assert_eq!(link.tooltip, "Only tip");
-        let StateDiagramRenderLinks::Many(links) = &model.links["Ready"] else {
+        let StateLinks::Many(links) = &model.links["Ready"] else {
             panic!("repeated links retain their source order");
         };
         assert_eq!(

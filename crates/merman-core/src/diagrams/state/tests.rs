@@ -43,6 +43,137 @@ fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson 
 }
 
 #[test]
+fn state_semantic_graph_matches_full_model_without_presentation_materialization() {
+    let source = concat!(
+        "stateDiagram-v2\ndirection LR\n",
+        "state Outer {\ndirection RL\n[*] --> A: ready\n",
+        "note right of A : remember\n}\nOuter --> Done: finish\n",
+        "classDef active fill:red,color:blue\nclass A active\n",
+        "click Done href \"https://example.com\"\n",
+    );
+    parse::reset_state_syntax_construction_count();
+    crate::editor::test_work::reset();
+    render_model::reset_projected_document_count();
+    db::reset_dom_id_count();
+    let semantic = parse::parse_state_semantic_model_controlled(
+        source,
+        "stateDiagram-v2",
+        &MermaidConfig::default(),
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(parse::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+    assert_eq!(render_model::projected_document_count(), 0);
+    assert_eq!(db::dom_id_count(), 0);
+
+    let render = model(source);
+    assert!(db::dom_id_count() > 0);
+    assert_eq!(semantic.direction, render.direction);
+    assert_eq!(semantic.document.root(), render.document.root());
+    assert_eq!(
+        semantic.document.documents.len(),
+        render.document.documents.len()
+    );
+    assert_eq!(semantic.nodes.len(), render.nodes.len());
+    assert_eq!(semantic.edges.len(), render.edges.len());
+    for (semantic, render) in semantic.nodes.iter().zip(&render.nodes) {
+        let mut expected = serde_json::to_value(render).unwrap();
+        let expected = expected.as_object_mut().unwrap();
+        for field in [
+            "labelStyle",
+            "domId",
+            "padding",
+            "rx",
+            "ry",
+            "colorIndex",
+            "wrappingWidth",
+            "minWidth",
+        ] {
+            expected.remove(field);
+        }
+        expected.insert("explicitDir".to_string(), json!(render.explicit_dir));
+        assert_eq!(serde_json::to_value(semantic).unwrap(), json!(expected));
+    }
+    for (semantic, render) in semantic.edges.iter().zip(&render.edges) {
+        let mut expected = serde_json::to_value(render).unwrap();
+        expected.as_object_mut().unwrap().remove("arrowTypeEnd");
+        assert_eq!(serde_json::to_value(semantic).unwrap(), expected);
+    }
+    assert_eq!(semantic.states["Outer"].doc, render.states["Outer"].doc);
+    assert_eq!(
+        serde_json::to_value(&semantic.links).unwrap(),
+        serde_json::to_value(&render.links).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&semantic.style_classes).unwrap(),
+        serde_json::to_value(&render.style_classes).unwrap()
+    );
+    assert!(semantic.nodes.iter().any(|node| node.shape == "note"));
+    assert!(
+        semantic
+            .nodes
+            .iter()
+            .any(|node| node.explicit_dir == Some(true))
+    );
+    assert!(semantic.nodes.iter().any(|node| {
+        node.css_compiled_styles
+            .iter()
+            .any(|style| style == "fill:red")
+    }));
+    crate::editor::test_work::reset();
+}
+
+#[test]
+fn state_semantic_graph_preserves_validation_and_cancellation() {
+    for source in [
+        "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
+        "stateDiagram-v2\nnote right of A : note\nstate A----note-0\n",
+    ] {
+        let semantic = parse::parse_state_semantic_model_controlled(
+            source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let render = parse::parse_state_model_for_render_controlled(
+            source,
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            semantic.unwrap_err().to_string(),
+            render.unwrap_err().to_string()
+        );
+    }
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(20);
+    let source = chain(128);
+    assert!(
+        parse::parse_state_semantic_model_controlled(
+            &source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            &control,
+        )
+        .is_err()
+    );
+    assert!(
+        parse::parse_state_semantic_model_controlled(
+            &source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .is_ok()
+    );
+}
+
+#[test]
 fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
     let model = model(concat!(
         "stateDiagram-v2\ndirection LR\n",
