@@ -659,8 +659,9 @@ omitted commands, options, and values stay omitted. A build without that feature
 ## License
 
 Merman's own code is licensed under either Apache-2.0 or MIT at your option. The `0.9.1`
-Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation and the
-math/font closure. Explicit lean source builds can exclude ELK by disabling default features.
+Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation. Only the
+`cli-release` archive includes the RaTeX math/font closure; Cargo source defaults leave math opt-in.
+Explicit lean source builds can exclude ELK by disabling default features.
 Release archives include
 the matching `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES/`; source-built distributions must
 carry the notices for the features they select.

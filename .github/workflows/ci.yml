@@ -589,6 +589,11 @@ jobs:
           cargo nextest run --locked -p merman-cli --features math --bin merman-cli \
             -E 'test(rustdoc::document::tests::explicit_math_capability_renders_in_rustdoc_mode)' --cargo-quiet
           cargo nextest run --locked -p merman --features math --test layout_work_calibration_contract --cargo-quiet
+          cargo nextest run --locked -p merman-render \
+            --features all-diagrams,layout-cytoscape,layout-elk,math \
+            --test flowchart_svg_test --test sequence_svg_test --test usecase_svg_test \
+            -E 'test(flowchart_svg_renders_ratex_math_labels_end_to_end) | test(sequence_svg_renders_ratex_math_message_and_note_end_to_end) | test(usecase_math_labels_render_real_math_for_every_label_owner)' \
+            --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
           cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
