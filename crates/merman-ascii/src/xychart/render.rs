@@ -2002,8 +2002,8 @@ mod tests {
         AsciiResourcePolicy, Result, TerminalWidthProfile,
     };
     use merman_core::diagrams::xychart::{
-        XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
-        XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
+        XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramModel,
+        XyChartDiagramRenderModel, XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
     };
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
@@ -2023,26 +2023,28 @@ mod tests {
 
     fn authored_text_model() -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {
-            orientation: "horizontal".to_string(),
-            title: Some("<Ops 👩‍💻>\u{1b}[31m".to_string()),
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
-                title: String::new(),
-                categories: vec!["A".to_string(), "·".to_string()],
+            semantic: XyChartDiagramModel {
+                orientation: "horizontal".to_string(),
+                title: Some("<Ops 👩‍💻>\u{1b}[31m".to_string()),
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Band {
+                    title: String::new(),
+                    categories: vec!["A".to_string(), "·".to_string()],
+                },
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(10.0),
+                },
+                plots: vec![XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Bar,
+                    title: None,
+                    values: vec![5.0, 8.0],
+                    data: Vec::new(),
+                    point_labels: Vec::new(),
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(10.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Bar,
-                title: None,
-                values: vec![5.0, 8.0],
-                data: Vec::new(),
-                point_labels: Vec::new(),
-            }],
             display: XyChartDisplayPolicy::default(),
         }
     }
@@ -2066,26 +2068,28 @@ mod tests {
             show_axis_line: false,
         };
         XyChartDiagramRenderModel {
-            orientation: "vertical".to_string(),
-            title: title.map(str::to_string),
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
-                title: String::new(),
-                categories: vec!["A".to_string()],
+            semantic: XyChartDiagramModel {
+                orientation: "vertical".to_string(),
+                title: title.map(str::to_string),
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Band {
+                    title: String::new(),
+                    categories: vec!["A".to_string()],
+                },
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(1.0),
+                },
+                plots: vec![XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Bar,
+                    title: None,
+                    values: vec![1.0],
+                    data: Vec::new(),
+                    point_labels: Vec::new(),
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(1.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Bar,
-                title: None,
-                values: vec![1.0],
-                data: Vec::new(),
-                point_labels: Vec::new(),
-            }],
             display: XyChartDisplayPolicy {
                 show_title: title.is_some(),
                 show_data_label: false,
@@ -2137,27 +2141,29 @@ mod tests {
             show_axis_line: false,
         };
         XyChartDiagramRenderModel {
-            orientation: "vertical".to_string(),
-            title: None,
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(1.0),
+            semantic: XyChartDiagramModel {
+                orientation: "vertical".to_string(),
+                title: None,
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(1.0),
+                },
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(1.0),
+                },
+                plots: vec![XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Line,
+                    title,
+                    values: Vec::new(),
+                    data: vec![(x, Some(1.0))],
+                    point_labels: Vec::new(),
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(1.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Line,
-                title,
-                values: Vec::new(),
-                data: vec![(x, Some(1.0))],
-                point_labels: Vec::new(),
-            }],
             display: XyChartDisplayPolicy {
                 show_title: false,
                 show_data_label: false,
@@ -2170,36 +2176,38 @@ mod tests {
 
     fn horizontal_same_slot_model(left_x: String, right_x: String) -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {
-            orientation: "horizontal".to_string(),
-            title: None,
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(1.0),
-            },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: String::new(),
-                min: Some(0.0),
-                max: Some(1.0),
-            },
-            plots: vec![
-                XyChartPlotRenderModel {
-                    plot_type: XyChartPlotType::Line,
-                    title: None,
-                    values: Vec::new(),
-                    data: vec![(left_x, Some(0.25))],
-                    point_labels: Vec::new(),
+            semantic: XyChartDiagramModel {
+                orientation: "horizontal".to_string(),
+                title: None,
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(1.0),
                 },
-                XyChartPlotRenderModel {
-                    plot_type: XyChartPlotType::Line,
-                    title: None,
-                    values: Vec::new(),
-                    data: vec![(right_x, Some(0.75))],
-                    point_labels: Vec::new(),
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: String::new(),
+                    min: Some(0.0),
+                    max: Some(1.0),
                 },
-            ],
+                plots: vec![
+                    XyChartPlotRenderModel {
+                        plot_type: XyChartPlotType::Line,
+                        title: None,
+                        values: Vec::new(),
+                        data: vec![(left_x, Some(0.25))],
+                        point_labels: Vec::new(),
+                    },
+                    XyChartPlotRenderModel {
+                        plot_type: XyChartPlotType::Line,
+                        title: None,
+                        values: Vec::new(),
+                        data: vec![(right_x, Some(0.75))],
+                        point_labels: Vec::new(),
+                    },
+                ],
+            },
             display: XyChartDisplayPolicy::default(),
         }
     }

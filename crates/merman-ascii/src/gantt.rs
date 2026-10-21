@@ -482,6 +482,7 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::diagrams::gantt::GanttTask;
     use merman_core::resources::ResourceProfile;
     use merman_core::time::{OffsetDateTime, UtcOffset};
     use merman_core::{CancelReason, OperationControl, OperationPhase};
@@ -492,13 +493,19 @@ mod tests {
         model.sections = vec!["Build".to_string(), "Ship".to_string()];
         model.tasks = vec![
             GanttRenderTask {
-                id: "a".to_string(),
-                section: "Build".to_string(),
+                semantic: GanttTask {
+                    id: "a".to_string(),
+                    section: "Build".to_string(),
+                    ..GanttTask::default()
+                },
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                id: "b".to_string(),
-                section: "Orphan".to_string(),
+                semantic: GanttTask {
+                    id: "b".to_string(),
+                    section: "Orphan".to_string(),
+                    ..GanttTask::default()
+                },
                 ..GanttRenderTask::default()
             },
         ];
@@ -608,9 +615,12 @@ mod tests {
     fn gantt_rejects_explicit_section_occurrence_without_declared_sections() {
         let mut model = GanttDiagramRenderModel::default();
         model.tasks.push(GanttRenderTask {
-            id: "task".to_string(),
-            section: "missing".to_string(),
-            section_index: Some(0),
+            semantic: GanttTask {
+                id: "task".to_string(),
+                section: "missing".to_string(),
+                section_index: Some(0),
+                ..GanttTask::default()
+            },
             ..GanttRenderTask::default()
         });
         let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(

@@ -5,8 +5,8 @@ use merman_ascii::{
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
 use merman_core::diagrams::xychart::{
-    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
-    XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramModel,
+    XyChartDiagramRenderModel, XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
 };
 use merman_core::{Engine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
@@ -166,17 +166,19 @@ fn typed_xychart_model(
     plots: Vec<XyChartPlotRenderModel>,
 ) -> XyChartDiagramRenderModel {
     XyChartDiagramRenderModel {
-        orientation: orientation.to_string(),
-        title: None,
-        acc_title: None,
-        acc_descr: None,
-        x_axis,
-        y_axis: XyChartAxisRenderModel::Linear {
-            title: String::new(),
-            min: Some(y_min),
-            max: Some(y_max),
+        semantic: XyChartDiagramModel {
+            orientation: orientation.to_string(),
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            x_axis,
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(y_min),
+                max: Some(y_max),
+            },
+            plots,
         },
-        plots,
         display: XyChartDisplayPolicy {
             show_title: false,
             show_data_label: false,
@@ -848,26 +850,28 @@ fn xychart_parser_empty_chart_preserves_title_and_axis_semantics() {
 #[test]
 fn xychart_empty_plot_preserves_typed_series_metadata() {
     let model = XyChartDiagramRenderModel {
-        orientation: "vertical".to_string(),
-        title: Some("No samples".to_string()),
-        acc_title: None,
-        acc_descr: None,
-        x_axis: XyChartAxisRenderModel::Band {
-            title: "Category".to_string(),
-            categories: Vec::new(),
+        semantic: XyChartDiagramModel {
+            orientation: "vertical".to_string(),
+            title: Some("No samples".to_string()),
+            acc_title: None,
+            acc_descr: None,
+            x_axis: XyChartAxisRenderModel::Band {
+                title: "Category".to_string(),
+                categories: Vec::new(),
+            },
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: "Score".to_string(),
+                min: Some(0.0),
+                max: Some(10.0),
+            },
+            plots: vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: Some("Forecast".to_string()),
+                values: Vec::new(),
+                data: Vec::new(),
+                point_labels: vec!["orphan".to_string()],
+            }],
         },
-        y_axis: XyChartAxisRenderModel::Linear {
-            title: "Score".to_string(),
-            min: Some(0.0),
-            max: Some(10.0),
-        },
-        plots: vec![XyChartPlotRenderModel {
-            plot_type: XyChartPlotType::Line,
-            title: Some("Forecast".to_string()),
-            values: Vec::new(),
-            data: Vec::new(),
-            point_labels: vec!["orphan".to_string()],
-        }],
         display: XyChartDisplayPolicy::default(),
     };
 
@@ -960,20 +964,22 @@ fn xychart_empty_projection_obeys_exact_document_cell_budget() {
 fn xychart_empty_projection_enforces_authored_grapheme_budget() {
     let grapheme = "👩‍💻";
     let model = XyChartDiagramRenderModel {
-        orientation: "vertical".to_string(),
-        title: Some(grapheme.to_string()),
-        acc_title: None,
-        acc_descr: None,
-        x_axis: XyChartAxisRenderModel::Band {
-            title: String::new(),
-            categories: Vec::new(),
+        semantic: XyChartDiagramModel {
+            orientation: "vertical".to_string(),
+            title: Some(grapheme.to_string()),
+            acc_title: None,
+            acc_descr: None,
+            x_axis: XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: Vec::new(),
+            },
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: None,
+                max: None,
+            },
+            plots: Vec::new(),
         },
-        y_axis: XyChartAxisRenderModel::Linear {
-            title: String::new(),
-            min: None,
-            max: None,
-        },
-        plots: Vec::new(),
         display: XyChartDisplayPolicy::default(),
     };
     let exact = AsciiResourcePolicy::default()
@@ -1002,20 +1008,22 @@ fn xychart_empty_projection_enforces_authored_grapheme_budget() {
 #[test]
 fn xychart_empty_projection_html_escapes_authored_fields() {
     let model = XyChartDiagramRenderModel {
-        orientation: "vertical".to_string(),
-        title: Some("<empty & safe>".to_string()),
-        acc_title: None,
-        acc_descr: None,
-        x_axis: XyChartAxisRenderModel::Band {
-            title: String::new(),
-            categories: Vec::new(),
+        semantic: XyChartDiagramModel {
+            orientation: "vertical".to_string(),
+            title: Some("<empty & safe>".to_string()),
+            acc_title: None,
+            acc_descr: None,
+            x_axis: XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: Vec::new(),
+            },
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: None,
+                max: None,
+            },
+            plots: Vec::new(),
         },
-        y_axis: XyChartAxisRenderModel::Linear {
-            title: String::new(),
-            min: None,
-            max: None,
-        },
-        plots: Vec::new(),
         display: XyChartDisplayPolicy::default(),
     };
     let rendered = render_typed_xychart(

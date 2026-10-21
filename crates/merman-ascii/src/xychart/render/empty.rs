@@ -136,31 +136,35 @@ mod tests {
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::xychart::plot::TerminalChartCardinality;
-    use merman_core::diagrams::xychart::{XyChartDisplayPolicy, XyChartPlotType};
+    use merman_core::diagrams::xychart::{
+        XyChartDiagramModel, XyChartDisplayPolicy, XyChartPlotType,
+    };
     use merman_core::resources::ResourceProfile;
 
     fn zero_slot_model() -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {
-            orientation: "vertical".to_string(),
-            title: Some("No samples".to_string()),
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
-                title: "Category".to_string(),
-                categories: Vec::new(),
+            semantic: XyChartDiagramModel {
+                orientation: "vertical".to_string(),
+                title: Some("No samples".to_string()),
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Band {
+                    title: "Category".to_string(),
+                    categories: Vec::new(),
+                },
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: "Score".to_string(),
+                    min: Some(0.0),
+                    max: Some(10.0),
+                },
+                plots: vec![XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Line,
+                    title: Some("Forecast".to_string()),
+                    values: Vec::new(),
+                    data: Vec::new(),
+                    point_labels: vec!["orphan".to_string()],
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: "Score".to_string(),
-                min: Some(0.0),
-                max: Some(10.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Line,
-                title: Some("Forecast".to_string()),
-                values: Vec::new(),
-                data: Vec::new(),
-                point_labels: vec!["orphan".to_string()],
-            }],
             display: XyChartDisplayPolicy::default(),
         }
     }

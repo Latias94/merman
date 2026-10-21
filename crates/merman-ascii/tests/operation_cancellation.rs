@@ -1,7 +1,7 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy};
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask, GanttTask};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
@@ -22,11 +22,17 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
     let mut gantt = GanttDiagramRenderModel::default();
     gantt.tasks = vec![
         GanttRenderTask {
-            id: "first".to_string(),
+            semantic: GanttTask {
+                id: "first".to_string(),
+                ..GanttTask::default()
+            },
             ..GanttRenderTask::default()
         },
         GanttRenderTask {
-            id: "second".to_string(),
+            semantic: GanttTask {
+                id: "second".to_string(),
+                ..GanttTask::default()
+            },
             ..GanttRenderTask::default()
         },
     ];
