@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{SemanticDiagramModel, SemanticParser};
 use std::collections::BTreeSet;
 use std::io::{self, Write};
 
@@ -18,14 +18,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let source = std::fs::read_to_string(input)?;
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())?
-        .ok_or("expected a parsed diagram")?;
+    let parsed = SemanticParser::new().parse_diagram_sync(&source)?;
     let mut output = io::BufWriter::new(io::stdout().lock());
     // Consume runtime-fed canonical fields directly. Compatibility JSON would pull an
     // unrelated projection into the executable whose closure this fixture measures.
-    match parsed.model() {
-        RenderSemanticModel::Flowchart(model) => {
+    match &parsed.model {
+        SemanticDiagramModel::Flowchart(model) => {
             writeln!(output, "flowchart")?;
             for node in &model.nodes {
                 writeln!(output, "node\t{:?}\t{:?}", node.id, node.label)?;
@@ -38,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )?;
             }
         }
-        RenderSemanticModel::Sequence(model) => {
+        SemanticDiagramModel::Sequence(model) => {
             writeln!(output, "sequence")?;
             for id in &model.actor_order {
                 let actor = model.actors.get(id).ok_or("missing ordered actor")?;
@@ -55,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )?;
             }
         }
-        RenderSemanticModel::State(model) => {
+        SemanticDiagramModel::State(model) => {
             writeln!(output, "state")?;
             for node in &model.nodes {
                 writeln!(output, "node\t{:?}\t{:?}", node.id, node.description)?;
