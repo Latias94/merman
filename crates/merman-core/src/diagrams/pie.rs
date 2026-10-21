@@ -11,6 +11,27 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+/// Canonical meaning of a Pie diagram, without compatibility-output state.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct PieDiagramModel {
+    #[serde(rename = "showData")]
+    pub show_data: bool,
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub sections: Vec<PieSection>,
+}
+
+impl PieDiagramModel {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_title(&mut self.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PieDiagramRenderModel {
     #[serde(rename = "showData")]
@@ -33,13 +54,6 @@ enum CompatibilityOutputState {
 }
 
 impl PieDiagramRenderModel {
-    fn empty_compatibility_output() -> Self {
-        Self {
-            compatibility_output: CompatibilityOutputState::Empty,
-            ..Self::default()
-        }
-    }
-
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -48,18 +62,36 @@ impl PieDiagramRenderModel {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PieRenderSection {
+pub struct PieSection {
     pub label: String,
     pub value: f64,
 }
 
+/// Backwards-compatible name for a semantic Pie section.
+pub type PieRenderSection = PieSection;
+
 struct PieSemanticSource {
-    model: PieDiagramRenderModel,
-    editor_facts: EditorSemanticFacts,
+    model: PieDiagramModel,
+    compatibility_output: CompatibilityOutputState,
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
+impl PieSemanticSource {
+    fn into_render_model(self) -> PieDiagramRenderModel {
+        PieDiagramRenderModel {
+            show_data: self.model.show_data,
+            title: self.model.title,
+            acc_title: self.model.acc_title,
+            acc_descr: self.model.acc_descr,
+            sections: self.model.sections,
+            compatibility_output: self.compatibility_output,
+        }
+    }
 }
 
 pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    render_model_to_compat_json(&parse_pie_semantic_source(code, meta)?.model, meta)
+    let source = parse_pie_semantic_source(code, meta)?;
+    render_model_to_compat_json(&source.into_render_model(), meta)
 }
 
 pub(crate) fn parse_pie_json_and_editor_facts(
@@ -67,14 +99,19 @@ pub(crate) fn parse_pie_json_and_editor_facts(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
-    let construction =
-        construct_pie_semantic_source_controlled(code, meta, EditorFactsDemand::Capture, control)?;
+    let construction = construct_pie_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
-        |source| {
+        |mut source| {
+            let editor_facts = source.editor_facts.take().unwrap_or_default();
             (
-                render_model_to_compat_json(&source.model, meta),
-                source.editor_facts,
+                render_model_to_compat_json(&source.into_render_model(), meta),
+                editor_facts,
             )
         },
         family::CombinedSemanticFailure::into_parts,
@@ -105,7 +142,7 @@ pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PieDiagramRenderModel> {
-    Ok(parse_pie_semantic_source(code, meta)?.model)
+    Ok(parse_pie_semantic_source(code, meta)?.into_render_model())
 }
 
 pub(crate) fn parse_pie_model_for_render_controlled(
@@ -113,35 +150,54 @@ pub(crate) fn parse_pie_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<PieDiagramRenderModel>> {
-    let construction =
-        construct_pie_semantic_source_controlled(code, meta, EditorFactsDemand::Omit, control)?;
+    let construction = construct_pie_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
     };
-    Ok(Ok(source.model))
+    Ok(Ok(source.into_render_model()))
+}
+
+pub(crate) fn parse_pie_semantic_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<PieDiagramModel>> {
+    let construction = construct_pie_semantic_source_controlled(
+        code,
+        diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
+    match construction {
+        Ok(mut source) => {
+            source.model.sanitize_common_db_fields(config);
+            Ok(Ok(source.model))
+        }
+        Err(failure) => Ok(Err(failure.into_error())),
+    }
 }
 
 fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
-    construct_pie_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
-}
-
-fn construct_pie_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
     construct_pie_semantic_source_controlled(
         code,
-        meta,
+        &meta.diagram_type,
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")
+    .map_err(family::CombinedSemanticFailure::into_error)
 }
 
 fn construct_pie_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
@@ -154,14 +210,15 @@ fn construct_pie_semantic_source_controlled(
     let body = match pie_body_start_controlled(code, control)? {
         PieHeader::Empty => {
             return Ok(Ok(PieSemanticSource {
-                model: PieDiagramRenderModel::empty_compatibility_output(),
-                editor_facts: EditorSemanticFacts::new(),
+                model: PieDiagramModel::default(),
+                compatibility_output: CompatibilityOutputState::Empty,
+                editor_facts: None,
             }));
         }
         PieHeader::ExpectedPie(span) => {
             return Ok(Err(family::CombinedSemanticFailure::parser_recovery(
                 "pie",
-                Error::diagram_parse_exact(meta.diagram_type.clone(), "expected pie", span),
+                Error::diagram_parse_exact(diagram_type.to_string(), "expected pie", span),
                 EditorSemanticFacts::new(),
             )));
         }
@@ -193,7 +250,7 @@ fn construct_pie_semantic_source_controlled(
                     }
                     first_error.get_or_insert_with(|| {
                         Error::diagram_parse_insertion_point(
-                            meta.diagram_type.clone(),
+                            diagram_type.to_string(),
                             diagnostic.message.clone(),
                             diagnostic.span.start,
                         )
@@ -226,7 +283,7 @@ fn construct_pie_semantic_source_controlled(
                 }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         format!("unexpected pie statement: {text}"),
                     )
                 });
@@ -253,7 +310,7 @@ fn construct_pie_semantic_source_controlled(
                 }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_exact(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         message,
                         section.value_span,
                     )
@@ -262,7 +319,7 @@ fn construct_pie_semantic_source_controlled(
             continue;
         }
         if seen.insert(section.label.clone()) {
-            sections.push(PieRenderSection {
+            sections.push(PieSection {
                 label: section.label,
                 value: section.value,
             });
@@ -270,25 +327,23 @@ fn construct_pie_semantic_source_controlled(
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
-    let editor_facts = editor_facts.unwrap_or_default();
-
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            editor_facts.unwrap_or_default(),
         )));
     }
 
     control.checkpoint()?;
     Ok(Ok(PieSemanticSource {
-        model: PieDiagramRenderModel {
+        model: PieDiagramModel {
             show_data: body.show_data_span.is_some(),
             title: common.title,
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
             sections,
-            compatibility_output: CompatibilityOutputState::Model,
         },
+        compatibility_output: CompatibilityOutputState::Model,
         editor_facts,
     }))
 }
@@ -542,12 +597,91 @@ mod tests {
         assert!(matches!(
             construct_pie_semantic_source_controlled(
                 "pie\n\"A\": 1\n\"B\": 2\n",
-                &metadata(),
+                "pie",
                 EditorFactsDemand::Capture,
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn pie_semantic_model_reuses_one_construction_without_editor_or_compat_state() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        crate::editor::test_work::reset();
+        let model = parse_pie_semantic_model_controlled(
+            "pie showData\ntitle Revenue\n\"A\": 1\n\"A\": 2\n\"B\": 3\n",
+            "pie",
+            &MermaidConfig::default(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            serde_json::to_value(model).unwrap(),
+            json!({
+                "showData": true,
+                "title": "Revenue",
+                "accTitle": null,
+                "accDescr": null,
+                "sections": [{"label": "A", "value": 1.0}, {"label": "B", "value": 3.0}],
+            })
+        );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn pie_semantic_model_applies_common_text_policy_without_theme_resolution() {
+        let config = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "themeVariables": {"primaryColor": "not-a-color"},
+        }));
+        let source = "pie\ntitle <script>bad()</script>Revenue\naccTitle: <script>bad()</script>Accessible\naccDescr: <script>bad()</script>Description\n\"A\": 1\n";
+        let model = parse_pie_semantic_model_controlled(
+            source,
+            "pie",
+            &config,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .expect("semantic parse does not evaluate theme colors");
+        let mut expected = parse_pie_model_for_render(source, &metadata()).unwrap();
+        expected.sanitize_common_db_fields(&config);
+
+        assert_eq!(
+            serde_json::to_value(model).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+
+    #[test]
+    fn pie_semantic_empty_input_has_no_compatibility_sentinel() {
+        let semantic = parse_pie_semantic_model_controlled(
+            "",
+            "pie",
+            &MermaidConfig::default(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let compatibility = parse_pie("", &metadata()).unwrap();
+
+        assert_eq!(
+            serde_json::to_value(semantic).unwrap(),
+            json!({
+                "showData": false,
+                "title": null,
+                "accTitle": null,
+                "accDescr": null,
+                "sections": [],
+            })
+        );
+        assert_eq!(compatibility, json!({}));
     }
 
     #[test]

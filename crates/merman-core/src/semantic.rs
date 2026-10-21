@@ -27,6 +27,8 @@ pub enum SemanticDiagramModel {
     Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
     #[cfg(feature = "diagram-info")]
     Info(crate::diagrams::info::InfoDiagramModel),
+    #[cfg(feature = "diagram-pie")]
+    Pie(crate::diagrams::pie::PieDiagramModel),
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -38,8 +40,8 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart, Swimlane, Sequence, Cynefin, and Info. Other
-/// enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
+/// The semantic facade currently handles Flowchart, Swimlane, Sequence, Cynefin, Info, and Pie.
+/// Other enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
     site_config: MermaidConfig,
@@ -263,6 +265,24 @@ impl SemanticParser {
             }));
         }
 
+        #[cfg(feature = "diagram-pie")]
+        if diagram_type == "pie" {
+            let model = match crate::diagrams::pie::parse_pie_semantic_model_controlled(
+                parser_input,
+                diagram_type,
+                &_metadata.semantic_config,
+                control,
+            )? {
+                Ok(model) => model,
+                Err(error) => return Ok(Err(error)),
+            };
+            control.checkpoint()?;
+            return Ok(Ok(ParsedSemanticDiagram {
+                metadata: _metadata,
+                model: SemanticDiagramModel::Pie(model),
+            }));
+        }
+
         Ok(Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }))
@@ -329,7 +349,8 @@ mod tests {
     #[cfg(any(
         feature = "diagram-cynefin",
         feature = "diagram-flowchart",
-        feature = "diagram-info"
+        feature = "diagram-info",
+        feature = "diagram-pie"
     ))]
     use serde_json::json;
     #[cfg(feature = "diagram-flowchart")]
@@ -455,6 +476,80 @@ mod tests {
             .parse_diagram_sync("info\nshowInfo")
             .expect("Info-only semantic parse");
         assert!(matches!(parsed.model, SemanticDiagramModel::Info(_)));
+    }
+
+    #[cfg(feature = "diagram-pie")]
+    #[test]
+    fn semantic_pie_matches_full_typed_model_without_editor_or_compat_state() {
+        crate::editor::test_work::reset();
+        let source = "pie showData\ntitle Revenue\n\"A\": 1\n\"B\": 2\n";
+        let parsed = SemanticParser::new()
+            .parse_diagram_with_type_sync("pie", source)
+            .expect("semantic Pie parse");
+        let semantic_model = match parsed.model {
+            SemanticDiagramModel::Pie(model) => model,
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-sequence",
+                feature = "diagram-cynefin",
+                feature = "diagram-info"
+            ))]
+            _ => panic!("expected semantic Pie model"),
+        };
+        assert_eq!(
+            serde_json::to_value(&semantic_model).unwrap(),
+            json!({
+                "showData": true,
+                "title": "Revenue",
+                "accTitle": null,
+                "accDescr": null,
+                "sections": [
+                    {"label": "A", "value": 1.0},
+                    {"label": "B", "value": 2.0}
+                ]
+            })
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        let full = crate::Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "pie",
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .expect("full parser")
+            .expect("Pie result");
+        let crate::diagram::RenderSemanticModel::Pie(full_model) = full.model() else {
+            panic!("expected full Pie model");
+        };
+        assert_eq!(
+            serde_json::to_value(&semantic_model).unwrap(),
+            json!({
+                "showData": full_model.show_data,
+                "title": full_model.title,
+                "accTitle": full_model.acc_title,
+                "accDescr": full_model.acc_descr,
+                "sections": full_model.sections,
+            })
+        );
+        crate::editor::test_work::reset();
+    }
+
+    #[cfg(all(
+        feature = "diagram-pie",
+        not(feature = "diagram-flowchart"),
+        not(feature = "diagram-swimlane"),
+        not(feature = "diagram-sequence"),
+        not(feature = "diagram-cynefin"),
+        not(feature = "diagram-info")
+    ))]
+    #[test]
+    fn semantic_pie_is_available_without_other_diagram_features() {
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("pie\n\"A\": 1")
+            .expect("Pie-only semantic parse");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Pie(_)));
     }
 
     #[cfg(all(feature = "diagram-sequence", feature = "diagram-flowchart"))]
@@ -657,6 +752,8 @@ mod tests {
             SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-info")]
             SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-pie")]
+            SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
         };
         let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
             panic!("expected full Flowchart model");
@@ -684,6 +781,8 @@ mod tests {
             SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
             #[cfg(feature = "diagram-info")]
             SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
+            #[cfg(feature = "diagram-pie")]
+            SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
         };
         let inner = model
             .subgraphs
