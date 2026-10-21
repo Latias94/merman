@@ -10,6 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Host presets keep C4 children visible inside filled boundaries and style relationship labels and arrowheads; Gantt retains task states and readable label colors; Wardley anchors and ZenUML surfaces follow the selected host theme. Fixes [#229](https://github.com/Latias94/merman/issues/229), [#230](https://github.com/Latias94/merman/issues/230), and [#231](https://github.com/Latias94/merman/issues/231).
 - Explicit diagram-source Mermaid themes preserve their derived paint palettes under host styling, including ER rows and Quadrant point labels. Site and recipe theme selections remain fallback palettes; explicit site/source color variables retain their property-specific precedence. Independent typography, effects and canvas decoration remain applicable. Fixes [#232](https://github.com/Latias94/merman/issues/232).
 - ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Empty or typography-only ZenUML themes preserve independently authored border colors; source-colored comments no longer count as consuming typed text paint.
+- Playground keeps UI theme and font defaults in initialization, preserving authored source themes and typed host paints. Automatic canvas appearance follows the same configuration precedence.
 
 - Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes.
   PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero.
