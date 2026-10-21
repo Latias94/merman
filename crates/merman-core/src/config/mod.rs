@@ -12,11 +12,13 @@ use std::sync::Arc;
 
 #[cfg(feature = "presentation")]
 mod appearance;
+mod appearance_selection;
 mod source_presentation;
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use appearance::resolve_appearance;
 #[cfg(feature = "presentation")]
 pub(crate) use appearance::{AppearanceDecision, MaterializationPlan};
+pub(crate) use appearance_selection::resolve_semantic_appearance;
 pub(crate) use source_presentation::is_presentation_field;
 
 /// Test-only observations of actual JSON copy-on-write and operation appearance work.

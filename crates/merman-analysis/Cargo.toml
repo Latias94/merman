@@ -18,6 +18,7 @@ artifact-profile-required = true
 fixed-capabilities = ["analysis"]
 
 [features]
+compat-json = ["merman-core/compat-json"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -96,7 +97,7 @@ system-random = ["merman-core/system-random"]
 system-timing = ["merman-core/system-timing"]
 
 [dependencies]
-merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts"] }
+merman-core = { workspace = true, features = ["editor-facts"] }
 serde.workspace = true
 serde_json.workspace = true
 serde-saphyr = { workspace = true, features = ["serialize"] }

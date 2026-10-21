@@ -1,20 +1,11 @@
 //! Resolve diagram appearance while the source and initialization layers are still distinct.
 
+use super::appearance_selection::{APPEARANCE_KEYS, AppearanceOrigin, select_appearance_value};
 #[cfg(test)]
 use super::presentation::PresentationConfig;
 use crate::{MermaidConfig, MermaidThemeId, family};
 use serde_json::Value;
 use std::borrow::Cow;
-
-const APPEARANCE_KEYS: [&str; 3] = ["theme", "look", "layout"];
-
-#[derive(Clone, Copy)]
-enum AppearanceOrigin {
-    Source,
-    Initialize,
-    Compatibility,
-    Default,
-}
 
 struct AppearanceWinner<'a> {
     value: Cow<'a, Value>,
@@ -47,38 +38,8 @@ impl<'a> AppearanceDecision<'a> {
         let section =
             family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
         let winners = APPEARANCE_KEYS.map(|key| {
-            [
-                (source, AppearanceOrigin::Source),
-                (initialize, AppearanceOrigin::Initialize),
-            ]
-            .into_iter()
-            .find_map(|(layer, origin)| {
-                read_appearance(layer, section, key).map(|value| AppearanceWinner {
-                    value: Cow::Borrowed(value),
-                    origin,
-                })
-            })
-            .or_else(|| {
-                compatibility
-                    .and_then(|layer| read_appearance(layer, section, key))
-                    .map(|value| AppearanceWinner {
-                        value: Cow::Borrowed(value),
-                        origin: AppearanceOrigin::Compatibility,
-                    })
-            })
-            // Mindmap chooses Cose only in the absence of an authored layout, including null.
-            .or_else(|| {
-                (section == "mindmap" && key == "layout").then(|| AppearanceWinner {
-                    value: Cow::Owned(Value::String("cose-bilkent".to_string())),
-                    origin: AppearanceOrigin::Default,
-                })
-            })
-            .or_else(|| {
-                read_appearance(defaults, section, key).map(|value| AppearanceWinner {
-                    value: Cow::Borrowed(value),
-                    origin: AppearanceOrigin::Default,
-                })
-            })
+            select_appearance_value(section, key, source, initialize, compatibility, defaults)
+                .map(|(value, origin)| AppearanceWinner { value, origin })
         });
         Self {
             section,
@@ -168,28 +129,6 @@ pub(crate) fn resolve_appearance(
     let decision =
         AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
     decision.apply_to_presentation(effective);
-}
-
-fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Option<&'a Value> {
-    let root = layer.as_value();
-    [
-        root.get(section).and_then(|section| section.get(key)),
-        root.get(key),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|value| match key {
-        "theme" => value
-            .as_str()
-            .is_some_and(|name| name == "null" || MermaidThemeId::NAMES.contains(&name)),
-        "look" => value
-            .as_str()
-            .is_some_and(|look| matches!(look, "classic" | "handDrawn" | "neo")),
-        // The extensible layout registry owns invalid/unknown-name fallback. In
-        // particular a JSON null is present in JavaScript, unlike undefined.
-        "layout" => true,
-        _ => false,
-    })
 }
 
 #[cfg(test)]

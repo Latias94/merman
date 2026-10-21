@@ -94,6 +94,22 @@ pub enum SemanticDiagramModel {
 }
 
 impl SemanticDiagramModel {
+    /// Consumes the model and returns its source-mapped semantic warning facts.
+    pub fn into_warning_facts(self) -> Vec<crate::DiagramWarningFact> {
+        #[allow(unreachable_patterns)]
+        match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => model.warning_facts,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            Self::Flowchart(model) => model.warning_facts,
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => model.warning_facts,
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(model) => model.warning_facts,
+            _ => Vec::new(),
+        }
+    }
+
     fn remap_source_positions(
         &mut self,
         source: &crate::PreprocessedSource,
@@ -496,9 +512,26 @@ impl SemanticParser {
             return Ok(Err(Error::MalformedFrontMatter));
         }
 
-        let mut semantic_config = self.effective_semantic_config(&pre.config, control)?;
-        crate::detect::builtin_config_effect(diagram_type).apply(&mut semantic_config);
         let upstream_defaults = crate::generated::upstream_default_config();
+        let admitted_source = if pre.config.is_empty_object() {
+            pre.config.clone()
+        } else {
+            self.site_config
+                .source_filtered_overrides(&pre.config, control)?
+        };
+        let mut semantic_config = self.site_config.clone();
+        if !admitted_source.is_empty_object() {
+            semantic_config.deep_merge(admitted_source.as_value());
+        }
+        crate::config::resolve_semantic_appearance(
+            diagram_type,
+            &admitted_source,
+            &self.site_config_overrides,
+            &upstream_defaults,
+            &mut semantic_config,
+            control,
+        )?;
+        crate::detect::builtin_config_effect(diagram_type).apply(&mut semantic_config);
         let source_authority = if self
             .site_config_overrides
             .as_value()
@@ -528,21 +561,6 @@ impl SemanticParser {
             control,
         )?;
         Ok(Ok((metadata, source)))
-    }
-
-    fn effective_semantic_config(
-        &self,
-        source: &MermaidConfig,
-        control: &OperationControl,
-    ) -> OperationControlResult<MermaidConfig> {
-        let mut config = self.site_config.clone();
-        if !source.is_empty_object() {
-            let admitted = self
-                .site_config
-                .source_filtered_overrides(source, control)?;
-            config.deep_merge(admitted.as_value());
-        }
-        Ok(config)
     }
 }
 
@@ -1346,11 +1364,60 @@ mod tests {
     #[cfg(feature = "diagram-swimlane")]
     #[test]
     fn semantic_parser_detects_canonical_swimlane_type() {
-        let parsed = SemanticParser::new()
-            .parse_diagram_sync("swimlane-beta LR\nA-->B")
-            .expect("automatic semantic parse");
-        assert_eq!(parsed.metadata.diagram_type, "swimlane");
-        assert!(matches!(parsed.model, SemanticDiagramModel::Flowchart(_)));
+        for (site, source, layout) in [
+            (json!({}), "swimlane-beta LR\nA-->B", json!("swimlane")),
+            (
+                json!({"layout": "elk"}),
+                "swimlane-beta LR\nA-->B",
+                json!("elk"),
+            ),
+            (
+                json!({"layout": "elk"}),
+                // Frontmatter merging ignores null before appearance selection.
+                "---\nconfig:\n  layout: null\n---\nswimlane-beta LR\nA-->B",
+                json!("elk"),
+            ),
+            (
+                json!({"layout": "elk"}),
+                "---\nconfig:\n  swimlane:\n    layout: dagre\n    theme: forest\n    look: neo\n---\nswimlane-beta LR\nA-->B",
+                json!("dagre"),
+            ),
+        ] {
+            let parser =
+                SemanticParser::new().with_site_config(MermaidConfig::from_value(site.clone()));
+            for known_type in [false, true] {
+                let parsed = if known_type {
+                    parser.parse_diagram_with_type_sync("swimlane", source)
+                } else {
+                    parser.parse_diagram_sync(source)
+                }
+                .expect("semantic Swimlane parse");
+                assert_eq!(parsed.metadata.diagram_type, "swimlane");
+                assert!(matches!(parsed.model, SemanticDiagramModel::Flowchart(_)));
+                #[cfg(feature = "presentation")]
+                {
+                    let full = crate::MermaidEngine::new()
+                        .with_site_config(crate::presentation::PresentationConfig::from_value(
+                            site.clone(),
+                        ))
+                        .parse_diagram_for_render_model_with_type_sync(
+                            "swimlane",
+                            source,
+                            crate::ParseOptions::strict(),
+                        )
+                        .expect("full Swimlane parse")
+                        .expect("detected Swimlane");
+                    for key in ["layout", "theme", "look"] {
+                        assert_eq!(
+                            parsed.metadata.semantic_config.as_value().get(key),
+                            full.metadata().effective_config.as_value().get(key),
+                            "{key} for {source}"
+                        );
+                    }
+                }
+                assert_eq!(parsed.metadata.semantic_config.as_value()["layout"], layout);
+            }
+        }
     }
 
     #[cfg(feature = "diagram-flowchart")]

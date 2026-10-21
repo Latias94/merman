@@ -122,6 +122,15 @@ The layer boundaries are deliberate:
 
 The crate has no default features and does not depend on SVG, raster, PDF, or editor protocol implementations. Analysis is deterministic by default.
 
+`Analyzer::new` and `Analyzer::with_options` capture canonical semantics directly. They do not
+materialize Mermaid compatibility JSON or evaluate visual themes. For example, an invalid color
+inside `themeVariables` does not invalidate otherwise valid diagram semantics.
+
+Hosts that customize Mermaid detectors or compatibility parsers can enable `compat-json` and
+construct an analyzer with `Analyzer::with_mermaid_engine`. This explicit adapter preserves those
+registries and full presentation validation, including theme errors. Its runtime and site config
+still come from `AnalysisOptions`. Enabling the feature does not change default analyzers.
+
 The optional `system-clock`, `system-timezone`, `system-random`, and `system-timing` features only make their matching runtime adapters available. They do not change Mermaid language coverage or select ambient host state automatically.
 
 ## Options JSON
