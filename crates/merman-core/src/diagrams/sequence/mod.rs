@@ -75,6 +75,7 @@ use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
 pub(crate) use parse::parse_sequence_json_and_editor_facts;
+pub(crate) use parse::parse_sequence_semantic_model_controlled;
 pub(crate) use parse::{parse_sequence, parse_sequence_model_for_render_controlled};
 #[cfg(test)]
 pub(crate) use parse::{

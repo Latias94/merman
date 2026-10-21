@@ -1,8 +1,8 @@
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
+    ParseMetadata, Result, SemanticMetadata, SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
@@ -98,13 +98,17 @@ enum SequenceSemanticFailure {
 
 impl SequenceSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_parse_error_for_type(self, diagram_type: &str, fallback_offset: usize) -> Error {
         match self {
             Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 lalrpop_parse_diagnostic(&error, fallback_offset),
             ),
             Self::Db { message, .. } => {
-                Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
+                Error::diagram_parse_fallback(diagram_type.to_string(), message)
             }
         }
     }
@@ -180,6 +184,29 @@ pub(crate) fn parse_sequence_model_for_render_controlled(
     match construction {
         Ok(source) => Ok(Ok(source.db.into_render_model())),
         Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
+    }
+}
+
+pub(crate) fn parse_sequence_semantic_model_controlled(
+    code: &str,
+    meta: &SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
+    let construction = construct_sequence_semantic_source(
+        code,
+        sequence_wrap_enabled_from_config(&meta.semantic_config),
+        EditorFactsDemand::Omit,
+        control,
+    )?;
+    match construction {
+        Ok(source) => {
+            let mut model = source.db.into_render_model();
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            Ok(Ok(model))
+        }
+        Err(failure) => Ok(Err(
+            failure.into_parse_error_for_type(&meta.diagram_type, code.len())
+        )),
     }
 }
 
@@ -269,12 +296,16 @@ fn build_sequence_db(
 }
 
 fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
-    meta.effective_config
+    sequence_wrap_enabled_from_config(meta.effective_config.as_config())
+}
+
+fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
+    config
         .as_value()
         .get("wrap")
         .and_then(|v| v.as_bool())
         .or_else(|| {
-            meta.effective_config
+            config
                 .as_value()
                 .get("sequence")
                 .and_then(|v| v.get("wrap"))

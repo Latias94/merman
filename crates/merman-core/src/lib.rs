@@ -41,7 +41,11 @@ pub mod presentation;
 pub mod resources;
 pub mod runtime;
 pub mod sanitize;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 pub mod semantic;
 pub mod style;
 pub mod svg_security;
@@ -91,7 +95,11 @@ pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
 use presentation::PresentationConfig;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
 pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 

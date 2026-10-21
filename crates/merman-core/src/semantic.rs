@@ -21,6 +21,8 @@ pub struct SemanticMetadata {
 pub enum SemanticDiagramModel {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
+    #[cfg(feature = "diagram-sequence")]
+    Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -32,8 +34,8 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart and Swimlane. Other enabled families return
-/// [`Error::UnsupportedDiagram`] until their semantic parsers migrate to this interface.
+/// The semantic facade currently handles Flowchart, Swimlane, and Sequence. Other enabled
+/// families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
     site_config: MermaidConfig,
@@ -93,15 +95,6 @@ impl SemanticParser {
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        if !cfg!(any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane"
-        )) {
-            return Ok(Err(Error::UnsupportedDiagram {
-                diagram_type: "(automatic detection)".to_string(),
-            }));
-        }
-
         let registry = builtin_detector_registry();
         let pre = match preprocess(input, registry, None, control)? {
             Ok(pre) => pre,
@@ -140,14 +133,6 @@ impl SemanticParser {
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        if !cfg!(any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane"
-        )) {
-            return Ok(Err(Error::UnsupportedDiagram {
-                diagram_type: diagram_type.to_string(),
-            }));
-        }
         let pre = match preprocess(
             input,
             builtin_detector_registry(),
@@ -200,17 +185,32 @@ impl SemanticParser {
             title,
         };
 
-        let mut supports_type = false;
-        #[cfg(feature = "diagram-flowchart")]
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         {
-            supports_type |= matches!(diagram_type, "flowchart" | "flowchart-v2" | "flowchart-elk");
+            let supports_flowchart = cfg!(feature = "diagram-flowchart")
+                && matches!(diagram_type, "flowchart" | "flowchart-v2" | "flowchart-elk");
+            let supports_swimlane = cfg!(feature = "diagram-swimlane")
+                && matches!(diagram_type, "swimlane" | "swimlane-beta");
+            if supports_flowchart || supports_swimlane {
+                let model = match crate::diagrams::flowchart::parse_semantic_model_controlled(
+                    parser_input,
+                    &_metadata,
+                    control,
+                )? {
+                    Ok(model) => model,
+                    Err(error) => return Ok(Err(error)),
+                };
+                control.checkpoint()?;
+                return Ok(Ok(ParsedSemanticDiagram {
+                    metadata: _metadata,
+                    model: SemanticDiagramModel::Flowchart(model),
+                }));
+            }
         }
-        #[cfg(feature = "diagram-swimlane")]
-        {
-            supports_type |= matches!(diagram_type, "swimlane" | "swimlane-beta");
-        }
-        if supports_type {
-            let model = match crate::diagrams::flowchart::parse_semantic_model_controlled(
+
+        #[cfg(feature = "diagram-sequence")]
+        if diagram_type == "sequence" {
+            let model = match crate::diagrams::sequence::parse_sequence_semantic_model_controlled(
                 parser_input,
                 &_metadata,
                 control,
@@ -221,7 +221,7 @@ impl SemanticParser {
             control.checkpoint()?;
             return Ok(Ok(ParsedSemanticDiagram {
                 metadata: _metadata,
-                model: SemanticDiagramModel::Flowchart(model),
+                model: SemanticDiagramModel::Sequence(model),
             }));
         }
 
@@ -290,6 +290,94 @@ mod tests {
     use super::*;
     #[cfg(feature = "diagram-flowchart")]
     use serde_json::{json, to_value};
+
+    #[cfg(all(feature = "diagram-sequence", feature = "diagram-flowchart"))]
+    #[test]
+    fn semantic_sequence_parse_matches_full_typed_model() {
+        let source = "%%{init: {\"wrap\": false, \"sequence\": {\"wrap\": true}}}%%\nsequenceDiagram\naccTitle: Sequence title\nparticipant Alice\nparticipant Bob\nAlice->>Bob: wrap: Ready?\nBob-->>Alice: Yes";
+        let semantic = SemanticParser::new()
+            .parse_diagram_sync(source)
+            .expect("automatic semantic parse");
+        assert_eq!(semantic.metadata.diagram_type, "sequence");
+        let SemanticDiagramModel::Sequence(semantic_model) = semantic.model else {
+            panic!("expected Sequence model");
+        };
+        let known_type = SemanticParser::new()
+            .parse_diagram_with_type_sync("sequence", source)
+            .expect("known-type semantic parse");
+        let SemanticDiagramModel::Sequence(known_type_model) = known_type.model else {
+            panic!("expected known-type Sequence model");
+        };
+        assert_eq!(
+            serde_json::to_value(&semantic_model).unwrap(),
+            serde_json::to_value(&known_type_model).unwrap()
+        );
+
+        let full = crate::Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "sequence",
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .expect("full parser")
+            .expect("sequence result");
+        let crate::diagram::RenderSemanticModel::Sequence(full_model) = full.model() else {
+            panic!("expected full Sequence model");
+        };
+        assert_eq!(
+            serde_json::to_value(&semantic_model).unwrap(),
+            serde_json::to_value(full_model).unwrap()
+        );
+        assert!(!semantic_model.actors["Alice"].wrap);
+        assert!(semantic_model.messages[0].wrap);
+    }
+
+    #[cfg(all(
+        feature = "diagram-sequence",
+        not(feature = "diagram-flowchart"),
+        not(feature = "diagram-swimlane")
+    ))]
+    #[test]
+    fn semantic_sequence_is_available_without_other_diagram_features() {
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("sequenceDiagram\nAlice->>Bob: Hi")
+            .expect("Sequence-only semantic parse");
+        assert!(matches!(parsed.model, SemanticDiagramModel::Sequence(_)));
+        assert!(matches!(
+            SemanticParser::new()
+                .parse_diagram_with_type_sync("flowchart-v2", "flowchart TD\nA-->B"),
+            Err(Error::UnsupportedDiagram { .. })
+        ));
+    }
+
+    #[cfg(feature = "diagram-sequence")]
+    #[test]
+    fn semantic_sequence_parse_skips_visual_theme_evaluation() {
+        let source = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\nsequenceDiagram\nAlice->>Bob: Hi";
+        assert!(SemanticParser::new().parse_diagram_sync(source).is_ok());
+        assert!(matches!(
+            crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+                "sequence",
+                source,
+                crate::ParseOptions::strict(),
+            ),
+            Err(crate::Error::ThemeColor(_))
+        ));
+    }
+
+    #[cfg(feature = "diagram-sequence")]
+    #[test]
+    fn semantic_sequence_uses_nested_wrap_when_global_wrap_is_not_boolean() {
+        let source = "%%{init: {\"wrap\": null, \"sequence\": {\"wrap\": true}}}%%\nsequenceDiagram\nAlice->>Bob: Hi";
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync(source)
+            .expect("semantic parse");
+        match parsed.model {
+            SemanticDiagramModel::Sequence(model) => assert!(model.actors["Alice"].wrap),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            _ => panic!("expected Sequence model"),
+        }
+    }
 
     #[cfg(feature = "diagram-flowchart")]
     #[test]
@@ -390,7 +478,11 @@ mod tests {
             )
             .expect("full parser")
             .expect("flowchart result");
-        let SemanticDiagramModel::Flowchart(semantic_model) = semantic.model;
+        let semantic_model = match semantic.model {
+            SemanticDiagramModel::Flowchart(model) => model,
+            #[cfg(feature = "diagram-sequence")]
+            SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
+        };
         let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
             panic!("expected full Flowchart model");
         };
@@ -409,7 +501,11 @@ mod tests {
                 "%%{init: {flowchart: {inheritDir: true}}}%%\nflowchart LR\nsubgraph Outer\nsubgraph Inner\nA\nend\nend",
             )
             .expect("semantic parse");
-        let SemanticDiagramModel::Flowchart(model) = parsed.model;
+        let model = match parsed.model {
+            SemanticDiagramModel::Flowchart(model) => model,
+            #[cfg(feature = "diagram-sequence")]
+            SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
+        };
         let inner = model
             .subgraphs
             .iter()
