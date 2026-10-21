@@ -6,8 +6,7 @@ use crate::diagrams::langium_common::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
-    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
-    family,
+    editor::ensure_editor_recovery_from_error, family, source_span::recovery_fallback_span,
 };
 use serde_json::{Map, Value, json};
 
@@ -81,7 +80,7 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("packet".to_string(), json!(&model.packet));
     out.insert(
         "config".to_string(),
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }
@@ -285,7 +284,7 @@ fn construct_packet_semantic_source_controlled(
             editor_facts = ensure_editor_recovery_from_error(
                 editor_facts,
                 &error,
-                editor_recovery_fallback_span(code),
+                recovery_fallback_span(code),
             );
             if first_error.is_none() {
                 first_error = Some(error);
@@ -320,11 +319,8 @@ fn packet_parse_failure(
     editor_facts: EditorSemanticFacts,
     code: &str,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts = ensure_editor_recovery_from_error(
-        editor_facts,
-        &error,
-        editor_recovery_fallback_span(code),
-    );
+    let editor_facts =
+        ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
     family::CombinedSemanticFailure::new(error, editor_facts)
 }
 

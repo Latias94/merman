@@ -411,7 +411,7 @@ fn render_model_to_compat_json_unchecked(
     }
     let classes = render_classes_to_value(&model.classes, control)?;
     let config = crate::ManagedSemanticJson::from_value(
-        crate::compatibility_json::clone_value_nonrecursive_with_control(
+        crate::json_value::clone_value_nonrecursive_with_control(
             meta.effective_config.as_value(),
             control,
         )?,
@@ -845,7 +845,7 @@ fn render_node_to_json_controlled(
     if let Some(value) = &node.value {
         fields.insert(
             "value".to_string(),
-            crate::compatibility_json::clone_value_nonrecursive_with_control(value, control)?,
+            crate::json_value::clone_value_nonrecursive_with_control(value, control)?,
         );
     }
     if let Some(class_selector) = &node.class_selector {

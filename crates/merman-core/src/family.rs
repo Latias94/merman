@@ -5,7 +5,7 @@
 //! facts remain available when an implementation is absent. Parser and typed-model lists are
 //! separate projections of the callbacks compiled into this crate.
 
-use crate::detect::DetectorFn;
+use crate::detect::{BuiltinDetectorFn, DetectorConfigEffect};
 use crate::diagram::{
     BuiltInDiagramSemanticParser, BuiltInRenderSemanticParser, RenderSemanticModel,
     RenderSemanticParseOutput,
@@ -322,10 +322,11 @@ pub(crate) mod test_support {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct DetectorFact {
     pub(crate) id: &'static str,
-    pub(crate) detector: DetectorFn,
+    pub(crate) detector: BuiltinDetectorFn,
+    pub(crate) config_effect: DetectorConfigEffect,
 }
 
 #[derive(Clone, Copy)]
@@ -479,8 +480,19 @@ impl FamilyCatalogProjection {
                     DetectorFact {
                         id: identity.id,
                         detector: ordered.value,
+                        config_effect: identity.detector_effect,
                     },
                 ));
+                if identity.id == "error" {
+                    detector_facts.push((
+                        1,
+                        DetectorFact {
+                            id: "---",
+                            detector: crate::detect::detector_frontmatter_unparsed,
+                            config_effect: DetectorConfigEffect::None,
+                        },
+                    ));
+                }
             }
             if let Some(ordered) = implementation.semantic {
                 semantic_parser_facts.push((
@@ -1048,7 +1060,8 @@ struct FamilyVariantDefinition {
 struct FamilyVariantIdentity {
     id: &'static str,
     catalog_order: u16,
-    detector: Option<Ordered<DetectorFn>>,
+    detector: Option<Ordered<BuiltinDetectorFn>>,
+    detector_effect: DetectorConfigEffect,
     render_model_kind: Option<&'static str>,
     metadata: Option<MetadataDefinition>,
     headers: &'static [HeaderDefinition],
@@ -1154,6 +1167,7 @@ macro_rules! variant {
         id: $id:literal,
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
+        $(detector_effect: $detector_effect:expr,)?
         semantic: $semantic:expr,
         $(warning_semantic: $warning_semantic:expr,)?
         combined: $combined:expr,
@@ -1168,6 +1182,7 @@ macro_rules! variant {
                 id: $id,
                 catalog_order: $catalog_order,
                 detector: $detector,
+                detector_effect: variant!(@detector_effect $($detector_effect)?),
                 render_model_kind: $render_kind,
                 metadata: $metadata,
                 headers: $headers,
@@ -1194,6 +1209,12 @@ macro_rules! variant {
                 })?
             },
         }
+    };
+    (@detector_effect) => {
+        DetectorConfigEffect::None
+    };
+    (@detector_effect $detector_effect:expr) => {
+        $detector_effect
     };
     (@warning_semantic) => {
         None
@@ -1379,6 +1400,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "flowchart-elk",
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
+        detector_effect: DetectorConfigEffect::ElkLayout,
         semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
         warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),

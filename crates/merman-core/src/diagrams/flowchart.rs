@@ -9,7 +9,9 @@ use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, OperationControl,
     OperationControlResult, ParseMetadata, Result,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    parse_diagnostic::{
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use indexmap::IndexMap;

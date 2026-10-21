@@ -209,7 +209,7 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
         .unwrap_or(id)
 }
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PreparedGraphId(usize);

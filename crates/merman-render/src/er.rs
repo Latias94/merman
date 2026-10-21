@@ -931,7 +931,7 @@ fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     Some((points.last()?.x, points.last()?.y))
 }
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 fn intersect_segment_with_rect(
     p0: &LayoutPoint,

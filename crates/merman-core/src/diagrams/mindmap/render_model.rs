@@ -127,9 +127,9 @@ pub(crate) fn render_model_to_compat_json_controlled(
             node.id.clone(),
             json!({
                 "shape": node.shape,
-                "width": crate::compatibility_json::number_value(node.width),
-                "height": crate::compatibility_json::number_value(node.height),
-                "padding": crate::compatibility_json::number_value(node.padding),
+                "width": crate::json_value::number_value(node.width),
+                "height": crate::json_value::number_value(node.height),
+                "padding": crate::json_value::number_value(node.padding),
             }),
         );
     }
@@ -181,8 +181,7 @@ fn hex_digit(value: u8) -> u8 {
 }
 
 fn mindmap_compat_config(meta: &ParseMetadata) -> Value {
-    let mut config =
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value());
+    let mut config = crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(object) = config.as_object_mut()
     {
@@ -209,15 +208,15 @@ fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {
     out.insert("shape".to_string(), Value::String(node.shape.clone()));
     out.insert(
         "width".to_string(),
-        crate::compatibility_json::number_value(node.width),
+        crate::json_value::number_value(node.width),
     );
     out.insert(
         "height".to_string(),
-        crate::compatibility_json::number_value(node.height),
+        crate::json_value::number_value(node.height),
     );
     out.insert(
         "padding".to_string(),
-        crate::compatibility_json::number_value(node.padding),
+        crate::json_value::number_value(node.padding),
     );
     out.insert(
         "cssClasses".to_string(),
@@ -230,10 +229,10 @@ fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {
         out.insert("icon".to_string(), Value::String(icon.clone()));
     }
     if let Some(x) = node.x {
-        out.insert("x".to_string(), crate::compatibility_json::number_value(x));
+        out.insert("x".to_string(), crate::json_value::number_value(x));
     }
     if let Some(y) = node.y {
-        out.insert("y".to_string(), crate::compatibility_json::number_value(y));
+        out.insert("y".to_string(), crate::json_value::number_value(y));
     }
     out.insert("level".to_string(), Number::from(node.level).into());
     out.insert("nodeId".to_string(), Value::String(node.node_id.clone()));
@@ -380,11 +379,11 @@ fn mindmap_root_record(
     );
     out.insert(
         "width".to_string(),
-        crate::compatibility_json::number_value(node.width),
+        crate::json_value::number_value(node.width),
     );
     out.insert(
         "padding".to_string(),
-        crate::compatibility_json::number_value(node.padding),
+        crate::json_value::number_value(node.padding),
     );
     if let Some(section) = node.section {
         out.insert("section".to_string(), Number::from(section).into());
@@ -392,7 +391,7 @@ fn mindmap_root_record(
     if node.height != 0.0 {
         out.insert(
             "height".to_string(),
-            crate::compatibility_json::number_value(node.height),
+            crate::json_value::number_value(node.height),
         );
     }
     if let Some(class) = mindmap_custom_class(node) {
@@ -402,10 +401,10 @@ fn mindmap_root_record(
         out.insert("icon".to_string(), Value::String(icon.clone()));
     }
     if let Some(x) = node.x {
-        out.insert("x".to_string(), crate::compatibility_json::number_value(x));
+        out.insert("x".to_string(), crate::json_value::number_value(x));
     }
     if let Some(y) = node.y {
-        out.insert("y".to_string(), crate::compatibility_json::number_value(y));
+        out.insert("y".to_string(), crate::json_value::number_value(y));
     }
     if node.level == 0 {
         out.insert("isRoot".to_string(), Value::Bool(true));

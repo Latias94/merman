@@ -99,8 +99,7 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
 #[test]
 fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_paths() {
     fn replace_config(_text: &str, config: &mut PresentationConfig) -> bool {
-        let mut replacement =
-            crate::compatibility_json::clone_value_nonrecursive(config.as_value());
+        let mut replacement = crate::json_value::clone_value_nonrecursive(config.as_value());
         replacement["flowchart"]["rankSpacing"] = json!(73);
         replacement
             .as_object_mut()
@@ -134,9 +133,9 @@ fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_p
 #[test]
 fn detector_same_value_setter_on_replacement_retains_explicit_ownership() {
     fn replace_then_assign(_text: &str, config: &mut PresentationConfig) -> bool {
-        *config = PresentationConfig::from_value(
-            crate::compatibility_json::clone_value_nonrecursive(config.as_value()),
-        );
+        *config = PresentationConfig::from_value(crate::json_value::clone_value_nonrecursive(
+            config.as_value(),
+        ));
         let same = config.as_value()["flowchart"]["nodeSpacing"].clone();
         config.set_value("flowchart.nodeSpacing", same);
         true
@@ -280,7 +279,7 @@ fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
 #[test]
 fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
     fn replace(text: &str, config: &mut PresentationConfig) -> bool {
-        let mut value = crate::compatibility_json::clone_value_nonrecursive(config.as_value());
+        let mut value = crate::json_value::clone_value_nonrecursive(config.as_value());
         if text.trim() == "changed-probe" {
             value["flowchart"]["rankSpacing"] = json!(73);
         }

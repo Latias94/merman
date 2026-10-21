@@ -1,12 +1,12 @@
 use super::SequenceLayoutCheckpoints;
 use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
 use crate::Result;
+use crate::geom::Box2;
 use crate::model::{LayoutEdge, LayoutNode};
 use merman_core::diagrams::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessageKind,
 };
-use merman_core::geom::Box2;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

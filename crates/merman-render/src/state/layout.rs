@@ -1,6 +1,7 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::geom::Size;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -11,7 +12,6 @@ use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::geom::Size;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -65,7 +65,7 @@ impl Drop for PreparedGraph {
     }
 }
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 #[derive(Default)]
 struct HiddenPrefixTrieNode {

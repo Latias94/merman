@@ -5,7 +5,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
     OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::trailing_ascii_whitespace_slot,
+    source_span::trailing_ascii_whitespace_slot,
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -2542,12 +2542,11 @@ pub(crate) fn render_model_to_compat_json_controlled(
         .iter()
         .map(block_render_edge_to_value)
         .collect::<Vec<_>>();
-    let config = ManagedSemanticJson::from(
-        crate::compatibility_json::clone_value_nonrecursive_with_control(
+    let config =
+        ManagedSemanticJson::from(crate::json_value::clone_value_nonrecursive_with_control(
             meta.effective_config.as_value(),
             control,
-        )?,
-    );
+        )?);
     control.checkpoint()?;
     // All deep values remain managed until this checkpoint-free final handoff.
     let mut out = Map::new();

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::diagrams::jison_unicode::is_mermaid_unicode_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, source_span::source_value_span,
 };
 use std::collections::VecDeque;
 

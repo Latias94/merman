@@ -189,7 +189,7 @@ impl OperationConfigBuilder {
         engine: &Engine,
         decision: &AppearanceDecision<'_>,
         source_config: &MermaidConfig,
-        selected: theme::MermaidThemeId,
+        selected: crate::MermaidThemeId,
     ) -> std::result::Result<PresentationConfig, theme::ThemeResolutionError> {
         let mut raw_config = engine.site_config.clone();
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
@@ -199,7 +199,7 @@ impl OperationConfigBuilder {
             .as_value()
             .get("themeVariables")
             .filter(|value| theme::is_js_truthy(value))
-            .map(crate::compatibility_json::clone_value_nonrecursive)
+            .map(crate::json_value::clone_value_nonrecursive)
             .unwrap_or_else(|| serde_json::json!({}));
         raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
         raw_config.deep_merge_explicit(source_config.as_value());

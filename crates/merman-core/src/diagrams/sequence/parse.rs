@@ -3,7 +3,9 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
     SemanticMetadata, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    parse_diagnostic::{
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
 };
 #[cfg(test)]
 use std::cell::Cell;

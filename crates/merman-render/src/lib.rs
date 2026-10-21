@@ -138,6 +138,7 @@ pub mod flowchart;
 #[cfg(feature = "diagram-gantt")]
 pub mod gantt;
 mod generated;
+pub mod geom;
 #[cfg(feature = "diagram-git-graph")]
 pub mod gitgraph;
 #[cfg(any(

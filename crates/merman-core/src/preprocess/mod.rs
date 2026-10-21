@@ -1,3 +1,15 @@
+mod full;
+
+#[cfg(test)]
+pub(crate) use full::preprocess_mermaid_public_parse_pipeline;
+pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
+pub(crate) use full::{
+    preprocess_diagram_with_known_type_and_directive_recovery_controlled,
+    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
+};
+
 mod source_config;
 mod source_edit_map;
 
@@ -9,8 +21,8 @@ pub use source_config::{
 pub use source_edit_map::PreprocessedSource;
 
 use crate::{
-    DetectorRegistry, EditorExpectedSyntaxKind, Error, MermaidConfig, OperationControl,
-    OperationControlResult, Result, SourceSpan, diagram::CapturedPanic, editor::line_content_end,
+    EditorExpectedSyntaxKind, Error, MermaidConfig, OperationControl, OperationControlResult,
+    Result, SourceSpan, diagram::CapturedPanic, source_span::line_content_end,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -125,53 +137,24 @@ pub(crate) enum DirectiveRecoveryMode {
     RecoverLine,
 }
 
-pub fn preprocess_diagram(input: &str, registry: &DetectorRegistry) -> Result<PreprocessResult> {
-    preprocess_diagram_with_known_type(input, registry, None)
-}
+type DiagramTypeDetector<'a> =
+    dyn Fn(&str, &OperationControl) -> OperationControlResult<Result<&'static str>> + 'a;
 
-pub fn preprocess_diagram_with_known_type(
+/// Runs the common Mermaid source pipeline using only the pinned built-in detection facts.
+pub(crate) fn preprocess_builtin_semantic_controlled(
     input: &str,
-    registry: &DetectorRegistry,
     diagram_type: Option<&str>,
-) -> Result<PreprocessResult> {
-    preprocess_diagram_with_known_type_and_directive_recovery(
-        input,
-        registry,
-        diagram_type,
-        DirectiveRecoveryMode::Strict,
-    )
-}
-
-pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-) -> Result<PreprocessResult> {
-    let control = OperationControl::new();
-    preprocess_diagram_with_known_type_and_directive_recovery_controlled(
-        input,
-        registry,
-        diagram_type,
-        directive_recovery,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
     control: &OperationControl,
 ) -> OperationControlResult<Result<PreprocessResult>> {
+    let detector = |text: &str, control: &OperationControl| {
+        Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
+    };
     Ok(
-        preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
             input,
-            registry,
+            &detector,
             diagram_type,
-            directive_recovery,
+            DirectiveRecoveryMode::Strict,
             SourceConfigCaptureMode::Omit,
             control,
         )?
@@ -181,7 +164,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
 
 fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
     input: &str,
-    registry: &DetectorRegistry,
+    detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     capture_mode: SourceConfigCaptureMode,
@@ -189,7 +172,7 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     let captured = preprocess_single_pass_controlled(
         PreprocessedSource::new_controlled(input, control)?,
-        registry,
+        detector,
         diagram_type,
         directive_recovery,
         capture_mode,
@@ -210,95 +193,9 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
     })
 }
 
-pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessCaptureOutcome> {
-    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
-        input,
-        registry,
-        diagram_type,
-        directive_recovery,
-        SourceConfigCaptureMode::Collect,
-        control,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn preprocess_mermaid_public_parse_pipeline(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-) -> Result<PreprocessResult> {
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
-        input,
-        registry,
-        diagram_type,
-        DirectiveRecoveryMode::Strict,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-) -> Result<PreprocessResult> {
-    let control = OperationControl::new();
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-        input,
-        registry,
-        diagram_type,
-        directive_recovery,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<Result<PreprocessResult>> {
-    Ok(
-        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
-            input,
-            registry,
-            diagram_type,
-            directive_recovery,
-            SourceConfigCaptureMode::Omit,
-            control,
-        )?
-        .into_result(),
-    )
-}
-
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessCaptureOutcome> {
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
-        input,
-        registry,
-        diagram_type,
-        directive_recovery,
-        SourceConfigCaptureMode::Collect,
-        control,
-    )
-}
-
 fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
     input: &str,
-    registry: &DetectorRegistry,
+    detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     capture_mode: SourceConfigCaptureMode,
@@ -310,7 +207,7 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
     // Mermaid 12 passes the complete DiagramCode to Diagram.fromText on both public paths.
     preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
         input,
-        registry,
+        detector,
         diagram_type,
         directive_recovery,
         capture_mode,
@@ -320,7 +217,7 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
 
 fn preprocess_single_pass_controlled(
     mut source: PreprocessedSource,
-    registry: &DetectorRegistry,
+    detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     capture_mode: SourceConfigCaptureMode,
@@ -372,7 +269,7 @@ fn preprocess_single_pass_controlled(
     control.checkpoint()?;
     let processed_directives = process_directives_controlled(
         source.text(),
-        registry,
+        detector,
         diagram_type,
         directive_recovery,
         capture_mode,
@@ -438,13 +335,8 @@ fn preprocess_single_pass_controlled(
                 .map(str::trim)
                 .find(|line| !line.is_empty() && !line.starts_with("%%"))
                 .unwrap_or("");
-            crate::detect::detector_agentflow(
-                header,
-                &mut crate::presentation::PresentationConfig::empty_object(),
-            ) || crate::detect::detector_eventmodeling(
-                header,
-                &mut crate::presentation::PresentationConfig::empty_object(),
-            )
+            crate::detect::detector_agentflow(header)
+                || crate::detect::detector_eventmodeling(header)
         }
     };
     let mut with_comments = preserve_comments.then(|| source.clone());
@@ -1170,7 +1062,7 @@ fn process_frontmatter_controlled(
         }
     };
     if let Err(cancelled) = control.checkpoint() {
-        crate::compatibility_json::drop_value_nonrecursive(Value::Object(parsed_obj));
+        crate::json_value::drop_value_nonrecursive(Value::Object(parsed_obj));
         return Err(cancelled);
     }
 
@@ -1207,7 +1099,7 @@ fn process_frontmatter_controlled(
     let fields = if capture_mode.collects() && has_config && rewrite_safe {
         Some(MermaidConfig::from_value(Value::Object(parsed_obj)))
     } else {
-        crate::compatibility_json::drop_value_nonrecursive(Value::Object(parsed_obj));
+        crate::json_value::drop_value_nonrecursive(Value::Object(parsed_obj));
         None
     };
     control.checkpoint()?;
@@ -1403,7 +1295,7 @@ fn frontmatter_fields_from_yaml_value(
     match parsed {
         Value::Object(map) => Ok(map),
         other => {
-            crate::compatibility_json::drop_value_nonrecursive(other);
+            crate::json_value::drop_value_nonrecursive(other);
             Ok(Map::new())
         }
     }
@@ -1638,17 +1530,14 @@ fn merge_top_level_frontmatter_diagram_configs(
         if let Some(value) = parsed_obj.get(fact.source) {
             config.set_value(
                 fact.namespace,
-                crate::compatibility_json::clone_value_nonrecursive(value),
+                crate::json_value::clone_value_nonrecursive(value),
             );
         }
     }
 
     for &key in crate::family::frontmatter_config_namespaces() {
         if let Some(value) = parsed_obj.get(key) {
-            config.set_value(
-                key,
-                crate::compatibility_json::clone_value_nonrecursive(value),
-            );
+            config.set_value(key, crate::json_value::clone_value_nonrecursive(value));
         }
     }
 }
@@ -1674,7 +1563,7 @@ struct LocalDirectiveEvidence {
 
 fn process_directives_controlled(
     input: &str,
-    registry: &DetectorRegistry,
+    detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     capture_mode: SourceConfigCaptureMode,
@@ -1781,7 +1670,7 @@ fn process_directives_controlled(
             detect_init_controlled(
                 &directives,
                 input_without_directives.as_ref(),
-                registry,
+                detector,
                 diagram_type,
                 control,
             )
@@ -1803,7 +1692,7 @@ fn process_directives_controlled(
         detect_init_controlled(
             &directives,
             input_without_directives.as_ref(),
-            registry,
+            detector,
             diagram_type,
             control,
         )?
@@ -1834,28 +1723,15 @@ fn process_directives_controlled(
     })
 }
 
-#[cfg(test)]
-fn detect_init(
-    directives: &[Directive],
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-) -> Result<MermaidConfig> {
-    let control = OperationControl::new();
-    detect_init_controlled(directives, input, registry, diagram_type, &control)
-        .expect("a private parse control cannot be cancelled")
-}
-
 fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
-    registry: &DetectorRegistry,
+    detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
-    let mut config_for_detect = crate::presentation::PresentationConfig::empty_object();
     let mut detected_type = diagram_type.map(str::to_owned);
     let mut detection_attempted = diagram_type.is_some();
 
@@ -1868,7 +1744,7 @@ fn detect_init_controlled(
         }
 
         let mut args = match &d.args {
-            Some(v) => crate::compatibility_json::clone_value_nonrecursive(v),
+            Some(v) => crate::json_value::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
         let mut diagram_specific = args
@@ -1882,11 +1758,7 @@ fn detect_init_controlled(
             sanitize_directive_controlled(&mut diagram_specific_value, control)?;
             if !detection_attempted {
                 detection_attempted = true;
-                detected_type = match registry.detect_type_controlled(
-                    input,
-                    &mut config_for_detect,
-                    control,
-                )? {
+                detected_type = match detector(input, control)? {
                     Ok(diagram_type) => Some(diagram_type.to_string()),
                     Err(_) => None,
                 };
@@ -1897,10 +1769,10 @@ fn detect_init_controlled(
                 if let Value::Object(obj) = &mut args
                     && let Some(old) = obj.insert(key, diagram_specific_value)
                 {
-                    crate::compatibility_json::drop_value_nonrecursive(old);
+                    crate::json_value::drop_value_nonrecursive(old);
                 }
             } else {
-                crate::compatibility_json::drop_value_nonrecursive(diagram_specific_value);
+                crate::json_value::drop_value_nonrecursive(diagram_specific_value);
             }
         }
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
@@ -2209,7 +2081,7 @@ fn sanitize_directive_controlled(
         match current {
             Value::Object(map) => {
                 if let Some(old) = map.remove("secure") {
-                    crate::compatibility_json::drop_value_nonrecursive(old);
+                    crate::json_value::drop_value_nonrecursive(old);
                 }
 
                 let blocked_keys = map
@@ -2224,7 +2096,7 @@ fn sanitize_directive_controlled(
                     .collect::<Vec<_>>();
                 for key in blocked_keys {
                     if let Some(old) = map.remove(&key) {
-                        crate::compatibility_json::drop_value_nonrecursive(old);
+                        crate::json_value::drop_value_nonrecursive(old);
                     }
                 }
 
@@ -2332,7 +2204,7 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
 
             for key in blocked_keys {
                 if let Some(old) = map.remove(&key) {
-                    crate::compatibility_json::drop_value_nonrecursive(old);
+                    crate::json_value::drop_value_nonrecursive(old);
                 }
             }
             true
@@ -2340,7 +2212,7 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
         Value::Array(values) => {
             for value in values.iter_mut().filter(|value| !is_valid_value(value)) {
                 let old = std::mem::replace(value, Value::Null);
-                crate::compatibility_json::drop_value_nonrecursive(old);
+                crate::json_value::drop_value_nonrecursive(old);
             }
             true
         }
@@ -2620,7 +2492,7 @@ fn parse_directive_config_value_controlled(
     };
     if let Err(cancelled) = control.checkpoint() {
         if let Some(value) = captured.value {
-            crate::compatibility_json::drop_value_nonrecursive(value);
+            crate::json_value::drop_value_nonrecursive(value);
         }
         return Err(cancelled);
     }
@@ -2817,16 +2689,51 @@ fn yaml_inline_sequence_indicator_count_controlled(
 mod tests {
     use super::*;
     use serde_json::{Map, json};
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    static INIT_DETECTOR_CALLS: AtomicUsize = AtomicUsize::new(0);
+    #[test]
+    fn builtin_preprocess_preserves_family_comments_without_a_full_registry() {
+        for (header, diagram_type) in [
+            ("agentflow-beta", "agentflow"),
+            ("eventmodeling", "eventmodeling"),
+        ] {
+            let input = format!("{header}\n%% family comment\nNode");
+            for known_type in [None, Some(diagram_type)] {
+                let result = preprocess_builtin_semantic_controlled(
+                    &input,
+                    known_type,
+                    &OperationControl::new(),
+                )
+                .expect("active operation")
+                .expect("built-in preprocessing");
+                assert!(!result.code().contains("%% family comment"));
+                assert!(
+                    result
+                        .with_comments
+                        .as_ref()
+                        .expect("family parser input")
+                        .text()
+                        .contains("%% family comment")
+                );
+            }
+        }
+    }
 
-    fn counting_flowchart_detector(
-        _text: &str,
-        _config: &mut crate::presentation::PresentationConfig,
-    ) -> bool {
-        INIT_DETECTOR_CALLS.fetch_add(1, Ordering::Relaxed);
-        true
+    #[test]
+    fn captured_detection_panic_does_not_swallow_cancellation() {
+        let control = OperationControl::new();
+        let detector = |_text: &str, control: &OperationControl| {
+            control.cancel();
+            panic!("detector cancelled before panicking");
+        };
+        let result = preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+            "%%{init: {config: {htmlLabels: false}}}%%\nflowchart TD\nA-->B",
+            &detector,
+            None,
+            DirectiveRecoveryMode::Strict,
+            SourceConfigCaptureMode::Collect,
+            &control,
+        );
+        assert!(matches!(result, Err(crate::OperationCancelled { .. })));
     }
 
     fn transformed(input: &str, transform: fn(&mut PreprocessedSource)) -> String {
@@ -3083,11 +2990,15 @@ mod tests {
     }
 
     fn capture_source_config(input: &str) -> PreprocessCaptureOutcome {
-        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
+        let detector = |text: &str, control: &OperationControl| {
+            Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
+        };
+        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
             input,
-            &DetectorRegistry::default(),
+            &detector,
             Some("flowchart-v2"),
             DirectiveRecoveryMode::RecoverLine,
+            SourceConfigCaptureMode::Collect,
             &OperationControl::new(),
         )
         .expect("an active parse control must not cancel")
@@ -3418,37 +3329,6 @@ A["<span title="😀">Label</span>"]
     }
 
     #[test]
-    fn multiple_init_config_directives_detect_the_diagram_only_once() {
-        INIT_DETECTOR_CALLS.store(0, Ordering::Relaxed);
-        let input = concat!(
-            "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
-            "%%{initialize: {\"config\": {\"htmlLabels\": false}}}%%\n",
-            "flowchart TD\nA-->B\n",
-        );
-        let directives = detect_directives(input).expect("directives parse");
-        let mut registry = DetectorRegistry::new();
-        registry.add_fn("flowchart-v2", counting_flowchart_detector);
-
-        let config = detect_init(&directives, input, &registry, None).expect("init merges");
-
-        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            config
-                .as_value()
-                .pointer("/flowchart/curve")
-                .and_then(Value::as_str),
-            Some("linear")
-        );
-        assert_eq!(
-            config
-                .as_value()
-                .pointer("/flowchart/htmlLabels")
-                .and_then(Value::as_bool),
-            Some(false)
-        );
-    }
-
-    #[test]
     fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
         assert_eq!(
             transformed(
@@ -3505,7 +3385,7 @@ A["<span title="😀">Label</span>"]
                     deep_directive_leaf(&value, DEPTH).and_then(Value::as_str),
                     Some("")
                 );
-                crate::compatibility_json::drop_value_nonrecursive(value);
+                crate::json_value::drop_value_nonrecursive(value);
             })
             .expect("spawn deep directive sanitizer test");
         handle

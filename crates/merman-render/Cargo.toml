@@ -116,6 +116,7 @@ base64.workspace = true
 cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true
+euclid.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 kurbo.workspace = true
 libm.workspace = true

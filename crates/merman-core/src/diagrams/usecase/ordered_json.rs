@@ -103,7 +103,7 @@ fn normalize_json_numbers(value: &mut Value) {
     match value {
         Value::Number(number) => {
             if let Some(number) = number.as_f64() {
-                *value = crate::compatibility_json::number_value(number);
+                *value = crate::json_value::number_value(number);
             }
         }
         Value::Array(values) => values.iter_mut().for_each(normalize_json_numbers),

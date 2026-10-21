@@ -522,7 +522,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     root.insert("other".to_string(), Value::Object(Map::new()));
     root.insert(
         "config".to_string(),
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     root.insert(
         "direction".to_string(),
@@ -695,6 +695,6 @@ fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Val
 
 fn option_number_value(value: Option<f64>) -> Value {
     value
-        .map(crate::compatibility_json::number_value)
+        .map(crate::json_value::number_value)
         .unwrap_or(Value::Null)
 }

@@ -10,7 +10,7 @@ use super::{ThemeResolutionError, is_js_truthy, value_is_missing};
 #[cfg(test)]
 use crate::MermaidConfig;
 use crate::ThemeEvaluationLimitExceeded;
-use crate::compatibility_json::number_value;
+use crate::json_value::number_value;
 use crate::presentation::PresentationConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use serde_json::{Map, Value};

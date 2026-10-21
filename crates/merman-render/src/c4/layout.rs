@@ -117,8 +117,8 @@ impl BoundsState {
 
 #[derive(Debug, Clone)]
 struct Rect {
-    origin: merman_core::geom::Point,
-    size: merman_core::geom::Size,
+    origin: crate::geom::Point,
+    size: crate::geom::Size,
     margin: f64,
 }
 
@@ -665,8 +665,8 @@ fn layout_c4_shape_array(
         let margin = ctx.conf.c4_shape_margin;
 
         let mut rect = Rect {
-            origin: merman_core::geom::point(0.0, 0.0),
-            size: merman_core::geom::Size::new(width, height),
+            origin: crate::geom::point(0.0, 0.0),
+            size: crate::geom::Size::new(width, height),
             margin,
         };
         current_bounds.insert_rect(&mut rect, ctx.c4_shape_in_row, ctx.conf);
@@ -1087,8 +1087,8 @@ pub(crate) fn layout_c4_diagram_typed(
             s.alias.as_str(),
             (
                 Rect {
-                    origin: merman_core::geom::point(l.x, l.y),
-                    size: merman_core::geom::Size::new(l.width, l.height),
+                    origin: crate::geom::point(l.x, l.y),
+                    size: crate::geom::Size::new(l.width, l.height),
                     margin: l.margin,
                 },
                 Some(c4_node_shape(s)),
@@ -1106,8 +1106,8 @@ pub(crate) fn layout_c4_diagram_typed(
             .or_insert_with(|| {
                 (
                     Rect {
-                        origin: merman_core::geom::point(layout.x, layout.y),
-                        size: merman_core::geom::Size::new(layout.width, layout.height),
+                        origin: crate::geom::point(layout.x, layout.y),
+                        size: crate::geom::Size::new(layout.width, layout.height),
                         margin: 0.0,
                     },
                     None,

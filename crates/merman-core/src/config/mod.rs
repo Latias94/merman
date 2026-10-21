@@ -1,9 +1,9 @@
 pub(crate) mod presentation;
 
-use crate::compatibility_json::clone_value_nonrecursive_controlled;
+use crate::json_value::clone_value_nonrecursive_controlled;
 #[cfg(test)]
-use crate::compatibility_json::estimated_value_owned_heap_bytes;
-use crate::compatibility_json::{clone_value_nonrecursive, drop_value_nonrecursive};
+use crate::json_value::estimated_value_owned_heap_bytes;
+use crate::json_value::{clone_value_nonrecursive, drop_value_nonrecursive};
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::fmt;

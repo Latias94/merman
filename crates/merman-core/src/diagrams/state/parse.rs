@@ -3,9 +3,11 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
     ParseDiagnosticSpanKind, ParseMetadata, Result, SourceSpan,
-    editor::{
-        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+    parse_diagnostic::{
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
+    source_span::{
+        has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::Value;

@@ -6,8 +6,7 @@ use crate::diagrams::langium_common::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
-    family,
+    editor::ensure_editor_recovery_from_error, family, source_span::recovery_fallback_span,
 };
 use serde_json::{Map, Value, json};
 
@@ -639,7 +638,7 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("options".to_string(), json!(&model.options));
     out.insert(
         "config".to_string(),
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }
@@ -753,11 +752,8 @@ fn construct_radar_semantic_source_controlled(
     db.acc_descr = common.acc_descr;
     db.set_axes_controlled(axes, control)?;
     if let Err(error) = db.set_curves_controlled(curves, control)? {
-        editor_facts = ensure_editor_recovery_from_error(
-            editor_facts,
-            &error,
-            editor_recovery_fallback_span(code),
-        );
+        editor_facts =
+            ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
         if first_error.is_none() {
             first_error = Some(error);
         }
@@ -783,11 +779,8 @@ fn radar_parse_failure(
     editor_facts: EditorSemanticFacts,
     code: &str,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts = ensure_editor_recovery_from_error(
-        editor_facts,
-        &error,
-        editor_recovery_fallback_span(code),
-    );
+    let editor_facts =
+        ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
     family::CombinedSemanticFailure::new(error, editor_facts)
 }
 

@@ -110,7 +110,6 @@ system-timing = ["dep:web-time"]
 
 [dependencies]
 cssparser.workspace = true
-euclid.workspace = true
 htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }

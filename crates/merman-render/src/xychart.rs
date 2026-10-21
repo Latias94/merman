@@ -81,7 +81,7 @@ struct Dimension {
     height: f64,
 }
 
-type Point = merman_core::geom::Point;
+type Point = crate::geom::Point;
 
 fn finite_geometry(values: impl IntoIterator<Item = f64>) -> Result<()> {
     if values.into_iter().all(f64::is_finite) {
@@ -123,7 +123,7 @@ fn linear_scale_value(value: f64, domain: (f64, f64), range: (f64, f64)) -> f64 
 }
 
 fn pt(x: f64, y: f64) -> Point {
-    merman_core::geom::point(x, y)
+    crate::geom::point(x, y)
 }
 
 #[derive(Debug, Clone, Copy)]

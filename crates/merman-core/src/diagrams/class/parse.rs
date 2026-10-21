@@ -4,9 +4,11 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
     SourceSpan,
-    editor::{
-        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
-        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
+    parse_diagnostic::{
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
+    source_span::{
+        has_ascii_separator, keyword_value_span, line_content_end, source_value_span,
         trailing_ascii_whitespace_slot,
     },
 };
@@ -715,7 +717,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 );
             }
             Tok::Direction(_) => {
-                if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
+                if let Some(span) = keyword_value_span(self.code, start, end, "direction") {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,

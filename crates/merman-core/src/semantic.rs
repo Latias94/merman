@@ -1,5 +1,6 @@
 //! Semantic-only parsing without resolving Mermaid themes or creating render state.
 
+use crate::preprocess::preprocess_builtin_semantic_controlled;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
 /// Configuration and source metadata needed to interpret a diagram's meaning.
@@ -82,7 +83,7 @@ impl SemanticParser {
             .as_value()
             .get("secure")
             .filter(|value| value.is_array())
-            .map(crate::compatibility_json::clone_value_nonrecursive);
+            .map(crate::json_value::clone_value_nonrecursive);
 
         self.site_config_overrides.deep_merge(overrides.as_value());
         self.site_config.deep_merge(overrides.as_value());
@@ -108,22 +109,15 @@ impl SemanticParser {
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        let registry = builtin_detector_registry();
-        let pre = match preprocess(input, registry, None, control)? {
+        let pre = match preprocess_builtin_semantic_controlled(input, None, control)? {
             Ok(pre) => pre,
             Err(error) => return Ok(Err(error)),
         };
-        let semantic_config = self.effective_semantic_config(&pre.config, control)?;
-        let mut detector_config = crate::PresentationConfig::from_config(self.site_config.clone());
-        detector_config.deep_merge(semantic_config.as_value());
-        let diagram_type = match registry.detect_type_precleaned_controlled(
-            pre.code(),
-            &mut detector_config,
-            control,
-        )? {
-            Ok(diagram_type) => diagram_type,
-            Err(error) => return Ok(Err(error)),
-        };
+        let diagram_type =
+            match crate::detect::detect_builtin_precleaned_controlled(pre.code(), control)? {
+                Ok(fact) => fact.id,
+                Err(error) => return Ok(Err(error)),
+            };
         self.parse_preprocessed_controlled(diagram_type, pre, control)
     }
 
@@ -146,12 +140,8 @@ impl SemanticParser {
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         control.checkpoint()?;
-        let pre = match preprocess(
-            input,
-            builtin_detector_registry(),
-            Some(diagram_type),
-            control,
-        )? {
+        let pre = match preprocess_builtin_semantic_controlled(input, Some(diagram_type), control)?
+        {
             Ok(pre) => pre,
             Err(error) => return Ok(Err(error)),
         };
@@ -172,9 +162,7 @@ impl SemanticParser {
         }
 
         let mut semantic_config = self.effective_semantic_config(&pre.config, control)?;
-        if diagram_type == "flowchart-elk" {
-            semantic_config.set_value("layout", serde_json::json!("elk"));
-        }
+        crate::detect::builtin_config_effect(diagram_type).apply(&mut semantic_config);
         let upstream_defaults = crate::generated::upstream_default_config();
         let source_authority = if self
             .site_config_overrides
@@ -365,26 +353,6 @@ impl SemanticParser {
     }
 }
 
-fn builtin_detector_registry() -> &'static crate::DetectorRegistry {
-    static REGISTRY: std::sync::OnceLock<crate::DetectorRegistry> = std::sync::OnceLock::new();
-    REGISTRY.get_or_init(crate::DetectorRegistry::pinned_mermaid_baseline)
-}
-
-fn preprocess(
-    input: &str,
-    registry: &crate::DetectorRegistry,
-    diagram_type: Option<&str>,
-    control: &OperationControl,
-) -> OperationControlResult<Result<crate::PreprocessResult>> {
-    crate::preprocess::preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-        input,
-        registry,
-        diagram_type,
-        crate::preprocess::DirectiveRecoveryMode::Strict,
-        control,
-    )
-}
-
 fn normalize_global_theme(config: &mut MermaidConfig) {
     let invalid_theme = config.as_value().get("theme").is_some_and(|value| {
         !value.is_null()
@@ -397,10 +365,7 @@ fn normalize_global_theme(config: &mut MermaidConfig) {
             .as_value()
             .get("theme")
     {
-        config.set_value(
-            "theme",
-            crate::compatibility_json::clone_value_nonrecursive(theme),
-        );
+        config.set_value("theme", crate::json_value::clone_value_nonrecursive(theme));
     }
 }
 

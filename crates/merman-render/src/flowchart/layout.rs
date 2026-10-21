@@ -1,4 +1,5 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::geom::Size;
 use crate::layout_work::DugongOperationWorkControl as DagreOperationWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
@@ -14,7 +15,6 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
-use merman_core::geom::Size;
 use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -2420,7 +2420,7 @@ fn layout_flowchart_with_model(
             .expect("the extraction order references an extracted graph");
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
     }
-    type Rect = merman_core::geom::Box2;
+    type Rect = crate::geom::Box2;
 
     struct ClusterTitleMetricsContext<'a> {
         model: &'a FlowchartRenderModelRef<'a>,

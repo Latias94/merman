@@ -2,7 +2,7 @@ use super::*;
 
 // Class diagram SVG renderer implementation (split from parity.rs).
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 mod bounds;
 
