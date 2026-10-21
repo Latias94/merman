@@ -208,7 +208,7 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
     assert_eq!(forward["theme"], "dark");
     assert_eq!(forward["look"], "handDrawn");
     assert_eq!(forward["themeVariables"]["lineColor"], "#123456");
-    assert_eq!(forward["flowchart"]["layout"], "elk");
+    assert_eq!(forward["flowchart"]["layout"], "dagre");
 }
 
 #[test]

@@ -47,6 +47,28 @@ pub(super) fn compile(theme: &HostTheme) -> MermaidConfig {
     MermaidConfig::from_value(Value::Object(root))
 }
 
+/// Keep the compiler's typography and profile settings when an authored palette is selected.
+/// All other compiler outputs are paint defaults, never raw initialize variables.
+pub(super) fn non_paint_defaults(config: &MermaidConfig) -> MermaidConfig {
+    let mut defaults = MermaidConfig::default();
+    for path in [
+        "fontFamily",
+        "look",
+        "layout",
+        "flowchart.layout",
+        "themeVariables.fontFamily",
+        "themeVariables.fontSize",
+    ] {
+        let value = path
+            .split('.')
+            .try_fold(config.as_value(), |value, key| value.get(key));
+        if let Some(value) = value {
+            defaults.set_value(path, value.clone());
+        }
+    }
+    defaults
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ResolvedThemeRoles<'a> {
     canvas: Option<&'a str>,
@@ -460,7 +482,13 @@ fn put_diagram_config(
     ] {
         put_opt(&mut c4, &format!("{prefix}_bg_color"), roles.surface);
         put_opt(&mut c4, &format!("{prefix}_border_color"), roles.border);
+        put_opt(&mut c4, &format!("{prefix}_font_color"), roles.text);
     }
+    put_opt(&mut c4, "boundary_bg_color", roles.cluster_background);
+    put_opt(&mut c4, "boundary_border_color", roles.cluster_border);
+    put_opt(&mut c4, "boundary_font_color", roles.text);
+    put_opt(&mut c4, "relationship_text_color", roles.text);
+    put_opt(&mut c4, "relationship_line_color", roles.line);
     put_nonempty_object(root, "c4", c4);
 }
 

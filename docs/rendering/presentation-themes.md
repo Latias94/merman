@@ -70,6 +70,8 @@ Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`
 
 Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
 
+Host themes also reach C4 boundary labels, relationships, and arrowheads; Wardley anchor labels and component surfaces; and ZenUML frame, participant, message, note, group, activation, and text colors. Filled C4 boundaries paint behind their children. Gantt active-critical and done-critical tasks retain the active/done fill with a critical border, and outside labels use the surrounding canvas text color. Explicit family configuration and source styles retain priority.
+
 `merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. The profile selects `flowchart.layout: elk`; an explicit scoped `layout: dagre` overrides that aspect. In a build without `layout-elk`, Flowcharts render through Mermaid 12's Dagre fallback while the SVG plan reports the ELK presentation aspect as blocked and the operation as ready. A host policy that denies a compiled ELK backend still blocks the operation.
 
 ## Terminal themes
@@ -129,19 +131,25 @@ Raw Mermaid overrides belong only at top-level `site_config`. Output choices bel
 
 ## Precedence
 
-Merman materializes configuration in this order:
+Configuration resolves from defaults to explicit author choices:
 
-1. The renderer's base engine configuration.
+1. The pinned Mermaid defaults.
 2. Defaults selected by `presentation.profile`.
-3. Explicit values from `presentation.theme`.
-4. Explicit top-level `site_config` layers.
-5. Diagram frontmatter and directives.
-6. The independently selected SVG output pipeline after rendering.
+3. Host defaults from `presentation.theme`.
+4. Explicit `Engine::with_site_config(...)` or top-level `site_config` values.
+5. Allowed diagram frontmatter and directives.
 
 Rust callers materialize presentation defaults into an `Engine`, apply explicit site configuration
 to that engine, and pass the resolved render policy through `SvgRequest.presentation`. Bindings
 perform the same structural merge from their separate `presentation` and `site_config` fields.
 Explicit Mermaid configuration and source-local configuration win over presentation defaults.
+The independently selected SVG output pipeline runs after rendering.
+
+Selecting a Mermaid `theme` in site configuration, frontmatter, or a directive selects its complete derived palette, together with raw explicit site/source variables. Merman does not carry host-derived colors from the previous palette into values that the selected theme defines. If the selected theme lacks a family paint value, its corresponding host role remains a fallback. A single explicit `themeVariables` value retains Mermaid's property-level derivation rules and does not replace the whole palette.
+
+Typography is independent: host font family and size defaults survive a palette selection unless explicit site/source typography overrides them. For example, `presentation.theme.preset: editor-dark` with `site_config.theme: forest` uses Forest's matching foregrounds and backgrounds while retaining an independently supplied host font. Source-local family styles remain the final owner of their own properties.
+
+Palette, font-selection, and family paint repairs can change SVG and exported image/PDF snapshots. Review regenerated output when updating within 0.9.x; the existing `Presentation`/`HostTheme` API and Options JSON schema 2 continue to apply.
 
 ## Discovery
 

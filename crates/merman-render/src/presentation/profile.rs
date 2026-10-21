@@ -1,7 +1,7 @@
 use merman_core::{Engine, MermaidConfig};
 use serde_json::Value;
 
-use super::{HostTheme, PresentationError};
+use super::{HostTheme, PresentationError, compiler};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -95,7 +95,14 @@ impl ResolvedPresentation {
     }
 
     pub fn materialize_engine(&self, engine: Engine) -> Engine {
-        engine.with_site_config(self.mermaid_config.clone())
+        engine.with_presentation_defaults_internal(
+            self.mermaid_config.clone(),
+            compiler::non_paint_defaults(&self.mermaid_config),
+            self.presentation
+                .theme
+                .as_ref()
+                .is_some_and(HostTheme::has_paint_values),
+        )
     }
 
     /// Returns the small renderer-owned policy that accompanies the materialized Mermaid config.

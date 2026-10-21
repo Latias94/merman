@@ -16,34 +16,73 @@ struct WardleyTheme {
     component_label_color: String,
     link_stroke: String,
     evolution_stroke: String,
+    anchor_label_color: String,
+    stage_divider_color: String,
+    annotation_text_color: String,
+    arrow_fill: String,
 }
 
 impl WardleyTheme {
-    fn from_config(config: &serde_json::Value) -> Self {
+    fn from_config(config: &merman_core::MermaidConfig) -> Self {
+        let host = merman_core::presentation_defaults_active_internal(config);
+        let raw = config.as_value();
         let nested = |key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
+            config_string(raw, &["themeVariables", "wardley", key])
                 .unwrap_or_else(|| fallback.to_string())
         };
         let nested_or_root = |key, root_key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
-                .or_else(|| config_string(config, &["themeVariables", root_key]))
+            config_string(raw, &["themeVariables", "wardley", key])
+                .or_else(|| config_string(raw, &["themeVariables", root_key]))
                 .unwrap_or_else(|| fallback.to_string())
         };
 
+        let host_role = |key, root_key, fallback: &str| {
+            config_string(raw, &["themeVariables", "wardley", key])
+                .or_else(|| {
+                    host.then(|| config.get_str(root_key).map(str::to_owned))
+                        .flatten()
+                })
+                .unwrap_or_else(|| fallback.to_owned())
+        };
+        let annotation_text_color =
+            if host && !merman_core::wardley_axis_text_authored_internal(config) {
+                "#222".to_owned()
+            } else {
+                nested_or_root("axisTextColor", "primaryTextColor", "#222")
+            };
         Self {
             background_color: nested_or_root("backgroundColor", "background", "#fff"),
-            axis_color: nested("axisColor", "#000"),
+            axis_color: host_role("axisColor", "themeVariables.lineColor", "#000"),
             axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
             grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
-            component_fill: nested("componentFill", "#fff"),
-            component_stroke: nested("componentStroke", "#000"),
+            component_fill: host_role("componentFill", "themeVariables.primaryColor", "#fff"),
+            component_stroke: host_role(
+                "componentStroke",
+                "themeVariables.primaryBorderColor",
+                "#000",
+            ),
             component_label_color: nested_or_root(
                 "componentLabelColor",
                 "primaryTextColor",
                 "#222",
             ),
-            link_stroke: nested("linkStroke", "#000"),
+            link_stroke: host_role("linkStroke", "themeVariables.lineColor", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
+            anchor_label_color: host_role(
+                "anchorLabelColor",
+                "themeVariables.primaryTextColor",
+                "#000",
+            ),
+            stage_divider_color: host_role("stageDividerColor", "themeVariables.lineColor", "#000"),
+            annotation_text_color,
+            arrow_fill: if host {
+                config
+                    .get_str("themeVariables.background")
+                    .unwrap_or("white")
+                    .to_owned()
+            } else {
+                "white".to_owned()
+            },
         }
     }
 }
@@ -232,7 +271,14 @@ fn write_stages(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wardley
     out.push_str(r#"<g class="wardley-stages">"#);
     for stage in &layout.stages {
         if let Some(divider) = stage.divider {
-            write_line(out, divider, None, "#000", Some(1.0), Some("5 5"));
+            write_line(
+                out,
+                divider,
+                None,
+                &theme.stage_divider_color,
+                Some(1.0),
+                Some("5 5"),
+            );
             let insert_at = out.len() - 2;
             out.insert_str(insert_at, r#" opacity="0.8""#);
         }
@@ -512,7 +558,7 @@ fn write_nodes(out: &mut String, layout: &WardleyDiagramLayout, theme: &WardleyT
         }
         let label_fill = match node.class_name.as_deref() {
             Some("evolved") => &theme.evolution_stroke,
-            Some("anchor") => "#000",
+            Some("anchor") => &theme.anchor_label_color,
             _ => &theme.component_label_color,
         };
         write_text(
@@ -547,7 +593,7 @@ fn write_annotations_box(
         );
     }
     for line in &annotations_box.lines {
-        write_text(out, line, None, &theme.axis_text_color, false);
+        write_text(out, line, None, &theme.annotation_text_color, false);
     }
     out.push_str("</g>");
 }
@@ -581,7 +627,7 @@ fn write_annotations(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wa
                 &theme.axis_color,
                 1.5,
             );
-            write_text(out, &point.label, None, &theme.axis_text_color, true);
+            write_text(out, &point.label, None, &theme.annotation_text_color, true);
             out.push_str("</g>");
         }
     }
@@ -612,7 +658,8 @@ fn write_arrow(out: &mut String, arrow: &WardleyArrowLayout, theme: &WardleyThem
     }
     let _ = write!(
         out,
-        r#" Z" fill="white" stroke="{}" stroke-width="1"/>"#,
+        r#" Z" fill="{}" stroke="{}" stroke-width="1"/>"#,
+        escape_attr_display(&theme.arrow_fill),
         escape_attr_display(&theme.component_stroke)
     );
     write_text(out, &arrow.label, None, &theme.axis_text_color, true);
@@ -647,7 +694,7 @@ fn write_defs(out: &mut String, diagram_id: SvgDiagramId<'_>, theme: &WardleyThe
 pub(crate) fn render_wardley_diagram_svg_model(
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
     _diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {

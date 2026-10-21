@@ -51,6 +51,26 @@ mod yaml_config;
 
 pub use compatibility_json::ManagedSemanticJson;
 pub use config::MermaidConfig;
+
+#[doc(hidden)]
+pub fn presentation_defaults_active_internal(config: &MermaidConfig) -> bool {
+    config.presentation_defaults_active()
+}
+
+#[doc(hidden)]
+pub fn presentation_font_defaults_active_internal(config: &MermaidConfig) -> bool {
+    config.presentation_font_defaults_active()
+}
+
+#[doc(hidden)]
+pub fn presentation_c4_line_default_active_internal(config: &MermaidConfig) -> bool {
+    config.presentation_c4_line_default_active()
+}
+
+#[doc(hidden)]
+pub fn wardley_axis_text_authored_internal(config: &MermaidConfig) -> bool {
+    config.wardley_axis_text_authored()
+}
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
@@ -224,6 +244,8 @@ pub struct Engine {
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
     site_config_delta: MermaidConfig,
+    presentation_defaults: MermaidConfig,
+    presentation_non_paint_defaults: MermaidConfig,
     default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
     runtime_policy: runtime::RuntimePolicy,
 }
@@ -239,6 +261,8 @@ impl Default for Engine {
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
             site_config_delta: MermaidConfig::empty_object(),
+            presentation_defaults: MermaidConfig::empty_object(),
+            presentation_non_paint_defaults: MermaidConfig::empty_object(),
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -324,9 +348,86 @@ impl Engine {
         // Keep the user's layer separate: an explicit schema-default appearance still
         // outranks a diagram-specific default.
         merge_site_config_override(&mut self.site_config_delta, site_config.clone());
-        merge_site_config_override(&mut self.site_config, site_config);
-        self.default_effective_config = build_default_effective_config(&self.site_config);
+        if self.presentation_defaults.is_empty_object() {
+            merge_site_config_override(&mut self.site_config, site_config);
+            self.default_effective_config = build_default_effective_config(&self.site_config);
+        } else {
+            self.rebuild_presentation_site_config();
+        }
         self
+    }
+
+    /// Installs renderer-owned defaults without treating them as authored initialize inputs.
+    #[doc(hidden)]
+    pub fn with_presentation_defaults_internal(
+        mut self,
+        mut defaults: MermaidConfig,
+        non_paint_defaults: MermaidConfig,
+        paint_defaults_active: bool,
+    ) -> Self {
+        defaults.set_presentation_defaults_active(paint_defaults_active);
+        // Capture the materialized host default before authored site/source values merge.
+        defaults.set_presentation_c4_line_default_active(
+            defaults.get_str("c4.relationship_line_color").is_some(),
+        );
+        defaults.set_presentation_font_defaults_active(
+            non_paint_defaults.get_str("fontFamily").is_some()
+                || non_paint_defaults
+                    .get_str("themeVariables.fontSize")
+                    .is_some(),
+        );
+        self.presentation_defaults = defaults;
+        self.presentation_non_paint_defaults = non_paint_defaults;
+        self.rebuild_presentation_site_config();
+        self
+    }
+
+    fn rebuild_presentation_site_config(&mut self) {
+        self.site_config = generated::default_site_config();
+        self.site_config
+            .deep_merge(self.presentation_defaults.as_value());
+        merge_site_config_override(&mut self.site_config, self.site_config_delta.clone());
+        let mut initialized = self.site_config.clone();
+        let external_palette = config::resolve_appearance(
+            "",
+            &MermaidConfig::default(),
+            &self.site_config_delta,
+            &self.presentation_defaults,
+            &generated::upstream_default_config(),
+            &mut initialized,
+        );
+        self.default_effective_config =
+            if external_palette && !self.presentation_defaults.is_empty_object() {
+                config::apply_external_presentation_palette(
+                    &mut initialized,
+                    &self.presentation_defaults,
+                    &self.presentation_non_paint_defaults,
+                    &self.site_config_delta,
+                    &MermaidConfig::default(),
+                    None,
+                )
+                .map(|()| initialized)
+            } else {
+                build_default_effective_config(&initialized)
+            };
+        if let Ok(config) = &mut self.default_effective_config {
+            config.set_presentation_defaults_active(
+                self.presentation_defaults.presentation_defaults_active(),
+            );
+            config.set_presentation_font_defaults_active(
+                self.presentation_defaults
+                    .presentation_font_defaults_active(),
+            );
+            config.set_presentation_c4_line_default_active(
+                self.presentation_defaults
+                    .presentation_c4_line_default_active(),
+            );
+            config.set_wardley_axis_text_authored(
+                self.site_config_delta
+                    .get_str("themeVariables.wardley.axisTextColor")
+                    .is_some(),
+            );
+        }
     }
 
     /// Replaces the complete site-config environment while preserving custom registries.
@@ -336,6 +437,8 @@ impl Engine {
     pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
         self.site_config = generated::default_site_config();
         self.site_config_delta = MermaidConfig::empty_object();
+        self.presentation_defaults = MermaidConfig::empty_object();
+        self.presentation_non_paint_defaults = MermaidConfig::empty_object();
         if let Some(site_config) = site_config {
             merge_site_config_override(&mut self.site_config_delta, site_config.clone());
             merge_site_config_override(&mut self.site_config, site_config);

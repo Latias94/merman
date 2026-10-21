@@ -142,6 +142,24 @@ fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
 }
 
 #[test]
+fn source_quadrant_palette_survives_the_editor_dark_preset() {
+    let source = "---\nconfig:\n  theme: base\n  themeVariables:\n    quadrant1Fill: '#e8f5e9'\n---\nquadrantChart\n  title Priorities\n  x-axis Low --> High\n  y-axis Low --> High\n  quadrant-1 Invest\n  Alpha: [0.7, 0.8]";
+    let svg = render_with_editor_dark_theme("source-quadrant-palette", source);
+    assert!(
+        svg.contains("fill=\"#e8f5e9\""),
+        "source region fill must reach SVG"
+    );
+    let (point_label, _) = svg
+        .split_once(">Alpha</text>")
+        .expect("point label must exist");
+    let point_label = point_label.rsplit("<text").next().unwrap();
+    assert!(
+        point_label.contains("fill=\"#333\""),
+        "selected light palette must supply point text: {point_label}"
+    );
+}
+
+#[test]
 fn empty_presentation_preserves_default_svg_bytes() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
     let default_svg = TypedSvgRenderer::new()

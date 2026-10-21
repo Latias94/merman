@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2] - 2026-10-21
+
+- Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#229](https://github.com/Latias94/merman/issues/229), [#230](https://github.com/Latias94/merman/issues/230), [#231](https://github.com/Latias94/merman/issues/231), [#232](https://github.com/Latias94/merman/issues/232)
+- Native exports skip symbolic and pictorial fonts during implicit font and missing-glyph fallback; explicitly named fonts remain selectable. [#228](https://github.com/Latias94/merman/issues/228)
+- Look selectors and Block/Requirement source CSS are validated before SVG emission.
+
+The existing Presentation and binding options contracts are unchanged. Review regenerated SVG and exported-image snapshots; see the [workspace changelog](../../CHANGELOG.md) for the complete maintenance release.
+
 ## [0.9.1] - 2026-10-18
 
 - ER diagram SVG emission reuses prepared entity geometry, avoiding false missing-size errors on larger diagrams.

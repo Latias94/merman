@@ -100,7 +100,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "a2c18fde615e77fffaa9ada22f8b12a980d50d8df854d03d4e65af603dc29314",
+    "cargo_lock_sha256": "0da0842ca4e0e4fc164086e6b8c38a86b8395e77976910be5174e092d5b847dd",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "ffaa752f5f8893a9bfe30ff4a90481ca6ef6da58b411f0a4c1bb94aa2fd78aba"
   },
@@ -109,24 +109,24 @@
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 133,
-      "packages_sha256": "453eeae76b7cacd4bb95a583688576232fb4c2c88b5f68f5a4dfb183507c8402"
+      "packages_sha256": "251285779b3f9ae06a2d69af113fece0d1bf286cc14e11d14d14211fa8ff1cc7"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
       "package_count": 133,
-      "packages_sha256": "420e83c1d5c17ae8ad7d40f3db4b9b2ccbfafca79db70496a6dbbbf1f30f6782"
+      "packages_sha256": "c49919701446d89e7d9cd20f8a77244c413fb4b491a5cc73c29be699d2dec488"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 134,
-      "packages_sha256": "11f3a81fac02984ce41e863a2cced7e3143c838d0424213f33419004bb283f88"
+      "packages_sha256": "4c216a3c75185b1b2b4c205bb68ad625d6f08dc4be2026afa3bcf13bc0160e5f"
     }
   ],
   "dependency_closure": {
     "package_count": 137,
-    "packages_sha256": "e537370d3cdfd13585f8aa9495909c4fb2b34f4bf1842b6a37802d3d9838d89c"
+    "packages_sha256": "5ddd77125019ff34491ce44ad89882a1e9bf1a1062f56c612086391f9ffef2b0"
   },
   "licenses": [
     {
@@ -909,7 +909,7 @@
       "packages": [
         {
           "name": "getrandom",
-          "version": "0.4.3",
+          "version": "0.3.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

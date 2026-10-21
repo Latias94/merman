@@ -31,8 +31,10 @@ supported; missing-glyph requests explicitly retain deterministic fallback.
 This does not promise browser pixel parity or arbitrary HTML/CSS typography.
 Direct exporters set
 the same context with `RasterOptions::with_font_context` or
-`PdfOptions::with_font_context`. Without a context, existing system-font export
-behavior remains unchanged. With `system-fonts` compiled, the new context supports
+`PdfOptions::with_font_context`. Without a context, export uses the installed system fonts.
+Implicit generic and default families exclude symbolic and pictorial faces; an
+explicit named family can still select those faces. The same rule applies to
+closed native, bounded system, and platform query contexts. With `system-fonts` compiled, the new context supports
 bounded system discovery through `NativeFontOptions::with_system_fonts(true)`;
 library callers opt in explicitly. Selected bytes are snapshotted and verified
 before measurement and painting. Metadata discovery reads one font file temporarily

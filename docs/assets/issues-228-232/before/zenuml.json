@@ -1,0 +1,12 @@
+{
+  "svg": {
+    "diagram_id": "review-zenuml",
+    "pipeline": "resvg-safe",
+    "root_background_color": "#1e1f22"
+  },
+  "presentation": {
+    "theme": {
+      "preset": "editor-dark"
+    }
+  }
+}

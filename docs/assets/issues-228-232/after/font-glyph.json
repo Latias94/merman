@@ -1,0 +1,13 @@
+{
+  "family": "Noto Sans",
+  "text": "Aam / manage call",
+  "font_fixtures": [
+    "NotoSans-Latin-subset.ttf",
+    "MermanSymbolicTest.ttf",
+    "Cousine-Regular.ttf"
+  ],
+  "painted_faces": [
+    "Cousine-Regular"
+  ],
+  "path": "NativeFontContext::apply_to_usvg_options -> usvg -> resvg"
+}

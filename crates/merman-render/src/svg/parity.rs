@@ -1218,7 +1218,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Wardley(pair) => wardley::render_wardley_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
-            effective_config_value,
+            effective_config,
             title,
             options,
         ),
@@ -1272,7 +1272,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Zenuml(pair) => zenuml::render_zenuml_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
-            effective_config_value,
+            effective_config,
             title,
             options,
         ),
@@ -1433,7 +1433,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::C4(pair) => c4::render_c4_diagram_svg_typed(
             pair.layout(),
             pair.semantic(),
-            effective_config_value,
+            effective_config,
             title,
             measurer,
             options,

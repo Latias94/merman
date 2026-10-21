@@ -7,8 +7,10 @@ use serde_json::{Map, Value};
 use std::sync::Arc;
 
 mod appearance;
+mod presentation;
 mod source_presentation;
 pub(crate) use appearance::resolve_appearance;
+pub(crate) use presentation::apply_external_presentation_palette;
 pub(crate) use source_presentation::is_presentation_field;
 
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
@@ -33,8 +35,35 @@ pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
     );
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct MermaidConfig(Arc<Value>);
+#[derive(Clone)]
+pub struct MermaidConfig {
+    value: Arc<Value>,
+    state: ConfigState,
+}
+
+#[derive(Clone, Default)]
+struct ConfigState {
+    detector_mutations: Option<Vec<String>>,
+    presentation_paint: bool,
+    presentation_font: bool,
+    presentation_c4_line: bool,
+    wardley_axis_text_authored: bool,
+}
+
+impl std::fmt::Debug for MermaidConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("MermaidConfig")
+            .field(&self.value)
+            .finish()
+    }
+}
+
+impl PartialEq for MermaidConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
 
 impl Default for MermaidConfig {
     fn default() -> Self {
@@ -44,15 +73,50 @@ impl Default for MermaidConfig {
 
 impl MermaidConfig {
     pub fn empty_object() -> Self {
-        Self(Arc::new(Value::Object(Map::new())))
+        Self::from_value(Value::Object(Map::new()))
     }
 
     pub fn from_value(value: Value) -> Self {
-        Self(Arc::new(value))
+        Self {
+            value: Arc::new(value),
+            state: ConfigState::default(),
+        }
     }
 
     pub fn as_value(&self) -> &Value {
-        self.0.as_ref()
+        self.value.as_ref()
+    }
+
+    pub(crate) fn set_presentation_defaults_active(&mut self, active: bool) {
+        self.state.presentation_paint = active;
+    }
+
+    pub(crate) fn presentation_defaults_active(&self) -> bool {
+        self.state.presentation_paint
+    }
+
+    pub(crate) fn set_presentation_font_defaults_active(&mut self, active: bool) {
+        self.state.presentation_font = active;
+    }
+
+    pub(crate) fn presentation_font_defaults_active(&self) -> bool {
+        self.state.presentation_font
+    }
+
+    pub(crate) fn set_presentation_c4_line_default_active(&mut self, active: bool) {
+        self.state.presentation_c4_line = active;
+    }
+
+    pub(crate) fn presentation_c4_line_default_active(&self) -> bool {
+        self.state.presentation_c4_line
+    }
+
+    pub(crate) fn set_wardley_axis_text_authored(&mut self, authored: bool) {
+        self.state.wardley_axis_text_authored = authored;
+    }
+
+    pub(crate) fn wardley_axis_text_authored(&self) -> bool {
+        self.state.wardley_axis_text_authored
     }
 
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
@@ -78,7 +142,7 @@ impl MermaidConfig {
     }
 
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.value, &other.value)
     }
 
     #[cfg(test)]
@@ -87,11 +151,38 @@ impl MermaidConfig {
     }
 
     pub fn as_value_mut(&mut self) -> &mut Value {
+        self.record_mutation("");
         self.value_mut()
     }
 
+    pub(crate) fn begin_mutation_tracking(&mut self) -> Self {
+        let before = self.clone();
+        self.state.detector_mutations = Some(Vec::new());
+        before
+    }
+
+    pub(crate) fn take_mutation_paths(&mut self, before: &Self) -> Vec<String> {
+        // Replacing the entire config in a detector also replaces this private tracker.
+        let Some(mut paths) = self.state.detector_mutations.take() else {
+            return vec![String::new()];
+        };
+        if paths.iter().any(String::is_empty) {
+            // A mutable root borrow alone claims no palette values. Preserve explicit
+            // same-value writes, then add only the accessor's actual changes.
+            paths.retain(|path| !path.is_empty());
+            record_changed_paths(before.as_value(), self.as_value(), &mut paths);
+        }
+        paths
+    }
+
+    fn record_mutation(&mut self, path: &str) {
+        if let Some(paths) = &mut self.state.detector_mutations {
+            paths.push(path.to_owned());
+        }
+    }
+
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
-        let mut cur: &Value = self.0.as_ref();
+        let mut cur: &Value = self.value.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -99,7 +190,7 @@ impl MermaidConfig {
     }
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
-        let mut cur: &Value = self.0.as_ref();
+        let mut cur: &Value = self.value.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -107,6 +198,7 @@ impl MermaidConfig {
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
+        self.record_mutation(dotted_path);
         let root_value = self.value_mut();
         // Be defensive: callers can construct `MermaidConfig` from any JSON value via
         // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
@@ -139,16 +231,17 @@ impl MermaidConfig {
     }
 
     pub fn deep_merge(&mut self, other: &Value) {
-        let Value::Object(m) = other else {
-            let base = self.value_mut();
-            deep_merge_value(base, other);
-            return;
-        };
-        if m.is_empty() {
+        if other.as_object().is_some_and(Map::is_empty) {
             return;
         }
+        let mut paths = self.state.detector_mutations.take();
         let base = self.value_mut();
-        deep_merge_value(base, other);
+        if paths.is_some() {
+            assign_with_depth(base, other, 2, &mut MergeRecorder::new(paths.as_mut()));
+        } else {
+            deep_merge_value(base, other);
+        }
+        self.state.detector_mutations = paths;
     }
 
     pub(crate) fn source_filtered_overrides(
@@ -166,16 +259,16 @@ impl MermaidConfig {
     }
 
     fn value_mut(&mut self) -> &mut Value {
-        if Arc::strong_count(&self.0) != 1 || Arc::weak_count(&self.0) != 0 {
-            self.0 = Arc::new(clone_value_nonrecursive(self.0.as_ref()));
+        if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
+            self.value = Arc::new(clone_value_nonrecursive(self.value.as_ref()));
         }
-        Arc::make_mut(&mut self.0)
+        Arc::make_mut(&mut self.value)
     }
 }
 
 impl Drop for MermaidConfig {
     fn drop(&mut self) {
-        if let Some(value) = Arc::get_mut(&mut self.0) {
+        if let Some(value) = Arc::get_mut(&mut self.value) {
             let old = std::mem::replace(value, Value::Null);
             drop_value_nonrecursive(old);
         }
@@ -258,18 +351,88 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut V
     }
 }
 
+fn record_changed_paths(before: &Value, after: &Value, paths: &mut Vec<String>) {
+    let mut pending = vec![(String::new(), Some(before), Some(after))];
+    while let Some((path, before, after)) = pending.pop() {
+        if let (Some(Value::Object(before)), Some(Value::Object(after))) = (before, after) {
+            let child_path = |key: &str| {
+                if path.is_empty() {
+                    key.to_owned()
+                } else {
+                    format!("{path}.{key}")
+                }
+            };
+            for (key, value) in after {
+                let previous = before.get(key);
+                if previous.is_some_and(|previous| {
+                    crate::compatibility_json::equal_values(previous, value)
+                }) {
+                    continue;
+                }
+                pending.push((child_path(key), previous, Some(value)));
+            }
+            for key in before.keys().filter(|key| !after.contains_key(*key)) {
+                paths.push(child_path(key));
+            }
+        } else if !matches!((before, after), (Some(before), Some(after))
+            if crate::compatibility_json::equal_values(before, after))
+        {
+            // Arrays and changed container types own their complete replacement value.
+            paths.push(path);
+        }
+    }
+}
+
+struct MergeRecorder<'a> {
+    writes: Option<&'a mut Vec<String>>,
+    path: Vec<String>,
+}
+
+impl<'a> MergeRecorder<'a> {
+    fn new(writes: Option<&'a mut Vec<String>>) -> Self {
+        Self {
+            writes,
+            path: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, key: &str) {
+        if self.writes.is_some() {
+            self.path.push(key.to_owned());
+        }
+    }
+
+    fn pop(&mut self) {
+        self.path.pop();
+    }
+
+    fn record(&mut self) {
+        if let Some(writes) = &mut self.writes {
+            writes.push(self.path.join("."));
+        }
+    }
+}
+
 fn deep_merge_value(base: &mut Value, incoming: &Value) {
     // Mermaid 11.16.1 uses `assignWithDepth(dst, src)` with its default depth of two for site,
     // frontmatter, and directive configuration. Keep that bounded traversal instead of turning
     // configuration merging into an unbounded recursive deep merge.
-    assign_with_depth(base, incoming, 2);
+    assign_with_depth(base, incoming, 2, &mut MergeRecorder::new(None));
 }
 
-fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
+fn assign_with_depth(
+    destination: &mut Value,
+    source: &Value,
+    depth: usize,
+    recorder: &mut MergeRecorder<'_>,
+) {
     if let Value::Array(source_items) = source {
         match destination {
-            Value::Array(destination_items) => merge_arrays(destination_items, source_items),
-            Value::Object(_) => merge_array_of_sources(destination, source_items, depth),
+            Value::Array(destination_items) => {
+                merge_arrays(destination_items, source_items);
+                recorder.record();
+            }
+            Value::Object(_) => merge_array_of_sources(destination, source_items, depth, recorder),
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
         return;
@@ -280,6 +443,7 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
         // Mutating the slot in place is the JSON equivalent of the caller assigning that return
         // value back to the parent property.
         replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+        recorder.record();
         return;
     }
 
@@ -289,7 +453,7 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
     }
 
     if depth == 0 {
-        object_assign(destination, source);
+        object_assign(destination, source, recorder);
         return;
     }
 
@@ -298,16 +462,17 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
     };
 
     for (key, source_child) in source_map {
+        recorder.push(key);
         if is_non_null_js_object(source_child) {
             match destination_map.get_mut(key) {
                 Some(destination_child) if is_js_object(destination_child) => {
-                    assign_with_depth(destination_child, source_child, depth - 1);
+                    assign_with_depth(destination_child, source_child, depth - 1, recorder);
                 }
                 Some(_) => {}
                 None => {
                     destination_map.insert(key.clone(), empty_container_for(source_child));
                     if let Some(destination_child) = destination_map.get_mut(key) {
-                        assign_with_depth(destination_child, source_child, depth - 1);
+                        assign_with_depth(destination_child, source_child, depth - 1, recorder);
                     }
                 }
             }
@@ -317,17 +482,24 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
                 .is_none_or(|value| !is_js_object(value))
         {
             insert_cloned(destination_map, key, source_child);
+            recorder.record();
         }
+        recorder.pop();
     }
 }
 
-fn merge_array_of_sources(destination: &mut Value, source_items: &[Value], depth: usize) {
+fn merge_array_of_sources(
+    destination: &mut Value,
+    source_items: &[Value],
+    depth: usize,
+    recorder: &mut MergeRecorder<'_>,
+) {
     let mut stack = source_items.iter().rev().collect::<Vec<_>>();
     while let Some(source) = stack.pop() {
         if let Value::Array(items) = source {
             stack.extend(items.iter().rev());
         } else {
-            assign_with_depth(destination, source, depth);
+            assign_with_depth(destination, source, depth, recorder);
         }
     }
 }
@@ -344,11 +516,14 @@ fn merge_arrays(destination: &mut Vec<Value>, source: &[Value]) {
     }
 }
 
-fn object_assign(destination: &mut Value, source: &Value) {
+fn object_assign(destination: &mut Value, source: &Value, recorder: &mut MergeRecorder<'_>) {
     match (destination, source) {
         (Value::Object(destination_map), Value::Object(source_map)) => {
             for (key, source_child) in source_map {
                 insert_cloned(destination_map, key, source_child);
+                recorder.push(key);
+                recorder.record();
+                recorder.pop();
             }
         }
         // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
@@ -357,6 +532,7 @@ fn object_assign(destination: &mut Value, source: &Value) {
         (Value::Array(_), Value::Object(_)) => {}
         (destination, source) => {
             replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+            recorder.record();
         }
     }
 }

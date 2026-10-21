@@ -334,7 +334,11 @@ postprocessing for editor-specific colors.
 
 Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
 
-Merge precedence is the engine's base config, presentation profile defaults, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
+Presentation supplies defaults beneath explicit `site_config` and allowed diagram frontmatter/directive values. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
+
+An explicit site or source `theme` selection uses that Mermaid theme's complete derived palette, together with raw explicit site/source variables. Host-derived paint from the previous palette does not replace those values. Corresponding host roles can still fill values the selected theme does not define; individual `themeVariables` overrides follow Mermaid's property dependencies rather than selecting an entire palette.
+
+Independent `presentation.theme.font_family` and `font_size` defaults remain in effect unless an explicit site/source font overrides them. Selecting a light Mermaid palette inside a dark host therefore preserves its matching colors without discarding the host font. Corrected palette and family paint handling can change SVG and exported image/PDF snapshots; review regenerated output when upgrading.
 
 ## Parse Options
 

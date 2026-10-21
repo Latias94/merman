@@ -202,8 +202,8 @@
 #let capabilities = merman-capabilities()
 #assert.eq(
   capabilities.package_version,
-  "0.9.0",
-  message: "Typst package 0.5.0 must bundle Merman 0.9.0",
+  sys.inputs.at("merman-version", default: "0.9.0"),
+  message: "Typst package must bundle the expected Merman runtime",
 )
 #assert.eq(capabilities.schema_version, 1)
 #assert.eq(capabilities.transport_api_version, 2)
