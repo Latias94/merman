@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Native generic/default font selection excludes symbolic and pictorial faces even when their Unicode cmap covers ASCII; explicitly named symbol fonts remain available. Fixes [#228](https://github.com/Latias94/merman/issues/228).
+- Native generic/default font selection excludes symbolic and pictorial faces even when their Unicode cmap covers ASCII; explicitly named symbol fonts remain available. Fixes [#228](https://github.com/Latias94/merman/issues/228). Thanks [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
 - Host presets keep C4 children visible inside filled boundaries and style relationship labels and arrowheads; Gantt retains task states and readable label colors; Wardley anchors and ZenUML surfaces follow the selected host theme. Fixes [#229](https://github.com/Latias94/merman/issues/229), [#230](https://github.com/Latias94/merman/issues/230), and [#231](https://github.com/Latias94/merman/issues/231).
 - Explicit diagram-source Mermaid themes preserve their derived paint palettes under host styling, including ER rows and Quadrant point labels. Site and recipe theme selections remain fallback palettes; explicit site/source color variables retain their property-specific precedence. Independent typography, effects and canvas decoration remain applicable. Fixes [#232](https://github.com/Latias94/merman/issues/232).
 - ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Empty or typography-only ZenUML themes preserve independently authored border colors; source-colored comments no longer count as consuming typed text paint.
@@ -41,6 +41,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   on Windows.
 - The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds
   no syntax family, Cargo feature, FFI version, or editor-facts schema version.
+
+### Security
+
+- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
 
 ### Theme integration
 

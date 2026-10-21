@@ -1,5 +1,30 @@
 # v0.9.2 maintenance candidate
 
+## Review after the maintenance-branch rename
+
+Reviewed on 2026-10-21 against development `3119c614bf8c43d49cfe17ded0a53ec2e7fa983c` and maintenance implementation `ae3299f9a9db517e91c808e63a67cb8d30a1ce37`. PR [#234](https://github.com/Latias94/merman/pull/234) is merged into `main`; PR [#235](https://github.com/Latias94/merman/pull/235) is merged into the maintenance line. The latter branch is now `release/0.9.x`; its rename preserves that commit and the immutable `v0.9.1` tag.
+
+The selected repairs are sufficient for a compatible 0.9.2 patch. No additional development feature or theme-refactor commit is needed to justify the release. The root and coupled package versions already read 0.9.2. The current changelog describes the maintenance implementation's site/source palette contract, which intentionally differs from the compiled-theme implementation on `main`.
+
+| Follow-up candidate | Decision | Evidence |
+| --- | --- | --- |
+| Look selector, Block CSS, and Requirement CSS fixes | Already included | Maintenance `9f007b96c`, `1fc89439c`, and `c6939dba5`; the selected delta and its regression tests are in #235. |
+| Final implicit glyph-fallback repair `0157974b1` | Already included | Maintenance equivalent `741a2e231`, in addition to initial font-selection repair `208cbc5f9`. |
+| Certificate dependency refresh `d5097b8d0` | Already included | Maintenance `Cargo.lock` resolves `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`; the missing user-facing security note is now included. No dependency update is required. |
+| Main palette ownership follow-ups `016bbe60d`, `83eb9f98b`, and ER title fallback `3245f102f` | Do not cherry-pick | They resolve compiled-theme paint ownership and terminal receipts. The maintenance Presentation implementation retains its own source/site palette policy and does not contain those typed plans. |
+| Playground initialization repair `8250491a0` | Do not cherry-pick | It separates the new workbench's initialization from authored source for compiled host presets. Porting it wholesale would change the maintenance appearance contract. |
+| Performance-only PRs #212, #222, #225, #226, and #233 | Exclude from this patch | Their main targets include the unshipped theme architecture; no additional maintenance correctness defect is established by these optimization deltas. |
+| Mermaid 12.2 alignment, HTML5 parser migration, prepared-rendering/host APIs, and workbench features | Defer to development releases | These change baselines, behavior, or interfaces beyond a repair-only maintenance patch. |
+| Post-release package/version repairs | Already accounted for or owner-specific | The candidate's release projection verifies at 0.9.2, and #235 contains its Typst smoke/runtime-version and generated-asset repairs. Independent channel publication remains separate. |
+
+PR #235 completed its selected checks, including `pr-gate`. Its merged implementation tree is identical to reviewed head `8d27e9e4f8aa35b7095b45a728f5953538cde438`; the earlier local evidence below remains attributable to its recorded sources. Documentation changes after this merge still require a final immutable source SHA for release preflight. PR success, matching trees, and a branch rename are not substitutes for a successful preflight bound to that final commit and 0.9.2.
+
+The remaining release gate is to merge the maintenance documentation, confirm the intended date across the root and package changelogs, freeze the final 40-character SHA, and run full immutable preflight from the maintenance workflow revision. Do not create `v0.9.2` or publish packages before that result. Typst, grammar, Roughr, and VS Code retain independent versions. This review does not claim a 0.9.2 tag, successful immutable preflight, or registry publication.
+
+## Original local preparation snapshot
+
+The remainder records the earlier pre-PR local preparation, including its original source identities and receipt paths. Its statements about unpublished branches and local-only operations describe that historical checkpoint, not the current repository state.
+
 Status: local v0.9.2 candidate prepared and locally release-ready; not published. Immutable remote
 preflight, tag creation, registry upload, and external communication remain maintainer-owned steps.
 

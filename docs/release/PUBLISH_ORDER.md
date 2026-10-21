@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-18 (Asia/Shanghai)
+Last updated: 2026-10-21 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 ## Version Decision
@@ -12,7 +12,9 @@ The `main` development checkout synchronizes the `0.9.1` package version baselin
 notes. Its `[Unreleased]` section retains subsequent development, including compiled themes and
 Mermaid `12.2.0`; package metadata alone does not make that source the published patch. Published
 artifacts continue to bind the immutable source recorded below. Choose the next workspace version
-before preparing another release.
+before preparing another development-line release.
+
+Maintenance preparation target: `0.9.2` on `release/0.9.x`, based on immutable `v0.9.1`. The maintenance branch was renamed from `release/0.9.1` at merged PR [#235](https://github.com/Latias94/merman/pull/235), commit `ae3299f9a9db517e91c808e63a67cb8d30a1ce37`; the branch's implementation tree equals its green reviewed head `8d27e9e4f8aa35b7095b45a728f5953538cde438`. The compiled-theme development on `main` remains outside this candidate. See the [backport review](V092_BACKPORT_READINESS.md) for included fixes, compatibility evidence, and exclusions. Freeze the final maintenance source after documentation changes, then require immutable preflight for that exact SHA and `0.9.2` before tagging; no 0.9.2 publication or successful immutable preflight is asserted here.
 
 ## 0.9.1 Publication Snapshot
 
