@@ -1,0 +1,9 @@
+C4Context
+    title C4 boundary
+    Person(user, "User", "Uses the system")
+    Enterprise_Boundary(corp, "Company") {
+        System(app, "App", "Main system")
+        SystemDb_Ext(db, "Database", "Stores data")
+    }
+    Rel(user, app, "Uses")
+    Rel(app, db, "Reads")
