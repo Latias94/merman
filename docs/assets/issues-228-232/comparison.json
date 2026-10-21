@@ -1,0 +1,202 @@
+{
+  "lane": "main",
+  "before": "a933b02c1976a5034350d96574aea048e393c04e",
+  "after": "dbfb61c5af50d2819f246ff79b68fa671f09173a",
+  "capture_platform": "Windows 11; native PNG; resvg-safe binding SVG/PNG",
+  "font_cases": "Controlled checked-in font fixtures; not a Linux Fontconfig integration run",
+  "display_canvas": "#1e1f22 (CSS behind unchanged transparent PNG bytes)",
+  "comparisons": [
+    {
+      "issue": 228,
+      "name": "font-generic",
+      "caption": "Generic serif selects a text font",
+      "height": 150,
+      "before": {
+        "png_sha256": "bab24ccbe8f83c94049a35ce25f43ae76e162f0a3dcad7ebefd87c06685eccf2",
+        "svg_sha256": "263a5ed4b25e64a9fc31fedc5d9f37d338fae09448866ac43fa87b477d188a78",
+        "json_sha256": "221006f7d801339906241d248801a7aa0ec9c6ad1e788279885f01e172f12f74",
+        "painted_faces": [
+          "MermanSymbolicTest"
+        ]
+      },
+      "after": {
+        "png_sha256": "1909edf4df4f24a089578a2fd56140946595b6a8a84e740f7c04b5e01ed5b611",
+        "svg_sha256": "263a5ed4b25e64a9fc31fedc5d9f37d338fae09448866ac43fa87b477d188a78",
+        "json_sha256": "6d332943f1e464343173978cd32d5b044511dd2fb55a953781da0525402d4224",
+        "painted_faces": [
+          "Cousine-Regular"
+        ]
+      }
+    },
+    {
+      "issue": 228,
+      "name": "font-glyph",
+      "caption": "Missing Latin glyphs skip Symbol during fallback",
+      "height": 150,
+      "before": {
+        "png_sha256": "3c137b32f733462062acba981c7df4b0f3fa4d123549f108cd384b8d414fb401",
+        "svg_sha256": "54f627c03074538ea51906b0a40e05a81c41145e3913ff39f86c810071107655",
+        "json_sha256": "a48a078c9830bafb4af1a54a96f4a1492f957724f7b1a5f8b48bab40a624bc23",
+        "painted_faces": [
+          "MermanSymbolicTest"
+        ]
+      },
+      "after": {
+        "png_sha256": "7a22808636f4aad008942500cd6e6ae2eade258f7d0c40acc96394c839506118",
+        "svg_sha256": "54f627c03074538ea51906b0a40e05a81c41145e3913ff39f86c810071107655",
+        "json_sha256": "8966a983d3c9fd0b7eba9e5869ac8a39f951b32802b1f2e91bd6b8c48ddcf12c",
+        "painted_faces": [
+          "Cousine-Regular"
+        ]
+      }
+    },
+    {
+      "issue": 229,
+      "name": "c4",
+      "caption": "C4 contents, boundary labels and relationships remain visible",
+      "height": 560,
+      "before": {
+        "png_sha256": "efc1bafd58c4db8b0ef5c8380c73431e7b70d8901be22bf971fd5cbdd7a8cc51",
+        "svg_sha256": "e4d5af0e3c85791feb1474edee5996c89b015e0416753f590a1055340b2d7cee",
+        "json_sha256": "41970b2cf99ce50d56ba5cb2a69f307f93572d20d7c304f4a60a87c1a6825ea0"
+      },
+      "after": {
+        "png_sha256": "c3879b133e95f189483d1825c31fb9d7447cc689c9cb9f7b16fc4e7f0d500be0",
+        "svg_sha256": "ba3d4b8dca252ba0f4657942378a34667c1dc751f3d51174c9cc3742fc7acd75",
+        "json_sha256": "41970b2cf99ce50d56ba5cb2a69f307f93572d20d7c304f4a60a87c1a6825ea0"
+      }
+    },
+    {
+      "issue": 230,
+      "name": "gantt",
+      "caption": "Gantt task states and their labels remain distinguishable",
+      "height": 250,
+      "before": {
+        "png_sha256": "6d1b72d8264de1011ee679e6c67e08a0d2a5fb48e7d9ce6149ece7f2d3057fb1",
+        "svg_sha256": "b5a26601d677f66b9c264520ea93d8b6210ba303ced7abe4c7568a07cc247967",
+        "json_sha256": "72349657c17f0b6e7cee7e8c54b8a320cfc76017ab2a2f34bc2b2c8511b05d34",
+        "native_text_paints": {
+          "review-gantt-t1-text": [
+            "#2c2c2c"
+          ],
+          "review-gantt-t2-text": [
+            "#2c2c2c"
+          ],
+          "review-gantt-t3-text": [
+            "#e5e7eb"
+          ],
+          "review-gantt-t4-text": [
+            "#e5e7eb"
+          ],
+          "review-gantt-t5-text": [
+            "#2c2c2c"
+          ]
+        },
+        "native_text_paints_sha256": "028cf49faafa9dee5d27d1c58a23a174d6390f9cc13ae31860ec70f7fda3966e"
+      },
+      "after": {
+        "png_sha256": "3df7ae5171f0b5a11ae58901ce2e8827e303518bebeced6a3f8202b2e7738755",
+        "svg_sha256": "6c4c740cf9992cdceaa218150e1f41e14ed73c0e078f217f4722832ec171ee85",
+        "json_sha256": "72349657c17f0b6e7cee7e8c54b8a320cfc76017ab2a2f34bc2b2c8511b05d34",
+        "native_text_paints": {
+          "review-gantt-t1-text": [
+            "#e5e7eb"
+          ],
+          "review-gantt-t2-text": [
+            "#0f172a"
+          ],
+          "review-gantt-t3-text": [
+            "#e5e7eb"
+          ],
+          "review-gantt-t4-text": [
+            "#0f172a"
+          ],
+          "review-gantt-t5-text": [
+            "#0f172a"
+          ]
+        },
+        "native_text_paints_sha256": "989d704a82c7bff0a95fa3047ed6c742121b4f5ab8296a5dab9eaaf268ca81c3"
+      }
+    },
+    {
+      "issue": 230,
+      "name": "wardley",
+      "caption": "Wardley anchors follow the host text palette",
+      "height": 410,
+      "before": {
+        "png_sha256": "3e5361e353b2a902aa92e50eb4d00e25f2d18f7a7f63e979b55b5e85309d6c07",
+        "svg_sha256": "fcf590e639c216b8c7491dc018c021eb15a10290e6db332194de701963c764e3",
+        "json_sha256": "5a4d4b031dc6caa866c52f37f7b1e450ca5c68c083eeb650c567e4880fb34a6e"
+      },
+      "after": {
+        "png_sha256": "2a11fd62f2e0499f62f8d0f129d31fc33fa6962f8ee0d30e7e1880f45582aa7e",
+        "svg_sha256": "6c140df5b804fcde7aac70fabbbcaf4ac8ac1c1c030dd709790b5c0e2526f8ca",
+        "json_sha256": "5a4d4b031dc6caa866c52f37f7b1e450ca5c68c083eeb650c567e4880fb34a6e"
+      }
+    },
+    {
+      "issue": 231,
+      "name": "zenuml",
+      "caption": "ZenUML title, frame and participants share the dark palette",
+      "height": 350,
+      "before": {
+        "png_sha256": "381cc0bdf9980f09f9f7d2cbd0a57a2e74d7ffe5ca083c4f7c3fef37a6506620",
+        "svg_sha256": "3470cd760a541c0acebff4b4897937c4530cef9b235fba91727c511e5476d7b2",
+        "json_sha256": "1b42329f19a7acb2a32328065556e942742e4270b23479097f86065a3d29c04b"
+      },
+      "after": {
+        "png_sha256": "8b8e3d14e4894c3c5e7996f18bca6f7dc636206dc3013ef671a8d4b500bd3619",
+        "svg_sha256": "1a3670e259148e682c9449cce9e6d9972aaeab77fc541b9325b89c42530c9ac5",
+        "json_sha256": "1b42329f19a7acb2a32328065556e942742e4270b23479097f86065a3d29c04b"
+      }
+    },
+    {
+      "issue": 232,
+      "name": "quadrant",
+      "caption": "Source base palette keeps matching point-label colors",
+      "height": 470,
+      "before": {
+        "png_sha256": "34dace253f4f9a3ba97e2dfd0bff8e86db273a921a0ef2b488ab2b3984864dab",
+        "svg_sha256": "419e95c23f47615cd4a3978a921f18e82d94312cc6095d00502b14d195e8db4e",
+        "json_sha256": "1711747e1ba352f929a9e00b368b87878b6ff7042de023305d4289228d86c8a8"
+      },
+      "after": {
+        "png_sha256": "379bc7666050e6bec94dddef2c2c6e8337a2dda756bc1a0308d3b9d079cd7799",
+        "svg_sha256": "43af3ae64ddfb5fb68931cc3b50ae278b616ca72b721f5928c6c81ee1f64e7cf",
+        "json_sha256": "1711747e1ba352f929a9e00b368b87878b6ff7042de023305d4289228d86c8a8"
+      }
+    },
+    {
+      "issue": 232,
+      "name": "er",
+      "caption": "Source forest palette keeps matching attribute and relation text",
+      "height": 430,
+      "before": {
+        "png_sha256": "92cbddaea0a9ea4c075b9cbd72fb7b9e2cb343a934deee69ac1b3723c29346b0",
+        "svg_sha256": "aef633ac477bf7631e5ee1d1f52e9658bbe77af3a589ebbad3fc0b629ca77af1",
+        "json_sha256": "f90092f20a6d7a7f11be287abf9076469971f6add7c9829c25a75c0ce3f95fe9"
+      },
+      "after": {
+        "png_sha256": "d76f18584674f6ff6d98d287d1c588afe78c73f815abe87288d5608d4a8490a2",
+        "svg_sha256": "8a3ef668454dddc2cffa22b8e5d3c4e3d15a92e1633ae9c3a2f77844e90474b0",
+        "json_sha256": "f90092f20a6d7a7f11be287abf9076469971f6add7c9829c25a75c0ce3f95fe9"
+      }
+    },
+    {
+      "issue": 232,
+      "name": "timeline",
+      "caption": "Source Timeline scale colors keep matching labels",
+      "height": 310,
+      "before": {
+        "png_sha256": "1b1ecb4766f812a3948851eba477fa2de6f9f669b9ee5a8bdf3ad1398bf5b03c",
+        "svg_sha256": "2739f030afbf78e1e8b1e68218aee35d49f4f690d3e12a2d2cffd6139502225c",
+        "json_sha256": "4485619d2ded68b93e17ec25599464e882a452207010943e72553110b61f632d"
+      },
+      "after": {
+        "png_sha256": "8b87596adf739e7d8c9bd0ed8194e344f4568f4765dc91db222266da8c65910c",
+        "svg_sha256": "393e2d3d3a04b5499cbb896fb521bfce3752802b2562e57559e71237d9a7d23c",
+        "json_sha256": "4485619d2ded68b93e17ec25599464e882a452207010943e72553110b61f632d"
+      }
+    }
+  ]
+}

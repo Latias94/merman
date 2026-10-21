@@ -1,12 +1,12 @@
 //! Source-owned CSS font decisions.
 
-use crate::diagram_theme::{FontStack, GenericFontFamily};
+use crate::diagram_theme::{GenericFontFamily, validate_font_stack_families};
 use cssparser::Parser;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParsedCssFontStack {
-    font_stack: FontStack,
+    families: Vec<String>,
     generic_families: BTreeMap<usize, GenericFontFamily>,
 }
 
@@ -17,7 +17,7 @@ impl ParsedCssFontStack {
 
     pub(crate) fn as_css(&self) -> String {
         let mut out = String::new();
-        for (index, family) in self.font_stack.families().iter().enumerate() {
+        for (index, family) in self.families.iter().enumerate() {
             if index > 0 {
                 out.push_str(", ");
             }
@@ -73,7 +73,7 @@ pub(crate) fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
     }
 
     Some(ParsedCssFontStack {
-        font_stack: FontStack::new(families).ok()?,
+        families: validate_font_stack_families(families).ok()?,
         generic_families,
     })
 }

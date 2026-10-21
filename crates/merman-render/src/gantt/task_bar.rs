@@ -57,6 +57,10 @@ impl GanttTaskBarState {
         }
     }
 
+    pub(super) const fn is_critical(self) -> bool {
+        matches!(self, Self::Crit | Self::ActiveCrit | Self::DoneCrit)
+    }
+
     pub(super) const fn final_fill_path(self) -> &'static str {
         match self {
             Self::Default => "themeVariables.taskBkgColor",
@@ -74,4 +78,32 @@ impl GanttTaskBarState {
             Self::ActiveCrit | Self::DoneCrit | Self::Crit => "themeVariables.critBorderColor",
         }
     }
+}
+
+// Mermaid labels retain every authored status class, unlike bars' active-first state.
+pub(super) fn label_state_classes(task: &GanttRenderTask, suffix: &str) -> String {
+    let mut classes = Vec::new();
+    if task.active {
+        classes.push(format!(
+            "{}{suffix}",
+            if task.crit {
+                "activeCritText"
+            } else {
+                "activeText"
+            }
+        ));
+    }
+    if task.done {
+        classes.push(format!(
+            "{}{suffix}",
+            if task.crit {
+                "doneCritText"
+            } else {
+                "doneText"
+            }
+        ));
+    } else if task.crit {
+        classes.push(format!("critText{suffix}"));
+    }
+    classes.join(" ")
 }

@@ -12,9 +12,10 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
-    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec, materialize_theme_design,
+    LinearGradient, MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, PatternKind,
+    PatternSpec, Specified, ThemeColorValue, ThemePortabilityRequirement, ThemePreset, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    materialize_theme_design,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -132,6 +133,45 @@ fn er_visible_text_theme() -> DiagramTheme {
         .expect("compile ER visible text theme")
 }
 
+fn er_inline_style_property<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style
+        .split(';')
+        .filter_map(|part| part.split_once(':'))
+        .find_map(|(name, value)| {
+            (name.trim() == property)
+                .then(|| value.trim().trim_end_matches("!important").trim_end())
+        })
+}
+
+fn er_entity_terminal_paint(
+    document: &roxmltree::Document<'_>,
+    entity_id: &str,
+    property: &str,
+) -> String {
+    let entity = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(entity_id))
+        .expect("visible ER entity");
+    let terminal = entity
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node
+                    .ancestors()
+                    .any(|ancestor| ancestor.attribute("class") == Some("outer-path"))
+                && match property {
+                    "fill" => node.attribute("stroke") == Some("none"),
+                    "stroke" => node.attribute("fill") == Some("none"),
+                    _ => false,
+                }
+        })
+        .expect("visible ER entity paint terminal");
+    er_inline_style_property(terminal.attribute("style").unwrap_or_default(), property)
+        .or_else(|| terminal.attribute(property))
+        .expect("ER entity terminal paint")
+        .to_owned()
+}
+
 fn er_font_size_theme(font_size_px: f32) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -148,6 +188,12 @@ fn er_font_size_theme(font_size_px: f32) -> DiagramTheme {
 }
 
 fn er_table_row_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(er_table_row_styles()))
+        .expect("compile ER table row theme")
+}
+
+fn er_table_row_styles() -> ThemeRuleSet {
     let odd_row = ThemeRule::new(
         ThemeTarget::Table,
         ThemeStylePatch::default()
@@ -160,15 +206,9 @@ fn er_table_row_theme() -> DiagramTheme {
             .with_fill(CanvasPaint::solid("#ddeeff").expect("valid ER even row fill")),
     )
     .with_variant(ThemeVariant::Even);
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                [odd_row, even_row]
-                    .into_iter()
-                    .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule),
-            ),
-        )
-        .expect("compile ER table row theme")
+    [odd_row, even_row]
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule)
 }
 
 fn relationship_path_tags(svg: &str) -> Vec<&str> {
@@ -1082,10 +1122,135 @@ CUSTOMER ||--|| ORDER : owns
 }
 
 #[test]
+fn er_subgraph_text_fill_yields_only_to_explicit_label_color_owners() {
+    let font_spec =
+        DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+            merman_render::DiagramFamilyId::ER,
+            ThemeTextStyle::default().with_font_stack(FontStack::single("serif").unwrap()),
+        ));
+    let font_only = DiagramThemeCompiler::new()
+        .compile(font_spec.clone())
+        .unwrap();
+    let painted = DiagramThemeCompiler::new()
+        .compile(
+            font_spec.with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#112233").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for (origin, prefix, suffix, explicit_color) in [
+        ("default", "", "", None),
+        (
+            "source-title",
+            "%%{init: {\"themeVariables\": {\"titleColor\": \"#abcdef\"}}}%%\n",
+            "",
+            Some("#abcdef"),
+        ),
+        (
+            "source-class",
+            "",
+            "classDef accent color:#fedcba\nclass Orders accent\n",
+            Some("#fedcba"),
+        ),
+    ] {
+        let source =
+            format!("{prefix}erDiagram\nsubgraph Orders [Order Domain]\n CUSTOMER\nend\n{suffix}");
+        for (theme, typed) in [(&font_only, false), (&painted, true)] {
+            let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
+                &source,
+                theme,
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
+                    "theme": "default", "look": "classic", "layout": "dagre", "htmlLabels": false
+                }))),
+            );
+            let default_color = parsed
+                .metadata()
+                .effective_config
+                .get_str("themeVariables.titleColor")
+                .unwrap();
+            let rendered = family::prepare(&parsed, &layout, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let cluster = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("merman-Orders"))
+                .unwrap();
+            let label = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                label
+                    .descendants()
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+                    .contains("Order Domain")
+            );
+            let inline =
+                er_inline_style_property(label.attribute("style").unwrap_or_default(), "fill");
+            let expected = explicit_color.unwrap_or(if typed { "#112233" } else { default_color });
+            if origin == "source-title" || (!typed && origin == "default") {
+                assert_eq!(inline, None, "{origin} typed={typed}");
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .unwrap();
+                assert!(
+                    css.contains(&format!("#merman .cluster-label text{{fill:{expected};}}")),
+                    "{origin} typed={typed}"
+                );
+            } else {
+                assert_eq!(inline, Some(expected), "{origin} typed={typed}");
+            }
+            if typed {
+                let entity = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-entity-CUSTOMER-0"))
+                    .expect("visible CUSTOMER entity");
+                let entity_label = entity
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node
+                                .descendants()
+                                .any(|node| node.text() == Some("CUSTOMER"))
+                    })
+                    .expect("visible CUSTOMER SVG text terminal");
+                assert!(
+                    entity_label
+                        .ancestors()
+                        .any(|node| er_inline_style_property(
+                            node.attribute("style").unwrap_or_default(),
+                            "fill"
+                        ) == Some("#112233"))
+                );
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.required_count(),
+                1 + usize::from(typed),
+                "{origin} typed={typed}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(typed),
+                "{origin} typed={typed}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} typed={typed}");
+        }
+    }
+}
+
+#[test]
 fn er_static_entity_paint_reaches_plain_and_attribute_shells() {
     let source = r#"---
 config:
-  theme: default
   look: classic
   layout: dagre
 ---
@@ -1146,7 +1311,10 @@ fn er_referenced_design_reaches_the_model_owned_entity_surface() {
         .expect("compile editable ER theme");
 
     let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync("---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n", ParseOptions::strict())
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n",
+            ParseOptions::strict(),
+        )
         .expect("parse tokens-only ER diagram")
         .expect("detect tokens-only ER diagram");
     let session = RenderEnvironment::deterministic()
@@ -2001,7 +2169,7 @@ fn er_row_path<'a>(document: &'a roxmltree::Document<'a>, odd: bool) -> roxmltre
 
 #[test]
 fn er_table_odd_even_fill_reaches_each_matching_row() {
-    let source = "---\nconfig:\n  theme: default\n  layout: dagre\n---\nerDiagram\n CUSTOMER {\n string id\n string name\n string email\n }\n ORDER {\n string id\n string status\n }\n";
+    let source = "---\nconfig:\n  layout: dagre\n---\nerDiagram\n CUSTOMER {\n string id\n string name\n string email\n }\n ORDER {\n string id\n string status\n }\n";
     for look in ["classic", "neo", "handDrawn"] {
         for html in [true, false] {
             for (paint, css) in [
@@ -2009,18 +2177,35 @@ fn er_table_odd_even_fill_reaches_each_matching_row() {
                 (CanvasPaint::Transparent, "transparent"),
             ] {
                 for variant in [ThemeVariant::Odd, ThemeVariant::Even] {
-                    let theme = er_relation_rules_theme([ThemeRule::new(
-                        ThemeTarget::Table,
-                        ThemeStylePatch::default().with_fill(paint.clone()),
-                    )
-                    .with_variant(variant)]);
+                    let theme = DiagramThemeCompiler::new()
+                        .compile(
+                            DiagramThemeSpec::new()
+                                .with_mermaid_compatibility(
+                                    MermaidThemeCompatibility::default()
+                                        .with_theme("default")
+                                        .unwrap(),
+                                )
+                                .with_styles(
+                                    ThemeRuleSet::default().with_rule(
+                                        ThemeRule::new(
+                                            ThemeTarget::Table,
+                                            ThemeStylePatch::default().with_fill(paint.clone()),
+                                        )
+                                        .with_variant(variant),
+                                    ),
+                                ),
+                        )
+                        .unwrap();
                     let (fixture_parsed_11, fixture_layout_11, fixture_session_11) =
-                        prepare_er_family_with_theme_and_engine(
+                        try_prepare_er_family_with_theme_and_engine_requirement(
                             source,
                             &theme,
                             Engine::new().with_site_config(PresentationConfig::from_value(
                                 json!({"look": look, "htmlLabels": html}),
                             )),
+                            // The raw Default compatibility selector is intentionally
+                            // outside the portable proof for these row-paint terminals.
+                            ThemePortabilityRequirement::BestEffort,
                         );
                     let rendered =
                         family::prepare(&fixture_parsed_11, &fixture_layout_11, fixture_session_11)
@@ -2134,10 +2319,26 @@ fn er_table_source_fill_owns_only_even_row_paths() {
         "classDef accent fill:#112233\n class CUSTOMER accent",
     ] {
         let source = format!(
-            "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id\n string name\n }}\n {source_style}\n"
+            "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id\n string name\n }}\n {source_style}\n"
         );
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_mermaid_compatibility(
+                        MermaidThemeCompatibility::default()
+                            .with_theme("default")
+                            .unwrap(),
+                    )
+                    .with_styles(er_table_row_styles()),
+            )
+            .unwrap();
         let (fixture_parsed_13, fixture_layout_13, fixture_session_13) =
-            prepare_er_family_with_theme_and_engine(&source, &er_table_row_theme(), Engine::new());
+            try_prepare_er_family_with_theme_and_engine_requirement(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            );
         let rendered = family::prepare(&fixture_parsed_13, &fixture_layout_13, fixture_session_13)
             .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2234,7 +2435,6 @@ fn er_table_row_fill_requires_a_matching_visible_row() {
 fn er_source_entity_styles_outrank_typed_entity_paint() {
     let source = r#"---
 config:
-  theme: default
   look: classic
   layout: dagre
 ---
@@ -2275,7 +2475,7 @@ erDiagram
     assert!(inline.contains("stroke:#0000bb"), "{inline}");
 
     let default_svg = render_er_svg_from_text_with_theme(
-        "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  DEFAULT\n  classDef default fill:#aa0000,stroke:#bb0000\n",
+        "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  DEFAULT\n  classDef default fill:#aa0000,stroke:#bb0000\n",
         &theme,
     );
     assert!(default_svg.contains("fill:#aa0000"), "{default_svg}");
@@ -2318,9 +2518,11 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
             }
         }))),
     );
-    assert!(
-        default_primary_border_svg.contains("#654321"),
-        "default primaryBorderColor is not the terminal ER entity stroke owner: {default_primary_border_svg}"
+    let document = roxmltree::Document::parse(&default_primary_border_svg).unwrap();
+    assert_eq!(
+        er_entity_terminal_paint(&document, "merman-entity-TABLE-1", "stroke"),
+        "#654321",
+        "the default theme does not derive nodeBorder from primaryBorderColor"
     );
 
     let base_primary_svg = render_er_svg_from_text_with_theme_and_engine(
@@ -2337,6 +2539,183 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
         !base_primary_svg.contains("#654321"),
         "base primaryColor-derived nodeBorder must own ER entity stroke: {base_primary_svg}"
     );
+}
+
+#[test]
+fn er_redux_fallback_palettes_yield_to_typed_entity_paint() {
+    let source = "erDiagram\n CUSTOMER {\n string id\n }\n";
+    for (origin, palette) in [
+        ("family-default", "redux-color"),
+        ("site", "redux-color"),
+        ("site", "redux-dark-color"),
+        ("recipe", "redux-color"),
+        ("recipe", "redux-dark-color"),
+        ("source", "redux-color"),
+        ("source", "redux-dark-color"),
+    ] {
+        let mut spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Entity,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").unwrap())
+                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            )),
+        );
+        if origin == "recipe" {
+            spec = spec.with_mermaid_compatibility(
+                MermaidThemeCompatibility::default()
+                    .with_theme(palette)
+                    .unwrap(),
+            );
+        }
+        let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+        let mut config = json!({"look": "classic", "layout": "dagre"});
+        if origin == "site" {
+            config["theme"] = json!(palette);
+        }
+        let source = if origin == "source" {
+            format!("%%{{init: {{\"theme\": \"{palette}\"}}}}%%\n{source}")
+        } else {
+            source.to_owned()
+        };
+        let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        assert_eq!(
+            parsed.metadata().effective_config.get_str("theme"),
+            Some(palette)
+        );
+        let rendered = family::prepare(&parsed, &layout, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (property, typed, channel) in [
+            ("fill", "#123456", "bkgColorArray"),
+            ("stroke", "#654321", "borderColorArray"),
+        ] {
+            let terminal =
+                er_entity_terminal_paint(&document, "merman-entity-CUSTOMER-0", property);
+            if origin == "source" {
+                let entity = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-entity-CUSTOMER-0"))
+                    .unwrap();
+                let color = entity.attribute("data-color-id").unwrap();
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .unwrap();
+                let selector = format!(
+                    "#merman [data-look=\"classic\"][data-color-id=\"{color}\"].node path{{"
+                );
+                let rule = css
+                    .split(&selector)
+                    .nth(1)
+                    .and_then(|rule| rule.split('}').next())
+                    .unwrap();
+                assert_eq!(
+                    er_inline_style_property(rule, property),
+                    parsed.metadata().effective_config.as_value()["themeVariables"][channel][0]
+                        .as_str(),
+                    "{origin} {palette} {property}"
+                );
+                assert_ne!(terminal, typed, "{origin} {palette} {property}");
+            } else {
+                assert_eq!(terminal, typed, "{origin} {palette} {property}");
+            }
+        }
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.text() == Some("CUSTOMER"))
+        );
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{origin} {palette}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(origin != "source"),
+            "{origin} {palette}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(origin == "source"),
+            "{origin} {palette}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{origin} {palette}");
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            usize::from(origin == "recipe")
+        );
+    }
+}
+
+#[test]
+fn er_source_palette_and_raw_colors_retain_property_local_entity_paint() {
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").unwrap(),
+        Some(CanvasPaint::solid("#654321").unwrap()),
+    );
+    for (directive, fill, stroke, applied) in [
+        (json!({"theme": "base"}), None, None, 0),
+        (
+            json!({"themeVariables": {"mainBkg": "#fedcba"}}),
+            Some("#fedcba"),
+            Some("#654321"),
+            1,
+        ),
+        (
+            json!({"themeVariables": {"nodeBorder": "#abcdef"}}),
+            Some("#123456"),
+            Some("#abcdef"),
+            1,
+        ),
+    ] {
+        let source =
+            format!("%%{{init: {directive}}}%%\nerDiagram\n CUSTOMER {{\n string id\n }}\n");
+        let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
+            &source,
+            &theme,
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+                "theme": "base", "look": "classic", "layout": "dagre"
+            }))),
+        );
+        let config = &parsed.metadata().effective_config;
+        let fill = fill.unwrap_or_else(|| config.get_str("themeVariables.mainBkg").unwrap());
+        let stroke = stroke.unwrap_or_else(|| config.get_str("themeVariables.nodeBorder").unwrap());
+        let rendered = family::prepare(&parsed, &layout, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            er_entity_terminal_paint(&document, "merman-entity-CUSTOMER-0", "fill"),
+            fill,
+            "{directive}"
+        );
+        assert_eq!(
+            er_entity_terminal_paint(&document, "merman-entity-CUSTOMER-0", "stroke"),
+            stroke,
+            "{directive}"
+        );
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{directive}");
+        assert_eq!(evidence.applied_count(), applied, "{directive}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(applied == 0),
+            "{directive}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{directive}");
+    }
 }
 
 #[test]
@@ -2392,7 +2771,7 @@ fn er_entity_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
         .expect("compile ER entity fill and ordinal palette theme");
     let (fixture_parsed_16, fixture_layout_16, fixture_session_16) =
         prepare_er_family_with_theme_and_engine(
-            "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  PLAIN\n",
+            "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  PLAIN\n",
             &theme,
             Engine::new(),
         );
@@ -2957,6 +3336,63 @@ fn er_text_fill_tracks_the_visible_title_and_its_own_configuration() {
 }
 
 #[test]
+fn er_selected_forest_palette_owns_html_fallback_text_under_editor_presets() {
+    let source = "%%{init: {'theme':'forest'}}%%\nerDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {\n  string id PK\n  string name\n}\nORDER {\n  string id PK\n  string customer_id FK\n}";
+    for preset in [ThemePreset::EditorLight, ThemePreset::EditorDark] {
+        let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+        for html in [false, true] {
+            let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
+                source,
+                &theme,
+                Engine::new()
+                    .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": html}))),
+                ThemePortabilityRequirement::BestEffort,
+            );
+            let rendered = family::prepare(&parsed, &layout, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert_eq!(
+                rendered
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.nodeTextColor"),
+                None,
+                "Forest uses textColor when its HTML label node color is absent"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let attributes = document
+                .descendants()
+                .filter(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "attribute-name")
+                    })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(attributes.len(), 4, "{preset:?}/html={html}");
+            for attribute in attributes {
+                assert!(
+                    !attribute.attribute("style").is_some_and(|style| {
+                        style.split(';').any(|declaration| {
+                            declaration.trim().starts_with("fill:")
+                                || declaration.trim().starts_with("color:")
+                        })
+                    }),
+                    "{preset:?}/html={html}: {:?}",
+                    attribute.attribute("style")
+                );
+            }
+            assert!(
+                rendered.svg().contains("font-family:Inter,"),
+                "palette ownership must preserve the independent host font stack"
+            );
+        }
+    }
+}
+
+#[test]
 fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
     let source = "erDiagram\n CUSTOMER {\n string id\n }\n CUSTOMER ||--o{ ORDER : owns\n";
     for html in [false, true] {
@@ -2967,7 +3403,7 @@ fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
                 )
                 .with_variant(ThemeVariant::Default)]);
-                let config = json!({"theme": "base", "htmlLabels": html, "themeVariables": {key: "#fedcba"}});
+                let config = json!({"htmlLabels": html, "themeVariables": {key: "#fedcba"}});
                 let (text, engine) = if from_source {
                     (
                         format!("---\nconfig: {config}\n---\n{source}"),
@@ -3069,7 +3505,7 @@ fn er_svg_row_fills_follow_optional_theme_colors() {
 }
 
 #[test]
-fn er_derived_theme_colors_do_not_claim_raw_paint_defaults() {
+fn er_source_theme_owns_derived_paint_defaults() {
     let theme = er_relation_rules_theme([
         ThemeRule::new(
             ThemeTarget::Text,
@@ -3087,10 +3523,10 @@ fn er_derived_theme_colors_do_not_claim_raw_paint_defaults() {
     ]);
     let (fixture_parsed_26, fixture_layout_26, fixture_session_26) =
         prepare_er_family_with_theme_and_engine(
-            "---\ntitle: Raw owners\n---\nerDiagram\n A {\n string id\n string name\n }\n A ||--o{ B : owns\n",
+            "---\ntitle: Raw owners\nconfig:\n  theme: base\n---\nerDiagram\n A {\n string id\n string name\n }\n A ||--o{ B : owns\n",
             &theme,
             Engine::new().with_site_config(PresentationConfig::from_value(
-                json!({"theme": "base", "themeVariables": {"primaryColor": "#fedcba"}}),
+                json!({"themeVariables": {"primaryColor": "#fedcba"}}),
             )),
         );
     let rendered = family::prepare(&fixture_parsed_26, &fixture_layout_26, fixture_session_26)
@@ -3098,25 +3534,26 @@ fn er_derived_theme_colors_do_not_claim_raw_paint_defaults() {
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    assert_eq!(
-        er_row_path(&document, true).attribute("style"),
-        Some("fill:#abcdef")
-    );
-    assert_eq!(
-        er_row_path(&document, false).attribute("style"),
-        Some("fill:#abcdef")
-    );
+    for odd in [true, false] {
+        assert_eq!(
+            er_row_path(&document, odd).attribute("style"),
+            None,
+            "the explicit base theme owns the row palette"
+        );
+        assert!(er_row_path(&document, odd).attribute("fill").is_some());
+    }
     let paths = relationship_path_tags(rendered.svg());
     assert_eq!(paths.len(), 1);
-    assert!(paths[0].contains("stroke:#654321"));
+    assert!(!paths[0].contains("stroke:#654321"));
     let title = document
         .descendants()
         .find(|node| node.attribute("class") == Some("erDiagramTitleText"))
         .unwrap();
-    assert_eq!(title.attribute("style"), Some("color:#123456;fill:#123456"));
+    assert_eq!(title.attribute("style"), None);
+    assert!(rendered.svg().contains("fill:#333"));
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 3);
+    assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
@@ -3703,7 +4140,7 @@ fn er_hidden_entity_terminals_preserve_visible_source_ordinals() {
                     ),
             )
             .unwrap();
-        let source = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  theme: default\n---\nerDiagram\nA {\n string hidden\n}\nsubgraph A [Group]\n B {\n string visible\n}\nend\n";
+        let source = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nerDiagram\nA {\n string hidden\n}\nsubgraph A [Group]\n B {\n string visible\n}\nend\n";
         let (fixture_parsed_46, fixture_layout_46, fixture_session_46) =
             try_prepare_er_family_with_theme_and_engine_requirement(
                 source,

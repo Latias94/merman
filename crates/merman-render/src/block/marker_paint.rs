@@ -5,7 +5,7 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
     FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
     reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
@@ -22,7 +22,7 @@ pub(crate) struct BlockMarkerPaintPlan {
     definitions: Vec<BlockMarkerDefinition>,
     paths: Vec<Option<MarkerPathBinding>>,
     references: Vec<MarkerReferenceBinding>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +147,7 @@ impl BlockMarkerPaintPlan {
             definitions: Vec::new(),
             paths: Vec::new(),
             references: Vec::new(),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
         };
         let Some(theme) = theme else { return Ok(plan) };
         if !theme.family_mechanism_routes().iter().any(|route| {
@@ -166,11 +166,11 @@ impl BlockMarkerPaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_fill = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.arrowheadColor",
         );
-        let config_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let config_stroke = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.lineColor",
         );
@@ -426,8 +426,8 @@ impl BlockMarkerPaintPlan {
         }
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.evidence.clone()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
     }
 }
 
@@ -488,7 +488,7 @@ mod tests {
                 fill: Some(paint(0, "#123456")),
                 stroke: Some(paint(1, "#abcdef")),
             }],
-            evidence: FamilyThemeEvidence::from_theme(None),
+            evidence: FamilyThemeOutcomes::default(),
         }
     }
 

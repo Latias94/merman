@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use merman_core::presentation::PresentationConfig;
 
-use super::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use super::{FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, ResolvedDiagramTheme, ThemeTypographyProperty,
 };
@@ -314,6 +314,21 @@ impl InheritedFontStackPlan {
     }
 
     pub(crate) fn mark_unsupported_typography_evidence(
+        &self,
+        evidence: &mut FamilyThemeOutcomes,
+        has_visible_terminals: bool,
+    ) {
+        for property in self.unsupported_typography_properties.iter().copied() {
+            let key = crate::diagram_theme::FamilyThemeMechanismKey::Typography(property);
+            if has_visible_terminals {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+    }
+
+    pub(crate) fn record_unsupported_typography_evidence(
         &self,
         evidence: &mut FamilyThemeEvidence,
         has_visible_terminals: bool,

@@ -11,11 +11,11 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 const RADAR_PALETTE_SLOT_COUNT: usize = 12;
@@ -43,7 +43,7 @@ pub(crate) struct RadarTypographyThemePlan {
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<RadarTypographyTerminalSeal>,
 }
 
@@ -85,7 +85,7 @@ impl RadarTypographyThemePlan {
             font_size_css,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -117,10 +117,10 @@ impl RadarTypographyThemePlan {
             .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(receipt) = self.terminal_receipt.get() else {
@@ -141,11 +141,11 @@ impl RadarTypographyThemePlan {
                     );
                 }
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
+            .record_unsupported_typography_evidence(
+                evidence,
                 receipt.has_visible_title
                     || receipt.has_visible_axis_label
                     || receipt.has_visible_legend_label,
@@ -168,7 +168,7 @@ impl RadarTypographyThemePlan {
                     evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(property));
                 }
             }
-            return evidence;
+            return;
         }
         let font_stack_applied =
             self.inherited_font_stack.typed_font_stack_active() && has_visible_typography;
@@ -195,7 +195,6 @@ impl RadarTypographyThemePlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 
     fn typography_requested(&self) -> bool {
@@ -212,8 +211,8 @@ impl RadarTypographyThemePlan {
 pub(crate) struct RadarTitleThemePlan {
     fill_css: Option<Box<str>>,
     typed_fill_capability: Option<ThemeCapability>,
-    evidence: FamilyThemeEvidence,
-    fallback_evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
+    fallback_evidence: FamilyThemeOutcomes,
     pending_fill_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
 }
@@ -231,7 +230,7 @@ impl RadarTitleThemePlan {
         };
 
         let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.titleColor",
         );
@@ -269,7 +268,7 @@ impl RadarTitleThemePlan {
                 (Some(css), Some(rule_index), Some(capability))
             });
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, RadarTitleRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             let FamilyThemeMechanism::RuleFacet {
@@ -313,7 +312,7 @@ impl RadarTitleThemePlan {
             }
         }
 
-        let mut fallback_evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut fallback_evidence = FamilyThemeOutcomes::default();
         let source_owned_fill = [config_owns_fill];
         reconcile_unsupported_terminal_domains(
             theme,
@@ -359,8 +358,8 @@ impl RadarTitleThemePlan {
         Self {
             fill_css: None,
             typed_fill_capability: None,
-            evidence: FamilyThemeEvidence::default(),
-            fallback_evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
+            fallback_evidence: FamilyThemeOutcomes::default(),
             pending_fill_key: None,
             terminal_receipt: OnceLock::new(),
         }
@@ -382,11 +381,12 @@ impl RadarTitleThemePlan {
         })
     }
 
-    pub(crate) fn finish_evidence(
+    pub(crate) fn record_evidence(
         &self,
         text_paint: &super::RadarTextPaintPlan,
-    ) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+        evidence: &mut FamilyThemeEvidence,
+    ) {
+        evidence.merge_borrowed(&self.evidence);
         if text_paint.has_verified_title_fallback() {
             // Generic Text paint is a real higher-priority title fill. Override only the
             // palette fallback, after its writer has finalized; title rules/effects retain
@@ -395,14 +395,13 @@ impl RadarTitleThemePlan {
                 target: ThemeTarget::Title,
             });
         }
-        evidence.merge_accounted_from(self.fallback_evidence.clone());
+        evidence.merge_borrowed(&self.fallback_evidence);
         if let Some(key) = self.pending_fill_key.clone()
             && self.terminal_receipt.get().is_some()
             && let Some(capability) = self.typed_fill_capability
         {
             evidence.mark_applied_with_capabilities(key, [capability]);
         }
-        evidence
     }
 }
 
@@ -617,7 +616,7 @@ pub(crate) struct RadarSeriesPaintPlan {
     typed_capabilities: [Option<ThemeCapability>; RADAR_PALETTE_SLOT_COUNT],
     curve_count: usize,
     show_legend: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
 }
@@ -634,7 +633,7 @@ impl RadarSeriesPaintPlan {
             return Ok(plan);
         };
 
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::ChartSeries) else {
             return Ok(plan);
         };
@@ -669,7 +668,7 @@ impl RadarSeriesPaintPlan {
                     )?;
                     if style.fill_resolution().winner().is_some()
                         || style.stroke_resolution().winner().is_some()
-                        || merman_core::__private::config_path_overrides_typed_default(
+                        || merman_core::__private::config_paint_overrides_typed_default(
                             effective_config,
                             color_scale_path,
                         )
@@ -708,7 +707,7 @@ impl RadarSeriesPaintPlan {
             typed_capabilities: [None; RADAR_PALETTE_SLOT_COUNT],
             curve_count: model.curves.len(),
             show_legend: model.options.show_legend,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             terminal_receipt: OnceLock::new(),
         }
@@ -732,10 +731,10 @@ impl RadarSeriesPaintPlan {
         self.palette_key.is_some() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(key) = self.palette_key.clone() else {
-            return evidence;
+            return;
         };
         match self.terminal_receipt.get() {
             Some(()) => {
@@ -756,7 +755,6 @@ impl RadarSeriesPaintPlan {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette)
             }
         }
-        evidence
     }
 }
 
@@ -852,6 +850,15 @@ impl RadarSeriesPaintReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
 
     #[test]
@@ -902,7 +909,7 @@ mod tests {
             typed_capabilities: [Some(ThemeCapability::SolidPaint); RADAR_PALETTE_SLOT_COUNT],
             curve_count: 1,
             show_legend: true,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
                 target: ThemeTarget::ChartSeries,
             }),
@@ -975,7 +982,8 @@ mod tests {
         receipt.record_legend_label(0, "Legend");
         receipt.record_title(true);
         assert!(complete.record_terminal(receipt));
-        let complete_evidence = complete.finish_evidence();
+        let complete_evidence =
+            collect_evidence(&theme, |evidence| complete.record_evidence(evidence));
         let applied = complete_evidence.applied();
         assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
             ThemeTypographyProperty::FontStack,
@@ -992,7 +1000,8 @@ mod tests {
         receipt.record_axis_label(0, "Axis");
         receipt.record_legend_label(0, "Legend");
         assert!(!missing_title.record_terminal(receipt));
-        let missing_title_evidence = missing_title.finish_evidence();
+        let missing_title_evidence =
+            collect_evidence(&theme, |evidence| missing_title.record_evidence(evidence));
         let residuals = missing_title_evidence.residuals();
         assert_eq!(residuals.len(), 2);
         assert!(residuals.iter().all(|residual| {
@@ -1042,7 +1051,7 @@ mod tests {
             receipt.record_title(true);
         });
 
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
         let residuals = evidence.residuals();
         assert_eq!(residuals.len(), 2);
         assert!(residuals.iter().all(|residual| {
@@ -1074,7 +1083,12 @@ mod tests {
             receipt.record_title(true);
 
             assert!(!plan.record_terminal(receipt));
-            assert_eq!(plan.finish_evidence().residuals().len(), 2);
+            assert_eq!(
+                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                    .residuals()
+                    .len(),
+                2
+            );
         }
     }
 }

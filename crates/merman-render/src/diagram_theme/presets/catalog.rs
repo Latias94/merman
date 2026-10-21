@@ -39,25 +39,25 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "a0d7c70d54b5b7f78969a7a62b4451bc888fab6324482e12ea191b3659d14c76";
+    "5707a5c8adebae2d993972196556e51f281ef3339f077bc4e2162e1bfa25f804";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "24650e89413642257c9b8ad55fac0b0994bb7f3f1e4064cbcf3dc827b3f5a736";
+    "192e48710e50100b1025b835dff480ae66a1074b54329af9bc08b614d72bf7a4";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "5f7ae0d0ad0ff070c3b8f4a59874ef6401b41059b912c2e17d30e8b134e78d67";
+    "77be73b8faad8f69ef8bf8364997d936c4d1c006a650b3a8a990f2ac755c17a9";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "812b100a7f48144dc2a41de2dc5be8ab56e9c5e581a79bae1e20db6235e3d000";
+    "1baa0be0b0ddd1f5c179512adc7a7f0eb1d495f8bffd8118f14b75af3728c9a0";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "a4ecc001e83001dcbbcafbe8e217c41ed80c3f80e74060c3e8b1fdb7415595dc";
+    "643c65c0188f9286d5bdb08dd9a06bda9767689f70585678472180947f851802";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "f9be8a2a8c4d62e81d6efecdbe869cb2c35488d695b6b108375e2fab292f21bc";
+    "e9884075adaff20130916ab8151855d0f3918ceeef3e5f521621e9c9f50728d6";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "090e67986ecc7cce9a87ae17f346b60d434411e10754a007913a049b3408001f";
+    "101b47427e8a1f388ac3fcd1ce663ad1420ca102d9a0eb6e7d3b54403d45bd44";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "c94a44d9ec2e0c3250a665816c1cdb870388c510546ee733e5866e5a5fb5e374";
+    "3703a2facf3e1d53de8a20a2cb9eb521a41622d74c1c330cdd8646085a5c929e";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "50582371e4c781931eaa756ed3db71846c23a70ccbcc90b9613afeaba7210183";
+    "39a799f7c45aa279ec8e14628b4898757dfd9bff2cb5b7c38431534d6feb1d97";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "72afab2339c1829b33e158a6e6da471c5b536a8e2ff18d3297e02d0cd9430e4f";
+    "9e99ff8ce78d85e498b9877f8e2ac29ffa52eb9122bc477453f6308e829cb5d3";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
@@ -85,6 +85,9 @@ pub(super) struct PresetPalette {
     pub(super) packet_field_label_text: &'static str,
     pub(super) series: &'static [&'static str],
     pub(super) kanban_task_labels: &'static [&'static str],
+    pub(super) gantt_active_text: &'static str,
+    pub(super) gantt_critical: &'static str,
+    pub(super) gantt_critical_text: &'static str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -325,6 +328,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#94a3b8",
             sequence_number_text: "#ffffff",
             packet_field_label_text: "#0f172a",
+            gantt_active_text: "#ffffff",
+            gantt_critical: "#be123c",
+            gantt_critical_text: "#ffffff",
             series: &[
                 "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#a16207",
                 "#65a30d",
@@ -361,6 +367,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#64748b",
             sequence_number_text: "#0f172a",
             packet_field_label_text: "#0f172a",
+            gantt_active_text: "#0f172a",
+            gantt_critical: "#fb7185",
+            gantt_critical_text: "#0f172a",
             series: &[
                 "#60a5fa", "#34d399", "#f59e0b", "#c084fc", "#22d3ee", "#fb7185", "#facc15",
                 "#a3e635",
@@ -397,6 +406,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#5c6370",
             sequence_number_text: "#282c34",
             packet_field_label_text: "#282c34",
+            gantt_active_text: "#21252b",
+            gantt_critical: "#e06c75",
+            gantt_critical_text: "#21252b",
             series: &[
                 "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
                 "#be5046",
@@ -436,6 +448,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#bdae93",
             sequence_number_text: "#ffffff",
             packet_field_label_text: "#3c3836",
+            gantt_active_text: "#ffffff",
+            gantt_critical: "#cc241d",
+            gantt_critical_text: "#ffffff",
             series: &[
                 "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
                 "#427b58",
@@ -472,6 +487,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#7c6f64",
             sequence_number_text: "#282828",
             packet_field_label_text: "#282828",
+            gantt_active_text: "#282828",
+            gantt_critical: "#fb4934",
+            gantt_critical_text: "#282828",
             series: &[
                 "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
                 "#689d6a",
@@ -511,6 +529,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#8a9199",
             sequence_number_text: "#ffffff",
             packet_field_label_text: "#5c6166",
+            gantt_active_text: "#11151c",
+            gantt_critical: "#f07171",
+            gantt_critical_text: "#11151c",
             series: &[
                 "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
                 "#399ee6",
@@ -547,6 +568,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#4f5866",
             sequence_number_text: "#0b0e14",
             packet_field_label_text: "#0b0e14",
+            gantt_active_text: "#0b0e14",
+            gantt_critical: "#f07178",
+            gantt_critical_text: "#0b0e14",
             series: &[
                 "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#ff8f40",
                 "#e6b673",
@@ -583,6 +607,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#000000",
             sequence_number_text: "#ffffff",
             packet_field_label_text: "#000000",
+            gantt_active_text: "#000000",
+            gantt_critical: "#d00000",
+            gantt_critical_text: "#ffffff",
             series: &[
                 "#FF6B35", "#4ECDC4", "#FFE66D", "#8338ec", "#3a86ff", "#d00000", "#2a9d8f",
                 "#6a4c93",
@@ -622,6 +649,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#2C2416",
             sequence_number_text: "#F5F1E8",
             packet_field_label_text: "#1a1a1a",
+            gantt_active_text: "#ffffff",
+            gantt_critical: "#b2604b",
+            gantt_critical_text: "#ffffff",
             series: &[
                 "#8b5e34", "#557a46", "#9a6aa8", "#b2604b", "#4f748d", "#987b2f", "#6f6a91",
                 "#5c7c76",
@@ -658,6 +688,9 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             activation_border: "#00f2ff",
             sequence_number_text: "#051423",
             packet_field_label_text: "#051423",
+            gantt_active_text: "#051423",
+            gantt_critical: "#fb7185",
+            gantt_critical_text: "#051423",
             series: &[
                 "#22d3ee", "#f472b6", "#a3e635", "#facc15", "#c084fc", "#38bdf8", "#fb7185",
                 "#2dd4bf",
@@ -1027,9 +1060,21 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         ),
     ]);
 
+    for (target, fill, stroke) in [
+        (ThemeTarget::Loop, None, Some("border")),
+        (ThemeTarget::SequenceNumberLabel, Some("subtle-text"), None),
+    ] {
+        design.rules.push(rule(
+            Some(DiagramFamilyId::ZENUML),
+            target,
+            None,
+            style(fill, stroke),
+        ));
+    }
     // Mindmap consumes the ordinal palette; a cross-family Node fill would suppress it.
     for family in [
         DiagramFamilyId::FLOWCHART,
+        DiagramFamilyId::C4,
         DiagramFamilyId::SWIMLANE,
         DiagramFamilyId::CLASS,
         DiagramFamilyId::TREE_VIEW,
@@ -1043,6 +1088,24 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         ));
     }
     for (family, target, fill, stroke) in [
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::NodeLabel,
+            Some("text"),
+            None,
+        ),
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::EdgeLabel,
+            Some("text"),
+            None,
+        ),
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::ClusterLabel,
+            Some("text"),
+            None,
+        ),
         (
             DiagramFamilyId::ER,
             ThemeTarget::Relation,
@@ -1067,16 +1130,53 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             Some("series.0"),
             None,
         ),
-        (
-            DiagramFamilyId::GANTT,
-            ThemeTarget::Task,
-            Some("surface"),
-            None,
-        ),
     ] {
         design
             .rules
             .push(rule(Some(family), target, None, style(fill, stroke)));
+    }
+    for (id, value) in [
+        ("gantt-active-text", palette.gantt_active_text),
+        ("gantt-critical", palette.gantt_critical),
+        ("gantt-critical-text", palette.gantt_critical_text),
+    ] {
+        color_token(
+            &mut design,
+            id,
+            id,
+            "Gantt",
+            "Authored Gantt task-state paint.",
+            value,
+        );
+    }
+    for (variant, fill, stroke, label) in [
+        (ThemeVariant::Default, "surface", "border", "text"),
+        (
+            ThemeVariant::Active,
+            "accent",
+            "accent",
+            "gantt-active-text",
+        ),
+        (ThemeVariant::Success, "surface-alt", "border", "text"),
+        (
+            ThemeVariant::Error,
+            "gantt-critical",
+            "gantt-critical",
+            "gantt-critical-text",
+        ),
+    ] {
+        design.rules.push(rule(
+            Some(DiagramFamilyId::GANTT),
+            ThemeTarget::Task,
+            Some(variant),
+            style(Some(fill), Some(stroke)),
+        ));
+        design.rules.push(rule(
+            Some(DiagramFamilyId::GANTT),
+            ThemeTarget::TaskLabel,
+            Some(variant),
+            style(Some(label), None),
+        ));
     }
     for target in [
         ThemeTarget::Node,

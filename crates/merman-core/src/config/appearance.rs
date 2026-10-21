@@ -119,6 +119,10 @@ impl<'a> AppearanceDecision<'a> {
         &self,
         effective: &mut super::presentation::PresentationConfig,
     ) {
+        effective.set_source_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
+            matches!(winner.origin, AppearanceOrigin::Source)
+                && winner.value.as_str().is_some_and(|name| name != "null")
+        }));
         for (key, winner) in APPEARANCE_KEYS.into_iter().zip(&self.winners) {
             let Some(winner) = winner else {
                 continue;
@@ -193,6 +197,53 @@ mod tests {
     use super::super::presentation::PresentationConfig;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn source_selected_palette_owns_paint_without_claiming_typography_or_geometry() {
+        let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
+        let empty = PresentationConfig::empty_object();
+        for (source, initialize, compatibility, expected) in [
+            (json!({"theme": "base"}), json!({}), json!({}), true),
+            (json!({"theme": "default"}), json!({}), json!({}), true),
+            (json!({}), json!({"theme": "forest"}), json!({}), false),
+            (json!({}), json!({}), json!({"theme": "dark"}), false),
+            (json!({}), json!({}), json!({}), false),
+            (json!({"theme": "null"}), json!({}), json!({}), false),
+        ] {
+            let source = MermaidConfig::from_value(source);
+            let initialize = MermaidConfig::from_value(initialize);
+            let compatibility = MermaidConfig::from_value(compatibility);
+            let decision = AppearanceDecision::resolve(
+                "er",
+                &source,
+                &initialize,
+                Some(&compatibility),
+                &defaults,
+            );
+            let mut effective = PresentationConfig::from_value(json!({
+                "themeVariables": {"textColor": "#333", "fontFamily": "serif", "fontSize": "16px"}
+            }));
+            decision.apply_to_presentation(&mut effective);
+            assert_eq!(
+                effective.config_paint_overrides_typed_default("themeVariables.textColor"),
+                expected,
+                "source={source:?}, initialize={initialize:?}, compatibility={compatibility:?}"
+            );
+            for path in [
+                "themeVariables.textColor",
+                "themeVariables.fontFamily",
+                "themeVariables.fontSize",
+            ] {
+                assert!(
+                    !effective.config_path_overrides_typed_default(path),
+                    "{path}"
+                );
+            }
+            assert!(!effective.config_paint_overrides_typed_default("themeVariables.missing"));
+            assert!(!effective.config_paint_overrides_typed_default("c4.relationship_line_color"));
+            assert!(!empty.config_paint_overrides_typed_default("themeVariables.textColor"));
+        }
+    }
 
     fn resolve(initialize: Value, source: Value) -> PresentationConfig {
         let defaults = MermaidConfig::from_value(json!({

@@ -373,7 +373,8 @@ fn prepare_wardley_family<'parsed>(
     let mut typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+        execution.work_meter_ref(),
+    )?;
     typography_theme
         .prepare_root_background(execution.family.root_theme_plan(), &meta.effective_config);
     let layout = crate::wardley::layout_wardley_diagram_typed_with_theme(
@@ -569,6 +570,7 @@ fn prepare_c4_family<'parsed>(
         &layout,
         &mut typography_theme,
         &meta.effective_config,
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
         pair: FamilyPair::new(model, layout),
@@ -1240,13 +1242,23 @@ fn prepare_zenuml_family<'parsed>(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let source_style = crate::zenuml::ZenumlSourceStyle::new(meta.effective_config.as_value());
+    let source_style = crate::zenuml::ZenumlSourceStyle::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        execution.work_meter_ref(),
+        execution.family.root_theme_plan().is_some_and(|plan| {
+            plan.replaces_default_family_background(
+                &meta.effective_config,
+                "themeVariables.zenuml.backgroundColor",
+            )
+        }),
+    )?;
     let layout = crate::zenuml::layout_zenuml_diagram_typed(
         model,
         &source_style.typography,
         execution.text_measurer(),
     )?;
-    let title_theme = crate::zenuml::ZenumlTitleThemePlan::resolve(
+    let theme_plan = crate::zenuml::ZenumlThemePlan::resolve(
         execution.resolved_theme(),
         model,
         &layout,
@@ -1257,7 +1269,7 @@ fn prepare_zenuml_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Zenuml(Box::new(
         ZenumlFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            title_theme,
+            theme_plan,
         },
     )))
 }

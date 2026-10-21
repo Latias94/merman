@@ -76,7 +76,8 @@ impl SequencePreparedTerminalTheme {
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let owns = |path| merman_core::__private::config_path_overrides_typed_default(config, path);
+        let owns =
+            |path| merman_core::__private::config_paint_overrides_typed_default(config, path);
         let mut note_count = 0usize;
         let mut has_lines = false;
         for message in &model.messages {
@@ -144,7 +145,7 @@ impl SequencePreparedNumberTheme {
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut prepared = Self {
-            fill_overridden: merman_core::__private::config_path_overrides_typed_default(
+            fill_overridden: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.sequenceNumberColor",
             ),

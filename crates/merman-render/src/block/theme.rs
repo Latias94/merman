@@ -13,7 +13,7 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
     FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
     reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
@@ -59,8 +59,8 @@ impl BlockLabelBackgroundPlan {
         self.0.record_terminal(has_area, background_emitted, work)
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.0.finish_evidence()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.0.record_evidence(evidence);
     }
 }
 
@@ -68,7 +68,7 @@ impl BlockLabelBackgroundPlan {
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
     paints: Box<[Option<Box<str>>]>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
 }
 
 impl BlockNodeLabelPaintPlan {
@@ -82,7 +82,7 @@ impl BlockNodeLabelPaintPlan {
         let html_labels = crate::config::config_effective_html_labels(config.as_value());
         let mut plan = Self {
             paints: Box::new([]),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
         };
         let Some(theme) = theme else { return Ok(plan) };
         if !theme.family_mechanism_routes().iter().any(|route| {
@@ -102,7 +102,7 @@ impl BlockNodeLabelPaintPlan {
             "themeVariables.textColor",
         ]
         .into_iter()
-        .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
+        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path));
         let has_ordinal = theme.family_rules().any(|(_, rule)| {
             matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
                 && rule.ordinal().is_some()
@@ -286,8 +286,8 @@ impl BlockNodeLabelPaintPlan {
         self.paints.get(node_index)?.as_deref()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.evidence.clone()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
     }
 }
 
@@ -309,7 +309,7 @@ pub(crate) struct BlockTypographyThemePlan {
     css_binding: BlockCssThemeBinding,
     padding: f64,
     text_style: crate::text::TextStyle,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     outcome: BlockTypographyOutcome,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     typed_font_stack_requested: bool,
@@ -347,7 +347,7 @@ impl BlockTypographyThemePlan {
                 padding,
                 text_style,
                 css_binding,
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 outcome: BlockTypographyOutcome::Inactive,
                 unsupported_properties: BTreeSet::new(),
                 typed_font_stack_requested: false,
@@ -425,7 +425,7 @@ impl BlockTypographyThemePlan {
             padding,
             text_style,
             css_binding,
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            evidence: FamilyThemeOutcomes::default(),
             outcome,
             unsupported_properties,
             typed_font_stack_requested: typed_font_stack,
@@ -462,8 +462,8 @@ impl BlockTypographyThemePlan {
         let _ = self.visible_labels.set(visible);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let visible = self.visible_labels.get().copied();
         for property in &self.unsupported_properties {
             let key = FamilyThemeMechanismKey::Typography(*property);
@@ -511,7 +511,6 @@ impl BlockTypographyThemePlan {
                 BlockTypographyOutcome::ConfigOwned | BlockTypographyOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 
@@ -526,7 +525,7 @@ struct BlockNodePaint {
 pub(crate) struct BlockNodePaintThemePlan {
     bindings: Box<[Option<super::node_binding::BlockNodeTerminalBinding>]>,
     paints: Box<[BlockNodePaint]>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
 }
 
 impl BlockNodePaintThemePlan {
@@ -562,11 +561,11 @@ impl BlockNodePaintThemePlan {
         let ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
         let node_config_fill = mermaid_owns_node_fill(effective_config);
         let node_config_stroke = mermaid_owns_node_stroke(effective_config);
-        let cluster_config_fill = merman_core::__private::config_path_overrides_typed_default(
+        let cluster_config_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.clusterBkg",
         );
-        let cluster_config_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let cluster_config_stroke = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.clusterBorder",
         );
@@ -675,7 +674,7 @@ impl BlockNodePaintThemePlan {
                 );
             }
         }
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<FamilyThemeMechanismKey, NodeRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             let FamilyThemeMechanism::RuleFacet {
@@ -766,7 +765,7 @@ impl BlockNodePaintThemePlan {
         Self {
             bindings: Box::new([]),
             paints: Box::new([]),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
         }
     }
 
@@ -827,8 +826,8 @@ impl BlockNodePaintThemePlan {
         self.paints.get(node_index)?.paint(property)
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.evidence.clone()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
     }
 }
 
@@ -894,11 +893,14 @@ fn observe_shell_style(
 }
 
 fn mermaid_owns_node_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    )
 }
 
 fn mermaid_owns_node_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 #[derive(Debug, Default)]
@@ -981,6 +983,15 @@ fn source_owns_property(
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     fn resolve_node_paint(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::presentation::PresentationConfig,
@@ -1055,7 +1066,7 @@ mod tests {
             .unwrap();
             assert!(plan.observes_visible_labels());
             plan.record_visible_labels(!label.trim().is_empty());
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
             assert_eq!(
                 evidence.not_applicable_mechanisms().contains(&key),
                 not_applicable
@@ -1108,7 +1119,7 @@ mod tests {
             assert_eq!(layout.nodes.len(), 1);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
 
@@ -1119,7 +1130,7 @@ mod tests {
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
 
@@ -1132,7 +1143,7 @@ mod tests {
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(!evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(!evidence.residuals().is_empty());
         }

@@ -1,0 +1,10 @@
+gantt
+    title Task states
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+    section Work
+    Done task           :done,   t1, 2026-09-01, 5d
+    Active task         :active, t2, after t1, 5d
+    Normal task         :        t3, after t2, 5d
+    Critical task       :crit,   t4, after t3, 5d
+    Active critical     :crit, active, t5, after t4, 5d

@@ -12,10 +12,10 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -111,7 +111,7 @@ pub(crate) struct PieThemePlan {
     text_fill: Option<PieTextFill>,
     inherited_font_stack: InheritedFontStackPlan,
     title_present: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_rules: BTreeMap<FamilyThemeMechanismKey, PiePendingEvidence>,
     terminal_evidence: OnceLock<PieTerminalEvidence>,
@@ -153,7 +153,7 @@ impl PieThemePlan {
             text_fill: None,
             inherited_font_stack,
             title_present: false,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             pending_rules: BTreeMap::new(),
             terminal_evidence: OnceLock::new(),
@@ -195,7 +195,7 @@ impl PieThemePlan {
             return Ok(plan);
         };
 
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         plan.resolve_palette(effective_config, theme, work_meter)?;
         plan.resolve_rules(model, effective_config, theme, work_meter)?;
         plan.resolve_title_rules(effective_config, theme, title, work_meter)?;
@@ -242,7 +242,7 @@ impl PieThemePlan {
                 self.palette_key = Some(key.clone());
                 let mut missing_typed_color = false;
                 for (index, paint) in self.paints.iter_mut().enumerate() {
-                    if merman_core::__private::config_path_overrides_typed_default(
+                    if merman_core::__private::config_paint_overrides_typed_default(
                         effective_config,
                         MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                     ) {
@@ -339,7 +339,7 @@ impl PieThemePlan {
                 ) else {
                     continue;
                 };
-                if merman_core::__private::config_path_overrides_typed_default(
+                if merman_core::__private::config_paint_overrides_typed_default(
                     effective_config,
                     MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                 ) {
@@ -491,7 +491,7 @@ impl PieThemePlan {
     ) -> Result<(), OperationWorkError> {
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             PIE_TITLE_FILL_PATH,
         );
@@ -619,7 +619,7 @@ impl PieThemePlan {
         occurrence_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             PIE_SECTION_TEXT_FILL_PATH,
         );
@@ -806,19 +806,19 @@ impl PieThemePlan {
             .is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         let Some(terminal) = self.terminal_evidence.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             if self.inherited_font_stack.typed_font_stack_requested() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, terminal.typography_applied);
+            .record_unsupported_typography_evidence(evidence, terminal.typography_applied);
         if self.inherited_font_stack.typed_font_stack_requested() {
             if terminal.typography_not_applicable {
                 evidence.mark_not_applicable(key);
@@ -896,7 +896,6 @@ impl PieThemePlan {
                 }
             }
         }
-        evidence
     }
 }
 
@@ -1279,7 +1278,7 @@ fn record_terminal_paint(
 }
 
 fn mermaid_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+    merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
 }
 
 fn explicit_config_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
@@ -1445,6 +1444,15 @@ fn default_pie_palette() -> [&'static str; MERMAID_PIE_PALETTE_SIZE] {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use std::collections::BTreeSet;
 
     use super::*;
@@ -1597,7 +1605,9 @@ mod tests {
             receipt.record_legend(&plan, index, label, Some(fill));
         }
         assert!(plan.record_terminal(receipt));
-        plan.finish_evidence()
+        collect_evidence(&resolved_slice_palette(colors), |evidence| {
+            plan.record_evidence(evidence)
+        })
     }
 
     #[test]

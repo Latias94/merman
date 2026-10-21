@@ -97,9 +97,9 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   );
 
   assert.equal(Object.isFrozen(input), true);
-  assert.match(
+  assert.equal(
     input.configuredSource,
-    /%%\{init: \{"layout":"elk","theme":"forest","fontFamily":"Arial, Helvetica, sans-serif","themeVariables":\{"fontFamily":"Arial, Helvetica, sans-serif"\}\}\}%%/,
+    '%%{init: {"layout":"elk"}}%%\nflowchart TD\n  A --> B\n',
   );
   assert.equal(input.source, "flowchart TD\n  A --> B\n");
   assert.match(input.configuredSource, /flowchart TD/);
@@ -240,12 +240,15 @@ test("invalid recipe and mixed selections are configuration errors", () => {
 
 test("preserves initialization independently from later source appearance", () => {
   const source = '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
-  const input = configuredMermanOperationInput(source, "dark", '{"layout":"dagre","secure":["theme"],"flowchart":{"curve":"linear"}}', { diagramFont: "arial" });
+  const configJson = '{"layout":"dagre","secure":["theme"],"flowchart":{"curve":"linear"}}';
+  const input = configuredMermanOperationInput(source, "dark", configJson, { diagramFont: "arial" });
   assert.equal(input.bindingOptions.site_config?.theme, "dark");
   assert.equal(input.bindingOptions.site_config?.securityLevel, undefined);
   assert.equal(input.bindingOptions.site_config?.secure, undefined);
-  assert.ok(input.configuredSource.startsWith('---\nconfig: {theme: forest}\n---\n%%{init:'));
-  assert.ok(input.configuredSource.endsWith('%%{init: {"flowchart":{"theme":"null"}}}%%'));
+  assert.equal(
+    input.configuredSource,
+    `---\nconfig: {theme: forest}\n---\n%%{init: ${configJson}}%%\nflowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%`,
+  );
   assert.equal(Object.isFrozen(input.bindingOptions.site_config), true);
   assert.equal(input.bindingOptions.site_config?.flowchart, undefined);
   assert.equal(Object.isFrozen(input.bindingOptions.site_config?.themeVariables), true);
@@ -289,7 +292,7 @@ test("keeps headless layout distinct from an observed browser screen", () => {
   });
 });
 
-test("keeps the default font in Mermaid config without enabling a compiled theme preset", () => {
+test("keeps the UI font in initialization without authoring a source theme", () => {
   const input = configuredMermanOperationInput(
     "flowchart TD\nA",
     "default",
@@ -297,11 +300,47 @@ test("keeps the default font in Mermaid config without enabling a compiled theme
     { diagramFont: "trebuchet" },
   );
 
-  assert.match(input.configuredSource, /trebuchet ms/);
+  assert.equal(input.configuredSource, input.source);
+  assert.match(String(input.bindingOptions.site_config?.fontFamily), /trebuchet ms/);
   assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
   assert.equal(input.bindingOptions.site_config?.theme, "default");
   assert.equal(input.bindingOptions.theme, undefined);
   assert.equal(input.bindingOptions.svg, undefined);
+});
+
+test("host presets retain only actual user config in the source layer", () => {
+  const source = "stateDiagram-v2\nA\nnote right of A : Terminal note";
+  for (const configJson of ["{}", '{"htmlLabels":false}']) {
+    const input = configuredMermanOperationInput(source, "default", configJson, {
+      diagramFont: "trebuchet",
+      themePresetId: "editor-dark",
+    });
+    assert.equal(
+      input.configuredSource,
+      configJson === "{}" ? source : `%%{init: ${configJson}}%%\n${source}`,
+    );
+    assert.equal(input.bindingOptions.site_config?.theme, "default");
+    assert.match(String(input.bindingOptions.site_config?.fontFamily), /trebuchet ms/);
+    assert.deepEqual(input.bindingOptions.theme, { preset: "editor-dark" });
+    assert.equal(input.configurationError, null);
+  }
+});
+
+test("runtime preserves authored theme and font overrides after safe UI initialization", () => {
+  const source = 'flowchart TD\nA-->B\n%%{init: {"theme":"dark","fontFamily":"Native Font"}}%%';
+  const configJson = '{"theme":"forest","fontFamily":"User Font","themeVariables":{"fontFamily":"Variable Font"}}';
+  const input = configuredMermanOperationInput(source, "default", configJson, {
+    diagramFont: "arial",
+    themePresetId: "editor-light",
+  });
+  assert.equal(input.configuredSource, `%%{init: ${configJson}}%%\n${source}`);
+  assert.deepEqual(input.bindingOptions.site_config, {
+    theme: "forest",
+    fontFamily: "Arial, Helvetica, sans-serif",
+    themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+  });
+  assert.deepEqual(input.bindingOptions.theme, { preset: "editor-light" });
+  assert.equal(input.configurationError, null);
 });
 
 test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
@@ -336,8 +375,8 @@ test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent",
     assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
     assert.equal(input.bindingOptions.site_config?.theme, theme);
   }
-  assert.match(themeOnly.configuredSource, /"theme":"dark"/);
-  assert.match(pipelineOnly.configuredSource, /"theme":"neutral"/);
+  assert.equal(themeOnly.configuredSource, themeOnly.source);
+  assert.equal(pipelineOnly.configuredSource, pipelineOnly.source);
 });
 
 test("freezes invalid config as operation evidence instead of throwing", () => {

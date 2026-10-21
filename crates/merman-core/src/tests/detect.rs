@@ -565,7 +565,7 @@ fn family_paint_inputs_keep_authority_across_secure_source_theme_reselection() {
                 &parsed.effective_config,
                 crate::__private::GitGraphPaintInput::MainBackground
             ),
-            Some(false)
+            Some(expected)
         );
         assert!(
             crate::__private::theme_parse_evidence(&parsed).matches_recipe(Some(plan.recipe()))
@@ -1058,7 +1058,7 @@ fn scoped_same_value_appearance_is_authored_but_secure_source_is_not() {
 }
 
 #[test]
-fn scoped_theme_derivations_do_not_become_raw_paint_authority() {
+fn scoped_source_palette_derivations_own_final_family_paint() {
     use crate::__private::{GitGraphPaintInput, install_theme_compatibility};
     let plan = node_default_plan(json!({"theme": "base"}));
     let engine = install_theme_compatibility(
@@ -1083,7 +1083,7 @@ fn scoped_theme_derivations_do_not_become_raw_paint_authority() {
     );
     assert_eq!(
         blocked(&parsed.effective_config, GitGraphPaintInput::MainBackground),
-        Some(false)
+        Some(true)
     );
 }
 

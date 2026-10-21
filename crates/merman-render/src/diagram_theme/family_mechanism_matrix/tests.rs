@@ -2711,7 +2711,7 @@ fn final_direct_family_slices_own_only_their_supported_static_scalar_fill() {
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text, false),
         (DiagramFamilyId::VENN, ThemeTarget::Title, false),
         (DiagramFamilyId::VENN, ThemeTarget::Text, true),
-        (DiagramFamilyId::ZENUML, ThemeTarget::Title, false),
+        (DiagramFamilyId::ZENUML, ThemeTarget::Title, true),
     ] {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,
@@ -2785,7 +2785,7 @@ fn final_direct_family_slices_own_only_their_supported_static_scalar_fill() {
             FamilyThemeSelectorShape::Static { variant: None },
             FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
         ),
-        FamilyThemeDisposition::Unsupported
+        FamilyThemeDisposition::TypedAdapter
     );
     for property in [
         ThemeTypographyProperty::FontStack,
@@ -2793,7 +2793,7 @@ fn final_direct_family_slices_own_only_their_supported_static_scalar_fill() {
     ] {
         assert_eq!(
             classify_base_typography(DiagramFamilyId::ZENUML, property),
-            FamilyThemeDisposition::Unsupported
+            FamilyThemeDisposition::TypedAdapter
         );
     }
     for family in [DiagramFamilyId::EVENT_MODELING, DiagramFamilyId::ISHIKAWA] {
@@ -3103,12 +3103,16 @@ fn treemap_font_stack_is_typed_while_font_size_remains_unsupported() {
 }
 
 #[test]
-fn wardley_generic_text_paint_routes_are_unsupported_without_terminals() {
+fn wardley_text_paint_routes_match_the_consumed_label_targets() {
     for paint_kind in [
         FamilyThemePaintKind::Transparent,
         FamilyThemePaintKind::Solid,
     ] {
-        for target in [ThemeTarget::Text, ThemeTarget::Title] {
+        for target in [
+            ThemeTarget::Text,
+            ThemeTarget::NodeLabel,
+            ThemeTarget::Title,
+        ] {
             for variant in [None, Some(ThemeVariant::Default)] {
                 assert_eq!(
                     classify_rule_facet(
@@ -3117,7 +3121,11 @@ fn wardley_generic_text_paint_routes_are_unsupported_without_terminals() {
                         FamilyThemeSelectorShape::Static { variant },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    FamilyThemeDisposition::Unsupported,
+                    if target == ThemeTarget::Title {
+                        FamilyThemeDisposition::Unsupported
+                    } else {
+                        FamilyThemeDisposition::TypedAdapter
+                    },
                     "target={target:?} facet=Fill({paint_kind:?}) variant={variant:?}"
                 );
             }

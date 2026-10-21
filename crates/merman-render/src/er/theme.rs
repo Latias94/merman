@@ -7,8 +7,8 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -329,7 +329,7 @@ pub(crate) struct ErEntityThemePlan {
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
     table_rows: BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>>,
     relation_strokes: Vec<ErRelationStrokeVisual>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<terminal::ErThemeOutcomes>,
 }
@@ -431,7 +431,7 @@ impl ErEntityThemePlan {
                 text_terminals: BTreeMap::new(),
                 table_rows: BTreeMap::new(),
                 relation_strokes: Vec::new(),
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             }
@@ -636,9 +636,13 @@ impl ErEntityThemePlan {
                     visible_subgraph_styles
                         .get(id.as_ref())
                         .is_some_and(ErEntitySourceStyle::owns_text_color)
-                        || effective_config
+                        || (effective_config
                             .get_str("themeVariables.titleColor")
                             .is_some()
+                            && merman_core::__private::config_paint_overrides_typed_default(
+                                effective_config,
+                                "themeVariables.titleColor",
+                            ))
                         || mermaid_owns_paint_input(
                             effective_config,
                             merman_core::__private::ErPaintInput::Text,
@@ -755,7 +759,7 @@ impl ErEntityThemePlan {
                 style_suffix,
             });
         }
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<(usize, ThemeTarget), ErRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -1023,10 +1027,10 @@ impl ErEntityThemePlan {
         self.terminal_receipt.set(receipt.into_outcomes()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, self.has_visible_typography);
+            .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
         let font_stack_key =
             FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if self.font_stack_pending {
@@ -1072,7 +1076,7 @@ impl ErEntityThemePlan {
             );
         }
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         for (key, capabilities) in &self.pending {
             let rule_index = match key {
@@ -1087,7 +1091,6 @@ impl ErEntityThemePlan {
                 evidence.mark_not_applicable(key.clone());
             }
         }
-        evidence
     }
 }
 
@@ -1301,22 +1304,22 @@ fn table_occurrence_count(
 }
 
 fn mermaid_owns_entity_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
         || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || (mermaid_owns_entity_palette(config, "bkgColorArray")
-                && entity_palette_has_colors(config, "borderColorArray"))))
+        ) && mermaid_owns_entity_palette(config, "bkgColorArray")
+            && entity_palette_has_colors(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || (matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
-            || mermaid_owns_entity_palette(config, "borderColorArray")))
+    merman_core::__private::config_paint_overrides_typed_default(
+        config,
+        "themeVariables.nodeBorder",
+    ) || (matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) && mermaid_owns_entity_palette(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_palette(
@@ -1324,7 +1327,7 @@ fn mermaid_owns_entity_palette(
     key: &str,
 ) -> bool {
     entity_palette_has_colors(config, key)
-        && merman_core::__private::config_path_overrides_typed_default(
+        && merman_core::__private::config_paint_overrides_typed_default(
             config,
             &format!("themeVariables.{key}"),
         )
@@ -1356,11 +1359,8 @@ fn mermaid_owns_text_fill(
     config: &merman_core::presentation::PresentationConfig,
     html_labels: bool,
 ) -> bool {
-    let node_text_owned =
-        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText);
-    if html_labels && (!node_text_owned || config.get_str("themeVariables.nodeTextColor").is_some())
-    {
-        node_text_owned
+    if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
+        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText)
     } else {
         mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Text)
     }
@@ -1398,7 +1398,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn redux_entity_palette_owns_typed_paint_only_when_authored() {
+    fn redux_entity_palette_owns_typed_paint_only_when_source_selected() {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(crate::diagram_theme::DiagramThemeSpec::new())
             .unwrap();
@@ -1411,7 +1411,7 @@ mod tests {
             (
                 serde_json::json!({"theme": "redux-color"}),
                 "erDiagram\nA ||--o{ B : links\n",
-                true,
+                false,
             ),
             (
                 serde_json::json!({}),

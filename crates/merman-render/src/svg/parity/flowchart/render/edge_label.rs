@@ -1399,7 +1399,8 @@ mod tests {
                 &work,
             )
             .unwrap();
-            let evidence = plan.finish_evidence();
+            let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&theme));
+            plan.record_evidence(&mut evidence);
             assert_eq!(evidence.applied().len(), usize::from(!source_style_emitted));
             assert_eq!(
                 evidence.not_applicable_mechanisms().len(),

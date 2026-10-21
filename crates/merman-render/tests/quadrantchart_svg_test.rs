@@ -24,6 +24,39 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
+#[test]
+fn quadrantchart_source_theme_preserves_point_foreground_under_host_preset() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman_render::diagram_theme::ThemePreset::EditorDark)
+        .unwrap();
+    let config = serde_json::json!({
+        "theme": "base",
+        "themeVariables": { "quadrant1Fill": "#e8f5e9" }
+    });
+    let body = "quadrantChart\n    title Value vs. cost\n    x-axis Low cost --> High cost\n    y-axis Low value --> High value\n    quadrant-1 Plan\n    quadrant-2 Do now\n    quadrant-3 Maybe\n    quadrant-4 Drop\n    Alpha: [0.75, 0.75]\n";
+    for source in [
+        format!("---\nconfig: {config}\n---\n{body}"),
+        format!("%%{{init: {config}}}%%\n{body}"),
+    ] {
+        let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Alpha"))
+            .expect("source point label");
+        assert_eq!(label.attribute("fill"), Some("#333"), "{source}");
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("rect") && node.attribute("fill") == Some("#e8f5e9")
+        }));
+    }
+}
+
 fn quadrantchart_series_radius_theme(radius: Specified<f32>) -> DiagramTheme {
     quadrantchart_series_rule_theme(ThemeRule::new(
         ThemeTarget::ChartSeries,

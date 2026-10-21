@@ -2,12 +2,13 @@
 
 #![cfg(all(feature = "svg", feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
     EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue, ThemeRule,
     ThemeRuleSet, ThemeStylePatch, ThemeTarget,
 };
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
+use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
 
 #[test]
 fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
@@ -329,15 +330,24 @@ fn underestimated_host_label_geometry_is_rejected_by_native_export() {
 
 #[test]
 fn typed_edge_background_preserves_alpha_in_native_pixels() {
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+        PresentationConfig::from_value(serde_json::json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "clusterBkg": "transparent",
+                "bkgColorArray": ["transparent"]
+            }
+        })),
+    ));
     for swimlane in [false, true] {
         for html in [false, true] {
             for padding in [0.0, 6.0] {
                 // Redux container palettes own Swimlane fills independently of clusterBkg.
-                // Select the theme explicitly so its constructor receives the palette rather than
-                // appending this array to an already materialized default palette.
+                // Initialize Redux and its transparent palette together so source array merging
+                // cannot retain an opaque container underneath the edge background under test.
                 // Keep the underlay transparent so this test isolates the label's alpha.
                 let source = format!(
-                    "---\nconfig:\n  theme: redux-color\n  htmlLabels: {html}\n  themeVariables:\n    clusterBkg: transparent\n    bkgColorArray: [transparent]\n{}---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+                    "---\nconfig:\n  htmlLabels: {html}\n{}---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
                     if swimlane { "  layout: swimlane\n" } else { "" },
                 );
                 let theme = DiagramThemeCompiler::new()
@@ -360,7 +370,7 @@ fn typed_edge_background_preserves_alpha_in_native_pixels() {
                             ),
                     )
                     .unwrap();
-                let RenderOutput::Document(Some(document)) = Renderer::new()
+                let RenderOutput::Document(Some(document)) = renderer
                     .render(
                         RenderRequest::document(
                             &source,
@@ -382,7 +392,8 @@ fn typed_edge_background_preserves_alpha_in_native_pixels() {
                         .reasons()
                         .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
                     !swimlane && html && padding > 0.0,
-                    "only the unmeasured padded HTML background retains a residual",
+                    "only the unmeasured padded HTML background retains a residual: swimlane={swimlane}, html={html}, padding={padding}; diagnostics={:?}",
+                    document.evidence().theme_diagnostics(),
                 );
                 let mut reader = png::Decoder::new(std::io::Cursor::new(output.bytes()))
                     .read_info()

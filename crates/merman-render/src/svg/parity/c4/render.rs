@@ -14,6 +14,7 @@ type C4SvgModelBoundary = C4BoundaryRenderModel;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum C4PaintItem {
     Shape(usize),
+    BoundaryBackground(usize),
     Boundary(usize),
 }
 
@@ -77,6 +78,7 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
 
                 let boundary = &layout.boundaries[index];
                 if boundary.alias != "global" {
+                    order.push(C4PaintItem::BoundaryBackground(index));
                     stack.push(C4PaintVisit::PaintBoundary(index));
                 }
                 if let Some(children) = boundaries_by_parent.get(boundary.alias.as_str()) {
@@ -924,14 +926,39 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for item in c4_paint_order(layout)? {
         options.checkpoint_emit()?;
         match item {
+            C4PaintItem::BoundaryBackground(index) => {
+                let boundary = &layout.boundaries[index];
+                if !cluster_theme.has_separate_background(&boundary.alias) {
+                    continue;
+                }
+                let (fill, _, radius) = cluster_theme
+                    .boundary_tokens(&boundary.alias)
+                    .expect("prepared boundary background");
+                let _ = write!(
+                    out,
+                    r#"<rect class="c4-boundary-background" x="{}" y="{}" fill="{}" stroke="none" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+                    fmt(boundary.x),
+                    fmt(boundary.y),
+                    escape_attr(fill),
+                    fmt(boundary.width),
+                    fmt(boundary.height),
+                    radius,
+                    radius,
+                );
+                out.checkpoint()?;
+                if let Some(receipt) = cluster_theme_receipt.as_mut() {
+                    receipt.record_checkpointed_background(&boundary.alias, fill, radius);
+                }
+            }
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
                 let meta = shape_meta.get(s.alias.as_str()).copied();
-                let paint = text_paint.element_paint(&s.alias).ok_or_else(|| {
-                    crate::Error::InvalidModel {
-                        message: format!("c4: missing prepared element paint {}", s.alias),
-                    }
-                })?;
+                let paint =
+                    text_paint
+                        .element_paint(index)
+                        .ok_or_else(|| crate::Error::InvalidModel {
+                            message: format!("c4: missing prepared element paint {}", s.alias),
+                        })?;
                 let bg_color = paint.background.as_str();
                 let border_color = paint.border.as_str();
                 let font_color = paint.text.as_str();
@@ -1044,17 +1071,18 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 if shape_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                     receipt.record_owned_color(font_color);
                 }
+                if let Some(receipt) = text_paint_receipt.as_mut() {
+                    receipt.record_element(index, paint);
+                }
             }
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
-                let font_color = typography_theme
-                    .boundary_text_color()
-                    .map(|configured| {
-                        meta.and_then(|meta| meta.font_color.as_deref())
-                            .unwrap_or(configured)
-                    })
-                    .unwrap_or("#444444");
+                let font_color = text_paint.boundary_text_color(index).ok_or_else(|| {
+                    crate::Error::InvalidModel {
+                        message: format!("c4: missing prepared boundary paint {}", b.alias),
+                    }
+                })?;
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
                 let Some((fill_color, stroke_color, boundary_radius_attr)) =
                     cluster_theme.boundary_tokens(&b.alias)
@@ -1062,6 +1090,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     return Err(crate::Error::InvalidModel {
                         message: format!("C4 cluster theme plan is missing boundary `{}`", b.alias),
                     });
+                };
+                let terminal_fill = if cluster_theme.has_separate_background(&b.alias) {
+                    "none"
+                } else {
+                    fill_color
                 };
 
                 out.push_str("<g>");
@@ -1072,7 +1105,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(fill_color),
+                        escape_attr(terminal_fill),
                         escape_attr(stroke_color),
                         fmt(b.width),
                         fmt(b.height),
@@ -1085,7 +1118,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(fill_color),
+                        escape_attr(terminal_fill),
                         escape_attr(stroke_color),
                         fmt(b.width),
                         fmt(b.height),
@@ -1098,7 +1131,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     receipt.record_checkpointed_boundary(
                         boundary_emission_ordinal,
                         &b.alias,
-                        fill_color,
+                        terminal_fill,
                         stroke_color,
                         boundary_radius_attr,
                         boundary_radius_attr,
@@ -1169,7 +1202,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 out.push_str("</g>");
                 out.checkpoint()?;
                 if boundary_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
-                    receipt.record_owned_color("#444444");
+                    receipt.record_owned_color(font_color);
+                    receipt.record_boundary(index, font_color);
                 }
             }
         }
@@ -1180,7 +1214,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
     for (idx, rel) in layout.rels.iter().enumerate() {
         let paint = text_paint
-            .relation_paint(&rel.from, &rel.to)
+            .relation_paint(idx)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!(
                     "c4: missing prepared relation paint {} -> {}",
@@ -1204,11 +1238,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 out,
                 r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"/></marker><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"/></marker></defs>"#,
                 escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
-                escape_attr(stroke_color),
-                escape_attr(stroke_color),
+                escape_attr(&paint.marker_fill),
+                escape_attr(&paint.marker_stroke),
                 escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
-                escape_attr(stroke_color),
-                escape_attr(stroke_color)
+                escape_attr(&paint.marker_fill),
+                escape_attr(&paint.marker_stroke)
             );
             out.checkpoint()?;
         }
@@ -1338,6 +1372,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
             if techn_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                 receipt.record_owned_color(text_color);
             }
+        }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_relation(idx, paint);
         }
     }
     out.push_str("</g>");

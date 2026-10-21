@@ -12,10 +12,10 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -37,7 +37,7 @@ pub(crate) struct TreeViewThemePlan {
     icon_color: Option<TreeViewPaintAssignment>,
     icon_fallback_color: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending_stroke_width_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<TreeViewThemeReceipt>,
 }
@@ -268,17 +268,17 @@ impl TreeViewThemePlan {
             .flatten();
         let line_thickness_override = terminal_winner_rule.and(static_line_thickness_candidate);
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
-        let label_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let label_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.labelColor",
         );
-        let line_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let line_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.lineColor",
         );
-        let icon_config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let icon_config_owned = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.treeView.iconColor",
         );
@@ -535,7 +535,7 @@ impl TreeViewThemePlan {
             icon_color: None,
             icon_fallback_color: None,
             inherited_font_stack,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending_stroke_width_key: None,
             terminal_receipt: OnceLock::new(),
         }
@@ -562,10 +562,10 @@ impl TreeViewThemePlan {
         receipt.proves(self) && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, self.has_visible_typography);
+            .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
         if let Some(receipt) = self.terminal_receipt.get() {
             if let Some(key) = self.pending_stroke_width_key.clone() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
@@ -624,7 +624,6 @@ impl TreeViewThemePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
-        evidence
     }
 
     pub(crate) fn label_color_css(&self) -> &str {
@@ -898,6 +897,15 @@ struct TreeViewEdgeRuleObservation {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1053,14 +1061,16 @@ mod tests {
         let theme = resolved_fill(ThemeTarget::Node);
         let model = TreeViewDiagramRenderModel::default();
 
-        let evidence = TreeViewThemePlan::resolve(
-            Some(&theme),
-            &merman_core::presentation::PresentationConfig::default(),
-            &model,
-            &work_meter(),
-        )
-        .expect("resolve visible TreeView Node evidence")
-        .finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| {
+            TreeViewThemePlan::resolve(
+                Some(&theme),
+                &merman_core::presentation::PresentationConfig::default(),
+                &model,
+                &work_meter(),
+            )
+            .expect("resolve visible TreeView Node evidence")
+            .record_evidence(evidence);
+        });
 
         assert_eq!(evidence.residuals().len(), 1);
         assert_eq!(
@@ -1081,14 +1091,16 @@ mod tests {
             ..Default::default()
         };
 
-        let evidence = TreeViewThemePlan::resolve(
-            Some(&theme),
-            &merman_core::presentation::PresentationConfig::default(),
-            &model,
-            &work_meter(),
-        )
-        .expect("resolve terminal-less TreeView title evidence")
-        .finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| {
+            TreeViewThemePlan::resolve(
+                Some(&theme),
+                &merman_core::presentation::PresentationConfig::default(),
+                &model,
+                &work_meter(),
+            )
+            .expect("resolve terminal-less TreeView title evidence")
+            .record_evidence(evidence);
+        });
 
         assert_eq!(
             evidence.not_applicable_mechanisms(),

@@ -12,9 +12,9 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
@@ -76,7 +76,7 @@ pub(crate) struct RequirementPaintThemePlan {
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title_present: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
     terminal_receipt: OnceLock<Option<RequirementPaintThemeReceipt>>,
 }
@@ -114,7 +114,7 @@ impl RequirementPaintThemePlan {
                 typed_font_size_requested: false,
                 typed_font_size_active: false,
                 title_present,
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             }
@@ -162,16 +162,33 @@ impl RequirementPaintThemePlan {
             )
         };
 
-        let mermaid_owns_fill = mermaid_owns_requirement_fill(effective_config);
-        let mermaid_owns_stroke = mermaid_owns_requirement_stroke(effective_config);
+        let mut evidence = FamilyThemeOutcomes::default();
+        let relation_paint = super::RequirementRelationPaintPlan::resolve(
+            theme,
+            effective_config,
+            model,
+            &mut evidence,
+            work_meter,
+        )?;
+        let css = super::RequirementCssBinding::resolve(
+            effective_config.as_value(),
+            inherited_font_stack
+                .typed_font_stack_active()
+                .then_some(inherited_font_stack.font_family_css()),
+            typed_font_size_active.then_some(font_size_css.as_ref()),
+            typed_font_size_active.then_some(font_size_px),
+            relation_paint.as_ref().and_then(|plan| plan.typed_color()),
+        );
+        let paint_owners = requirement_paint_owners(effective_config, &css, model, &node_indices);
         let source_owned_fill =
-            requirement_source_owned_fill_mask(model, &node_indices, mermaid_owns_fill);
+            requirement_source_owned_fill_mask(model, &node_indices, &paint_owners);
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
             BTreeMap::<(usize, ResolvedStyleProperty), ThemeCapability>::new();
 
         for (node_index, expectation) in expectations.iter_mut().enumerate() {
+            let (mermaid_owns_fill, mermaid_owns_stroke) = paint_owners[node_index];
             let style = theme.style_with_work_meter(
                 ThemeTarget::Requirement,
                 ThemeVariant::Default,
@@ -179,7 +196,11 @@ impl RequirementPaintThemePlan {
                 work_meter,
             )?;
             for (property, origin) in style.winner_rule_properties() {
-                winner_properties.insert((origin.rule_index(), property));
+                if !matches!(property, ResolvedStyleProperty::Fill if mermaid_owns_fill)
+                    && !matches!(property, ResolvedStyleProperty::Stroke if mermaid_owns_stroke)
+                {
+                    winner_properties.insert((origin.rule_index(), property));
+                }
             }
             if let Some(expected) = typed_fill_expectation(theme, &style, mermaid_owns_fill) {
                 expected_capabilities.insert(
@@ -197,14 +218,6 @@ impl RequirementPaintThemePlan {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let relation_paint = super::RequirementRelationPaintPlan::resolve(
-            theme,
-            effective_config,
-            model,
-            &mut evidence,
-            work_meter,
-        )?;
         let mut observations = BTreeMap::<usize, RequirementPaintRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -220,11 +233,6 @@ impl RequirementPaintThemePlan {
                         continue;
                     }
                     observation.applicable = true;
-                    if (mermaid_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)))
-                        || (mermaid_owns_stroke && matches!(facet, FamilyThemeRuleFacet::Stroke(_)))
-                    {
-                        continue;
-                    }
                     match (route.disposition(), facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
@@ -297,15 +305,6 @@ impl RequirementPaintThemePlan {
             }
         }
 
-        let css = super::RequirementCssBinding::resolve(
-            effective_config.as_value(),
-            inherited_font_stack
-                .typed_font_stack_active()
-                .then_some(inherited_font_stack.font_family_css()),
-            typed_font_size_active.then_some(font_size_css.as_ref()),
-            typed_font_size_active.then_some(font_size_px),
-            relation_paint.as_ref().and_then(|plan| plan.typed_color()),
-        );
         Self {
             node_visuals: BTreeMap::new(),
             css,
@@ -398,16 +397,16 @@ impl RequirementPaintThemePlan {
         complete && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(plan) = self.relation_paint.as_ref() {
-            plan.finish_evidence(&mut evidence);
+            plan.record_evidence(evidence);
         }
-        self.text_paint.finish_evidence(&mut evidence);
+        self.text_paint.record_evidence(evidence);
         let Some(Some(receipt)) = self.terminal_receipt.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(
-                    &mut evidence,
+                .record_unsupported_typography_evidence(
+                    evidence,
                     self.title_present || !self.node_indices.is_empty(),
                 );
             for (property, requested, active) in [
@@ -432,7 +431,7 @@ impl RequirementPaintThemePlan {
                     evidence.mark_not_applicable(key);
                 }
             }
-            return evidence;
+            return;
         };
         for (key, properties) in &self.pending {
             let rule_index = match key {
@@ -454,7 +453,7 @@ impl RequirementPaintThemePlan {
         }
         if self.typography_requested() {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+                .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
             for (property, requested, active, inherited_terminal, unverified_source) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -492,16 +491,18 @@ impl RequirementPaintThemePlan {
                 }
             }
         }
-        evidence
     }
 }
 
 fn requirement_source_owned_fill_mask(
     model: &RequirementDiagramRenderModel,
     node_indices: &BTreeMap<String, usize>,
-    mermaid_owns_fill: bool,
+    paint_owners: &[(bool, bool)],
 ) -> Vec<bool> {
-    let mut owned = vec![mermaid_owns_fill; node_indices.len()];
+    let mut owned = paint_owners
+        .iter()
+        .map(|(fill, _)| *fill)
+        .collect::<Vec<_>>();
     for node in model
         .requirements
         .iter()
@@ -560,31 +561,30 @@ fn typed_stroke_expectation(
     .map(DirectPaintExpectation::from_paint)
 }
 
-fn mermaid_owns_requirement_fill(config: &PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
-        || matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        )
-        || (merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.borderColorArray",
-        ) && merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.bkgColorArray",
-        ))
-}
-
-fn mermaid_owns_requirement_stroke(config: &PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        )
-        || merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.borderColorArray",
-        )
+fn requirement_paint_owners(
+    config: &PresentationConfig,
+    css: &super::RequirementCssBinding,
+    model: &RequirementDiagramRenderModel,
+    node_indices: &BTreeMap<String, usize>,
+) -> Vec<(bool, bool)> {
+    let owns = |key| merman_core::__private::config_paint_overrides_typed_default(config, key);
+    let fill = owns("themeVariables.mainBkg");
+    let stroke = owns("themeVariables.nodeBorder");
+    let background_palette = owns("themeVariables.bkgColorArray");
+    let border_palette = owns("themeVariables.borderColorArray");
+    let color_indices = super::requirement_color_indices(model);
+    let mut owners = vec![(fill, stroke); node_indices.len()];
+    for (id, node_index) in node_indices {
+        let slot = color_indices
+            .get(id)
+            .and_then(|index| css.palette_slot(*index));
+        owners[*node_index] = (
+            fill || (background_palette
+                && slot.is_some_and(|slot| css.background_colors.get(slot).is_some())),
+            stroke || (border_palette && slot.is_some()),
+        );
+    }
+    owners
 }
 
 #[derive(Debug, Default)]
@@ -852,6 +852,15 @@ fn important_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> 
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::ThemeCapability;
 
@@ -960,9 +969,13 @@ mod tests {
         let duplicate = receipt.clone();
         assert!(plan.record_terminal(Some(receipt)));
         assert!(!plan.record_terminal(Some(duplicate)));
-        assert!(plan.finish_evidence().not_applicable_mechanisms().contains(
-            &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize)
-        ));
+        assert!(
+            collect_evidence(&resolved, |evidence| plan.record_evidence(evidence))
+                .not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontSize
+                ))
+        );
     }
 
     fn stroke_receipt() -> RequirementPaintThemeReceipt {

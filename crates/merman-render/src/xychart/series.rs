@@ -11,8 +11,8 @@ use crate::diagram_theme::{
     Specified, SvgShadowEffect, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -110,7 +110,7 @@ pub(crate) struct XyChartSeriesPaintPlan {
     css: super::css_binding::XyChartCssBinding,
     chart_config: super::ChartConfig,
     paints: Vec<SeriesPaint>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     rules: BTreeSet<usize>,
     palette: Option<FamilyThemeDisposition>,
     effect_binding: Option<FamilyThemeMechanismKey>,
@@ -180,7 +180,7 @@ impl XyChartSeriesPaintPlan {
                     }
                 })
                 .collect(),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             rules: BTreeSet::new(),
             palette: None,
             effect_binding: None,
@@ -243,7 +243,7 @@ impl XyChartSeriesPaintPlan {
         if routes.is_empty() && plan.palette.is_none() && plan.effect_binding.is_none() {
             return Ok(plan);
         }
-        let source_colors = merman_core::__private::config_path_overrides_typed_default(
+        let source_colors = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.xyChart.plotColorPalette",
         );
@@ -529,8 +529,8 @@ impl XyChartSeriesPaintPlan {
         receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let mut observations: BTreeMap<usize, RuleObservation> = self
             .rules
             .iter()
@@ -604,7 +604,6 @@ impl XyChartSeriesPaintPlan {
                 );
             }
         }
-        evidence
     }
 }
 

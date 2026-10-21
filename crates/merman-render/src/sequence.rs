@@ -758,11 +758,11 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         resolved_theme,
         crate::diagram_theme::ThemeTarget::Activation,
         activation_geometry.rect_count() != 0,
-        merman_core::__private::config_path_overrides_typed_default(
+        merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.activationBkgColor",
         ),
-        merman_core::__private::config_path_overrides_typed_default(
+        merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.activationBorderColor",
         ),

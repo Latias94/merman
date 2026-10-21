@@ -8,7 +8,9 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+};
 
 /// Resolves C4's inherited base typography for the diagram title and root stylesheet.
 ///
@@ -22,16 +24,14 @@ pub(crate) struct C4TypographyThemePlan {
     element_styles: BTreeMap<String, C4ElementStyle>,
     boundary_font: crate::text::TextStyle,
     message_font: crate::text::TextStyle,
-    boundary_text_color: Option<String>,
     relationship_text_color: String,
     relationship_line_color: String,
-    themed_relationship_markers: bool,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title: Option<Box<str>>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_seal: OnceLock<C4TypographyTerminalSeal>,
 }
 
@@ -154,20 +154,14 @@ impl C4TypographyThemePlan {
             element_styles,
             boundary_font: view.boundary_font(),
             message_font: view.message_font(),
-            boundary_text_color: effective_config
-                .get_str("c4.boundary_font_color")
-                .map(str::to_owned),
             relationship_text_color: view.color("relationship_text_color", "#444444"),
             relationship_line_color: view.color("relationship_line_color", "#444444"),
-            themed_relationship_markers: effective_config
-                .get_str("c4.relationship_line_color")
-                .is_some(),
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
             typed_font_size_active,
             title: normalize_title(title),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_seal: OnceLock::new(),
         }
     }
@@ -211,17 +205,11 @@ impl C4TypographyThemePlan {
         &self.message_font
     }
 
-    pub(crate) fn boundary_text_color(&self) -> Option<&str> {
-        self.boundary_text_color.as_deref()
-    }
     pub(crate) fn relationship_text_color(&self) -> &str {
         &self.relationship_text_color
     }
     pub(crate) fn relationship_line_color(&self) -> &str {
         &self.relationship_line_color
-    }
-    pub(crate) const fn themed_relationship_markers(&self) -> bool {
-        self.themed_relationship_markers
     }
 
     #[cfg(test)]
@@ -260,45 +248,44 @@ impl C4TypographyThemePlan {
             .is_some_and(|seal| self.terminal_seal.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(seal) = self.terminal_seal.get() else {
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontStack,
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
                 false,
             );
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontSize,
                 self.typed_font_size_requested,
                 self.typed_font_size_active,
                 false,
             );
-            return evidence;
+            return;
         };
 
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
             seal.has_visible_title,
         );
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontSize,
             self.typed_font_size_requested,
             self.typed_font_size_active,
             seal.has_visible_title,
         );
-        evidence
     }
 
     fn mark_typed_property_evidence(

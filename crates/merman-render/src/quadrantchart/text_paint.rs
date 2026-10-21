@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolve_direct_static_stroke,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{
     QuadrantChartBorderLineData, QuadrantChartDiagramLayout, QuadrantChartTextData,
@@ -26,7 +26,7 @@ pub(crate) struct QuadrantChartPaintPlan {
     terminals: Arc<[(Box<str>, Box<str>)]>,
     pending: BTreeMap<(ThemeTarget, usize), BTreeSet<ThemeCapability>>,
     borders: Arc<[BorderTerminal]>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<()>,
 }
 
@@ -48,7 +48,7 @@ impl QuadrantChartPaintPlan {
             return Ok(Self::default());
         };
         let mut plan = Self {
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            evidence: FamilyThemeOutcomes::default(),
             ..Self::default()
         };
         let routes = theme
@@ -138,7 +138,7 @@ impl QuadrantChartPaintPlan {
             ),
         ] {
             let source_owned =
-                merman_core::__private::config_path_overrides_typed_default(config, path);
+                merman_core::__private::config_paint_overrides_typed_default(config, path);
             let static_style = theme.text_style_with_work_meter(
                 target,
                 ThemeVariant::Default,
@@ -300,7 +300,7 @@ impl QuadrantChartPaintPlan {
                 "themeVariables.quadrantInternalBorderStrokeFill"
             };
             let source_owned =
-                merman_core::__private::config_path_overrides_typed_default(config, path);
+                merman_core::__private::config_paint_overrides_typed_default(config, path);
             if !source_owned && let Some(paint) = &border_paint {
                 line.stroke_fill = paint.css().to_owned();
             }
@@ -444,8 +444,8 @@ impl QuadrantChartPaintPlan {
             && self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if self.terminal_receipt.get().is_some() {
             for (&(target, index), capabilities) in &self.pending {
                 evidence.mark_applied_with_capabilities(
@@ -454,7 +454,6 @@ impl QuadrantChartPaintPlan {
                 );
             }
         }
-        evidence
     }
 }
 
@@ -507,6 +506,15 @@ impl BorderTerminal {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
 
     fn label(text: &str, fill: &str) -> QuadrantChartTextData {
@@ -522,12 +530,12 @@ mod tests {
         }
     }
 
-    fn plan() -> QuadrantChartPaintPlan {
+    fn text_theme() -> ResolvedDiagramTheme {
         use crate::diagram_theme::{
             CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
             ThemeStylePatch,
         };
-        let theme = DiagramThemeCompiler::new()
+        DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(ThemeRule::new(
@@ -538,9 +546,12 @@ mod tests {
                 ),
             )
             .unwrap()
-            .resolve(crate::DiagramFamilyId::QUADRANT_CHART);
+            .resolve(crate::DiagramFamilyId::QUADRANT_CHART)
+    }
+
+    fn plan() -> QuadrantChartPaintPlan {
         QuadrantChartPaintPlan {
-            evidence: FamilyThemeEvidence::from_theme(Some(&theme)),
+            evidence: FamilyThemeOutcomes::default(),
             terminals: vec![
                 ("Point".into(), "#123456".into()),
                 ("Title".into(), "#abcdef".into()),
@@ -557,7 +568,11 @@ mod tests {
     #[test]
     fn text_receipt_requires_complete_ordered_matching_terminals_from_the_same_plan() {
         let plan = plan();
-        assert!(plan.finish_evidence().applied().is_empty());
+        assert!(
+            collect_evidence(&text_theme(), |evidence| plan.record_evidence(evidence))
+                .applied()
+                .is_empty()
+        );
         let mut missing = plan.begin_terminal_receipt().unwrap();
         missing.record(&label("Point", "#123456"));
         assert!(!plan.record_terminal(missing));
@@ -585,7 +600,12 @@ mod tests {
         complete.record(&label("Point", "#123456"));
         complete.record(&label("Title", "#abcdef"));
         assert!(plan.record_terminal(complete));
-        assert_eq!(plan.finish_evidence().applied().len(), 1);
+        assert_eq!(
+            collect_evidence(&text_theme(), |evidence| plan.record_evidence(evidence))
+                .applied()
+                .len(),
+            1
+        );
     }
     #[test]
     fn border_receipt_rejects_missing_reordered_changed_and_foreign_terminals() {
@@ -633,6 +653,11 @@ mod tests {
         complete.record_border(&line(0.0));
         complete.record_border(&line(2.0));
         assert!(plan.record_terminal(complete));
-        assert_eq!(plan.finish_evidence().applied().len(), 1);
+        assert_eq!(
+            collect_evidence(&text_theme(), |evidence| plan.record_evidence(evidence))
+                .applied()
+                .len(),
+            1
+        );
     }
 }

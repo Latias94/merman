@@ -9,9 +9,10 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::model::{JourneySectionLayout, JourneyTaskLayout};
@@ -24,7 +25,7 @@ pub(crate) struct JourneyTaskTheme {
     task_count: usize,
     tasks: Box<[JourneyTaskTerminalExpectation]>,
     sections: Box<[JourneySectionTerminalExpectation]>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, JourneyTaskPendingEvidence>,
     palette_key: Option<FamilyThemeMechanismKey>,
     palette_surface_owned: bool,
@@ -240,7 +241,7 @@ impl JourneyTaskTheme {
         missing_palette_slot |= missing_section_palette_slot;
         palette_surface_owned |= sections.iter().any(|section| section.palette.is_some());
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, JourneyTaskRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -453,7 +454,7 @@ impl JourneyTaskTheme {
             task_count: tasks.len(),
             tasks: Box::default(),
             sections: Vec::new().into_boxed_slice(),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             palette_key: None,
             palette_surface_owned: false,
@@ -528,10 +529,10 @@ impl JourneyTaskTheme {
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         for (key, pending) in &self.pending {
             let rule_index = match key {
@@ -557,7 +558,6 @@ impl JourneyTaskTheme {
                 );
             }
         }
-        evidence
     }
 }
 
@@ -593,12 +593,12 @@ fn typed_radius(
 
 fn journey_fill_source_owned(config: &PresentationConfig, task_num: i64) -> bool {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_path_overrides_typed_default(config, &path)
+    merman_core::__private::config_paint_overrides_typed_default(config, &path)
 }
 
 fn journey_palette_source_owned(config: &PresentationConfig, task_num: i64) -> Option<Box<str>> {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_path_overrides_typed_default(config, &path)
+    merman_core::__private::config_paint_overrides_typed_default(config, &path)
         .then(|| {
             config
                 .get_str(&path)
@@ -802,6 +802,15 @@ impl JourneyTaskPendingEvidence {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::{JourneyTaskTerminalExpectation, JourneyTaskTheme, JourneyTaskThemeReceipt};
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
@@ -958,7 +967,7 @@ mod tests {
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve Journey effect shadow fixture");
-        let evidence = task_theme.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| task_theme.record_evidence(evidence));
         let binding_key = FamilyThemeMechanismKey::EffectBinding {
             target: ThemeTarget::JourneyTask,
             effect_id: "bound".to_string(),

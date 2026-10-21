@@ -9,8 +9,9 @@ use crate::diagram_theme::{
     Specified, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -53,7 +54,7 @@ struct TextObservation {
 pub(crate) struct GitGraphTextPaintPlan {
     fills: [Option<DirectStaticPaint>; 3],
     observations: BTreeMap<FamilyThemeMechanismKey, TextObservation>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     title: Option<Box<str>>,
     terminal: OnceLock<TextTerminalFacts>,
 }
@@ -79,7 +80,7 @@ impl GitGraphTextPaintPlan {
         Self {
             fills: std::array::from_fn(|_| None),
             observations: BTreeMap::new(),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             title: None,
             terminal: OnceLock::new(),
         }
@@ -95,7 +96,7 @@ impl GitGraphTextPaintPlan {
             return Ok(Self::baseline());
         };
         let mut plan = Self {
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            evidence: FamilyThemeOutcomes::default(),
             ..Self::baseline()
         };
         for route in theme.family_mechanism_routes() {
@@ -145,7 +146,7 @@ impl GitGraphTextPaintPlan {
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
         let owned: [bool; 3] = std::array::from_fn(|i| {
-            merman_core::__private::config_path_overrides_typed_default(config, SOURCES[i])
+            merman_core::__private::config_paint_overrides_typed_default(config, SOURCES[i])
                 || (i == 2 && color_gen)
         });
         plan.fills = std::array::from_fn(|i| {
@@ -334,8 +335,8 @@ impl GitGraphTextPaintPlan {
         complete && self.terminal.set(receipt.facts).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for (key, observation) in &self.observations {
             let Some(facts) = self.terminal.get() else {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
@@ -377,7 +378,6 @@ impl GitGraphTextPaintPlan {
                 evidence.mark_not_applicable(key.clone());
             }
         }
-        evidence
     }
 }
 
@@ -491,6 +491,15 @@ impl GitGraphTextPaintReceipt<'_> {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
@@ -565,7 +574,7 @@ mod tests {
                 "Title"
             }));
             assert_eq!(plan.record_terminal(receipt), case == "valid", "{case}");
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert_eq!(
                 evidence.applied().len(),
                 usize::from(case == "valid"),

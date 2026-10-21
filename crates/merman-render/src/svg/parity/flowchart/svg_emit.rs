@@ -386,9 +386,6 @@ pub(super) fn render_flowchart_svg_model(
             {
                 theme_evidence.record_marker_evidence(evidence);
             }
-            if text_surface_paint.requested() {
-                theme_evidence.record_title_evidence(text_surface_paint.finish_evidence());
-            }
             Ok(rooted)
         },
     )

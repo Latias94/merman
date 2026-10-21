@@ -7,9 +7,9 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -58,7 +58,7 @@ pub(crate) struct CynefinTypographyThemePlan {
     common_css: crate::svg::PreparedCommonCss,
     colors: super::CynefinTheme,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[CynefinUnsupportedRoute]>,
     text_fill: Option<DirectStaticPaint>,
     text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
@@ -117,14 +117,14 @@ impl CynefinTypographyThemePlan {
             })
             .unwrap_or_default();
         let config_owns_text_fill = theme.is_some()
-            && (merman_core::__private::config_path_overrides_typed_default(
+            && (merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.textColor",
-            ) || merman_core::__private::config_path_overrides_typed_default(
+            ) || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.cynefin.textColor",
             ));
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut unsupported_routes = cynefin_unsupported_routes(theme, &mut evidence).into_vec();
         if let Some(theme) = theme
             && theme.ordinal_palette_disposition(ThemeTarget::Text)
@@ -132,7 +132,7 @@ impl CynefinTypographyThemePlan {
         {
             // Cynefin writes one shared text fill. Resolve its fallback without assigning
             // ordinal identities to CSS selectors; ordinal rules retain their own residuals.
-            let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+            let mut fallbacks = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 theme,
                 &mut fallbacks,
@@ -208,8 +208,8 @@ impl CynefinTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for route in &self.unsupported_routes {
             let absent_text_fallback = matches!(
                 route.key,
@@ -235,14 +235,14 @@ impl CynefinTypographyThemePlan {
                         .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+            .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_text() {
             evidence.mark_not_applicable(key);
-            return evidence;
+            return;
         }
         if self.inherited_font_stack.typed_font_stack_active() {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -275,13 +275,12 @@ impl CynefinTypographyThemePlan {
                 evidence.mark_not_applicable(key.clone());
             }
         }
-        evidence
     }
 }
 
 fn cynefin_unsupported_routes(
     theme: Option<&ResolvedDiagramTheme>,
-    evidence: &mut FamilyThemeEvidence,
+    evidence: &mut FamilyThemeOutcomes,
 ) -> Box<[CynefinUnsupportedRoute]> {
     let Some(theme) = theme else {
         return Box::new([]);

@@ -7,7 +7,7 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
     FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
     reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
@@ -20,7 +20,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct BlockEdgePaintPlan {
     declarations: Box<[Cow<'static, str>]>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
 }
 
 #[derive(Default)]
@@ -54,7 +54,7 @@ impl BlockEdgePaintPlan {
             declarations: (0..model.edges.len())
                 .map(|_| Cow::Borrowed("undefined;;;undefined"))
                 .collect(),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
         };
         let Some(theme) = theme else { return Ok(plan) };
         if !theme.family_mechanism_routes().iter().any(|route| {
@@ -73,7 +73,7 @@ impl BlockEdgePaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_owned = merman_core::__private::config_path_overrides_typed_default(
+        let config_owned = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.lineColor",
         );
@@ -249,8 +249,8 @@ impl BlockEdgePaintPlan {
         self.declarations.get(edge_index).map(AsRef::as_ref)
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.evidence.clone()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
     }
 }
 

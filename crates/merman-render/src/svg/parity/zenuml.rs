@@ -1,10 +1,9 @@
 use super::*;
 use crate::zenuml::{
-    ZENUML_FRAME_TITLE_CLASS, ZENUML_FRAME_TITLE_SELECTOR, ZenumlArrowStyle, ZenumlCommentLayout,
-    ZenumlCreationLayout, ZenumlDiagramLayout, ZenumlFragmentLayout, ZenumlLayoutFragmentKind,
-    ZenumlMessageLayout, ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout,
-    ZenumlSourceStyle, ZenumlTitleThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title,
-    zenuml_emoji_unicode,
+    ZENUML_FRAME_TITLE_CLASS, ZenumlArrowStyle, ZenumlCommentLayout, ZenumlCreationLayout,
+    ZenumlDiagramLayout, ZenumlFragmentLayout, ZenumlLayoutFragmentKind, ZenumlMessageLayout,
+    ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlSourceStyle,
+    ZenumlThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title, zenuml_emoji_unicode,
 };
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
 
@@ -16,13 +15,13 @@ pub(super) fn render_zenuml_diagram_svg_model(
     model: &ZenumlDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    title_theme: &ZenumlTitleThemePlan,
+    theme_plan: &ZenumlThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("zenuml");
     let title = resolve_zenuml_title(model, diagram_title);
-    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
-    let theme = title_theme.source_style();
+    let mut theme_receipt = theme_plan.begin_terminal_receipt();
+    let theme = theme_plan.source_style();
     let vertical_scale = theme.typography.vertical_scale();
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
@@ -47,18 +46,16 @@ pub(super) fn render_zenuml_diagram_svg_model(
     out.push_str("<defs><style>");
     write_zenuml_css(
         &mut super::output::XmlTextOutput::new(&mut out),
-        super::util::css_selector_diagram_id(diagram_id),
-        title_theme
-            .fill_css()
-            .unwrap_or_else(|| theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL)),
+        diagram_id,
+        theme.color(
+            "titleTextColor",
+            theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL),
+        ),
         theme,
     );
     out.push_str("</style></defs>");
     out.checkpoint()?;
-    if let (Some(receipt), Some(fill_css)) = (title_theme_receipt.as_mut(), title_theme.fill_css())
-    {
-        receipt.record_stylesheet_writer(ZENUML_FRAME_TITLE_SELECTOR, fill_css);
-    }
+    theme_receipt.record_stylesheet();
     let _ = write!(
         &mut out,
         r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,
@@ -86,9 +83,8 @@ pub(super) fn render_zenuml_diagram_svg_model(
             escape_xml(&resolve_emoji_in_text(title)),
         );
         out.checkpoint()?;
-        if let Some(receipt) = title_theme_receipt.as_mut() {
-            receipt.record_frame_title_text_writer("text", ZENUML_FRAME_TITLE_CLASS, title);
-        }
+        theme_receipt.record_colors(&["titleTextColor"]);
+        theme_receipt.record_text(title);
     }
     let _ = write!(
         &mut out,
@@ -130,6 +126,11 @@ pub(super) fn render_zenuml_diagram_svg_model(
         }
         out.push_str("</g>");
         out.checkpoint()?;
+        theme_receipt.record_colors(&["groupBorderColor"]);
+        if !group.name.is_empty() {
+            theme_receipt.record_colors(&["groupBackgroundColor", "groupTextColor"]);
+            theme_receipt.record_text(&group.name);
+        }
     }
     for lifeline in &layout.lifelines {
         let _ = write!(
@@ -143,12 +144,23 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
+    if !layout.lifelines.is_empty() {
+        theme_receipt.record_colors(&["lifelineColor"]);
+    }
     for participant in layout
         .participants
         .iter()
         .filter(|participant| !creation_names.contains(participant.name.as_str()))
     {
         render_participant(&mut out, participant, theme)?;
+        theme_receipt.record_colors(&["actorBorderColor"]);
+        if participant.color.is_none() {
+            theme_receipt.record_colors(&["actorBackgroundColor"]);
+        }
+        if !participant.is_starter {
+            theme_receipt.record_colors(&["actorTextColor"]);
+            theme_receipt.record_text(&participant.label);
+        }
     }
     for occurrence in &layout.occurrences {
         let _ = write!(
@@ -163,23 +175,61 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
+    if !layout.occurrences.is_empty() {
+        theme_receipt.record_colors(&["activationBackgroundColor", "activationBorderColor"]);
+    }
     for creation in &layout.creations {
         render_participant(&mut out, &creation.participant, theme)?;
+        theme_receipt.record_colors(&["actorBorderColor", "actorTextColor"]);
+        if creation.participant.color.is_none() {
+            theme_receipt.record_colors(&["actorBackgroundColor"]);
+        }
+        theme_receipt.record_text(&creation.participant.label);
     }
     for message in &layout.messages {
         render_message(&mut out, message, theme)?;
+        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
+        if !message.style.contains_key("fill") {
+            theme_receipt.record_colors(&["messageTextColor"]);
+        }
+        theme_receipt.record_text(&message.label);
     }
     for self_call in &layout.self_calls {
         render_self_call(&mut out, self_call, theme)?;
+        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
+        if !self_call.style.contains_key("fill") {
+            theme_receipt.record_colors(&["messageTextColor"]);
+        }
+        theme_receipt.record_text(&self_call.label);
     }
     for creation in &layout.creations {
         render_creation(&mut out, creation, theme)?;
+        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
+        if !creation.message.style.contains_key("fill") {
+            theme_receipt.record_colors(&["messageTextColor"]);
+        }
+        theme_receipt.record_text(&creation.message.label);
     }
     for returned in &layout.returns {
         render_return(&mut out, returned, theme)?;
+        theme_receipt.record_colors(&["messageTextColor"]);
+        if !returned.is_self {
+            theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
+        }
+        theme_receipt.record_text(&returned.label);
     }
     for fragment in &layout.fragments {
         render_fragment(&mut out, fragment, theme)?;
+        theme_receipt.record_colors(&[
+            "fragmentBorderColor",
+            "mutedSurfaceColor",
+            "fragmentTextColor",
+        ]);
+        if !fragment.number.is_empty() {
+            theme_receipt.record_colors(&["sequenceNumberTextColor"]);
+            theme_receipt.record_text(&fragment.number);
+        }
+        theme_receipt.record_text(&fragment.label);
     }
     for divider in &layout.dividers {
         let center_x = divider.width / 2.0;
@@ -217,15 +267,25 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
+    if !layout.dividers.is_empty() {
+        theme_receipt.record_colors(&["noteBackgroundColor", "noteBorderColor", "noteTextColor"]);
+    }
+    for divider in &layout.dividers {
+        theme_receipt.record_text(&divider.label);
+    }
     for comment in &layout.comments {
         render_comment(&mut out, comment, theme)?;
+        if !comment.style.contains_key("fill") {
+            theme_receipt.record_colors(&["subtleTextColor"]);
+        }
+        theme_receipt.record_text(&comment.text);
     }
     out.push_str("</g></svg>");
     out.checkpoint()?;
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+    if !theme_plan.record_terminal(theme_receipt) {
         return Err(crate::Error::InvalidModel {
-            message: "ZenUML title theme receipt did not match text.frame-title".to_string(),
+            message: "ZenUML family theme receipt was already completed".to_string(),
         });
     }
     Ok(rooted_svg)
@@ -555,7 +615,7 @@ fn render_self_call(
     } else {
         "M1 1.25 L6.15 4.5 L1 7.75 Z"
     };
-    let line_color = theme.color("lineColor", "#000");
+    let line_color = theme.color("messageLineColor", theme.color("lineColor", "#000"));
     let arrow_fill = if asynchronous { "none" } else { line_color };
     let view_box = if vertical_scale == 1.0 {
         ""
@@ -712,9 +772,9 @@ fn render_arrow_head(
         if filled { "" } else { " arrow-open" },
         transform,
         close,
-        escape_attr(theme.color("lineColor", "#000")),
+        escape_attr(theme.color("messageLineColor", theme.color("lineColor", "#000"))),
         escape_attr(if filled {
-            theme.color("lineColor", "#000")
+            theme.color("messageLineColor", theme.color("lineColor", "#000"))
         } else {
             "none"
         }),
@@ -1140,32 +1200,49 @@ fn resolve_emoji_in_text(text: &str) -> String {
     resolve_zenuml_emojis_in_text(text)
 }
 
-fn zenuml_css(
+fn default_zenuml_css(diagram_id: impl std::fmt::Display) -> String {
+    format!(
+        r#"
+#{diagram_id} .frame-border-outer{{fill:#666}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:#fff}}#{diagram_id} .frame-header-line{{stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}}#{diagram_id} .participant-box{{fill:#fff;stroke:#666;stroke-width:2}}#{diagram_id} .participant-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .participant-icon{{color:#222}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:#666;stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:16px}}#{diagram_id} .stereotype-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .lifeline{{stroke:#666;stroke-width:1}}#{diagram_id} .message-line{{stroke:#000;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .arrow-head{{fill:#000;stroke:#000;stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:#dedede;stroke:#666;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:#dedede;fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:Helvetica,Verdana,serif;font-size:14px;font-weight:600;fill:#000}}#{diagram_id} .fragment-condition{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .fragment-separator{{stroke:#e5e7eb;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .return-line{{stroke:#000;stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:#000;stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .return-icon{{fill:#222}}#{diagram_id} .divider-line{{stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-bg{{fill:#fff5ad;stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333}}#{diagram_id} .comment-text{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333;opacity:.5}}#{diagram_id} .seq-number{{font-family:Helvetica,Verdana,serif;font-size:12px;font-weight:100;fill:#6b7280}}#{diagram_id} .group-outline{{fill:none;stroke:#666}}#{diagram_id} .group-title-bg{{fill:#fff;stroke:none}}#{diagram_id} .group-title-text{{font-family:Helvetica,Verdana,serif;font-size:13px;font-weight:400;fill:#222}}
+"#
+    )
+}
+
+fn themed_zenuml_css(
     diagram_id: impl std::fmt::Display,
     theme: &ZenumlSourceStyle,
     title_fill: &str,
 ) -> String {
     let mut css = format!(
         r#"
-#{diagram_id} .frame-border-outer{{fill:{border}}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:{background}}}#{diagram_id} .frame-header-line{{stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:{font_family};font-size:{size_16}px;font-weight:600;fill:{title_fill}}}#{diagram_id} .participant-box{{fill:{actor_background};stroke:{actor_border};stroke-width:2}}#{diagram_id} .participant-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .participant-icon{{color:{actor_text}}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{actor_border};stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:{size_16}px}}#{diagram_id} .stereotype-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .lifeline{{stroke:{line};stroke-width:1}}#{diagram_id} .message-line{{stroke:{message_line};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .arrow-head{{fill:{message_line};stroke:{message_line};stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:{activation_background};stroke:{activation_border};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:{muted_surface};fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:{font_family};font-size:{size_14}px;font-weight:600;fill:{fragment_header_text}}}#{diagram_id} .fragment-condition{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .fragment-separator{{stroke:{separator};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .return-line{{stroke:{message_line};stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:{message_line};stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .return-icon{{fill:{text}}}#{diagram_id} .divider-line{{stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-bg{{fill:{note_background};stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-label{{font-family:{font_family};font-size:{size_14}px;fill:{note_text}}}#{diagram_id} .comment-text{{font-family:{font_family};font-size:{size_14}px;fill:{comment_text};opacity:.5}}#{diagram_id} .seq-number{{font-family:{font_family};font-size:{size_12}px;font-weight:100;fill:{subtle_text}}}#{diagram_id} .group-outline{{fill:none;stroke:{group_border}}}#{diagram_id} .group-title-bg{{fill:{group_background};stroke:none}}#{diagram_id} .group-title-text{{font-family:{font_family};font-size:{size_13}px;font-weight:400;fill:{group_text}}}
+#{diagram_id} .frame-border-outer{{fill:{outer_paint}}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:{background}}}#{diagram_id} .frame-header-line{{stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:{font_family};font-size:{size_16}px;font-weight:600;fill:{title_fill}}}#{diagram_id} .participant-box{{fill:{actor_background};stroke:{actor_border};stroke-width:2}}#{diagram_id} .participant-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .participant-icon{{color:{actor_text}}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{actor_border};stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:{size_16}px}}#{diagram_id} .stereotype-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .lifeline{{stroke:{line};stroke-width:1}}#{diagram_id} .message-line{{stroke:{message_line};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .arrow-head{{fill:{message_line};stroke:{message_line};stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:{activation_background};stroke:{activation_border};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:{fragment_border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:{muted_surface};fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:{font_family};font-size:{size_14}px;font-weight:600;fill:{fragment_header_text}}}#{diagram_id} .fragment-condition{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .fragment-separator{{stroke:{separator};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .return-line{{stroke:{message_line};stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:{message_line};stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .return-icon{{fill:{text}}}#{diagram_id} .divider-line{{stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-bg{{fill:{note_background};stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-label{{font-family:{font_family};font-size:{size_14}px;fill:{note_text}}}#{diagram_id} .comment-text{{font-family:{font_family};font-size:{size_14}px;fill:{comment_text};opacity:.5}}#{diagram_id} .seq-number{{font-family:{font_family};font-size:{size_12}px;font-weight:100;fill:{subtle_text}}}#{diagram_id} .group-outline{{fill:none;stroke:{group_border}}}#{diagram_id} .group-title-bg{{fill:{group_background};stroke:none}}#{diagram_id} .group-title-text{{font-family:{font_family};font-size:{size_13}px;font-weight:400;fill:{group_text}}}
 "#,
         font_family = theme.typography.css_family(),
         size_16 = fmt(theme.typography.size(16.0)),
         size_14 = fmt(theme.typography.size(14.0)),
         size_12 = fmt(theme.typography.size(12.0)),
         size_13 = fmt(theme.typography.size(13.0)),
+        outer_paint = if theme.transparent_frame() {
+            format!(
+                "none;stroke:{};stroke-width:2",
+                theme.color("borderColor", "#666")
+            )
+        } else {
+            theme.color("borderColor", "#666").to_owned()
+        },
         border = theme.color("borderColor", "#666"),
         background = theme.color("backgroundColor", "#fff"),
-        text = theme.color("textColor", "#222"),
+        text = theme.color("messageTextColor", theme.color("textColor", "#222")),
         actor_background = theme.color("actorBackgroundColor", "#fff"),
         actor_border = theme.color("actorBorderColor", "#666"),
         actor_text = theme.color("actorTextColor", "#222"),
-        line = theme.color("lineColor", "#666"),
-        message_line = theme.color("lineColor", "#000"),
+        line = theme.color("lifelineColor", theme.color("lineColor", "#666")),
+        message_line = theme.color("messageLineColor", theme.color("lineColor", "#000")),
         activation_background = theme.color("activationBackgroundColor", "#dedede"),
         activation_border = theme.color("activationBorderColor", "#666"),
         muted_surface = theme.color("mutedSurfaceColor", "#dedede"),
-        fragment_text = theme.color("textColor", "#000"),
+        fragment_border = theme.color("fragmentBorderColor", theme.color("borderColor", "#666")),
+        fragment_text = theme.color("fragmentTextColor", theme.color("textColor", "#000")),
         fragment_header_text = theme.color("fragmentTextColor", "#000"),
         group_text = theme.color("groupTextColor", "#222"),
         separator = theme.color("borderColor", "#e5e7eb"),
@@ -1173,7 +1250,10 @@ fn zenuml_css(
         note_background = theme.color("noteBackgroundColor", "#fff5ad"),
         note_text = theme.color("noteTextColor", "#333"),
         comment_text = theme.color("subtleTextColor", "#333"),
-        subtle_text = theme.color("subtleTextColor", "#6b7280"),
+        subtle_text = theme.color(
+            "sequenceNumberTextColor",
+            theme.color("subtleTextColor", "#6b7280")
+        ),
         group_border = theme.color("groupBorderColor", "#666"),
         group_background = theme.color("groupBackgroundColor", "#fff"),
     );
@@ -1184,6 +1264,18 @@ fn zenuml_css(
         let _ = write!(&mut css, "#{diagram_id} .fragment-icon{{color:{}}}", color);
     }
     css
+}
+
+fn zenuml_css(
+    diagram_id: impl std::fmt::Display,
+    theme: &ZenumlSourceStyle,
+    title_fill: &str,
+) -> String {
+    if theme.uses_default_css() && title_fill == ZENUML_DEFAULT_TITLE_FILL {
+        default_zenuml_css(diagram_id)
+    } else {
+        themed_zenuml_css(diagram_id, theme, title_fill)
+    }
 }
 
 const ZENUML_DEFAULT_TITLE_FILL: &str = "#222";
@@ -1201,6 +1293,16 @@ fn write_zenuml_css(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn zenuml_default_css_fast_path_matches_dynamic_template() {
+        let theme = ZenumlSourceStyle::new(&serde_json::Value::Null);
+
+        assert_eq!(
+            default_zenuml_css("test"),
+            themed_zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL)
+        );
+    }
 
     #[test]
     fn zenuml_css_has_one_final_frame_title_fill_owner() {

@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolve_direct_static_stroke,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -109,7 +109,7 @@ pub(crate) struct TimelineEventTheme {
     palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT],
     palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT],
     palette_key: Option<FamilyThemeMechanismKey>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, TimelineEventPendingEvidence>,
     terminal_outcome: OnceLock<TimelineEventThemeOutcome>,
 }
@@ -178,7 +178,7 @@ impl TimelineEventTheme {
                     continue;
                 }
                 let color_scale_path = format!("themeVariables.cScale{slot}");
-                let paint = if merman_core::__private::config_path_overrides_typed_default(
+                let paint = if merman_core::__private::config_paint_overrides_typed_default(
                     effective_config,
                     &color_scale_path,
                 ) {
@@ -228,7 +228,7 @@ impl TimelineEventTheme {
             None,
             work_meter,
         )?;
-        let source_owns_event_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let source_owns_event_stroke = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.nodeBorder",
         );
@@ -293,7 +293,7 @@ impl TimelineEventTheme {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::outcomes();
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, TimelineEventRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -514,7 +514,7 @@ impl TimelineEventTheme {
             palette_slots: std::array::from_fn(|_| None),
             palette_line_strokes: std::array::from_fn(|_| None),
             palette_key: None,
-            evidence: FamilyThemeEvidence::outcomes(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             terminal_outcome: OnceLock::new(),
         }
@@ -577,10 +577,10 @@ impl TimelineEventTheme {
         let _ = self.terminal_outcome.set(outcome);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(outcome) = self.terminal_outcome.get() else {
-            return evidence;
+            return;
         };
         for (key, pending) in &self.pending {
             let rule_index = match key {
@@ -606,7 +606,6 @@ impl TimelineEventTheme {
                 );
             }
         }
-        evidence
     }
 }
 
@@ -630,13 +629,13 @@ fn timeline_event_fill_source_owned(
         return false;
     };
     if binding.use_neo_gradient {
-        return merman_core::__private::config_path_overrides_typed_default(
+        return merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.mainBkg",
         );
     }
     if !binding.is_redux_theme {
-        return merman_core::__private::config_path_overrides_typed_default(
+        return merman_core::__private::config_paint_overrides_typed_default(
             config,
             &format!("themeVariables.cScale{slot}"),
         );
@@ -644,7 +643,7 @@ fn timeline_event_fill_source_owned(
 
     if binding.is_color_theme && !binding.is_dark_theme {
         if binding.has_source_border_slot(slot) {
-            return merman_core::__private::config_path_overrides_typed_default(
+            return merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.borderColorArray",
             );
@@ -656,7 +655,7 @@ fn timeline_event_fill_source_owned(
         return false;
     }
 
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 fn timeline_classic_line_stroke(
@@ -669,7 +668,7 @@ fn timeline_classic_line_stroke(
         return None;
     }
     let inverse_path = format!("themeVariables.cScaleInv{slot}");
-    if merman_core::__private::config_path_overrides_typed_default(config, &inverse_path) {
+    if merman_core::__private::config_paint_overrides_typed_default(config, &inverse_path) {
         return binding
             .source_inverse(slot)
             .map(str::to_owned)

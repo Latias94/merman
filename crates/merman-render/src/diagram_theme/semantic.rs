@@ -213,7 +213,7 @@ impl ThemeTarget {
             | Self::LoopLabelBackground
             | Self::LoopLabel
             | Self::Activation => {
-                matches!(family, DiagramFamilyId::SEQUENCE)
+                matches!(family, DiagramFamilyId::SEQUENCE | DiagramFamilyId::ZENUML)
             }
             Self::Requirement => matches!(family, DiagramFamilyId::REQUIREMENT),
             Self::Entity => matches!(family, DiagramFamilyId::ER),
@@ -231,7 +231,7 @@ impl ThemeTarget {
             Self::TimelineEvent => matches!(family, DiagramFamilyId::TIMELINE),
             Self::JourneyTask => matches!(family, DiagramFamilyId::JOURNEY),
             Self::Task => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
-            Self::TaskLabel => matches!(family, DiagramFamilyId::KANBAN),
+            Self::TaskLabel => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
             Self::PacketByteLabel | Self::PacketFieldLabel => {
                 matches!(family, DiagramFamilyId::PACKET)
             }
@@ -245,6 +245,7 @@ impl ThemeTarget {
             Self::Node => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
                     | DiagramFamilyId::MINDMAP
@@ -257,6 +258,7 @@ impl ThemeTarget {
             Self::Edge => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
                     | DiagramFamilyId::MINDMAP
@@ -275,11 +277,15 @@ impl ThemeTarget {
                         | DiagramFamilyId::TREE_VIEW
                         | DiagramFamilyId::BLOCK
                         | DiagramFamilyId::GIT_GRAPH
-                )
+                ) || (family == DiagramFamilyId::C4
+                    && matches!(self, Self::NodeLabel | Self::EdgeLabel | Self::ClusterLabel))
+                    || (family == DiagramFamilyId::ZENUML && self == Self::ClusterLabel)
+                    || (family == DiagramFamilyId::WARDLEY && self == Self::NodeLabel)
             }
             Self::Marker => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
                     | DiagramFamilyId::MINDMAP
@@ -291,6 +297,7 @@ impl ThemeTarget {
             Self::Cluster => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::ZENUML
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::ARCHITECTURE
                     | DiagramFamilyId::C4
@@ -302,7 +309,10 @@ impl ThemeTarget {
             ),
             Self::Canvas | Self::Title | Self::Text => true,
             Self::Note | Self::NoteLabel => {
-                matches!(family, DiagramFamilyId::SEQUENCE | DiagramFamilyId::STATE)
+                matches!(
+                    family,
+                    DiagramFamilyId::SEQUENCE | DiagramFamilyId::STATE | DiagramFamilyId::ZENUML
+                )
             }
         }
     }
@@ -1010,7 +1020,7 @@ mod tests {
             Some(ThemeTarget::TaskLabel)
         );
         assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::KANBAN));
-        assert!(!ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::GANTT));
+        assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::GANTT));
     }
 
     #[test]

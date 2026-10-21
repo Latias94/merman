@@ -31,11 +31,11 @@ impl SequencePreparedActorTheme {
         };
 
         let has_actors = !model.actor_order.is_empty();
-        let fill_overridden = merman_core::__private::config_path_overrides_typed_default(
+        let fill_overridden = merman_core::__private::config_paint_overrides_typed_default(
             sanitize_config,
             "themeVariables.actorBkg",
         );
-        let stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        let stroke_overridden = merman_core::__private::config_paint_overrides_typed_default(
             sanitize_config,
             "themeVariables.actorBorder",
         );

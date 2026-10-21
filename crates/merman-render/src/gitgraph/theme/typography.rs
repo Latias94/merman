@@ -7,7 +7,9 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+};
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::text::TextStyle;
 
@@ -89,7 +91,7 @@ pub(crate) struct GitGraphTypographyThemePlan {
     tag_label_font_size: GitGraphRoleFontSize,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<GitGraphTypographyTerminalSeal>,
 }
 
@@ -151,7 +153,7 @@ impl GitGraphTypographyThemePlan {
             tag_label_font_size,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -211,15 +213,15 @@ impl GitGraphTypographyThemePlan {
             .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(receipt) = self.terminal_receipt.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             for (property, requested) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -237,12 +239,12 @@ impl GitGraphTypographyThemePlan {
                     );
                 }
             }
-            return evidence;
+            return;
         };
 
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
+            .record_unsupported_typography_evidence(
+                evidence,
                 receipt.has_visible_font_stack_terminal,
             );
 
@@ -277,7 +279,6 @@ impl GitGraphTypographyThemePlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 
     fn typography_requested(&self) -> bool {
@@ -515,6 +516,15 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -527,17 +537,21 @@ mod tests {
         typography_plan_with_config(PresentationConfig::default())
     }
 
-    fn typography_plan_with_config(config: PresentationConfig) -> GitGraphTypographyThemePlan {
+    fn typography_theme() -> ResolvedDiagramTheme {
         let typography = ThemeTextStyle::default()
             .with_font_stack(FontStack::single("GitGraphReceipt").expect("valid font stack"))
             .with_font_size_px(23.0)
             .expect("valid font size");
-        let theme = DiagramThemeCompiler::new()
+        DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_typography(
                 TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
             ))
             .expect("compile GitGraph typography receipt theme")
-            .resolve(DiagramFamilyId::GIT_GRAPH);
+            .resolve(DiagramFamilyId::GIT_GRAPH)
+    }
+
+    fn typography_plan_with_config(config: PresentationConfig) -> GitGraphTypographyThemePlan {
+        let theme = typography_theme();
         GitGraphTypographyThemePlan::resolve(Some(&theme), &config)
     }
 
@@ -607,7 +621,9 @@ mod tests {
         let plan = typography_plan();
         let layout = layout();
         assert!(plan.record_terminal(complete_receipt(&plan, &layout)));
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&typography_theme(), |evidence| {
+            plan.record_evidence(evidence)
+        });
         let applied = evidence.applied();
         assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
             ThemeTypographyProperty::FontStack,
@@ -780,7 +796,9 @@ mod tests {
         let inherited_seal = inherited.terminal_receipt.get().expect("terminal seal");
         assert!(inherited_seal.has_visible_base_dependent_role_font_size_terminal);
         assert!(!inherited_seal.has_visible_unmeasurable_role_font_size_terminal);
-        let inherited_evidence = inherited.finish_evidence();
+        let inherited_evidence = collect_evidence(&typography_theme(), |evidence| {
+            inherited.record_evidence(evidence)
+        });
         let inherited_applied = inherited_evidence.applied();
         assert!(
             inherited_applied.contains(&FamilyThemeMechanismKey::Typography(
@@ -811,6 +829,12 @@ mod tests {
         assert!(unmeasurable.record_terminal(receipt));
         let unmeasurable_seal = unmeasurable.terminal_receipt.get().expect("terminal seal");
         assert!(unmeasurable_seal.has_visible_unmeasurable_role_font_size_terminal);
-        assert_eq!(unmeasurable.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&typography_theme(), |evidence| unmeasurable
+                .record_evidence(evidence))
+            .residuals()
+            .len(),
+            1
+        );
     }
 }

@@ -9,9 +9,10 @@ use crate::diagram_theme::{
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, SingleTitleFillPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    SingleTitleFillPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::TreemapDiagramLayout;
@@ -178,7 +179,7 @@ pub(crate) struct TreemapTypographyThemePlan {
     leaf_source_styles: Box<[TreemapSourceTextStyle]>,
     possible_participating_text_count: usize,
     text_fallback_terminal_capacity: Option<usize>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<TreemapTypographyTerminalSeal>,
     _retained_reservation: PreparedTextRetainedReservation,
     _visual_retained_reservation: Option<PreparedTextRetainedReservation>,
@@ -264,17 +265,17 @@ impl TreemapTypographyThemePlan {
             }
         }
         let theme_text_color_is_source_owned =
-            merman_core::__private::config_path_overrides_typed_default(
+            merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "themeVariables.textColor",
             );
         let label_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "treemap.labelColor",
             );
         let value_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 "treemap.valueColor",
             );
@@ -408,7 +409,7 @@ impl TreemapTypographyThemePlan {
             leaf_source_styles: leaf_source_styles.into_boxed_slice(),
             possible_participating_text_count,
             text_fallback_terminal_capacity,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
             _retained_reservation: retained_reservation,
             _visual_retained_reservation: None,
@@ -556,7 +557,7 @@ impl TreemapTypographyThemePlan {
             let Some(theme) = theme else {
                 return Ok(false);
             };
-            let mut fallback_evidence = FamilyThemeEvidence::from_theme(Some(theme));
+            let mut fallback_evidence = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 theme,
                 &mut fallback_evidence,
@@ -572,12 +573,12 @@ impl TreemapTypographyThemePlan {
         Ok(self.terminal_receipt.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         let Some(receipt) = self.terminal_receipt.get() else {
-            let mut evidence = self.evidence.clone();
+            evidence.merge_borrowed(&self.evidence);
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(
-                    &mut evidence,
+                .record_unsupported_typography_evidence(
+                    evidence,
                     self.possible_participating_text_count != 0,
                 );
             if self.inherited_font_stack.typed_font_stack_requested()
@@ -606,20 +607,13 @@ impl TreemapTypographyThemePlan {
                     );
                 }
             }
-            return evidence;
+            return;
         };
 
-        let mut evidence = receipt
-            .fallback_evidence
-            .as_ref()
-            .unwrap_or(&self.evidence)
-            .clone();
+        evidence.merge_borrowed(receipt.fallback_evidence.as_ref().unwrap_or(&self.evidence));
         if self.inherited_font_stack.typography_requested() {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(
-                    &mut evidence,
-                    receipt.participating_count != 0,
-                );
+                .record_unsupported_typography_evidence(evidence, receipt.participating_count != 0);
             if self.inherited_font_stack.typed_font_stack_requested() {
                 let key = FamilyThemeMechanismKey::Typography(
                     crate::diagram_theme::ThemeTypographyProperty::FontStack,
@@ -678,7 +672,6 @@ impl TreemapTypographyThemePlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 }
 
@@ -814,7 +807,7 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
 
 #[derive(Debug)]
 struct TreemapTypographyTerminalSeal {
-    fallback_evidence: Option<FamilyThemeEvidence>,
+    fallback_evidence: Option<FamilyThemeOutcomes>,
     participating_count: usize,
     text_participating_count: usize,
     source_owned_count: usize,
@@ -1154,10 +1147,10 @@ impl TreemapTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "treemap.titleColor",
-        ) || merman_core::__private::config_path_overrides_typed_default(
+        ) || merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.titleColor",
         );
@@ -1165,7 +1158,7 @@ impl TreemapTitleThemePlan {
             theme,
             title_present,
             config_owns_fill,
-            FamilyThemeEvidence::from_theme(Some(theme)),
+            FamilyThemeOutcomes::default(),
             work_meter,
         )?;
         Ok(Self { fill })
@@ -1185,8 +1178,8 @@ impl TreemapTitleThemePlan {
             .is_some_and(|fill_css| receipt.proves(fill_css) && self.fill.record_proven_terminal())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        self.fill.finish_evidence()
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.fill.record_evidence(evidence);
     }
 }
 
@@ -1242,6 +1235,15 @@ struct TreemapRuleObservation {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::{TreemapTitleThemePlan, TreemapTitleThemeReceipt, TreemapTypographyThemePlan};
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1372,7 +1374,7 @@ mod tests {
         receipt.record_title_text(super::super::TREEMAP_TITLE_CLASS);
         assert!(plan.record_terminal(receipt));
 
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
         assert_eq!(evidence.required_mechanisms().len(), 2);
         assert_eq!(evidence.applied().len(), 1);
         assert_eq!(evidence.not_applicable_mechanisms().len(), 1);

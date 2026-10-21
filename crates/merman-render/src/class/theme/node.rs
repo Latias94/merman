@@ -86,7 +86,7 @@ impl ClassNodeThemePlan {
         let mermaid_owns_fill = ["themeVariables.mainBkg", "themeVariables.primaryColor"]
             .into_iter()
             .any(|path| {
-                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+                merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
             });
         let mermaid_owns_stroke = [
             "themeVariables.nodeBorder",
@@ -94,7 +94,7 @@ impl ClassNodeThemePlan {
         ]
         .into_iter()
         .any(|path| {
-            merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+            merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
         });
         let mermaid_owns_label_fill = [
             "themeVariables.classText",
@@ -103,7 +103,7 @@ impl ClassNodeThemePlan {
         ]
         .into_iter()
         .any(|path| {
-            merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+            merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
         });
         Self {
             mermaid_owns_fill,

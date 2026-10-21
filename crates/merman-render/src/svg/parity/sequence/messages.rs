@@ -1201,7 +1201,8 @@ mod tests {
                     receipt,
                 ),
             );
-            let evidence = recorder.finish(Some(&resolved));
+            let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&resolved));
+            recorder.record_into(Some(&resolved), &mut evidence);
 
             assert!(evidence.applied().is_empty());
             assert!(evidence.not_applicable_mechanisms().is_empty());

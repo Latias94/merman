@@ -485,12 +485,13 @@ impl From<SourceStyleResidualReason> for FamilyStyleResidualReason {
 }
 
 /// Frozen family-local style evidence retained through SVG postprocessing and completion.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct FamilyStyleReport {
     family_id: DiagramFamilyId,
     evaluation: FamilyStyleEvaluation,
     output_mutated: bool,
-    theme_required: Vec<FamilyThemeMechanismKey>,
+    theme_required: Option<Arc<[FamilyThemeMechanismKey]>>,
+    theme_coverage_complete: bool,
     theme_applied: Vec<FamilyThemeMechanismKey>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
@@ -501,12 +502,40 @@ pub(crate) struct FamilyStyleReport {
     residuals: Vec<FamilyStyleResidual>,
 }
 
+impl std::fmt::Debug for FamilyStyleReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut report = f.debug_struct("FamilyStyleReport");
+        report
+            .field("family_id", &self.family_id)
+            .field("evaluation", &self.evaluation)
+            .field("output_mutated", &self.output_mutated)
+            .field(
+                "theme_required",
+                &self.theme_required.as_deref().unwrap_or(&[]),
+            )
+            .field("theme_applied", &self.theme_applied)
+            .field("native_filter_receipt", &self.native_filter_receipt);
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
+        report.field("architecture_text_receipt", &self.architecture_text_receipt);
+        report
+            .field("theme_not_applicable", &self.theme_not_applicable)
+            .field("theme_residuals", &self.theme_residuals)
+            .field(
+                "mermaid_compatibility_residual_count",
+                &self.mermaid_compatibility_residual_count,
+            )
+            .field("residuals", &self.residuals)
+            .finish()
+    }
+}
+
 /// Borrowed classification shared by temporary admission and the frozen family report.
 struct FamilyStyleView<'a> {
     family_id: DiagramFamilyId,
     evaluation: FamilyStyleEvaluation,
     output_mutated: bool,
     theme_required: &'a [FamilyThemeMechanismKey],
+    theme_coverage_complete: bool,
     theme_applied: &'a [FamilyThemeMechanismKey],
     theme_not_applicable: &'a [FamilyThemeMechanismKey],
     theme_residuals: &'a [FamilyThemeResidual],
@@ -516,37 +545,7 @@ struct FamilyStyleView<'a> {
 
 impl FamilyStyleView<'_> {
     pub fn theme_coverage_complete(&self) -> bool {
-        let required = self
-            .theme_required
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let applied = self
-            .theme_applied
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let residuals = self
-            .theme_residuals
-            .iter()
-            .map(FamilyThemeResidual::key)
-            .collect::<std::collections::BTreeSet<_>>();
-        let not_applicable = self
-            .theme_not_applicable
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let accounted = applied
-            .iter()
-            .chain(not_applicable.iter())
-            .chain(residuals.iter())
-            .copied()
-            .collect::<std::collections::BTreeSet<_>>();
-        required.len() == self.theme_required.len()
-            && applied.len() == self.theme_applied.len()
-            && not_applicable.len() == self.theme_not_applicable.len()
-            && residuals.len() == self.theme_residuals.len()
-            && applied.is_disjoint(&residuals)
-            && applied.is_disjoint(&not_applicable)
-            && not_applicable.is_disjoint(&residuals)
-            && accounted == required
+        self.theme_coverage_complete
     }
 
     pub fn verification(&self) -> FamilyStyleVerification {
@@ -654,7 +653,7 @@ impl FamilyStyleReport {
             self.theme_applied.len() + self.theme_not_applicable.len() + self.theme_residuals.len();
         crate::__private::FamilyEvidenceSummary::new(
             crate::__private::FamilyEvidenceStatus::from_verification(self.verification()),
-            self.theme_required.len(),
+            self.theme_required.as_deref().unwrap_or(&[]).len(),
             accounted_count,
             self.theme_applied.len(),
             self.theme_not_applicable.len(),
@@ -692,13 +691,14 @@ impl FamilyStyleReport {
             family_id: plan.family_id,
             evaluation,
             output_mutated: plan.output_mutated,
-            theme_required: plan.theme_evidence.required,
-            theme_applied: plan.theme_evidence.applied,
+            theme_required: plan.theme_evidence.shared_required_mechanisms(),
+            theme_coverage_complete: plan.theme_evidence.coverage_complete(),
+            theme_applied: plan.theme_evidence.outcomes.applied,
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_receipt: plan.architecture_text_receipt,
-            theme_not_applicable: plan.theme_evidence.not_applicable,
-            theme_residuals: plan.theme_evidence.residuals,
+            theme_not_applicable: plan.theme_evidence.outcomes.not_applicable,
+            theme_residuals: plan.theme_evidence.outcomes.residuals,
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
             residuals,
         }
@@ -786,7 +786,8 @@ impl FamilyStyleReport {
             family_id: self.family_id,
             evaluation: self.evaluation,
             output_mutated: self.output_mutated,
-            theme_required: &self.theme_required,
+            theme_required: self.theme_required.as_deref().unwrap_or(&[]),
+            theme_coverage_complete: self.theme_coverage_complete,
             theme_applied: &self.theme_applied,
             theme_not_applicable: &self.theme_not_applicable,
             theme_residuals: &self.theme_residuals,
@@ -901,47 +902,42 @@ struct FamilyRenderContext {
     session: RenderSession,
 }
 
-#[derive(Debug, Clone, Default)]
+/// The operation's checked owner of actual family outcomes.
+#[derive(Debug, Default)]
 pub(crate) struct FamilyThemeEvidence {
-    required: Vec<FamilyThemeMechanismKey>,
-    required_index: BTreeSet<FamilyThemeMechanismKey>,
-    outcome_delta: bool,
-    accounted_index: BTreeSet<FamilyThemeMechanismKey>,
-    applied: Vec<FamilyThemeMechanismKey>,
-    applied_capabilities: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    not_applicable: Vec<FamilyThemeMechanismKey>,
-    residuals: Vec<FamilyThemeResidual>,
+    program: Option<Arc<crate::diagram_theme::FamilyThemeProgram>>,
+    outcomes: FamilyThemeOutcomes,
 }
 
 impl FamilyThemeEvidence {
-    /// Collects only this consumer's outcomes; the family owner holds the request set.
-    pub(crate) fn outcomes() -> Self {
-        Self {
-            outcome_delta: true,
-            ..Self::default()
-        }
-    }
-
     pub(crate) fn from_theme(theme: Option<&ResolvedDiagramTheme>) -> Self {
-        let Some(theme) = theme else {
-            return Self::default();
-        };
-        let mut evidence = Self::default();
-        for key in theme.family_evidence_mechanism_keys() {
-            if evidence.required_index.insert(key.clone()) {
-                evidence.required.push(key);
-            }
+        Self {
+            program: theme.map(ResolvedDiagramTheme::family_program_owner),
+            outcomes: FamilyThemeOutcomes::default(),
         }
-        evidence
     }
 
     fn not_applicable(theme: Option<&ResolvedDiagramTheme>) -> bool {
-        theme.is_none_or(|theme| theme.family_evidence_mechanism_keys().next().is_none())
+        theme.is_none_or(|theme| !theme.has_family_mechanism_routes())
     }
 
-    #[cfg(test)]
     pub(crate) fn required_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.required
+        self.program
+            .as_ref()
+            .map_or(&[], |program| program.requested_mechanisms())
+    }
+
+    fn shared_required_mechanisms(&self) -> Option<Arc<[FamilyThemeMechanismKey]>> {
+        self.program
+            .as_ref()
+            .and_then(|program| program.shared_requested_mechanisms())
+    }
+
+    fn accepts(&self, key: &FamilyThemeMechanismKey) -> bool {
+        self.program
+            .as_ref()
+            .is_some_and(|program| program.contains_requested_mechanism(key))
+            && !self.outcomes.accounted_index.contains(key)
     }
 
     pub(crate) fn mark_applied_with_capabilities(
@@ -949,9 +945,120 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         capabilities: impl IntoIterator<Item = ThemeCapability>,
     ) {
-        if (self.outcome_delta || self.required_index.contains(&key))
-            && self.accounted_index.insert(key.clone())
-        {
+        if self.accepts(&key) {
+            self.outcomes
+                .mark_applied_with_capabilities(key, capabilities);
+        }
+    }
+
+    pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
+        if self.accepts(&key) {
+            self.outcomes.mark_not_applicable(key);
+        }
+    }
+
+    pub(crate) fn mark_residual(
+        &mut self,
+        key: FamilyThemeMechanismKey,
+        reason: FamilyThemeResidualReason,
+    ) {
+        if self.accepts(&key) {
+            self.outcomes.mark_residual(key, reason);
+        }
+    }
+
+    pub(crate) fn merge_borrowed(&mut self, other: &FamilyThemeOutcomes) {
+        for key in &other.applied {
+            if self.accepts(key) {
+                self.outcomes.mark_applied_with_capabilities(
+                    key.clone(),
+                    other
+                        .applied_capabilities
+                        .get(key)
+                        .into_iter()
+                        .flatten()
+                        .copied(),
+                );
+            }
+        }
+        for key in &other.not_applicable {
+            if self.accepts(key) {
+                self.outcomes.mark_not_applicable(key.clone());
+            }
+        }
+        for residual in &other.residuals {
+            if self.accepts(&residual.key) {
+                self.outcomes
+                    .mark_residual(residual.key.clone(), residual.reason);
+            }
+        }
+    }
+
+    pub(crate) fn merge_accounted_from(&mut self, mut other: FamilyThemeOutcomes) {
+        for key in other.applied {
+            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
+            self.mark_applied_with_capabilities(key, capabilities);
+        }
+        for key in other.not_applicable {
+            self.mark_not_applicable(key);
+        }
+        for residual in other.residuals {
+            self.mark_residual(residual.key, residual.reason);
+        }
+    }
+
+    fn clear_outcomes(&mut self) {
+        self.outcomes = FamilyThemeOutcomes::default();
+    }
+
+    fn coverage_complete(&self) -> bool {
+        self.outcomes.accounted_index.len() == self.required_mechanisms().len()
+    }
+
+    fn mark_state_output_visibility_filtered(&mut self, debug: &SvgDebugOptions) {
+        self.outcomes.mark_state_output_visibility_filtered(debug);
+    }
+    fn mark_output_mutated(&mut self) {
+        self.outcomes.mark_output_mutated();
+    }
+    fn mark_effect_emission_unverified(&mut self) {
+        self.outcomes.mark_effect_emission_unverified();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
+        &self.outcomes.applied
+    }
+    #[cfg(test)]
+    pub(crate) fn not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.outcomes.not_applicable
+    }
+    #[cfg(test)]
+    pub(crate) fn residuals(&self) -> &[FamilyThemeResidual] {
+        &self.outcomes.residuals
+    }
+    #[cfg(test)]
+    pub(crate) fn applied_capabilities(&self) -> BTreeSet<ThemeCapability> {
+        self.outcomes.applied_capabilities()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FamilyThemeOutcomes {
+    accounted_index: BTreeSet<FamilyThemeMechanismKey>,
+    applied: Vec<FamilyThemeMechanismKey>,
+    applied_capabilities: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
+    not_applicable: Vec<FamilyThemeMechanismKey>,
+    residuals: Vec<FamilyThemeResidual>,
+}
+
+impl FamilyThemeOutcomes {
+    pub(crate) fn mark_applied_with_capabilities(
+        &mut self,
+        key: FamilyThemeMechanismKey,
+        capabilities: impl IntoIterator<Item = ThemeCapability>,
+    ) {
+        if self.accounted_index.insert(key.clone()) {
             let capabilities = capabilities.into_iter().collect::<BTreeSet<_>>();
             if !capabilities.is_empty() {
                 self.applied_capabilities.insert(key.clone(), capabilities);
@@ -961,9 +1068,7 @@ impl FamilyThemeEvidence {
     }
 
     pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
-        if (self.outcome_delta || self.required_index.contains(&key))
-            && self.accounted_index.insert(key.clone())
-        {
+        if self.accounted_index.insert(key.clone()) {
             self.not_applicable.push(key);
         }
     }
@@ -973,9 +1078,7 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         reason: FamilyThemeResidualReason,
     ) {
-        if (self.outcome_delta || self.required_index.contains(&key))
-            && self.accounted_index.insert(key.clone())
-        {
+        if self.accounted_index.insert(key.clone()) {
             self.residuals.push(FamilyThemeResidual { key, reason });
         }
     }
@@ -1152,7 +1255,7 @@ impl ResolvedFamilyStylePlan {
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
         debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
-        let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_config(
+        let plan = crate::state::StateStylePlan::resolve_with_config(
             model,
             effective_config,
             self.resolved_theme.as_deref(),
@@ -1160,7 +1263,9 @@ impl ResolvedFamilyStylePlan {
             title,
             work_meter,
         )?;
-        self.theme_evidence = theme_evidence;
+        self.theme_evidence.clear_outcomes();
+        self.theme_evidence
+            .merge_borrowed(plan.planned_theme_outcomes());
         self.payload = FamilyStylePayload::State(Box::new(plan));
         Ok(())
     }
@@ -1196,40 +1301,10 @@ impl ResolvedFamilyStylePlan {
             .remaining_field_count();
     }
 
-    fn merge_flowchart_evidence(
-        &mut self,
-        evidence: FamilyThemeEvidence,
-        source_style_residuals: Vec<SourceStyleResidual>,
-    ) {
-        debug_assert!(matches!(
-            self.family_id,
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-        ));
-        self.theme_evidence = evidence;
-        self.source_style_residuals = source_style_residuals;
-        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref())
-            && self.source_style_residuals.is_empty()
-        {
-            FamilyStylePayload::NotApplicable
-        } else {
-            FamilyStylePayload::Evaluated
-        };
-    }
-
-    fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::SEQUENCE);
-        self.theme_evidence = evidence;
-        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
-            FamilyStylePayload::NotApplicable
-        } else {
-            FamilyStylePayload::Evaluated
-        };
-    }
-
     fn merge_accounted_terminal_evidence(
         &mut self,
         expected_family: DiagramFamilyId,
-        evidence: FamilyThemeEvidence,
+        evidence: FamilyThemeOutcomes,
     ) {
         debug_assert_eq!(self.family_id, expected_family);
         self.theme_evidence.merge_accounted_from(evidence);
@@ -1256,6 +1331,7 @@ impl ResolvedFamilyStylePlan {
     ) {
         let effect_capabilities_applied = self
             .theme_evidence
+            .outcomes
             .applied_capabilities
             .values()
             .flatten()
@@ -1285,11 +1361,9 @@ impl ResolvedFamilyStylePlan {
     #[cfg(feature = "diagram-state")]
     fn reconcile_state_terminal_evidence(&mut self) {
         debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
-        let evidence = self
-            .state()
-            .map(crate::state::StateStylePlan::finish_theme_evidence);
-        if let Some(evidence) = evidence {
-            self.theme_evidence = evidence;
+        if let FamilyStylePayload::State(state) = &self.payload {
+            self.theme_evidence.clear_outcomes();
+            state.record_theme_evidence(&mut self.theme_evidence);
         }
     }
 
@@ -1340,10 +1414,11 @@ impl ResolvedFamilyStylePlan {
             family_id: self.family_id,
             evaluation,
             output_mutated: self.output_mutated,
-            theme_required: &self.theme_evidence.required,
-            theme_applied: &self.theme_evidence.applied,
-            theme_not_applicable: &self.theme_evidence.not_applicable,
-            theme_residuals: &self.theme_evidence.residuals,
+            theme_required: self.theme_evidence.required_mechanisms(),
+            theme_coverage_complete: self.theme_evidence.coverage_complete(),
+            theme_applied: &self.theme_evidence.outcomes.applied,
+            theme_not_applicable: &self.theme_evidence.outcomes.not_applicable,
+            theme_residuals: &self.theme_evidence.outcomes.residuals,
             mermaid_compatibility_residual_count: self.mermaid_compatibility_residual_count,
             source_residual_count,
         }
@@ -1514,10 +1589,6 @@ impl FamilyRenderContext {
         self.style_plan.family_id()
     }
 
-    fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
-        self.style_plan.resolved_theme()
-    }
-
     const fn session(&self) -> &RenderSession {
         &self.session
     }
@@ -1560,23 +1631,10 @@ impl FamilyRenderContext {
         self.style_plan.invalidate_for_output_mutation();
     }
 
-    fn merge_flowchart_evidence(
-        &mut self,
-        evidence: FamilyThemeEvidence,
-        source_style_residuals: Vec<SourceStyleResidual>,
-    ) {
-        self.style_plan
-            .merge_flowchart_evidence(evidence, source_style_residuals);
-    }
-
-    fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
-        self.style_plan.merge_sequence_evidence(evidence);
-    }
-
     fn merge_accounted_terminal_evidence(
         &mut self,
         expected_family: DiagramFamilyId,
-        evidence: FamilyThemeEvidence,
+        evidence: FamilyThemeOutcomes,
     ) {
         self.style_plan
             .merge_accounted_terminal_evidence(expected_family, evidence);
@@ -1729,12 +1787,17 @@ impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
 fn flowchart_artifact_theme_evidence<L>(
     artifact: &FlowchartFamilyArtifact<'_, L>,
     theme: Option<&ResolvedDiagramTheme>,
-) -> (FamilyThemeEvidence, Vec<SourceStyleResidual>) {
-    let (mut evidence, source_residuals) = artifact.theme_evidence().finish(theme);
+    evidence: &mut FamilyThemeEvidence,
+) -> Vec<SourceStyleResidual> {
+    artifact
+        .prepared_theme()
+        .text_surface
+        .record_evidence(evidence);
+    let source_residuals = artifact.theme_evidence().record_into(theme, evidence);
     if let Some(base_typography) = artifact.svg_label_sidecar().base_typography() {
-        evidence.merge_accounted_from(base_typography.finish_evidence(theme));
+        base_typography.record_evidence(theme, evidence);
     }
-    (evidence, source_residuals)
+    source_residuals
 }
 
 #[derive(Debug)]
@@ -1935,7 +1998,7 @@ pub(crate) struct ZenumlFamilyArtifact<'parsed> {
         &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
         crate::zenuml::ZenumlDiagramLayout,
     >,
-    title_theme: crate::zenuml::ZenumlTitleThemePlan,
+    theme_plan: crate::zenuml::ZenumlThemePlan,
 }
 
 #[cfg(feature = "diagram-zenuml")]
@@ -1949,8 +2012,8 @@ impl<'parsed> ZenumlFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn title_theme(&self) -> &crate::zenuml::ZenumlTitleThemePlan {
-        &self.title_theme
+    pub(crate) const fn theme_plan(&self) -> &crate::zenuml::ZenumlThemePlan {
+        &self.theme_plan
     }
 }
 
@@ -2018,10 +2081,9 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
         &self.typography_theme
     }
 
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.title_theme.finish_evidence();
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
+    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.title_theme.record_evidence(evidence);
+        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2069,16 +2131,15 @@ impl<'parsed> BlockFamilyArtifact<'parsed> {
         &self.typography_theme
     }
 
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.node_paint_theme.finish_evidence();
-        evidence.merge_accounted_from(self.node_label_paint_theme.finish_evidence());
-        evidence.merge_accounted_from(self.edge_paint_theme.finish_evidence());
-        evidence.merge_accounted_from(self.marker_paint_theme.finish_evidence());
+    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.node_paint_theme.record_evidence(evidence);
+        self.node_label_paint_theme.record_evidence(evidence);
+        self.edge_paint_theme.record_evidence(evidence);
+        self.marker_paint_theme.record_evidence(evidence);
         if self.label_background_theme.requested() {
-            evidence.merge_accounted_from(self.label_background_theme.finish_evidence());
+            self.label_background_theme.record_evidence(evidence);
         }
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
+        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2201,10 +2262,9 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
         &self.typography_theme
     }
 
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.node_palette.finish_evidence();
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
+    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.node_palette.record_evidence(evidence);
+        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2237,12 +2297,11 @@ impl<'parsed> GitGraphFamilyArtifact<'parsed> {
         &self.static_paint
     }
 
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.node_palette.finish_evidence();
-        evidence.merge_accounted_from(self.node_palette.text_paint().finish_evidence());
-        evidence.merge_accounted_from(self.static_paint.finish_evidence());
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
+    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.node_palette.record_evidence(evidence);
+        self.node_palette.text_paint().record_evidence(evidence);
+        self.static_paint.record_evidence(evidence);
+        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2346,13 +2405,12 @@ impl<'parsed> RadarFamilyArtifact<'parsed> {
         &self.typography_theme
     }
 
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.series_paint.finish_evidence();
-        evidence.merge_accounted_from(self.title_theme.finish_evidence(&self.text_paint));
-        evidence.merge_accounted_from(self.axis_paint.finish_evidence());
-        evidence.merge_accounted_from(self.text_paint.finish_evidence());
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
+    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.series_paint.record_evidence(evidence);
+        self.title_theme.record_evidence(&self.text_paint, evidence);
+        self.axis_paint.record_evidence(evidence);
+        self.text_paint.record_evidence(evidence);
+        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2820,23 +2878,41 @@ impl BuiltinFamilyArtifact<'_> {
     }
 
     fn merge_theme_evidence(&self, context: &mut FamilyRenderContext) -> Result<()> {
-        let (family_id, evidence) = match self {
+        let session = &context.session;
+        let style_plan = &mut context.style_plan;
+        let theme = style_plan.resolved_theme.as_deref();
+        let evidence = &mut style_plan.theme_evidence;
+        match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { .. } => return Ok(()),
             #[cfg(feature = "diagram-usecase")]
             Self::Usecase(_) => return Ok(()),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(artifact) => {
-                let (evidence, residuals) =
-                    flowchart_artifact_theme_evidence(artifact, context.resolved_theme());
-                context.merge_flowchart_evidence(evidence, residuals);
+                evidence.clear_outcomes();
+                style_plan.source_style_residuals =
+                    flowchart_artifact_theme_evidence(artifact, theme, evidence);
+                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
+                    && style_plan.source_style_residuals.is_empty()
+                {
+                    FamilyStylePayload::NotApplicable
+                } else {
+                    FamilyStylePayload::Evaluated
+                };
                 return Ok(());
             }
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => {
-                let (evidence, residuals) =
-                    flowchart_artifact_theme_evidence(artifact, context.resolved_theme());
-                context.merge_flowchart_evidence(evidence, residuals);
+                evidence.clear_outcomes();
+                style_plan.source_style_residuals =
+                    flowchart_artifact_theme_evidence(artifact, theme, evidence);
+                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
+                    && style_plan.source_style_residuals.is_empty()
+                {
+                    FamilyStylePayload::NotApplicable
+                } else {
+                    FamilyStylePayload::Evaluated
+                };
                 return Ok(());
             }
             #[cfg(feature = "diagram-sequence")]
@@ -2844,164 +2920,112 @@ impl BuiltinFamilyArtifact<'_> {
                 pair.layout()
                     .theme_evidence()
                     .record_unsupported_text_emission(
-                        context.resolved_theme(),
+                        theme,
                         pair.layout().diagram_title().is_some(),
-                        context.session().work_meter().as_ref(),
+                        session.work_meter().as_ref(),
                     )?;
-                let evidence = pair
-                    .layout()
-                    .theme_evidence()
-                    .finish(context.resolved_theme());
-                context.merge_sequence_evidence(evidence);
-                return Ok(());
+                evidence.clear_outcomes();
+                pair.layout().theme_evidence().record_into(theme, evidence);
             }
             // State reconciles its terminal and filter receipts in the output finalizer.
             #[cfg(feature = "diagram-state")]
             Self::State(_) => return Ok(()),
             #[cfg(feature = "diagram-class")]
             Self::Class(artifact) => {
-                let mut evidence = artifact.theme_evidence().finish(
-                    context.resolved_theme(),
+                let outcomes = artifact.theme_evidence().finish(
+                    theme,
                     artifact.relation_theme(),
-                    context.session().work_meter().as_ref(),
+                    session.work_meter().as_ref(),
                 )?;
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                (DiagramFamilyId::CLASS, evidence)
+                evidence.merge_accounted_from(outcomes);
+                artifact.typography_theme().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-gantt")]
-            Self::Gantt(artifact) => (
-                DiagramFamilyId::GANTT,
-                artifact.task_theme().finish_evidence(),
-            ),
+            Self::Gantt(artifact) => artifact.task_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-kanban")]
             Self::Kanban(pair) => {
-                let mut evidence = pair.layout().task_theme().finish_evidence();
-                evidence.merge_accounted_from(pair.layout().text_paint().finish_evidence());
-                (DiagramFamilyId::KANBAN, evidence)
+                pair.layout().task_theme().record_evidence(evidence);
+                pair.layout().text_paint().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-pie")]
-            Self::Pie(artifact) => (DiagramFamilyId::PIE, artifact.theme().finish_evidence()),
+            Self::Pie(artifact) => artifact.theme().record_evidence(evidence),
             #[cfg(feature = "diagram-timeline")]
             Self::Timeline(artifact) => {
-                let mut evidence = artifact.event_theme().finish_evidence();
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                (DiagramFamilyId::TIMELINE, evidence)
+                artifact.event_theme().record_evidence(evidence);
+                artifact.typography_theme().record_evidence(evidence);
+                artifact.text_paint().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-journey")]
             Self::Journey(artifact) => {
-                let mut evidence = artifact.task_theme().finish_evidence();
-                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                (DiagramFamilyId::JOURNEY, evidence)
+                artifact.task_theme().record_evidence(evidence);
+                artifact.text_paint().record_evidence(evidence);
+                artifact.typography_theme().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(artifact) => {
-                let mut evidence = artifact.point_theme().finish_evidence();
-                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                (DiagramFamilyId::QUADRANT_CHART, evidence)
+                artifact.point_theme().record_evidence(evidence);
+                artifact.text_paint().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart(artifact) => {
-                let mut evidence = artifact.series_paint().finish_evidence();
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                evidence.merge_accounted_from(artifact.paint_theme().finish_evidence());
-                (DiagramFamilyId::XY_CHART, evidence)
+                artifact.series_paint().record_evidence(evidence);
+                artifact.typography_theme().record_evidence(evidence);
+                artifact.paint_theme().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-radar")]
-            Self::Radar(artifact) => (DiagramFamilyId::RADAR, artifact.finish_theme_evidence()),
+            Self::Radar(artifact) => artifact.record_theme_evidence(evidence),
             #[cfg(feature = "diagram-sankey")]
-            Self::Sankey(artifact) => (DiagramFamilyId::SANKEY, artifact.finish_theme_evidence()),
+            Self::Sankey(artifact) => artifact.record_theme_evidence(evidence),
             #[cfg(feature = "diagram-block")]
-            Self::Block(artifact) => (DiagramFamilyId::BLOCK, artifact.finish_theme_evidence()),
+            Self::Block(artifact) => artifact.record_theme_evidence(evidence),
             #[cfg(feature = "diagram-railroad")]
-            Self::Railroad(artifact) => (
-                DiagramFamilyId::RAILROAD,
-                artifact.typography_theme().finish_evidence(),
-            ),
-            Self::Error(artifact) => (
-                DiagramFamilyId::ERROR,
-                artifact.typography_theme().finish_evidence(),
-            ),
+            Self::Railroad(artifact) => artifact.typography_theme().record_evidence(evidence),
+            Self::Error(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-info")]
-            Self::Info(artifact) => (
-                DiagramFamilyId::INFO,
-                artifact.typography_theme().finish_evidence(),
-            ),
+            Self::Info(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-cynefin")]
-            Self::Cynefin(artifact) => (
-                DiagramFamilyId::CYNEFIN,
-                artifact.typography_theme().finish_evidence(),
-            ),
+            Self::Cynefin(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-wardley")]
-            Self::Wardley(artifact) => (
-                DiagramFamilyId::WARDLEY,
-                artifact.typography_theme().finish_evidence(),
-            ),
+            Self::Wardley(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-treemap")]
             Self::Treemap(artifact) => {
-                let mut evidence = artifact.title_theme().finish_evidence();
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                (DiagramFamilyId::TREEMAP, evidence)
+                artifact.title_theme().record_evidence(evidence);
+                artifact.typography_theme().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-requirement")]
-            Self::Requirement(artifact) => (
-                DiagramFamilyId::REQUIREMENT,
-                artifact.paint_theme().finish_evidence(),
-            ),
+            Self::Requirement(artifact) => artifact.paint_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => return Ok(()),
             #[cfg(feature = "diagram-c4")]
             Self::C4(artifact) => {
-                let mut evidence = artifact.cluster_theme().finish_evidence();
-                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                (DiagramFamilyId::C4, evidence)
-            }
-            #[cfg(feature = "diagram-tree-view")]
-            Self::TreeView(artifact) => (
-                DiagramFamilyId::TREE_VIEW,
-                artifact.theme().finish_evidence(),
-            ),
-            #[cfg(feature = "diagram-mindmap")]
-            Self::Mindmap(artifact) => (
-                DiagramFamilyId::MINDMAP,
-                artifact.node_palette().finish_evidence(),
-            ),
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(artifact) => {
-                (DiagramFamilyId::GIT_GRAPH, artifact.finish_theme_evidence())
+                artifact.cluster_theme().record_evidence(evidence);
+                artifact.typography_theme().record_evidence(evidence);
+                artifact.text_paint().record_evidence(evidence);
             }
             #[cfg(feature = "diagram-er")]
-            Self::Er(artifact) => (
-                DiagramFamilyId::ER,
-                artifact.entity_theme().finish_evidence(),
-            ),
+            Self::Er(artifact) => artifact.entity_theme().record_evidence(evidence),
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(artifact) => artifact.record_theme_evidence(evidence),
+            #[cfg(feature = "diagram-mindmap")]
+            Self::Mindmap(artifact) => artifact.node_palette().record_evidence(evidence),
+            #[cfg(feature = "diagram-tree-view")]
+            Self::TreeView(artifact) => artifact.theme().record_evidence(evidence),
             #[cfg(feature = "diagram-venn")]
-            Self::Venn(artifact) => (DiagramFamilyId::VENN, artifact.finish_theme_evidence()),
+            Self::Venn(artifact) => artifact.record_theme_evidence(evidence),
             #[cfg(feature = "diagram-zenuml")]
-            Self::Zenuml(artifact) => (
-                DiagramFamilyId::ZENUML,
-                artifact.title_theme().finish_evidence(),
-            ),
+            Self::Zenuml(artifact) => artifact.theme_plan().record_evidence(evidence),
             #[cfg(feature = "diagram-event-modeling")]
-            Self::EventModeling(artifact) => (
-                DiagramFamilyId::EVENT_MODELING,
-                artifact.text_theme().finish_evidence(),
-            ),
+            Self::EventModeling(artifact) => artifact.text_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-ishikawa")]
-            Self::Ishikawa(artifact) => (
-                DiagramFamilyId::ISHIKAWA,
-                artifact.text_theme().finish_evidence(),
-            ),
-            #[cfg(feature = "layout-cytoscape")]
-            #[cfg(feature = "diagram-architecture")]
-            Self::Architecture(_) => (
-                DiagramFamilyId::ARCHITECTURE,
-                FamilyThemeEvidence::default(),
-            ),
+            Self::Ishikawa(artifact) => artifact.text_theme().record_evidence(evidence),
+            #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+            Self::Architecture(_) => {}
+        }
+        style_plan.payload = if FamilyThemeEvidence::not_applicable(theme) {
+            FamilyStylePayload::NotApplicable
+        } else {
+            FamilyStylePayload::Evaluated
         };
-        context.merge_accounted_terminal_evidence(family_id, evidence);
         Ok(())
     }
 

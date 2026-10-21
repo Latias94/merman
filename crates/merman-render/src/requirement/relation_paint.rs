@@ -11,8 +11,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -32,7 +32,7 @@ impl RequirementRelationPaintPlan {
         theme: &ResolvedDiagramTheme,
         config: &PresentationConfig,
         model: &RequirementDiagramRenderModel,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
         work_meter: &OperationWorkMeter,
     ) -> Result<Option<Self>, OperationWorkError> {
         let routes = theme.family_mechanism_routes();
@@ -52,7 +52,7 @@ impl RequirementRelationPaintPlan {
         }) {
             return Ok(None);
         }
-        let source_owned = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned = merman_core::__private::config_paint_overrides_typed_default(
             config,
             REQUIREMENT_RELATION_PAINT_PATH,
         );
@@ -258,7 +258,7 @@ impl RequirementRelationPaintPlan {
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if !self.pending {
             return;
         }

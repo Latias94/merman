@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::EventModelingDiagramLayout;
@@ -61,7 +61,7 @@ pub(crate) struct EventModelingTextThemePlan {
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     occurrences: EventModelingTextOccurrences,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
 }
 
@@ -94,7 +94,7 @@ impl EventModelingTextThemePlan {
             ));
         };
 
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.textColor",
         );
@@ -127,7 +127,7 @@ impl EventModelingTextThemePlan {
             })
             .flatten();
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, EventModelingTextRuleObservation>::new();
         let mut typed_font_size = false;
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -225,7 +225,7 @@ impl EventModelingTextThemePlan {
                 }
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
                     if route.disposition() == FamilyThemeDisposition::TypedAdapter => {}
-                // Base typography is reconciled by property in `finish_evidence`. The shared
+                // Base typography is reconciled by property in `record_evidence`. The shared
                 // inherited-font plan records every Unsupported property so mixed requests do
                 // not make a supported sibling disappear from the terminal writer.
                 FamilyThemeMechanism::BaseTypography(_) => {}
@@ -312,7 +312,7 @@ impl EventModelingTextThemePlan {
             typed_font_size_requested,
             typed_font_size_active,
             occurrences,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
         }
     }
@@ -338,14 +338,14 @@ impl EventModelingTextThemePlan {
         let _ = write!(out, " }}#{diagram_id} .em-relation {{ fill: none; }}");
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for (key, capability) in &self.pending {
             evidence.mark_applied_with_capabilities(key.clone(), [*capability]);
         }
         let has_visible_terminals = self.occurrences.total() != 0;
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, has_visible_terminals);
+            .record_unsupported_typography_evidence(evidence, has_visible_terminals);
         let properties = [
             (
                 ThemeTypographyProperty::FontStack,
@@ -369,6 +369,5 @@ impl EventModelingTextThemePlan {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
             }
         }
-        evidence
     }
 }

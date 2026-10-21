@@ -386,6 +386,14 @@ pub mod __private {
         config.config_path_overrides_typed_default(dotted_path)
     }
 
+    /// Reports whether authored inputs or a selected external palette own this paint value.
+    pub fn config_paint_overrides_typed_default(
+        config: &PresentationConfig,
+        dotted_path: &str,
+    ) -> bool {
+        config.config_paint_overrides_typed_default(dotted_path)
+    }
+
     /// Reports whether site or source configuration explicitly owns this path.
     pub fn explicit_config_owns_path(config: &PresentationConfig, dotted_path: &str) -> bool {
         config.explicit_config_owns_path(dotted_path)

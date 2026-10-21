@@ -67,11 +67,16 @@ impl DiscoveryProvider {
         &self,
         font: &usvg::Font,
         control: &OperationControl,
-    ) -> Result<Option<FontSelection>, NativeFontError> {
+        accept: &mut dyn FnMut(FontSelection, bool) -> Result<Option<ID>, NativeFontError>,
+    ) -> Result<Option<ID>, NativeFontError> {
         match self {
-            Self::Bounded(catalog) => catalog.select(font, control),
+            Self::Bounded(catalog) => match catalog.select(font, control)? {
+                // This catalog already checked implicit families against retained classification.
+                Some(selection) => accept(selection, false),
+                None => Ok(None),
+            },
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform { catalog, explicit } => catalog.select(font, explicit, control),
+            Self::Platform { catalog, explicit } => catalog.select(font, explicit, control, accept),
         }
     }
 
@@ -134,29 +139,29 @@ pub(super) fn resolver(
                     .discovery
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
-                provider
-                    .select(font, &select_control)?
-                    .map(|selection| {
-                        let source = selection.candidate.export_source();
-                        select_context
-                            .0
-                            .sources
-                            .materialize(
-                                selection.candidate,
-                                database,
-                                &select_context.0.limits,
-                                &select_control,
-                            )
-                            .inspect(|id| {
-                                if let Some(observer) = &select_observer {
-                                    observer.admit(*id, source);
-                                    if selection.family_fallback_used {
-                                        observer.mark_family_fallback();
-                                    }
-                                }
-                            })
-                    })
-                    .transpose()
+                provider.select(font, &select_control, &mut |selection, check_implicit| {
+                    let source = selection.candidate.export_source();
+                    let id = select_context.0.sources.materialize(
+                        selection.candidate,
+                        database,
+                        &select_context.0.limits,
+                        &select_control,
+                    )?;
+                    if check_implicit
+                        && !database
+                            .face(id)
+                            .is_some_and(super::super::font_selection::allows_implicit_binary_face)
+                    {
+                        return Ok(None);
+                    }
+                    if let Some(observer) = &select_observer {
+                        observer.admit(id, source);
+                        if selection.family_fallback_used {
+                            observer.mark_family_fallback();
+                        }
+                    }
+                    Ok(Some(id))
+                })
             })();
             if let Some(observer) = &select_observer
                 && !matches!(&result, Ok(Some(_)))
@@ -207,6 +212,9 @@ pub(super) fn resolver(
                         let face = database.face(id).cloned().ok_or_else(|| {
                             NativeFontError::Measurement("missing materialized fallback".to_owned())
                         })?;
+                        if !super::super::font_selection::allows_implicit_binary_face(&face) {
+                            return Ok(None);
+                        }
                         let candidate_id = probe.push_face_info(face);
                         let selected = (usvg::FontResolver::default_fallback_selector())(
                             character,

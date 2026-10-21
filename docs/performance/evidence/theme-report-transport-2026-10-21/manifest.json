@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "decision": "rejected_at_registered_diagnostic_screen",
+  "recorded_at_utc": "2026-10-21T05:23:46Z",
+  "archive_file": "theme-report-transport-diagnostic.tar.gz",
+  "archive_bytes": 146511,
+  "archive_sha256": "b28b31957ab07f280268c11251cd7d775aae7812c03feafaff56b62250a83adc",
+  "archive_format": "gzip-compressed tar; members preserve original bytes and are rooted at report-transport-design-20261021/",
+  "source_experiment_directory": "target/bench/experiments/report-transport-design-20261021/",
+  "registration_sha256": "8e827da708287f332b032a1b37f639b20483e15fe936f8e21859aa5bdc9a88e8",
+  "diagnostic_json_sha256": "28381e86b3e196e7b0b62d9b5806cf959323412de949ead82da105327f1c8649",
+  "decision_json_sha256": "305e39283699b9819909cd9a4a23dd9b822a724e05f5d429975542562143e012",
+  "member_count": 18,
+  "members": [
+    {
+      "member": "report-transport-design-20261021/decision.json",
+      "source_relative_to_experiment": "decision.json",
+      "bytes": 12883,
+      "sha256": "305e39283699b9819909cd9a4a23dd9b822a724e05f5d429975542562143e012"
+    },
+    {
+      "member": "report-transport-design-20261021/box-experiment.yaml",
+      "source_relative_to_experiment": "box-experiment.yaml",
+      "bytes": 3178,
+      "sha256": "8e827da708287f332b032a1b37f639b20483e15fe936f8e21859aa5bdc9a88e8"
+    },
+    {
+      "member": "report-transport-design-20261021/timing-registration.json",
+      "source_relative_to_experiment": "timing-registration.json",
+      "bytes": 2327,
+      "sha256": "23885b02cdfb67d47b887fec1c805aea43005b1248c411994a42fd39ff0a70a2"
+    },
+    {
+      "member": "report-transport-design-20261021/timing-execution.json",
+      "source_relative_to_experiment": "timing-execution.json",
+      "bytes": 1687,
+      "sha256": "6b41a8243398b75bb399c000f053bd4e2b2cc10912bd0899ac287d501ee70790"
+    },
+    {
+      "member": "report-transport-design-20261021/diagnostic.json",
+      "source_relative_to_experiment": "diagnostic.json",
+      "bytes": 663045,
+      "sha256": "28381e86b3e196e7b0b62d9b5806cf959323412de949ead82da105327f1c8649"
+    },
+    {
+      "member": "report-transport-design-20261021/diagnostic.md",
+      "source_relative_to_experiment": "diagnostic.md",
+      "bytes": 2957,
+      "sha256": "4a5a259daeab1384b69880fc0fe9102ceccea3017777d42babeda950258ad82f"
+    },
+    {
+      "member": "report-transport-design-20261021/design.json",
+      "source_relative_to_experiment": "design.json",
+      "bytes": 10482,
+      "sha256": "84342d478111cc4bb61d044ba70e6341afbd57eab6b70668ce82edfb1609805f"
+    },
+    {
+      "member": "report-transport-design-20261021/source-freeze.json",
+      "source_relative_to_experiment": "source-freeze.json",
+      "bytes": 1076,
+      "sha256": "f50c0d86a4c91405950641710b7bd4e700e1e28a72d88550dc4a21ff4e3acf4c"
+    },
+    {
+      "member": "report-transport-design-20261021/measurement-freeze.json",
+      "source_relative_to_experiment": "measurement-freeze.json",
+      "bytes": 3453,
+      "sha256": "6574ac33e17550b4b16621ff4ae1217578947ac63c3d6ef0318a20bbecca18ab"
+    },
+    {
+      "member": "report-transport-design-20261021/controls-comparison.json",
+      "source_relative_to_experiment": "controls-comparison.json",
+      "bytes": 405298,
+      "sha256": "4193322c553b133f700ba76f1739fe97d7101f66cdc4e021d96477d224b11d3b"
+    },
+    {
+      "member": "report-transport-design-20261021/pre-lint-controls-comparison.json",
+      "source_relative_to_experiment": "pre-lint-controls-comparison.json",
+      "bytes": 405304,
+      "sha256": "f41b32f46e5a83d49f02bd036ab1d7201f2819b79d3c1433293b98d221053815"
+    },
+    {
+      "member": "report-transport-design-20261021/box-candidate.patch",
+      "source_relative_to_experiment": "box-candidate.patch",
+      "bytes": 2627,
+      "sha256": "3c1879c925a3d8625a239da9d089e6516ec3725940de6708ddda1402163fc08d"
+    },
+    {
+      "member": "report-transport-design-20261021/box-candidate-lint.patch",
+      "source_relative_to_experiment": "box-candidate-lint.patch",
+      "bytes": 2202,
+      "sha256": "defa0a8e086ba3d329c3f0fad1b1d0b6a76a41c1a86874467a7842349faaf5a4"
+    },
+    {
+      "member": "report-transport-design-20261021/lint-amendment.json",
+      "source_relative_to_experiment": "lint-amendment.json",
+      "bytes": 1096,
+      "sha256": "645217ca13642b2fbf998b98630ae4377936767ac147643bf8901a00b1bfa53c"
+    },
+    {
+      "member": "report-transport-design-20261021/pre-lint-head/preliminary-clippy.log",
+      "source_relative_to_experiment": "pre-lint-head/preliminary-clippy.log",
+      "bytes": 8679,
+      "sha256": "b505b52f0f0621d8915476e96a6c0538f5b8184e2a26689e009edfe4edfee304"
+    },
+    {
+      "member": "report-transport-design-20261021/head/preliminary-clippy.log",
+      "source_relative_to_experiment": "head/preliminary-clippy.log",
+      "bytes": 490,
+      "sha256": "14e5eb475aece9e9357d137688ee162b11be2337eb5cfd84796c37d9b2bb48eb"
+    },
+    {
+      "member": "report-transport-design-20261021/base/report-sizes.jsonl",
+      "source_relative_to_experiment": "base/report-sizes.jsonl",
+      "bytes": 436,
+      "sha256": "97112d95a5b6e8bfb533ca70149e3cab29f842edcd260778d7aba92c80682220"
+    },
+    {
+      "member": "report-transport-design-20261021/head/report-sizes.jsonl",
+      "source_relative_to_experiment": "head/report-sizes.jsonl",
+      "bytes": 431,
+      "sha256": "4722d1df31f08fd4fa298e710da7cb14e1e3883b1292b902229b6e3d104b7943"
+    }
+  ],
+  "not_archived_local_evidence": [
+    {
+      "path": "base/candidate1/catalog-allocation-probe",
+      "bytes": 43170328,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "base/candidate1/results.json",
+      "bytes": 4610215,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "base/controls/candidate1-public-error-probe",
+      "bytes": 43012880,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "base/controls/candidate1-site-allocation-probe",
+      "bytes": 43014160,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "base/controls/candidate1-site-allocations.json",
+      "bytes": 1168418,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "base/controls/candidate1-site-measurement-trace",
+      "bytes": 42918672,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1/catalog-allocation-probe",
+      "bytes": 43171784,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1/results.json",
+      "bytes": 4621811,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1-public-error-probe",
+      "bytes": 43013952,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1-site-allocation-probe",
+      "bytes": 43031744,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1-site-allocations.json",
+      "bytes": 1168750,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "head/controls/candidate1-site-measurement-trace",
+      "bytes": 42936288,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1/catalog-allocation-probe",
+      "bytes": 43171784,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1/results.json",
+      "bytes": 4621811,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1-public-error-probe",
+      "bytes": 43013952,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1-site-allocation-probe",
+      "bytes": 43031744,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1-site-allocations.json",
+      "bytes": 1168750,
+      "reason": "raw allocator result/capture retained in the ignored local experiment; not copied into the compact archive."
+    },
+    {
+      "path": "pre-lint-head/controls/candidate1-site-measurement-trace",
+      "bytes": 42936288,
+      "reason": "frozen or compiled measurement probe executable retained in the ignored local experiment; not copied into the compact archive."
+    }
+  ],
+  "retention_note": "This list enumerates every file larger than 1 MB in the ignored experiment directory by exact relative path and byte count. The original local files remain unchanged; smaller unarchived logs and execution receipts also remain there."
+}

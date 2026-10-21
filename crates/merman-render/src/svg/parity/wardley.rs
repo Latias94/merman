@@ -71,7 +71,7 @@ fn write_text(
     }
     let _ = write!(out, ">{}</text>", escape_xml_display(&text.text));
     out.checkpoint()?;
-    surface_receipt.record_text(role, class, &text.text);
+    surface_receipt.record_text(role, class, &text.text, fill);
     Ok(())
 }
 
@@ -528,10 +528,19 @@ fn write_nodes(
                 None,
             )?;
         }
-        let label_fill = match node.class_name.as_deref() {
-            Some("evolved") => &theme.evolution_stroke,
-            Some("anchor") => &theme.anchor_label_color,
-            _ => &theme.component_label_color,
+        let (label_fill, label_role) = match node.class_name.as_deref() {
+            Some("evolved") => (
+                &theme.evolution_stroke,
+                crate::wardley::WardleyTextRole::EvolvedLabel,
+            ),
+            Some("anchor") => (
+                &theme.anchor_label_color,
+                crate::wardley::WardleyTextRole::AnchorLabel,
+            ),
+            _ => (
+                &theme.component_label_color,
+                crate::wardley::WardleyTextRole::NodeLabel,
+            ),
         };
         write_text(
             out,
@@ -539,7 +548,7 @@ fn write_nodes(
             Some("wardley-node-label"),
             label_fill,
             true,
-            crate::wardley::WardleyTextRole::NodeLabel,
+            label_role,
             surface_receipt,
         )?;
         out.push_str("</g>");
@@ -696,7 +705,7 @@ fn write_arrow(
         out,
         &arrow.label,
         None,
-        &theme.axis_text_color,
+        &theme.arrow_text,
         true,
         role,
         surface_receipt,
@@ -852,6 +861,48 @@ mod tests {
     };
     use crate::text::DeterministicTextMeasurer;
 
+    #[test]
+    fn wardley_evolved_model_label_keeps_its_evolution_paint_under_host_text() {
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::WARDLEY);
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "wardley": { "evolutionStroke": "#ab1234" } }
+        }));
+        let typography =
+            crate::wardley::WardleyTypographyThemePlan::resolve(Some(&theme), &config, &work_meter)
+                .unwrap();
+        let model: WardleyDiagramRenderModel = serde_json::from_value(serde_json::json!({
+            "nodes": [{
+                "id": "evolved", "label": "Evolved API", "x": 0.8, "y": 0.6,
+                "className": "evolved"
+            }]
+        }))
+        .unwrap();
+        let layout = crate::wardley::layout_wardley_diagram_typed_with_theme(
+            &model,
+            None,
+            config.as_value(),
+            &typography,
+            &DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        let mut svg = String::new();
+        let mut receipt = typography.begin_terminal_receipt();
+        write_nodes(&mut svg, &layout, typography.paint_binding(), &mut receipt).unwrap();
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(label.attribute("fill"), Some("#ab1234"));
+        assert!(typography.record_terminal(receipt));
+    }
+
     fn render_wardley_with_policy(
         policy: RenderResourcePolicy,
     ) -> crate::Result<root_svg::RootedSvg> {
@@ -859,8 +910,11 @@ mod tests {
         let effective_config = serde_json::json!({});
         let effective_mermaid_config =
             merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
-        let typography_theme =
-            crate::wardley::WardleyTypographyThemePlan::resolve(None, &effective_mermaid_config);
+        let typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
+            None,
+            &effective_mermaid_config,
+            &crate::resources::OperationWorkMeter::new(policy),
+        )?;
         let layout = crate::wardley::layout_wardley_diagram_typed(
             &model,
             None,

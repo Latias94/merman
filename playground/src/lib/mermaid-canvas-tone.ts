@@ -1,7 +1,7 @@
 import { JSON_SCHEMA, load as parseYaml } from "js-yaml";
 import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 
-import { buildMermaidConfig, buildMermaidOperationInput, type MermaidConfigObject } from "./mermaid-config.ts";
+import { buildMermaidOperationInput, parseMermaidConfigJson, type MermaidConfigObject } from "./mermaid-config.ts";
 import {
   normalizeMermaidThemeName,
   type ThemeName,
@@ -31,7 +31,7 @@ export function resolveMermaidCanvasTone(
 ): MermaidCanvasTone {
   let effectiveTheme = normalizeMermaidThemeName(selectedTheme);
   try {
-    const config = buildMermaidConfig(configJson, selectedTheme);
+    const config = parseMermaidConfigJson(configJson);
     // The playground inserts config after frontmatter and before authored directives.
     // Project only theme fields; scoped values survive later global-only overrides.
     const initialized: ThemeFields = {};

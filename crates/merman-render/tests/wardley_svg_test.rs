@@ -5,8 +5,9 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
-    ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -161,6 +162,296 @@ fn element_with_class<'a, 'input>(
         .descendants()
         .find(|node| node.has_tag_name(tag) && has_class(*node, class))
         .unwrap_or_else(|| panic!("missing <{tag}>.{class}"))
+}
+
+const WARDLEY_ANCHOR_SOURCE: &str = concat!(
+    "wardley-beta\n",
+    "anchor Business [0.95, 0.80]\n",
+    "anchor Public [0.90, 0.20]\n",
+    "component API [0.65, 0.35]\n",
+    "evolve API 0.80\n",
+);
+
+#[test]
+fn wardley_anchor_labels_follow_pure_host_presets() {
+    for (preset, expected, expected_evolution) in [
+        (ThemePreset::EditorLight, "#0f172a", "#dc3545"),
+        (ThemePreset::EditorDark, "#e5e7eb", "#ff6b6b"),
+    ] {
+        let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+        let (_, rendered) = try_render_wardley_with_theme(
+            WARDLEY_ANCHOR_SOURCE,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-preset-anchors",
+        )
+        .unwrap();
+        let rendered = rendered
+            .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg().as_str()).unwrap();
+        for label in ["Business", "Public"] {
+            let anchor = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && has_class(*node, "wardley-node-label")
+                        && node.text() == Some(label)
+                })
+                .expect("visible anchor text");
+            assert_eq!(
+                anchor.attribute("fill"),
+                Some(expected),
+                "{preset:?}: {label}"
+            );
+        }
+        assert_eq!(
+            element_with_class(&document, "line", "wardley-trend").attribute("stroke"),
+            Some(expected_evolution),
+        );
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert!(
+            evidence.applied_count() > 0,
+            "{preset:?} must prove a visible typed surface"
+        );
+    }
+}
+
+#[test]
+fn wardley_explicit_anchor_and_evolution_colors_outrank_host_text() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::EditorDark)
+        .unwrap();
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "wardley": {
+                "anchorLabelColor": "#aabbcc",
+                "componentLabelColor": "#112233",
+                "evolutionStroke": "#445566"
+            }}
+        })));
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_ANCHOR_SOURCE,
+        &theme,
+        engine,
+        &RenderEnvironment::deterministic(),
+        "wardley-explicit-anchors",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for (class, expected) in [
+        ("wardley-node--anchor", "#aabbcc"),
+        ("wardley-node--component", "#112233"),
+    ] {
+        let group = element_with_class(&document, "g", class);
+        assert_eq!(
+            group
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("fill"),
+            Some(expected),
+        );
+    }
+    assert_eq!(
+        element_with_class(&document, "line", "wardley-trend").attribute("stroke"),
+        Some("#445566"),
+    );
+}
+
+#[test]
+fn wardley_text_and_node_label_rules_prove_only_their_visible_consumers() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#112233").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#aabbcc").unwrap()),
+                    )),
+            ),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_ANCHOR_SOURCE,
+        &theme,
+        Engine::new(),
+        &portable_wardley_environment(),
+        "wardley-role-paint",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for node in document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+    {
+        let expected = if has_class(node, "wardley-node-label") {
+            "#aabbcc"
+        } else {
+            "#112233"
+        };
+        assert_eq!(node.attribute("fill"), Some(expected));
+    }
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn wardley_supported_fill_does_not_hide_unsupported_sibling_opacity() {
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#112233").unwrap());
+    patch.paint.opacity = merman_render::diagram_theme::Specified::Value(0.5);
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::NodeLabel, patch)),
+        ))
+        .unwrap();
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_ANCHOR_SOURCE,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "wardley-mixed-facets",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let anchor = element_with_class(&document, "g", "wardley-node--anchor");
+    assert_eq!(
+        anchor
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("fill"),
+        Some("#112233")
+    );
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn wardley_site_palette_yields_to_host_anchor_paint_but_raw_colors_keep_ownership() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::EditorDark)
+        .unwrap();
+    for (origin, site_config, expected) in [
+        (
+            "site-palette",
+            serde_json::json!({"theme": "default"}),
+            "#e5e7eb",
+        ),
+        (
+            "site-variable",
+            serde_json::json!({"themeVariables": {"primaryTextColor": "#123456"}}),
+            "#123456",
+        ),
+        ("source-palette", serde_json::json!({}), "#131300"),
+    ] {
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let source = if origin == "source-palette" {
+            format!("%%{{init: {{\"theme\": \"default\"}}}}%%\n{WARDLEY_ANCHOR_SOURCE}")
+        } else {
+            WARDLEY_ANCHOR_SOURCE.to_owned()
+        };
+        let (_, rendered) = try_render_wardley_with_theme(
+            &source,
+            &theme,
+            engine,
+            &RenderEnvironment::deterministic(),
+            "wardley-source-palette",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let anchor = element_with_class(&document, "g", "wardley-node--anchor");
+        assert_eq!(
+            anchor
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("fill"),
+            Some(expected),
+            "{origin}"
+        );
+    }
+}
+
+#[test]
+fn wardley_shared_text_fill_does_not_recolor_annotation_surfaces() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_wardley_with_theme(
+        concat!(
+            "wardley-beta\n",
+            "annotation 1,[0.7, 0.6] \"Source-owned annotation\"\n",
+        ),
+        &theme,
+        Engine::new(),
+        &portable_wardley_environment(),
+        "wardley-annotation-owner",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let annotation = element_with_class(&document, "g", "wardley-annotation");
+    assert_eq!(
+        annotation
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("fill"),
+        Some("#131300")
+    );
+    assert_eq!(
+        annotation
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap()
+            .attribute("fill"),
+        Some("white")
+    );
+    assert_eq!(
+        element_with_class(&document, "text", "wardley-axis-label").attribute("fill"),
+        Some("#abcdef")
+    );
+}
+
+#[test]
+fn wardley_without_host_theme_retains_upstream_anchor_black() {
+    let svg = render_wardley(
+        WARDLEY_ANCHOR_SOURCE,
+        serde_json::json!({}),
+        "wardley-plain-anchors",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let anchor = element_with_class(&document, "g", "wardley-node--anchor");
+    assert_eq!(
+        anchor
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("fill"),
+        Some("#000"),
+    );
 }
 
 #[test]
@@ -662,4 +953,148 @@ fn wardley_font_size_only_keeps_the_baseline_dom_and_mixed_typography_fails_clos
         Some((DiagramFamilyId::WARDLEY, 1))
     );
     assert_eq!(error.incomplete_family_theme(), None);
+}
+
+#[test]
+fn wardley_empty_typed_theme_preserves_plain_svg_bytes() {
+    let diagram_id = "wardley-empty-theme";
+    let baseline = render_wardley(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        serde_json::json!({}),
+        diagram_id,
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        diagram_id,
+    )
+    .unwrap();
+    assert_eq!(rendered.svg(), baseline);
+}
+
+#[test]
+fn wardley_typography_only_theme_preserves_plain_paint() {
+    let diagram_id = "wardley-typography-only";
+    let baseline = render_wardley(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        serde_json::json!({}),
+        diagram_id,
+    );
+    let theme = wardley_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("TypographyOnly").unwrap()),
+    );
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        diagram_id,
+    )
+    .unwrap();
+    let baseline = roxmltree::Document::parse(&baseline).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let paint = |document: &roxmltree::Document<'_>| {
+        document
+            .descendants()
+            .filter(|node| node.is_element())
+            .map(|node| {
+                ["fill", "stroke", "color"]
+                    .map(|property| node.attribute(property).map(str::to_owned))
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(paint(&document), paint(&baseline));
+    assert!(rendered.svg().contains("TypographyOnly"));
+}
+
+#[test]
+fn wardley_non_paint_themes_preserve_authored_palette_paint() {
+    let empty = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let typography = wardley_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("TypographyOnly").unwrap()),
+    );
+    for (theme_name, theme) in [("empty", &empty), ("typography-only", &typography)] {
+        for origin in ["site", "source"] {
+            let diagram_id = "wardley-authored-palette";
+            let (source, config) = if origin == "site" {
+                (
+                    WARDLEY_ANCHOR_SOURCE.to_owned(),
+                    serde_json::json!({"themeVariables": {"primaryTextColor": "#123456"}}),
+                )
+            } else {
+                (
+                    format!(
+                        "---\nconfig:\n  themeVariables:\n    primaryTextColor: '#123456'\n---\n{WARDLEY_ANCHOR_SOURCE}"
+                    ),
+                    serde_json::json!({"secure": []}),
+                )
+            };
+            let baseline = render_wardley(&source, config.clone(), diagram_id);
+            let (_, rendered) = try_render_wardley_with_theme(
+                &source,
+                theme,
+                Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                &RenderEnvironment::deterministic(),
+                diagram_id,
+            )
+            .unwrap();
+            let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let paint = |document: &roxmltree::Document<'_>| {
+                document
+                    .descendants()
+                    .filter(|node| node.is_element())
+                    .map(|node| {
+                        ["fill", "stroke", "color"]
+                            .map(|property| node.attribute(property).map(str::to_owned))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                paint(&document),
+                paint(&baseline_document),
+                "{theme_name}/{origin}"
+            );
+            if theme_name == "empty" {
+                assert_eq!(rendered.svg(), baseline, "{theme_name}/{origin}");
+            }
+        }
+    }
+}
+
+#[test]
+fn wardley_host_text_preserves_arrow_foreground_background_pairs() {
+    let source = "wardley-beta\naccelerator \"Cloud Native\" [0.2, 0.85]\ndeaccelerator \"Legacy Data\" [0.3, 0.65]\n";
+    for preset in [ThemePreset::EditorLight, ThemePreset::EditorDark] {
+        let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+        let (_, rendered) = try_render_wardley_with_theme(
+            source,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-arrow-pairs",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for class in ["wardley-accelerators", "wardley-deaccelerators"] {
+            let group = element_with_class(&document, "g", class);
+            let path = group
+                .descendants()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            let label = group
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(path.attribute("fill"), Some("white"));
+            assert_eq!(label.attribute("fill"), Some("#333"));
+        }
+    }
 }

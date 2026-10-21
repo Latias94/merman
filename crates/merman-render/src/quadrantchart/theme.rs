@@ -12,7 +12,7 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
     reconcile_unsupported_terminal_domains, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
@@ -31,7 +31,7 @@ pub(crate) struct QuadrantChartPointThemePlan {
     point_count: usize,
     points: Box<[QuadrantChartPointThemeExpectation]>,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, QuadrantChartPointPendingEvidence>,
     terminal_receipt: OnceLock<QuadrantChartPointThemeReceipt>,
 }
@@ -136,7 +136,7 @@ impl QuadrantChartPointThemePlan {
                 point_count,
                 points: Vec::new().into_boxed_slice(),
                 inherited_font_stack,
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             });
@@ -146,7 +146,7 @@ impl QuadrantChartPointThemePlan {
             effective_config,
             "quadrantChart.pointRadius",
         );
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             "themeVariables.quadrantPointFill",
         );
@@ -265,7 +265,7 @@ impl QuadrantChartPointThemePlan {
             }
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let source_owned_fill = model
             .points
             .iter()
@@ -505,12 +505,12 @@ impl QuadrantChartPointThemePlan {
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
             if self.inherited_font_stack.typography_requested() {
                 self.inherited_font_stack
-                    .mark_unsupported_typography_evidence(&mut evidence, true);
+                    .record_unsupported_typography_evidence(evidence, true);
                 if self.inherited_font_stack.typed_font_stack_requested() {
                     evidence.mark_residual(
                         FamilyThemeMechanismKey::Typography(
@@ -520,10 +520,10 @@ impl QuadrantChartPointThemePlan {
                     );
                 }
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+            .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
         if self.inherited_font_stack.typed_font_stack_requested() {
             let key = FamilyThemeMechanismKey::Typography(
                 crate::diagram_theme::ThemeTypographyProperty::FontStack,
@@ -561,7 +561,6 @@ impl QuadrantChartPointThemePlan {
                 );
             }
         }
-        evidence
     }
 }
 

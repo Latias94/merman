@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeTarget};
-use crate::family::FamilyThemeEvidence;
+use crate::family::FamilyThemeOutcomes;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod styles;
@@ -67,7 +67,7 @@ impl ArchitectureSurfaceThemePlan {
             theme: theme.cloned(),
             title_keys,
             service_stroke_source_owned: super::mermaid_owns_group_stroke(effective_config),
-            text_fill_source_owned: merman_core::__private::config_path_overrides_typed_default(
+            text_fill_source_owned: merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 TEXT_COLOR_PATH,
             ),
@@ -108,7 +108,7 @@ impl ArchitectureSurfaceThemePlan {
 
     pub(super) fn finish_evidence(
         &self,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
         emission: Option<&ArchitectureSurfaceRenderState>,
     ) {
         for key in &self.title_keys {
@@ -121,18 +121,18 @@ impl ArchitectureSurfaceThemePlan {
 }
 
 fn mermaid_owns_arrow_fill(config: &PresentationConfig) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(
+    if merman_core::__private::config_paint_overrides_typed_default(
         config,
         ARCH_EDGE_ARROW_COLOR_PATH,
     ) {
         return true;
     }
-    if merman_core::__private::config_path_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH)
+    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
     {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(config, LINE_COLOR_PATH)
+    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
 }

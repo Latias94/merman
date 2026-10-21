@@ -1,0 +1,50 @@
+{
+  "kind": "Decision-relevant diagnostic source/history and raw-run archive; no executable or production bypass",
+  "created_at_utc": "2026-10-20T17:07:54.621854+00:00",
+  "production_revision": "475373fc5baa19967726c72e383df4e97208b77a",
+  "scope": "Contains exact source/patch/registration/driver/rawlogs/results/reviews. Absolute paths are capture-host provenance, not a portable script promise. No formalrelease admission. Original failed three-fixture parse remains rejected.",
+  "members": [
+    {
+      "file": "audits.json.gz",
+      "entries": 8,
+      "compressed_bytes": 74833,
+      "compressed_sha256": "2b0c28594b71cbb7c59a84f68d0408a6cac1a122f2bc1570b3ef3efe5270f5a4",
+      "uncompressed_bytes": 270498,
+      "uncompressed_sha256": "9a0b40b5af50b6c23f37b88525f2de323f99df53e2316d57b894abdbeada313c"
+    },
+    {
+      "file": "writer.json.gz",
+      "entries": 197,
+      "compressed_bytes": 163163,
+      "compressed_sha256": "3da743e6cd6836ddb37c1e599e7cb12e8a6080e53de1ebeeac818c626d5aba9e",
+      "uncompressed_bytes": 1847349,
+      "uncompressed_sha256": "9d9dab8539d46f91f4dc6bda842dc903ce0c3cebe60f589980ee52f4a7eae93c"
+    },
+    {
+      "file": "parse-rejected.json.gz",
+      "entries": 13,
+      "compressed_bytes": 8681,
+      "compressed_sha256": "05ea96dce63ccf6dd71d275ffae289bb126fb732bdf98af621cf1401abaee0fe",
+      "uncompressed_bytes": 43311,
+      "uncompressed_sha256": "567b7268b5891f733ed216c159f8644707867a123db0bbd0312eb092debd7e26"
+    },
+    {
+      "file": "zenuml-parse.json.gz",
+      "entries": 37,
+      "compressed_bytes": 13347,
+      "compressed_sha256": "93150a51801f6def99723cd6351a0b5f623a56ea036257eecd3c5b36cf167706",
+      "uncompressed_bytes": 92635,
+      "uncompressed_sha256": "7ff83f6046082f77fbe87729fb6240b829eb2b4f24fd8fa7aedd968361fb6c23"
+    },
+    {
+      "file": "zenuml-producer.json.gz",
+      "entries": 102,
+      "compressed_bytes": 74529,
+      "compressed_sha256": "eddbb7b1a84721b23ce27daedf96b634581903f5bc7d081a0b54336a87ba08e1",
+      "uncompressed_bytes": 657070,
+      "uncompressed_sha256": "45a4bc7b348388a6198060db2a0fbf5e1f08d0e7a3f36079d29b31f519ee7a09"
+    }
+  ],
+  "source_files": 357,
+  "compressed_bytes": 334553
+}

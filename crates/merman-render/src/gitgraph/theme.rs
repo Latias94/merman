@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
 };
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
@@ -287,24 +287,24 @@ impl GitGraphPaletteSourceOwnership {
     fn from_config(config: &PresentationConfig) -> Self {
         Self {
             git: std::array::from_fn(|slot| {
-                merman_core::__private::config_path_overrides_typed_default(
+                merman_core::__private::config_paint_overrides_typed_default(
                     config,
                     GIT_COLOR_PATHS[slot],
                 )
             }),
-            node_border: merman_core::__private::config_path_overrides_typed_default(
+            node_border: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 NODE_BORDER_PATH,
             ),
-            main_background: merman_core::__private::config_path_overrides_typed_default(
+            main_background: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 MAIN_BACKGROUND_PATH,
             ),
-            primary_color: merman_core::__private::config_path_overrides_typed_default(
+            primary_color: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 PRIMARY_COLOR_PATH,
             ),
-            border_color_array: merman_core::__private::config_path_overrides_typed_default(
+            border_color_array: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 BORDER_COLOR_ARRAY_PATH,
             ),
@@ -358,7 +358,7 @@ pub(crate) struct GitGraphNodePalettePlan {
     fill_winner_by_slot: [bool; GITGRAPH_PALETTE_SLOT_COUNT],
     branch_stroke: GitGraphBranchStrokePlan,
     text_paint: GitGraphTextPaintPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     visible_surfaces: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
     mermaid_source_ownership: GitGraphPaletteSourceOwnership,
@@ -383,7 +383,7 @@ impl GitGraphNodePalettePlan {
             return Ok(plan);
         };
 
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
         reconcile_unsupported_terminal_domains(
             theme,
@@ -555,7 +555,7 @@ impl GitGraphNodePalettePlan {
             } else {
                 0
             }),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             visible_surfaces: [GitGraphPaletteSurfaceSet::default(); GITGRAPH_PALETTE_SLOT_COUNT],
             mermaid_source_ownership: GitGraphPaletteSourceOwnership::default(),
@@ -775,8 +775,8 @@ impl GitGraphNodePalettePlan {
         self.branch_stroke.record_terminal(receipt)
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(key) = self.palette_key.clone() {
             match self.terminal_receipt.get() {
                 Some(receipt) if !receipt.applied_capabilities.is_empty() => {
@@ -790,8 +790,7 @@ impl GitGraphNodePalettePlan {
                     .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
             }
         }
-        self.branch_stroke.finish_evidence(&mut evidence);
-        evidence
+        self.branch_stroke.record_evidence(evidence);
     }
 
     fn capability_for_surface(
@@ -956,6 +955,15 @@ pub(crate) fn palette_slot(index: i64) -> usize {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1149,7 +1157,7 @@ mod tests {
             fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
             branch_stroke: GitGraphBranchStrokePlan::baseline(0),
             text_paint: GitGraphTextPaintPlan::baseline(),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
                 target: ThemeTarget::Node,
             }),
@@ -1275,15 +1283,17 @@ mod tests {
     #[test]
     fn absent_gitgraph_marker_is_not_applicable() {
         let theme = unsupported_fill_theme(ThemeTarget::Marker);
-        let evidence = GitGraphNodePalettePlan::resolve(
-            Some(&theme),
-            &PresentationConfig::default(),
-            &empty_layout(),
-            false,
-            &work_meter(),
-        )
-        .expect("resolve absent GitGraph marker evidence")
-        .finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| {
+            GitGraphNodePalettePlan::resolve(
+                Some(&theme),
+                &PresentationConfig::default(),
+                &empty_layout(),
+                false,
+                &work_meter(),
+            )
+            .expect("resolve absent GitGraph marker evidence")
+            .record_evidence(evidence);
+        });
 
         assert_eq!(
             evidence.not_applicable_mechanisms(),
@@ -1298,15 +1308,17 @@ mod tests {
     #[test]
     fn visible_gitgraph_title_keeps_unsupported_fill_as_a_residual() {
         let theme = unsupported_fill_theme(ThemeTarget::Title);
-        let evidence = GitGraphNodePalettePlan::resolve(
-            Some(&theme),
-            &PresentationConfig::default(),
-            &empty_layout(),
-            true,
-            &work_meter(),
-        )
-        .expect("resolve visible GitGraph title evidence")
-        .finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| {
+            GitGraphNodePalettePlan::resolve(
+                Some(&theme),
+                &PresentationConfig::default(),
+                &empty_layout(),
+                true,
+                &work_meter(),
+            )
+            .expect("resolve visible GitGraph title evidence")
+            .record_evidence(evidence);
+        });
 
         assert_eq!(evidence.residuals().len(), 1);
         assert_eq!(

@@ -344,6 +344,13 @@ for exporting presets, authoring designs, and importing saved recipes.
 compiles the corresponding Rust `ThemePreset`. It does not select `look: neo`, Flowchart ELK, an
 SVG pipeline, or a product profile.
 
+An explicit Mermaid theme in `site_config` or admitted source frontmatter/directives owns
+the resulting paint palette, including derived colors. Existing palette values outrank
+compiled theme paint defaults; missing roles retain their fallback. Explicit variables retain
+their property-specific precedence. A recipe's own Mermaid compatibility theme does not
+disable its compiled paint. Independent typography, geometry, effects and canvas decoration
+continue to apply.
+
 `theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
 
 | Field | Purpose |

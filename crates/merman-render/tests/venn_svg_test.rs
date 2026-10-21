@@ -4,8 +4,8 @@ use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
+    MermaidThemeCompatibility, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -409,53 +409,74 @@ style AB1 color:#654321
 
 #[test]
 fn venn_text_fill_uses_final_venn_role_ownership() {
-    let theme = venn_paint_theme([ThemeRule::new(
-        ThemeTarget::Text,
-        ThemeStylePatch::default().with_fill(solid("#123456")),
-    )
-    .for_family(DiagramFamilyId::VENN)]);
-
-    // Default retains `vennSetTextColor` as a constructor snapshot. A caller-provided
-    // `textColor` therefore does not own the final Venn text role and must not suppress the
-    // typed route.
-    let default_snapshot = render_venn_with_theme_requirement(
-        THEME_TYPOGRAPHY_SOURCE,
-        &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "theme": "default",
-            "themeVariables": { "textColor": "#654321" }
-        }))),
-        ThemePortabilityRequirement::RequirePortable,
-    )
-    .expect("Default Venn textColor does not own the Venn text role");
-    assert!(default_snapshot.svg().contains("fill:#123456;"));
-    let evidence =
-        merman_render::__private::family_evidence(default_snapshot.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-
-    // Base derives `vennSetTextColor` from `textColor`, retaining the configuration ownership
-    // edge. Its effective role must win over the typed route.
-    let base_derived = render_venn_with_theme_requirement(
-        THEME_TYPOGRAPHY_SOURCE,
-        &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "theme": "base",
-            "themeVariables": { "textColor": "#654321" }
-        }))),
-        ThemePortabilityRequirement::RequirePortable,
-    )
-    .expect("Base Venn textColor owns the derived Venn text role");
-    assert!(base_derived.svg().contains("fill:#654321;"));
-    assert!(!base_derived.svg().contains("fill:#123456;"));
-    let evidence =
-        merman_render::__private::family_evidence(base_derived.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
+    for origin in ["recipe", "site", "source"] {
+        for base in ["default", "base"] {
+            let rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(solid("#123456")),
+            )
+            .for_family(DiagramFamilyId::VENN);
+            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+            let spec = if origin != "recipe" {
+                spec
+            } else {
+                spec.with_mermaid_compatibility(
+                    MermaidThemeCompatibility::default()
+                        .with_theme(base)
+                        .unwrap(),
+                )
+            };
+            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+            let mut config = serde_json::json!({"themeVariables":{"textColor":"#654321"}});
+            if origin != "recipe" {
+                config["theme"] = serde_json::json!(base);
+            }
+            let source = if origin == "source" {
+                format!("%%{{init: {config}}}%%\n{THEME_TYPOGRAPHY_SOURCE}")
+            } else {
+                THEME_TYPOGRAPHY_SOURCE.to_owned()
+            };
+            let engine = if origin == "source" {
+                Engine::new()
+            } else {
+                Engine::new().with_site_config(PresentationConfig::from_value(config))
+            };
+            let rendered = render_venn_with_theme_requirement(
+                &source,
+                &theme,
+                engine,
+                if origin == "recipe" {
+                    ThemePortabilityRequirement::BestEffort
+                } else {
+                    ThemePortabilityRequirement::RequirePortable
+                },
+            )
+            .unwrap();
+            let owned = origin == "source" || base == "base";
+            let expected = if base == "base" {
+                "#654321"
+            } else if origin == "source" {
+                "#333"
+            } else {
+                "#123456"
+            };
+            assert!(
+                rendered.svg().contains(&format!("fill:{expected};")),
+                "origin={origin}, base={base}: {}",
+                rendered.svg()
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(
+                evidence.mermaid_compatibility_residual_count(),
+                usize::from(origin == "recipe")
+            );
+            assert_eq!(evidence.applied_count(), usize::from(!owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }
 
 #[test]

@@ -7,7 +7,7 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -32,7 +32,7 @@ pub(crate) use typography::{ArchitectureTypographyEmission, ArchitectureTypograp
 #[derive(Debug)]
 pub(crate) struct ArchitectureGroupThemePlan {
     inline_style: Option<String>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     edge_stroke: ArchitectureEdgeStrokePlan,
     surfaces: Box<ArchitectureSurfaceThemePlan>,
@@ -51,7 +51,7 @@ impl ArchitectureGroupThemePlan {
         let Some(theme) = theme else {
             return Ok(Self::baseline(typography));
         };
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let surfaces = Box::new(ArchitectureSurfaceThemePlan::resolve(
             Some(theme),
             effective_config,
@@ -224,7 +224,7 @@ impl ArchitectureGroupThemePlan {
     fn baseline(typography: ArchitectureTypographyThemePlan) -> Self {
         Self {
             inline_style: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             edge_stroke: ArchitectureEdgeStrokePlan::baseline(),
             surfaces: Box::new(ArchitectureSurfaceThemePlan::baseline()),
@@ -261,7 +261,7 @@ impl ArchitectureGroupThemePlan {
         group_style_emitted: bool,
         edge_style_emitted: bool,
         surfaces: Option<&ArchitectureSurfaceRenderState>,
-    ) -> FamilyThemeEvidence {
+    ) -> FamilyThemeOutcomes {
         let mut evidence = self.evidence.clone();
         evidence.merge_accounted_from(self.typography.finish_evidence(typography));
         if group_style_emitted {
@@ -278,7 +278,7 @@ impl ArchitectureGroupThemePlan {
 
 /// Theme evidence returned with the completed Architecture SVG.
 pub(crate) struct ArchitectureThemeOutcome {
-    pub(crate) evidence: FamilyThemeEvidence,
+    pub(crate) evidence: FamilyThemeOutcomes,
     #[cfg(merman_internal_theme_acceptance)]
     pub(crate) text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
@@ -286,13 +286,13 @@ pub(crate) struct ArchitectureThemeOutcome {
 fn mermaid_owns_group_stroke(
     effective_config: &merman_core::presentation::PresentationConfig,
 ) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(
+    if merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.archGroupBorderColor",
     ) {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(
+    merman_core::__private::config_paint_overrides_typed_default(
         effective_config,
         "themeVariables.primaryBorderColor",
     ) && effective_config.get_str("themeVariables.archGroupBorderColor")

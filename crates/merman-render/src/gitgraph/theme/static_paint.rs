@@ -9,8 +9,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -28,7 +29,7 @@ pub(crate) struct GitGraphStaticPaintPlan {
     node_paint: Option<super::node_paint::GitGraphNodePaintPlan>,
     assignment: Option<StaticPaintAssignment>,
     pending_key: Option<FamilyThemeMechanismKey>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<GitGraphStaticPaintReceipt>,
     terminal_styles: OnceLock<GitGraphTerminalStyles>,
 }
@@ -81,7 +82,7 @@ impl GitGraphStaticPaintPlan {
             node_paint: None,
             assignment: None,
             pending_key: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
             terminal_styles: OnceLock::new(),
         }
@@ -94,7 +95,7 @@ impl GitGraphStaticPaintPlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             ..Self::baseline()
         };
         let Some(theme) = theme else {
@@ -116,7 +117,7 @@ impl GitGraphStaticPaintPlan {
         let source_owns_fill = effective_config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen)
-            || merman_core::__private::config_path_overrides_typed_default(
+            || merman_core::__private::config_paint_overrides_typed_default(
                 effective_config,
                 COMMIT_LABEL_BACKGROUND_PATH,
             );
@@ -374,10 +375,10 @@ impl GitGraphStaticPaintPlan {
         }
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(node_paint) = self.node_paint.as_ref() {
-            node_paint.finish_evidence(&mut evidence);
+            node_paint.record_evidence(evidence);
         }
         if let Some(key) = self.pending_key.clone() {
             match self.terminal_receipt.get() {
@@ -395,7 +396,6 @@ impl GitGraphStaticPaintPlan {
                 None => evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint),
             }
         }
-        evidence
     }
 }
 
@@ -434,6 +434,15 @@ impl GitGraphStaticPaintReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
@@ -513,9 +522,9 @@ mod tests {
         }
     }
 
-    fn plan_with_layout(layout: &GitGraphDiagramLayout) -> GitGraphStaticPaintPlan {
+    fn static_paint_theme() -> ResolvedDiagramTheme {
         let paint = CanvasPaint::solid("#123456").expect("valid paint");
-        let theme = DiagramThemeCompiler::new()
+        DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
@@ -528,7 +537,11 @@ mod tests {
                 ),
             )
             .expect("compile theme")
-            .resolve(crate::DiagramFamilyId::GIT_GRAPH);
+            .resolve(crate::DiagramFamilyId::GIT_GRAPH)
+    }
+
+    fn plan_with_layout(layout: &GitGraphDiagramLayout) -> GitGraphStaticPaintPlan {
+        let theme = static_paint_theme();
         GitGraphStaticPaintPlan::resolve(
             Some(&theme),
             &PresentationConfig::default(),
@@ -571,7 +584,9 @@ mod tests {
             );
             assert_eq!(plan.commit_label_background_css(), None, "{case}");
 
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&static_paint_theme(), |evidence| {
+                plan.record_evidence(evidence)
+            });
             assert_eq!(evidence.applied().len(), 0, "{case}");
             assert_eq!(evidence.not_applicable_mechanisms().len(), 1, "{case}");
             assert!(evidence.residuals().is_empty(), "{case}");

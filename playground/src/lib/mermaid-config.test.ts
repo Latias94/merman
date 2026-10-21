@@ -74,7 +74,8 @@ flowchart TD
   A --> B`;
 
   assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark");
-  assert.equal(resolveMermaidCanvasTone("{}", "forest", source), "light");
+  assert.equal(resolveMermaidCanvasTone("{}", "forest", source), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"theme":"neutral"}', "default", source), "light");
   assert.equal(
     resolveMermaidCanvasTone(
       '{"theme":"neutral"}',
@@ -83,6 +84,28 @@ flowchart TD
     ),
     "dark",
   );
+});
+
+test("frontmatter-only canvas tones override UI initialization in both directions", () => {
+  for (const [sourceTheme, selectedTheme, expectedTone] of [
+    ["dark", "default", "dark"],
+    ["dark", "forest", "dark"],
+    ["neo-dark", "default", "dark"],
+    ["default", "dark", "light"],
+    ["forest", "dark", "light"],
+  ] as const) {
+    const source = `---\nconfig: {theme: ${sourceTheme}}\n---\nflowchart TD\nA-->B`;
+    for (const configJson of ["{}", '{"htmlLabels":false}']) {
+      assert.equal(
+        resolveMermaidCanvasTone(configJson, selectedTheme, source, "flowchart"),
+        expectedTone,
+      );
+    }
+    assert.equal(
+      buildMermaidOperationInput(source, selectedTheme, "{}").configuredSource,
+      source,
+    );
+  }
 });
 
 test("reads block and flow-style Mermaid frontmatter themes", () => {
@@ -203,6 +226,7 @@ test("operation initialization admits only theme names and leaves authored setti
   for (const [selection, expectedTheme] of [["auto", undefined], ["default", "default"], ["dark", "dark"]] as const) {
     const operation = buildMermaidOperationInput("flowchart TD\nA-->B", selection, "{}");
     assert.equal(operation.initializationConfig.theme, expectedTheme);
+    assert.equal(operation.configuredSource, "flowchart TD\nA-->B");
     assert.equal(operation.initializationConfig.securityLevel, undefined);
     assert.equal(operation.initializationConfig.startOnLoad, undefined);
     assert.equal(Object.isFrozen(operation), true);
@@ -220,6 +244,65 @@ test("operation initialization admits only theme names and leaves authored setti
   assert.deepEqual(Object.keys(operation.initializationConfig), ["theme"]);
   assert.ok(operation.configuredSource.startsWith('---\nconfig: {theme: forest}\n---\n%%{init:'));
   assert.ok(operation.configuredSource.endsWith('%%{init: {"theme":"neutral"}}%%'));
+});
+
+test("operation keeps UI theme and font defaults out of authored source", () => {
+  const source = "stateDiagram-v2\nA\nnote right of A : Terminal note";
+  const fontFamily = "Arial, Helvetica, sans-serif";
+  for (const configJson of ["{}", '{"htmlLabels":false}']) {
+    const operation = buildMermaidOperationInput(source, "default", configJson, {
+      diagramFont: "arial",
+    });
+    assert.deepEqual(operation.initializationConfig, {
+      theme: "default",
+      fontFamily,
+      themeVariables: { fontFamily },
+    });
+    assert.equal(
+      operation.configuredSource,
+      configJson === "{}" ? source : `%%{init: ${configJson}}%%\n${source}`,
+    );
+  }
+  assert.equal(
+    sourceWithConfig(source, "default", "{}", { diagramFont: "arial" }),
+    `%%{init: ${JSON.stringify({ theme: "default", fontFamily, themeVariables: { fontFamily } })}}%%\n${source}`,
+  );
+});
+
+test("operation preserves explicit user theme and fonts as authored source", () => {
+  const source = "flowchart TD\nA-->B";
+  const authoredConfig = {
+    theme: "forest",
+    fontFamily: "Authored Root Font",
+    themeVariables: { fontFamily: "Authored Variable Font", primaryColor: "#123456" },
+  };
+  const configJson = JSON.stringify(authoredConfig);
+  const operation = buildMermaidOperationInput(source, "dark", configJson, {
+    diagramFont: "arial",
+  });
+  assert.deepEqual(operation.initializationConfig, {
+    theme: "forest",
+    fontFamily: "Arial, Helvetica, sans-serif",
+    themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+  });
+  assert.equal(operation.configuredSource, `%%{init: ${configJson}}%%\n${source}`);
+});
+
+test("operation retains native source appearance after injected user settings", () => {
+  const frontmatter = "---\nconfig: {theme: forest}\n---\n";
+  const body = 'flowchart TD\nA-->B\n%%{init: {"theme":"dark","fontFamily":"Native Font"}}%%';
+  const source = frontmatter + body;
+  const configJson = '{"theme":"neutral","fontFamily":"User Font"}';
+  const operation = buildMermaidOperationInput(source, "default", configJson, {
+    diagramFont: "arial",
+  });
+  assert.equal(operation.initializationConfig.theme, "neutral");
+  assert.equal(operation.configuredSource, `${frontmatter}%%{init: ${configJson}}%%\n${body}`);
+  assert.equal(resolveMermaidCanvasTone(configJson, "default", source, "flowchart"), "dark");
+  assert.equal(
+    buildMermaidOperationInput(source, "default", "{}", { diagramFont: "arial" }).configuredSource,
+    source,
+  );
 });
 
 

@@ -86,7 +86,18 @@ fn mindmap_html_recovery_and_policy_removal_share_layout_and_emitted_geometry() 
     }
 }
 
-fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
+fn mindmap_paint_theme_spec(baseline: &str) -> DiagramThemeSpec {
+    if baseline == "default" {
+        return DiagramThemeSpec::new();
+    }
+    DiagramThemeSpec::new().with_mermaid_compatibility(
+        MermaidThemeCompatibility::default()
+            .with_theme(baseline)
+            .expect("valid Mindmap paint fixture theme"),
+    )
+}
+
+fn mindmap_node_palette_theme(colors: &[&str], baseline: &str) -> DiagramTheme {
     let palette = OrdinalPalette::new(
         colors
             .iter()
@@ -95,17 +106,17 @@ fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
     .expect("non-empty Mindmap Node palette");
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            mindmap_paint_theme_spec(baseline).with_styles(
                 ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
             ),
         )
         .expect("compile Mindmap Node palette")
 }
 
-fn mindmap_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+fn mindmap_edge_stroke_theme(stroke: CanvasPaint, baseline: &str) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            mindmap_paint_theme_spec(baseline).with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Edge,
@@ -122,6 +133,7 @@ fn mindmap_node_paint_theme(
     fill: CanvasPaint,
     stroke: CanvasPaint,
     variant: Option<ThemeVariant>,
+    baseline: &str,
 ) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Node,
@@ -135,11 +147,17 @@ fn mindmap_node_paint_theme(
         None => rule,
     };
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .compile(
+            mindmap_paint_theme_spec(baseline).with_styles(ThemeRuleSet::default().with_rule(rule)),
+        )
         .expect("compile Mindmap Node paint")
 }
 
-fn mindmap_node_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+fn mindmap_node_fill_theme(
+    fill: CanvasPaint,
+    variant: Option<ThemeVariant>,
+    baseline: &str,
+) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Node,
         ThemeStylePatch::default().with_fill(fill),
@@ -150,11 +168,17 @@ fn mindmap_node_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> 
         None => rule,
     };
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .compile(
+            mindmap_paint_theme_spec(baseline).with_styles(ThemeRuleSet::default().with_rule(rule)),
+        )
         .expect("compile Mindmap Node fill")
 }
 
-fn mindmap_node_stroke_theme(stroke: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+fn mindmap_node_stroke_theme(
+    stroke: CanvasPaint,
+    variant: Option<ThemeVariant>,
+    baseline: &str,
+) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Node,
         ThemeStylePatch::default().with_stroke(stroke),
@@ -165,11 +189,17 @@ fn mindmap_node_stroke_theme(stroke: CanvasPaint, variant: Option<ThemeVariant>)
         None => rule,
     };
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .compile(
+            mindmap_paint_theme_spec(baseline).with_styles(ThemeRuleSet::default().with_rule(rule)),
+        )
         .expect("compile Mindmap Node stroke")
 }
 
-fn mindmap_ordinal_node_fill_theme(fill: CanvasPaint, ordinal: OrdinalSelector) -> DiagramTheme {
+fn mindmap_ordinal_node_fill_theme(
+    fill: CanvasPaint,
+    ordinal: OrdinalSelector,
+    baseline: &str,
+) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Node,
         ThemeStylePatch::default().with_fill(fill),
@@ -177,7 +207,9 @@ fn mindmap_ordinal_node_fill_theme(fill: CanvasPaint, ordinal: OrdinalSelector) 
     .for_family(merman_render::DiagramFamilyId::MINDMAP)
     .with_ordinal(ordinal);
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .compile(
+            mindmap_paint_theme_spec(baseline).with_styles(ThemeRuleSet::default().with_rule(rule)),
+        )
         .expect("compile Mindmap ordinal Node fill")
 }
 
@@ -256,6 +288,25 @@ fn render_mindmap_with_theme_and_engine(
 ) -> family::RenderedFamilySvg {
     try_render_mindmap_with_theme_and_engine(source, theme, engine, diagram_id, portability)
         .expect("render themed Mindmap")
+}
+
+fn render_mindmap_with_retained_recipe_baseline(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+) -> family::RenderedFamilySvg {
+    let rendered = render_mindmap_with_theme_and_engine(
+        source,
+        theme,
+        engine,
+        diagram_id,
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_core::__private::theme_parse_evidence(rendered.metadata());
+    assert_eq!(evidence.mermaid_residual_count(), 1);
+    assert!(evidence.mermaid_theme_field_survives());
+    rendered
 }
 
 fn mindmap_node_attribute(svg: &str, node_dom_id: &str, attribute: &str) -> Option<String> {
@@ -484,7 +535,7 @@ fn layout_mindmap_typed(
     parsed: &ParsedDiagramRender,
     session: RenderSession,
 ) -> MindmapDiagramLayout {
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize Mindmap layout");
     serde_json::from_value(projection["layout"]["MindmapDiagram"].clone())
         .expect("Mindmap layout projection")
@@ -537,19 +588,22 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
 
 #[test]
 fn mindmap_node_palette_reaches_branch_shapes_without_recoloring_the_root() {
-    let theme = mindmap_node_palette_theme(&[
-        "#123456",
-        "transparent",
-        "#dc2626",
-        "#ea580c",
-        "#ca8a04",
-        "#16a34a",
-        "#0891b2",
-        "#2563eb",
-        "#7c3aed",
-        "#c026d3",
-        "#db2777",
-    ]);
+    let theme = mindmap_node_palette_theme(
+        &[
+            "#123456",
+            "transparent",
+            "#dc2626",
+            "#ea580c",
+            "#ca8a04",
+            "#16a34a",
+            "#0891b2",
+            "#2563eb",
+            "#7c3aed",
+            "#c026d3",
+            "#db2777",
+        ],
+        "default",
+    );
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First:::section-root\n    Second\n    Third\n    Fourth\n    Fifth\n    Sixth\n    Seventh\n    Eighth\n    Ninth\n    Tenth\n    Eleventh\n    Disabled((Disabled))\n    :::disabled\n    DisabledRect[Disabled rect]\n    :::disabled\n",
         &theme,
@@ -808,20 +862,26 @@ fn mindmap_direct_edge_stroke_reaches_classic_hand_drawn_neo_and_redux_paths() {
         ),
         ("transparent", CanvasPaint::Transparent, "transparent"),
     ] {
-        let theme = mindmap_edge_stroke_theme(stroke);
-        for (look_case, config) in [
-            ("classic", json!({ "look": "classic" })),
-            ("hand-drawn", json!({ "look": "handDrawn" })),
-            ("neo", json!({ "look": "neo" })),
-            ("redux", json!({ "theme": "redux", "look": "neo" })),
+        for (look_case, baseline, config) in [
+            ("classic", "default", json!({ "look": "classic" })),
+            ("hand-drawn", "default", json!({ "look": "handDrawn" })),
+            ("neo", "default", json!({ "look": "neo" })),
+            ("redux", "redux", json!({ "look": "neo" })),
         ] {
-            let rendered = render_mindmap_with_theme_and_engine(
-                source,
-                &theme,
-                Engine::new().with_site_config(PresentationConfig::from_value(config)),
-                &format!("mindmap-edge-{case}-{look_case}"),
-                ThemePortabilityRequirement::RequirePortable,
-            );
+            let theme = mindmap_edge_stroke_theme(stroke.clone(), baseline);
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+            let diagram_id = format!("mindmap-edge-{case}-{look_case}");
+            let rendered = if baseline == "default" {
+                render_mindmap_with_theme_and_engine(
+                    source,
+                    &theme,
+                    engine,
+                    &diagram_id,
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+            } else {
+                render_mindmap_with_retained_recipe_baseline(source, &theme, engine, &diagram_id)
+            };
             let style = mindmap_edge_attribute(rendered.svg(), "edge_0_1", "style")
                 .expect("directly themed Mindmap edge style");
             assert_eq!(
@@ -868,15 +928,13 @@ fn mindmap_direct_node_paint_owns_only_real_neo_redux_token_consumers() {
             ),
         ] {
             let diagram_id = format!("mindmap-node-{selector_name}-{paint_name}");
-            let rendered = render_mindmap_with_theme_and_engine(
+            let rendered = render_mindmap_with_retained_recipe_baseline(
                 source,
-                &mindmap_node_paint_theme(fill, stroke, variant),
+                &mindmap_node_paint_theme(fill, stroke, variant, "redux"),
                 Engine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "theme": "redux",
                     "look": "neo"
                 }))),
                 &diagram_id,
-                ThemePortabilityRequirement::RequirePortable,
             );
             let stylesheet = mindmap_stylesheet(rendered.svg());
 
@@ -945,15 +1003,13 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             ("transparent", CanvasPaint::Transparent, "transparent"),
         ] {
             let fill_id = format!("mindmap-node-fill-{selector_name}-{paint_name}");
-            let fill = render_mindmap_with_theme_and_engine(
+            let fill = render_mindmap_with_retained_recipe_baseline(
                 source,
-                &mindmap_node_fill_theme(paint.clone(), variant),
+                &mindmap_node_fill_theme(paint.clone(), variant, "redux"),
                 Engine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "theme": "redux",
                     "look": "neo"
                 }))),
                 &fill_id,
-                ThemePortabilityRequirement::RequirePortable,
             );
             assert_eq!(
                 mindmap_neo_section_shape_fill(&mindmap_stylesheet(fill.svg()), &fill_id, 0),
@@ -967,15 +1023,13 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             assert_eq!(evidence.theme_residual_count(), 0);
 
             let stroke_id = format!("mindmap-node-stroke-{selector_name}-{paint_name}");
-            let stroke = render_mindmap_with_theme_and_engine(
+            let stroke = render_mindmap_with_retained_recipe_baseline(
                 source,
-                &mindmap_node_stroke_theme(paint, variant),
+                &mindmap_node_stroke_theme(paint, variant, "redux"),
                 Engine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "theme": "redux",
                     "look": "neo"
                 }))),
                 &stroke_id,
-                ThemePortabilityRequirement::RequirePortable,
             );
             assert_eq!(
                 mindmap_neo_section_shape_stroke(&mindmap_stylesheet(stroke.svg()), &stroke_id, 0),
@@ -993,18 +1047,17 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
 
 #[test]
 fn mindmap_direct_node_stroke_keeps_redux_classic_root_label_fanout() {
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &mindmap_node_stroke_theme(
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
+            "redux",
         ),
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "classic"
         }))),
         "mindmap-node-stroke-classic",
-        ThemePortabilityRequirement::RequirePortable,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
     assert!(
@@ -1020,19 +1073,18 @@ fn mindmap_direct_node_stroke_keeps_redux_classic_root_label_fanout() {
 #[test]
 fn mindmap_direct_node_stroke_reaches_the_neo_root_overlay() {
     let diagram_id = "mindmap-node-stroke-neo-neutral";
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n",
         &mindmap_node_stroke_theme(
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
+            "neutral",
         ),
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "neutral",
             "look": "neo",
             "themeVariables": { "useGradient": false }
         }))),
         diagram_id,
-        ThemePortabilityRequirement::RequirePortable,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
     assert_mindmap_neo_root_shape_terminal(rendered.svg(), &format!("{diagram_id}-node_0"));
@@ -1055,9 +1107,9 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
         CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
         CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
         None,
+        "default",
     );
     let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "neutral",
         "look": "neo",
         "themeVariables": { "useGradient": false }
     })));
@@ -1077,7 +1129,7 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
     assert_ne!(
         mindmap_rule_fill(&stylesheet, &root_selector, ";}", "Neo root fill rule",),
         "#123456",
-        "the root-only neutral branch has no mainBkg terminal"
+        "the root-only branch has no mainBkg terminal"
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
@@ -1109,19 +1161,18 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
 #[test]
 fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() {
     let diagram_id = "mindmap-gradient-root-fill";
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n",
         &mindmap_node_fill_theme(
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             None,
+            "neutral",
         ),
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "neutral",
             "look": "neo",
             "themeVariables": { "useGradient": true }
         }))),
         diagram_id,
-        ThemePortabilityRequirement::RequirePortable,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
     assert_mindmap_neo_root_shape_terminal(rendered.svg(), &format!("{diagram_id}-node_0"));
@@ -1140,7 +1191,6 @@ fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() 
 fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
     let source = "mindmap\n  Root\n    Child\n";
     let site_config = PresentationConfig::from_value(json!({
-        "theme": "redux",
         "look": "neo",
         "themeVariables": { "useGradient": false }
     }));
@@ -1157,6 +1207,7 @@ fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
         let theme = mindmap_ordinal_node_fill_theme(
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             ordinal,
+            "default",
         );
         let rendered = render_mindmap_with_theme_and_engine(
             source,
@@ -1197,6 +1248,7 @@ fn mindmap_out_of_range_ordinal_node_fill_is_not_applicable() {
         &mindmap_ordinal_node_fill_theme(
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             OrdinalSelector::exact(99).expect("valid out-of-range Mindmap Node ordinal"),
+            "default",
         ),
         Engine::new(),
         "mindmap-out-of-range-ordinal-node-fill",
@@ -1226,23 +1278,21 @@ fn mindmap_static_node_fill_remains_applied_when_an_ordinal_rule_wins_an_occurre
     .with_ordinal(OrdinalSelector::cycle(1, 0).expect("valid Mindmap Node cycle"));
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            mindmap_paint_theme_spec("redux").with_styles(
                 ThemeRuleSet::default()
                     .with_rule(static_rule)
                     .with_rule(ordinal_rule),
             ),
         )
         .expect("compile mixed Mindmap Node fill theme");
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &theme,
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "neo",
             "themeVariables": { "useGradient": false }
         }))),
         "mindmap-static-and-ordinal-node-fill",
-        ThemePortabilityRequirement::BestEffort,
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 2);
@@ -1268,23 +1318,21 @@ fn mindmap_later_static_node_fill_makes_an_ordinal_rule_not_applicable() {
     .for_family(merman_render::DiagramFamilyId::MINDMAP);
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
+            mindmap_paint_theme_spec("redux").with_styles(
                 ThemeRuleSet::default()
                     .with_rule(ordinal_rule)
                     .with_rule(static_rule),
             ),
         )
         .expect("compile shadowed Mindmap ordinal fill theme");
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &theme,
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "neo",
             "themeVariables": { "useGradient": false }
         }))),
         "mindmap-shadowed-ordinal-node-fill",
-        ThemePortabilityRequirement::RequirePortable,
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 2);
@@ -1295,15 +1343,15 @@ fn mindmap_later_static_node_fill_makes_an_ordinal_rule_not_applicable() {
 
 #[test]
 fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &mindmap_node_paint_theme(
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
+            "redux",
         ),
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "neo",
             "themeVariables": {
                 "mainBkg": "#fedcba",
@@ -1311,7 +1359,6 @@ fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
             }
         }))),
         "mindmap-source-node-paint",
-        ThemePortabilityRequirement::RequirePortable,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
     assert_eq!(
@@ -1332,18 +1379,17 @@ fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
 
 #[test]
 fn mindmap_direct_node_paint_is_not_applicable_when_classic_has_no_token_consumer() {
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &mindmap_node_fill_theme(
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             None,
+            "redux",
         ),
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "classic"
         }))),
         "mindmap-classic-node-paint",
-        ThemePortabilityRequirement::RequirePortable,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
     assert_ne!(
@@ -1363,6 +1409,7 @@ fn mindmap_direct_node_paint_is_not_applicable_when_classic_has_no_token_consume
 fn mindmap_color_scale_ownership_suppresses_only_edges_using_that_slot() {
     let theme = mindmap_edge_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+        "default",
     );
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First\n      First child\n    Second\n",
@@ -1400,17 +1447,16 @@ fn mindmap_color_scale_ownership_suppresses_only_edges_using_that_slot() {
 fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
     let theme = mindmap_edge_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+        "redux",
     );
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
         Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "redux",
             "look": "neo",
             "themeVariables": { "nodeBorder": "#fedcba" }
         }))),
         "mindmap-edge-node-border-owner",
-        ThemePortabilityRequirement::RequirePortable,
     );
 
     for edge_id in ["edge_0_1", "edge_0_2"] {
@@ -1438,6 +1484,7 @@ fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
 fn mindmap_line_color_does_not_claim_the_edge_terminal() {
     let theme = mindmap_edge_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+        "default",
     );
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
@@ -1524,6 +1571,7 @@ fn mindmap_edge_fill_is_explicitly_unsupported_without_a_dead_line_color_bridge(
 fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
     let theme = mindmap_edge_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+        "default",
     );
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n",
@@ -1549,7 +1597,7 @@ fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
 
 #[test]
 fn mindmap_site_color_scale_slot_outranks_only_its_typed_palette_entry() {
-    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
+    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "default");
     let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "cScale1": "#fedcba" }
     })));
@@ -1650,18 +1698,85 @@ fn mindmap_explicit_mermaid_color_scale_slot_outranks_the_typed_palette() {
 }
 
 #[test]
+fn mindmap_source_palette_wins_while_site_palette_is_a_fallback() {
+    let plain = "mindmap\n  Root\n    First\n    Second\n";
+    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "default");
+    for (owner, source, config) in [
+        ("site", plain.to_owned(), json!({"theme": "base"})),
+        (
+            "source",
+            format!("---\nconfig:\n  theme: base\n---\n{plain}"),
+            json!({"secure": []}),
+        ),
+    ] {
+        let diagram_id = format!("mindmap-{owner}-palette-owner");
+        let rendered = render_mindmap_with_theme_and_engine(
+            &source,
+            &theme,
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            &diagram_id,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let stylesheet = mindmap_stylesheet(rendered.svg());
+        for (node, section, expected) in [
+            (1, 0, "hsl(-79.4117647059, 100%, 68.3333333333%)"),
+            (2, 1, "hsl(220.5882352941, 100%, 73.3333333333%)"),
+        ] {
+            assert_eq!(
+                mindmap_node_attribute(
+                    rendered.svg(),
+                    &format!("{diagram_id}-node_{node}"),
+                    "data-mindmap-section",
+                ),
+                if owner == "source" {
+                    None
+                } else {
+                    Some(section.to_string())
+                },
+                "{owner} branch palette owner",
+            );
+            if owner == "source" {
+                assert_eq!(
+                    mindmap_mermaid_section_shape_fill(&stylesheet, &diagram_id, section),
+                    expected,
+                    "{owner} section={section}",
+                );
+            } else {
+                assert_eq!(
+                    mindmap_typed_section_shape_fill(&stylesheet, &diagram_id, section),
+                    if section == 0 { "#123456" } else { "#abcdef" },
+                    "{owner} section={section}",
+                );
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{owner}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(owner == "site"),
+            "{owner}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(owner == "source"),
+            "{owner}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    }
+}
+
+#[test]
 fn mindmap_derived_color_scale_slot_retains_source_ownership() {
-    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
+    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "base");
     let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "base",
         "themeVariables": { "secondaryColor": "#00ff00" }
     })));
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
         engine,
         "mindmap-derived-palette",
-        ThemePortabilityRequirement::RequirePortable,
     );
 
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1700,7 +1815,7 @@ fn mindmap_derived_color_scale_slot_retains_source_ownership() {
 
 #[test]
 fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
-    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let theme = mindmap_node_palette_theme(&["#123456"], "default");
     let classic = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
@@ -1799,12 +1914,11 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
 
 #[test]
 fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() {
-    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let theme = mindmap_node_palette_theme(&["#123456"], "base");
     for (case, config) in [
         (
             "explicit",
             json!({
-                "theme": "base",
                 "look": "neo",
                 "themeVariables": {
                     "mainBkg": "#fedcba",
@@ -1815,7 +1929,6 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
         (
             "derived",
             json!({
-                "theme": "base",
                 "look": "neo",
                 "themeVariables": {
                     "primaryColor": "#fedcba",
@@ -1825,12 +1938,11 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
         ),
     ] {
         let diagram_id = format!("mindmap-neo-main-background-{case}");
-        let rendered = render_mindmap_with_theme_and_engine(
+        let rendered = render_mindmap_with_retained_recipe_baseline(
             "mindmap\n  Root\n    Child\n",
             &theme,
             Engine::new().with_site_config(PresentationConfig::from_value(config)),
             &diagram_id,
-            ThemePortabilityRequirement::RequirePortable,
         );
 
         assert_eq!(
@@ -1857,7 +1969,7 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
 
 #[test]
 fn mindmap_palette_fails_closed_when_the_section_css_is_outside_the_color_limit() {
-    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let theme = mindmap_node_palette_theme(&["#123456"], "default");
     let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "THEME_COLOR_LIMIT": 1 }
     })));
@@ -1891,17 +2003,14 @@ fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
             .for_family(merman_render::DiagramFamilyId::MINDMAP),
         );
     let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .compile(mindmap_paint_theme_spec("base").with_styles(styles))
         .expect("compile mixed direct and compatibility Mindmap theme");
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "base"
-    })));
-    let rendered = render_mindmap_with_theme_and_engine(
+    let engine = Engine::new();
+    let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &theme,
         engine,
         "mindmap-mixed-route",
-        ThemePortabilityRequirement::BestEffort,
     );
 
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1922,7 +2031,7 @@ fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
 
 #[test]
 fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
-    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let theme = mindmap_node_palette_theme(&["#123456"], "default");
     let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeCSS": ".custom rect { fill: #22c55e; }"
     })));

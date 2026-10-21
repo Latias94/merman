@@ -25,7 +25,7 @@ pub(super) struct SequenceThemeEvidenceState {
     pub(super) note: SequenceStaticRectThemeEmission,
     pub(super) activation: SequenceStaticRectThemeEmission,
     pub(super) typography: Option<SequenceTypographyThemeReceipt>,
-    pub(super) unsupported_text: Option<crate::family::FamilyThemeEvidence>,
+    pub(super) unsupported_text: Option<crate::family::FamilyThemeOutcomes>,
 }
 
 /// Winner facts produced by the terminal Sequence Actor writer.

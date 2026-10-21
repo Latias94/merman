@@ -733,6 +733,48 @@ fn diagram_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
+fn editor_dark_gantt_keeps_task_state_surfaces_and_labels() {
+    let name = "diagram-theme-gantt";
+    let source = "gantt\n  title Profile Plan\n  dateFormat YYYY-MM-DD\n  section Core\n  Build : 2026-01-01, 15d\n  Critical :crit, 2026-01-16, 2d\n  Ship :done, 2026-01-18, 3d";
+    let svg = render_with_editor_dark_theme(name, source);
+    assert_contains_all(name, &svg, &["fill=\"#0f172a\""]);
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG");
+    for (suffix, tag, fill, stroke) in [
+        ("task1", "rect", "#111827", Some("#475569")),
+        ("task2", "rect", "#fb7185", Some("#fb7185")),
+        ("task3", "rect", "#1f2937", Some("#475569")),
+        ("task1-text", "text", "#e5e7eb", None),
+        ("task2-text", "text", "#0f172a", None),
+        ("task3-text", "text", "#e5e7eb", None),
+    ] {
+        let id = format!("{name}-{suffix}");
+        let terminal = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id.as_str()))
+            .unwrap_or_else(|| panic!("missing Gantt terminal {id}"));
+        assert!(terminal.has_tag_name(tag), "{id}: expected {tag}");
+        let declarations = terminal
+            .attribute("style")
+            .expect("typed task paint")
+            .split(';')
+            .filter_map(|declaration| declaration.split_once(':'))
+            .map(|(key, value)| (key.trim(), value.trim()))
+            .collect::<Vec<_>>();
+        assert!(
+            declarations.contains(&("fill", fill)),
+            "{id}: expected fill {fill}, got {declarations:?}"
+        );
+        if let Some(stroke) = stroke {
+            assert!(
+                declarations.contains(&("stroke", stroke)),
+                "{id}: expected stroke {stroke}, got {declarations:?}"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
 fn diagram_theme_covers_additional_current_diagram_surfaces() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
@@ -746,16 +788,6 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             "requirementDiagram\n  requirement req1 {\n    id: 1\n    text: Host requirement\n    risk: high\n    verifymethod: analysis\n  }\n  element sys {\n    type: system\n  }\n  sys - satisfies -> req1",
             &["#111827", "#e5e7eb"],
             &["fill=\"#111827\""],
-        ),
-        (
-            "diagram-theme-gantt",
-            "gantt\n  title Profile Plan\n  dateFormat YYYY-MM-DD\n  section Core\n  Build : 2026-01-01, 15d\n  Critical :crit, 2026-01-16, 2d\n  Ship :done, 2026-01-18, 3d",
-            &["#e5e7eb", "#111827"],
-            &[
-                "id=\"diagram-theme-gantt-task1\" style=\"fill:#111827\"",
-                "id=\"diagram-theme-gantt-task2\" style=\"fill:#111827\"",
-                "id=\"diagram-theme-gantt-task3\" style=\"fill:#111827\"",
-            ],
         ),
         (
             "diagram-theme-block",
@@ -804,7 +836,7 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
                 r#"class="node c4-shape c4-component_db""#,
                 r#"class="node c4-shape c4-component_queue""#,
                 r#"class="basic label-container outer-path""#,
-                r#"style="fill:#85BBF0;stroke:#78A8D8""#,
+                r#"style="fill:#111827;stroke:#475569""#,
             ],
         ),
         (

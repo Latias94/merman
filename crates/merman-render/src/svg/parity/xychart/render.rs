@@ -1129,10 +1129,9 @@ mod tests {
                     mutation == "none",
                     "{mutation}"
                 );
-                assert_eq!(
-                    plan.finish_evidence().applied().len(),
-                    usize::from(mutation == "none")
-                );
+                let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&theme));
+                plan.record_evidence(&mut evidence);
+                assert_eq!(evidence.applied().len(), usize::from(mutation == "none"));
             }
         }
     }
@@ -1377,8 +1376,10 @@ mod tests {
                     mutation == "none",
                     "{terminal}: {mutation}"
                 );
+                let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&theme));
+                plan.record_evidence(&mut evidence);
                 assert_eq!(
-                    plan.finish_evidence().applied().len(),
+                    evidence.applied().len(),
                     if mutation == "none" { 2 } else { 0 }
                 );
             }
@@ -1457,10 +1458,9 @@ mod tests {
                     actual == expected,
                     "actual={actual:?}, expected={expected:?}"
                 );
-                assert_eq!(
-                    plan.finish_evidence().applied().len(),
-                    usize::from(actual == expected)
-                );
+                let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&theme));
+                plan.record_evidence(&mut evidence);
+                assert_eq!(evidence.applied().len(), usize::from(actual == expected));
             }
         }
     }
@@ -1633,7 +1633,8 @@ mod tests {
                 mutation == "none",
                 "{mutation}"
             );
-            let evidence = plan.finish_evidence();
+            let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&theme));
+            plan.record_evidence(&mut evidence);
             assert_eq!(
                 evidence.applied().len(),
                 usize::from(mutation == "none"),

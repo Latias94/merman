@@ -35,6 +35,15 @@ pub(crate) struct RequirementCssBinding {
 }
 
 impl RequirementCssBinding {
+    pub(crate) fn palette_slot(&self, color_index: usize) -> Option<usize> {
+        if self.border_colors.is_empty() {
+            return None;
+        }
+        let slot = color_index % self.border_colors.len();
+        // Node IDs span the border array, but CSS emits only slots below this limit.
+        (slot < self.theme_color_limit).then_some(slot)
+    }
+
     pub(super) fn resolve(
         config: &Value,
         font_family: Option<&str>,
@@ -128,6 +137,19 @@ impl RequirementCssBinding {
                 .unwrap_or("#000000"),
         }
     }
+}
+
+pub(crate) fn requirement_color_indices(
+    model: &merman_core::diagrams::requirement::RequirementDiagramRenderModel,
+) -> std::collections::HashMap<String, usize> {
+    model
+        .requirements
+        .iter()
+        .map(|node| node.name.clone())
+        .chain(model.elements.iter().map(|node| node.name.clone()))
+        .enumerate()
+        .map(|(index, name)| (name, index))
+        .collect()
 }
 
 #[cfg(test)]

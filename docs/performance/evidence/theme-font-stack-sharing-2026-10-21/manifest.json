@@ -1,0 +1,53 @@
+{
+  "created_at_utc": "2026-10-21T04:24:08.450844+00:00",
+  "base_revision": "cf26d54bbcbbc7436858270f659404f52af02378",
+  "source_parent": "d54db5f2ce32a003f4817f592044af87a9e76e4d",
+  "candidate_revision": "0a2d250dd547a14c418390f2a657a6c0727329fe",
+  "source_sha256": {
+    "crates/merman-render/src/diagram_theme/mod.rs": "b5d00db23e732b0e7f31368690544843bf6a392f1851cc6c70e27959dbbd4d3a",
+    "crates/merman-render/src/diagram_theme/typography.rs": "08468a3c4015e79bac3deb4a2b46f9524c18bc98fed2a00484d136a4d4cd3d81",
+    "crates/merman-render/src/text/css_font.rs": "11d0e7b4ae571783ebdcd80472bdcdc902905c4bb3c32d6426f603c790067374",
+    "crates/merman/benches/native_memory/allocator.rs": "934c9e450d67f0fced79288e02b3056791120107dcd05f7038441c2516ada650"
+  },
+  "file": "evidence.json.gz",
+  "entry_count": 124,
+  "compressed_sha256": "86027cd2e5d00ba52629dda41148f4929a00d9a7e52449a08ab02bac4ac13bb7",
+  "uncompressed_sha256": "008662cc09475a62db2dc95460484ce4709f78595b76ac263f4a1c488d1818ce",
+  "compressed_bytes": 1161863,
+  "uncompressed_bytes": 24638364,
+  "decision": "accepted_warm_allocation_and_work_with_explicit_bounded_cold_tradeoff",
+  "catalog": {
+    "cells": 418,
+    "improved": 356,
+    "unchanged": 62,
+    "regressions": 0,
+    "strict_nonempty_count_and_bytes_improvements": 350
+  },
+  "site": {
+    "rows": 645,
+    "jointly_stable": 504,
+    "improved": 259,
+    "unchanged": 245,
+    "variable": 141,
+    "regressions": 0
+  },
+  "checks": {
+    "successful_required_ids": [
+      "full-affected-nextest",
+      "strict-production-clippy",
+      "full-dom-three-modes",
+      "optimized-full-wasm",
+      "internal-theme-acceptance",
+      "compiled-pipeline-discovery",
+      "compiled-native-memory-smoke-rerun",
+      "compiled-native-memory-smoke-contract",
+      "fmt-check",
+      "diff-check",
+      "path-lengths"
+    ],
+    "initial_source_status_smoke_failure_preserved": true,
+    "protocol_smoke_reuses_same_freshly_built_readonly_executable": true
+  },
+  "claim": "No timing, default None latency, total-memory, or v0.9.0 convergence admission.",
+  "scope": "Exact original registration/amendments, library/probe identities, all stored five-sample catalog/site rows and ordered callback/error controls, cold observations, invalid reused-base attempt, original source-status smoke failure and successful protocol-only rerun, source patch, validation logs and fresh DOM/WASM metadata. Physical SVG/report files, executable/rlib binaries and per-cell stdout files remain local under the ignored experiment directory and are not included; this archive alone cannot replay omitted artifacts. Warmup is metadata-only."
+}

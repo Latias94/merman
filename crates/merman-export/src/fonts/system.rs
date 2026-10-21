@@ -7,6 +7,7 @@ use usvg::fontdb::{Database, FaceInfo, ID, Source};
 
 pub(super) struct SystemCatalog {
     pub database: Arc<Database>,
+    pub selection: FontSelectionPolicy,
     pub identity: Vec<u8>,
     faces: BTreeMap<ID, SystemFace>,
 }
@@ -46,6 +47,7 @@ impl SystemCatalog {
         let mut discovery = Discovery {
             catalog: Self {
                 database: Arc::new(loader.database.clone()),
+                selection: loader.selection.clone(),
                 identity: Vec::new(),
                 faces: BTreeMap::new(),
             },
@@ -67,9 +69,10 @@ impl SystemCatalog {
                 Err(error) => return Err(source_error(root, error)),
             }
         }
-        super::super::configure_fontdb_generic_families(Arc::make_mut(
-            &mut discovery.catalog.database,
-        ));
+        discovery
+            .catalog
+            .selection
+            .configure_generics(Arc::make_mut(&mut discovery.catalog.database));
         discovery.catalog.identity = discovery.identity.finalize().to_vec();
         Ok(discovery.catalog)
     }
@@ -94,20 +97,8 @@ impl SystemCatalog {
         control: &OperationControl,
     ) -> Result<Option<super::resolver::FontSelection>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let requested =
-            super::super::select_requested_font_case_insensitively(font, &self.database);
-        let id = requested
-            .or_else(|| {
-                super::super::query_font_family(
-                    &self.database,
-                    usvg::fontdb::Family::Serif,
-                    usvg::fontdb::Weight(font.weight()),
-                    font.stretch().into(),
-                    font.style().into(),
-                )
-            })
-            .or_else(|| super::super::query_browser_like_fallback_font(font, &self.database))
-            .or_else(|| self.database.faces().next().map(|face| face.id));
+        let requested = self.selection.requested(font, &self.database);
+        let id = requested.or_else(|| self.selection.fallback(font, &self.database));
         Ok(id
             .and_then(|id| self.database.face(id))
             .map(|face| super::resolver::FontSelection {
@@ -126,7 +117,8 @@ impl SystemCatalog {
     ) -> Result<Option<ID>, NativeFontError> {
         for face in self.database.faces() {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if excluded.iter().any(|used| same_face(used, face))
+            if !self.selection.allows_implicit(face.id)
+                || excluded.iter().any(|used| same_face(used, face))
                 || (base.style != face.style
                     && base.weight != face.weight
                     && base.stretch != face.stretch)
@@ -253,6 +245,7 @@ impl Discovery<'_> {
             let mut metadata = face.clone();
             metadata.source = Source::Binary(Arc::new(Vec::<u8>::new()));
             let id = Arc::make_mut(&mut self.catalog.database).push_face_info(metadata);
+            self.catalog.selection.admit(id, &candidate, face.id);
             self.catalog.faces.insert(
                 id,
                 SystemFace {
@@ -503,8 +496,10 @@ mod tests {
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
         let catalog = SystemCatalog::from_roots(&loader, control, std::slice::from_ref(&root.0))?;
-        let default_family = super::super::super::raster_default_font_family(&catalog.database)
-            .ok_or(NativeFontError::EmptyFontSet)?;
+        let default_family = catalog
+            .selection
+            .default_family(&catalog.database)
+            .unwrap_or_default();
         let sources = FontSourceRegistry::new(
             loader.initial_sources,
             loader.source_aliases,
@@ -513,6 +508,7 @@ mod tests {
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
+            selection: Arc::new(loader.selection),
             initial_system_faces: BTreeSet::new(),
             discovery: Some(DiscoveryProvider::Bounded(Arc::new(catalog))),
             sources,
@@ -662,6 +658,98 @@ mod tests {
         );
         assert!(probe_weight(&next, "unadmitted bold fails", "700").is_err());
         assert!(context.check().is_ok());
+    }
+
+    #[test]
+    fn bounded_discovery_keeps_symbol_classification_after_releasing_source_bytes() {
+        for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+            let root = Root::new();
+            let symbol = root.copy(fixture);
+            fs::rename(symbol, root.0.join("0-symbol.ttf")).unwrap();
+            root.copy("Cousine-Regular.ttf");
+            let context =
+                context(&root, NativeFontLimits::default(), &OperationControl::new()).unwrap();
+            let Some(DiscoveryProvider::Bounded(catalog)) = &context.0.discovery else {
+                panic!("bounded discovery");
+            };
+            assert!(catalog.database.faces().all(|face| match &face.source {
+                Source::Binary(bytes) => bytes.as_ref().as_ref().is_empty(),
+                _ => false,
+            }));
+            assert_eq!(context.resident_font_bytes(), 0);
+            let mut options = usvg::Options::default();
+            context.apply_to_usvg_options(&mut options);
+            let tree = usvg::Tree::from_str(r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="serif">amA</text></svg>"#, &options).unwrap();
+            let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                panic!("ordinary text must be painted");
+            };
+            let selected: BTreeSet<_> = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .map(|glyph| {
+                    tree.fontdb()
+                        .face(glyph.font)
+                        .unwrap()
+                        .post_script_name
+                        .as_str()
+                })
+                .collect();
+            assert_eq!(selected, BTreeSet::from(["Cousine-Regular"]));
+            assert_eq!(context.0.sources.snapshots.lock().unwrap().files.len(), 1);
+        }
+    }
+
+    #[test]
+    fn bounded_glyph_fallback_skips_symbolic_faces_before_snapshot_admission() {
+        for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
+            for include_text_fallback in [false, true] {
+                let root = Root::new();
+                let symbol = root.copy(fixture);
+                fs::rename(symbol, root.0.join("0-symbol.ttf")).unwrap();
+                if include_text_fallback {
+                    root.copy("Cousine-Regular.ttf");
+                }
+                let control = OperationControl::new();
+                let mut loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+                loader
+                    .file(&root.copy("NotoSans-Latin-subset.ttf"))
+                    .unwrap();
+                let context = context_from_loader(&root, loader, &control).unwrap();
+                let mut options = usvg::Options::default();
+                context.apply_to_usvg_options(&mut options);
+                let tree = usvg::Tree::from_str(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text id="probe" x="0" y="40" font-family="Noto Sans">Aam</text></svg>"#,
+                    &options,
+                ).unwrap();
+                let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                    panic!("partial text must still be painted");
+                };
+                let selected: BTreeSet<_> = text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                    .map(|glyph| {
+                        tree.fontdb()
+                            .face(glyph.font)
+                            .unwrap()
+                            .post_script_name
+                            .as_str()
+                    })
+                    .collect();
+                let expected = if include_text_fallback {
+                    "Cousine-Regular"
+                } else {
+                    "NotoSans-Regular"
+                };
+                assert_eq!(selected, BTreeSet::from([expected]));
+                assert_eq!(
+                    context.0.sources.snapshots.lock().unwrap().files.len(),
+                    usize::from(include_text_fallback)
+                );
+                context.check().unwrap();
+            }
+        }
     }
 
     #[test]

@@ -290,13 +290,14 @@ fn direct_only_family_slices_are_reported_as_conditional() {
 }
 
 #[test]
-fn final_five_family_owned_paint_slices_are_reported_as_conditional() {
+fn family_owned_text_paint_slices_are_reported_as_conditional() {
     for (family, target) in [
         (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text),
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text),
         (DiagramFamilyId::VENN, ThemeTarget::Title),
         (DiagramFamilyId::VENN, ThemeTarget::Text),
         (DiagramFamilyId::ZENUML, ThemeTarget::Title),
+        (DiagramFamilyId::ZENUML, ThemeTarget::Text),
     ] {
         let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
@@ -336,19 +337,58 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
 }
 
 #[test]
-fn wardley_generic_text_paint_routes_are_unsupported() {
-    for target in [ThemeTarget::Text, ThemeTarget::Title] {
+fn wardley_text_paint_support_is_limited_to_implemented_consumers() {
+    for (target, facet, expected) in [
+        (
+            ThemeTarget::Text,
+            ThemeRuleFacetV1::Fill,
+            ThemeSupportStateV1::Conditional,
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            ThemeRuleFacetV1::Fill,
+            ThemeSupportStateV1::Conditional,
+        ),
+        (
+            ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+            ThemeSupportStateV1::Unsupported,
+        ),
+        (
+            ThemeTarget::Text,
+            ThemeRuleFacetV1::StrokePaint,
+            ThemeSupportStateV1::Unsupported,
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            ThemeRuleFacetV1::Opacity,
+            ThemeSupportStateV1::Unsupported,
+        ),
+    ] {
         let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::WARDLEY.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
-            ThemeRuleFacetV1::Fill,
+            facet,
         );
 
         let support = describe_theme_support(&query);
 
-        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+        assert_eq!(
+            support.state(),
+            expected,
+            "target={target:?} facet={facet:?}"
+        );
+        assert_eq!(support.claim_revision(), 1);
+        let reasons: &[&str] = if expected == ThemeSupportStateV1::Conditional {
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        } else {
+            &["theme-support.no-supported-route"]
+        };
+        assert_eq!(support.reason_ids(), reasons);
     }
 }
 
@@ -438,22 +478,43 @@ fn relation_and_branch_edge_stroke_slices_are_reported_as_conditional() {
 }
 
 #[test]
-fn final_four_terminal_less_paint_claims_are_unsupported() {
-    for (family, target) in [
-        (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Title),
-        (DiagramFamilyId::ISHIKAWA, ThemeTarget::Title),
-        (DiagramFamilyId::ZENUML, ThemeTarget::Text),
+fn terminal_less_paint_facets_remain_unsupported() {
+    for (family, target, facet) in [
+        (
+            DiagramFamilyId::EVENT_MODELING,
+            ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::ISHIKAWA,
+            ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::ZENUML,
+            ThemeTarget::Text,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
+        (
+            DiagramFamilyId::ZENUML,
+            ThemeTarget::ActorLabel,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
     ] {
         let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
-            ThemeRuleFacetV1::Fill,
+            facet,
         );
 
         let support = describe_theme_support(&query);
 
-        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Unsupported,
+            "{family}/{target:?}/{facet:?}"
+        );
         assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
     }
 }

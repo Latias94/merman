@@ -14,7 +14,7 @@ use crate::diagram_theme::{
     ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeOutcomes, FamilyThemeResidualReason,
     resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -79,7 +79,7 @@ struct PacketThemeSelection {
 
 /// Requested theme results produced only by successful visible SVG writes.
 pub(crate) struct PacketThemeOutcome {
-    pub(crate) evidence: FamilyThemeEvidence,
+    pub(crate) evidence: FamilyThemeOutcomes,
     compatibility: Option<(ThemeCompatibilityConsumptionDisposition, bool)>,
 }
 
@@ -288,7 +288,7 @@ impl PacketTypographyThemePlan {
 
 impl PacketThemeSelection {
     fn finish(&self, output: &PacketTextOutput<'_>) -> PacketThemeOutcome {
-        let mut evidence = FamilyThemeEvidence::outcomes();
+        let mut evidence = FamilyThemeOutcomes::default();
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if output.has_visible_text() {
             match self.typography {

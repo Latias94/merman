@@ -16,7 +16,7 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     unsupported_residual_for_facet as unsupported_reason_for_facet,
 };
@@ -181,7 +181,7 @@ impl SequenceThemeEvidenceRecorder {
                 && number.receipt.typed_fill_applied());
         let text_fill_covered =
             title_count == 0 && typography.role_fills_cover_all_labels() && number_fill_covered;
-        let mut evidence = FamilyThemeEvidence::outcomes();
+        let mut evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
@@ -202,13 +202,17 @@ impl SequenceThemeEvidenceRecorder {
         Ok(())
     }
 
-    pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+    pub(crate) fn record_into(
+        &self,
+        theme: Option<&ResolvedDiagramTheme>,
+        canonical: &mut FamilyThemeEvidence,
+    ) {
+        let evidence = canonical;
         let Some(theme) = theme else {
-            return evidence;
+            return;
         };
         let Some(state) = &self.state else {
-            return evidence;
+            return;
         };
         let state = state.borrow();
 
@@ -822,21 +826,21 @@ impl SequenceThemeEvidenceRecorder {
             }
         }
         finish_line_rules(
-            &mut evidence,
+            evidence,
             ThemeTarget::Lifeline,
             state.lifeline.receipt.candidate_count(),
             lifeline_rules,
         );
         finish_line_rules(
-            &mut evidence,
+            evidence,
             ThemeTarget::Message,
             state.message.receipt.candidate_count(),
             message_rules,
         );
-        finish_sequence_number_rules(&mut evidence, &state.sequence_number, sequence_number_rules);
+        finish_sequence_number_rules(evidence, &state.sequence_number, sequence_number_rules);
         for (target, rules) in loop_rules {
             finish_control_rules(
-                &mut evidence,
+                evidence,
                 target,
                 if target == ThemeTarget::Loop {
                     &state.loop_frame
@@ -846,23 +850,18 @@ impl SequenceThemeEvidenceRecorder {
                 rules,
             );
         }
-        finish_static_rect_rules(&mut evidence, ThemeTarget::Note, &state.note, note_rules);
+        finish_static_rect_rules(evidence, ThemeTarget::Note, &state.note, note_rules);
         finish_static_rect_rules(
-            &mut evidence,
+            evidence,
             ThemeTarget::Activation,
             &state.activation,
             activation_rules,
         );
-        finish_base_typography(
-            &mut evidence,
-            state.typography.as_ref(),
-            &base_typography_routes,
-        );
-        finish_typography_rules(&mut evidence, state.typography.as_ref(), typography_rules);
+        finish_base_typography(evidence, state.typography.as_ref(), &base_typography_routes);
+        finish_typography_rules(evidence, state.typography.as_ref(), typography_rules);
         if let Some(unsupported_text) = &state.unsupported_text {
-            evidence.merge_accounted_from(unsupported_text.clone());
+            evidence.merge_borrowed(unsupported_text);
         }
-        evidence
     }
 }
 
@@ -1046,5 +1045,71 @@ fn finish_static_rect_rules(
         } else {
             evidence.mark_applied_with_capabilities(key, observation.capabilities);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FamilyThemeMechanismKey, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    #[test]
+    fn record_into_preserves_canonical_outcomes_and_reuses_terminal_text_receipts() {
+        let mut rules = ThemeRuleSet::default();
+        for target in [ThemeTarget::Actor, ThemeTarget::Title] {
+            rules = rules.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::SEQUENCE);
+        let actor = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Actor,
+        };
+        let title = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Title,
+        };
+        let recorder = SequenceThemeEvidenceRecorder::new(true);
+        recorder.record_typography_emission(SequenceTypographyThemeReceipt::default());
+        recorder
+            .record_unsupported_text_emission(
+                Some(&theme),
+                true,
+                &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            )
+            .unwrap();
+        let mut canonical = FamilyThemeEvidence::from_theme(Some(&theme));
+        canonical.mark_residual(
+            actor.clone(),
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+
+        recorder.record_into(Some(&theme), &mut canonical);
+        assert!(canonical.applied().is_empty());
+        assert!(canonical.not_applicable_mechanisms().is_empty());
+        assert_eq!(canonical.residuals().len(), 2);
+        assert_eq!(canonical.residuals()[0].key(), &actor);
+        assert_eq!(
+            canonical.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        assert_eq!(canonical.residuals()[1].key(), &title);
+
+        let mut second = FamilyThemeEvidence::from_theme(Some(&theme));
+        second.mark_applied_with_capabilities(title.clone(), [ThemeCapability::SolidPaint]);
+        recorder.record_into(Some(&theme), &mut second);
+        assert_eq!(second.applied(), &[title]);
+        assert_eq!(second.not_applicable_mechanisms(), &[actor]);
+        assert!(second.residuals().is_empty());
     }
 }

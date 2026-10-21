@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -104,7 +104,7 @@ struct C4TypedPaint {
 pub(crate) struct C4ClusterThemePlan {
     explicit_boundary_count: usize,
     boundaries: BTreeMap<Box<str>, C4BoundaryTerminalExpectation>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, C4ClusterPendingEvidence>,
     terminal_receipt: OnceLock<C4ClusterThemeReceipt>,
 }
@@ -252,7 +252,7 @@ impl C4ClusterThemePlan {
             expectation.radius_rule_index = terminal_radius_rule;
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, C4ClusterRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -413,7 +413,7 @@ impl C4ClusterThemePlan {
         Self {
             explicit_boundary_count: boundaries.len(),
             boundaries,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
         }
@@ -428,6 +428,12 @@ impl C4ClusterThemePlan {
         ))
     }
 
+    pub(crate) fn has_separate_background(&self, alias: &str) -> bool {
+        self.boundaries
+            .get(alias)
+            .is_some_and(|boundary| boundary_fill_is_visible(&boundary.fill.token))
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<C4ClusterThemeReceipt> {
         (!self.pending.is_empty()).then(|| {
             C4ClusterThemeReceipt::new(self.explicit_boundary_count, self.boundaries.clone())
@@ -440,10 +446,10 @@ impl C4ClusterThemePlan {
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         for (key, pending) in &self.pending {
             let FamilyThemeMechanismKey::Rule { index, .. } = key else {
@@ -456,12 +462,15 @@ impl C4ClusterThemePlan {
                 );
             }
         }
-        evidence
     }
 }
 
 fn baseline_radius_token() -> Box<str> {
     MERMAID_BOUNDARY_RADIUS_PX.to_string().into_boxed_str()
+}
+
+fn boundary_fill_is_visible(fill: &str) -> bool {
+    !fill.eq_ignore_ascii_case("none") && !fill.eq_ignore_ascii_case("transparent")
 }
 
 fn typed_radius_token(
@@ -589,6 +598,7 @@ pub(crate) struct C4ClusterThemeReceipt {
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
     stroke_rules: BTreeSet<usize>,
+    backgrounds: BTreeSet<Box<str>>,
 }
 
 impl C4ClusterThemeReceipt {
@@ -605,7 +615,16 @@ impl C4ClusterThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            backgrounds: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn record_checkpointed_background(&mut self, alias: &str, fill: &str, radius: &str) {
+        self.terminals_match &= self.expectations.get(alias).is_some_and(|expected| {
+            boundary_fill_is_visible(&expected.fill.token)
+                && expected.fill.token.as_ref() == fill
+                && expected.radius_token.as_ref() == radius
+        }) && self.backgrounds.insert(alias.into());
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -629,7 +648,11 @@ impl C4ClusterThemeReceipt {
             return;
         };
         let terminal_matches = expectation.alias.as_ref() == boundary_alias
-            && expectation.fill.token.as_ref() == emitted_fill_token
+            && if boundary_fill_is_visible(&expectation.fill.token) {
+                emitted_fill_token == "none" && self.backgrounds.contains(boundary_alias)
+            } else {
+                expectation.fill.token.as_ref() == emitted_fill_token
+            }
             && expectation.stroke.token.as_ref() == emitted_stroke_token
             && expectation.radius_token.as_ref() == emitted_rx_token
             && expectation.radius_token.as_ref() == emitted_ry_token

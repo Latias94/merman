@@ -9,8 +9,8 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -57,13 +57,13 @@ impl GitGraphBranchStrokePlan {
         effective_config: &PresentationConfig,
         expected_branch_line_count: usize,
         work_meter: &OperationWorkMeter,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(expected_branch_line_count);
         let config_owns_stroke = mermaid_owns_branch_stroke(effective_config);
         // A fill fallback formerly created commitLineColor. An explicit lineColor alone
         // cannot own this new source, unlike the existing direct Stroke route.
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             effective_config,
             COMMIT_LINE_COLOR_PATH,
         );
@@ -257,7 +257,7 @@ impl GitGraphBranchStrokePlan {
         receipt.proves(self) && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(super) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if let (Some(key), Some(stroke), Some(receipt)) = (
             self.pending_key.clone(),
             self.stroke.as_ref(),
@@ -403,9 +403,9 @@ fn typed_static_branch_paint(
 
 fn mermaid_owns_branch_stroke(config: &PresentationConfig) -> bool {
     if config.get_str(COMMIT_LINE_COLOR_PATH).is_some() {
-        merman_core::__private::config_path_overrides_typed_default(config, COMMIT_LINE_COLOR_PATH)
+        merman_core::__private::config_paint_overrides_typed_default(config, COMMIT_LINE_COLOR_PATH)
     } else {
-        merman_core::__private::config_path_overrides_typed_default(config, LINE_COLOR_PATH)
+        merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
     }
 }
 

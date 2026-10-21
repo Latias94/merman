@@ -28,7 +28,7 @@ mod text_paint;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
-pub(crate) use css_binding::RequirementCssBinding;
+pub(crate) use css_binding::{RequirementCssBinding, requirement_color_indices};
 pub(crate) use relation_paint::RequirementRelationPaintPlan;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use text_paint::{

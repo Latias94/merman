@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTypographyProperty,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
     InheritedTextViewportFacts, unsupported_residual_for_facet,
 };
@@ -143,7 +143,7 @@ pub(crate) struct ErrorTypographyThemePlan {
     css_binding: crate::svg::PreparedCommonCss,
     inherited_font_stack: InheritedFontStackPlan,
     terminal_geometry: InheritedTextViewportFacts,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[ErrorUnsupportedRoute]>,
     terminal_receipt: OnceLock<ErrorSurfaceReceipt>,
 }
@@ -212,7 +212,7 @@ impl ErrorTypographyThemePlan {
             css_binding,
             inherited_font_stack,
             terminal_geometry,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             unsupported_routes,
             terminal_receipt: OnceLock::new(),
         }
@@ -259,17 +259,17 @@ impl ErrorTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for route in &self.unsupported_routes {
             evidence.mark_residual(route.key.clone(), route.reason);
         }
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
+            .record_unsupported_typography_evidence(
+                evidence,
                 receipt.message_text_count != 0 || receipt.version_text_count != 0,
             );
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
@@ -292,7 +292,6 @@ impl ErrorTypographyThemePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 

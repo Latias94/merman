@@ -10,9 +10,9 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
 };
 
 #[derive(Debug)]
@@ -115,7 +115,7 @@ impl RailroadSurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct RailroadTypographyThemePlan {
     style: RailroadStyle,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     typed_font_stack_requested: bool,
     typed_font_size_requested: bool,
@@ -128,7 +128,7 @@ pub(crate) struct RailroadTypographyThemePlan {
     text_fill_roles: RailroadTextFillRoles,
     text_fill_config_owned: bool,
     text_fill_winner_rule: Option<usize>,
-    unsupported_terminal_evidence: Option<FamilyThemeEvidence>,
+    unsupported_terminal_evidence: Option<FamilyThemeOutcomes>,
     text_fill_routes: Box<[FamilyThemeMechanismKey]>,
     unsupported_routes: Box<[RailroadUnsupportedRoute]>,
     terminal_receipt: OnceLock<RailroadSurfaceReceipt>,
@@ -144,7 +144,7 @@ impl RailroadTypographyThemePlan {
         let Some(theme) = theme else {
             return Ok(Self {
                 style,
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 unsupported_properties: BTreeSet::new(),
                 typed_font_stack_requested: false,
                 typed_font_size_requested: false,
@@ -337,7 +337,7 @@ impl RailroadTypographyThemePlan {
 
         Ok(Self {
             style,
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            evidence: FamilyThemeOutcomes::default(),
             unsupported_properties,
             typed_font_stack_requested: typed_font_stack,
             typed_font_size_requested: typed_font_size,
@@ -397,7 +397,7 @@ impl RailroadTypographyThemePlan {
             .map(|role| !self.text_fill_roles.owns_role(*role))
             .collect::<Vec<_>>();
         let title_owned_fill = vec![self.title_fill_config_owned; layout.rules.len()];
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
@@ -439,10 +439,10 @@ impl RailroadTypographyThemePlan {
         self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         if !receipt.has_styled_text() {
             for (property, requested) in [
@@ -471,7 +471,7 @@ impl RailroadTypographyThemePlan {
             for key in &self.text_fill_routes {
                 evidence.mark_not_applicable(key.clone());
             }
-            return evidence;
+            return;
         }
 
         for (property, requested, active) in [
@@ -503,7 +503,7 @@ impl RailroadTypographyThemePlan {
             );
         }
         if let Some(terminal_evidence) = &self.unsupported_terminal_evidence {
-            evidence.merge_accounted_from(terminal_evidence.clone());
+            evidence.merge_borrowed(terminal_evidence);
         }
         for route in &self.unsupported_routes {
             if !matches!(route.target, ThemeTarget::Text | ThemeTarget::Title) {
@@ -542,7 +542,6 @@ impl RailroadTypographyThemePlan {
                 }
             }
         }
-        evidence
     }
 
     fn title_fill_capability_for(&self, key: &FamilyThemeMechanismKey) -> Option<ThemeCapability> {
@@ -613,7 +612,7 @@ fn railroad_config_owns_font_size(config: &PresentationConfig) -> bool {
 }
 
 fn railroad_config_owns_title_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.ruleNameColor",
@@ -624,11 +623,11 @@ fn railroad_config_owns_title_fill(config: &PresentationConfig) -> bool {
 }
 
 fn railroad_config_owns_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(config, ["themeVariables.textColor"])
+    railroad_config_owns_any_paint(config, ["themeVariables.textColor"])
 }
 
 fn railroad_config_owns_terminal_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.terminalTextColor",
@@ -639,7 +638,7 @@ fn railroad_config_owns_terminal_text_fill(config: &PresentationConfig) -> bool 
 }
 
 fn railroad_config_owns_nonterminal_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.nonTerminalTextColor",
@@ -650,7 +649,7 @@ fn railroad_config_owns_nonterminal_text_fill(config: &PresentationConfig) -> bo
 }
 
 fn railroad_config_owns_comment_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.commentTextColor",
@@ -661,7 +660,7 @@ fn railroad_config_owns_comment_text_fill(config: &PresentationConfig) -> bool {
 }
 
 fn railroad_config_owns_rule_name_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
+    railroad_config_owns_any_paint(
         config,
         [
             "railroad.ruleNameColor",
@@ -675,4 +674,13 @@ fn railroad_config_owns_any<const N: usize>(config: &PresentationConfig, paths: 
     paths
         .into_iter()
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))
+}
+
+fn railroad_config_owns_any_paint<const N: usize>(
+    config: &PresentationConfig,
+    paths: [&str; N],
+) -> bool {
+    paths
+        .into_iter()
+        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path))
 }

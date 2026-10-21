@@ -514,7 +514,7 @@ impl FlowchartMarkerEmissionPlan {
         &self,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Option<crate::family::FamilyThemeEvidence>> {
+    ) -> crate::Result<Option<crate::family::FamilyThemeOutcomes>> {
         use crate::diagram_theme::{ThemeTarget, ThemeVariant};
         use crate::family::{
             TerminalVariantDomain, UnsupportedTerminalDomain,
@@ -527,7 +527,7 @@ impl FlowchartMarkerEmissionPlan {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         work_meter.charge(self.edge_occurrences.len() + terminal.fill_owners.len())?;
-        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = crate::family::FamilyThemeOutcomes::default();
         if !terminal.valid
             || self.edge_occurrences.iter().any(|(key, references)| {
                 (references.start.is_some() || references.end.is_some())

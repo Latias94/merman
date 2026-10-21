@@ -15,9 +15,9 @@ use merman_core::{
 };
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,
+    MermaidThemeCompatibility, Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
@@ -2934,71 +2934,102 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
         ),
     ] {
         for case in &cases {
-            let theme = node_label_fill_theme(family, "#ef4444");
-            let engine =
-                Engine::new().with_site_config(PresentationConfig::from_value(case.config.clone()));
-            let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
-                prepare_flowchart_family_with_theme_engine_and_portability(
-                    source,
-                    &theme,
-                    engine,
-                    ThemePortabilityRequirement::RequirePortable,
+            for origin in ["recipe", "site", "source"] {
+                let mut config = case.config.clone();
+                let mut spec = DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::NodeLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(family),
+                    ),
                 );
-            let rendered = family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
-                .expect("prepare family fixture")
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "{} {family} NodeLabel fill must remain portable: {error}",
-                        case.name
-                    )
-                });
-            let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
-            let node = document
-                .descendants()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node.attribute("data-id") == Some("A")
-                        && node.attribute("data-et") == Some("node")
-                })
-                .unwrap_or_else(|| panic!("{} {family} node A: {}", case.name, rendered.svg()));
-            let label = node
-                .descendants()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node.attribute("class").is_some_and(|class| {
-                            class.split_ascii_whitespace().any(|part| part == "label")
-                        })
-                        && node
-                            .descendants()
-                            .any(|descendant| descendant.text() == Some("Alpha"))
-                })
-                .unwrap_or_else(|| panic!("{} {family} node label: {}", case.name, rendered.svg()));
-            let label_style = label.attribute("style").unwrap_or_default();
-            assert_eq!(
-                label_style.contains("fill:#ef4444 !important;color:#ef4444 !important"),
-                case.typed_applies,
-                "{} {family}: {label_style}",
-                case.name
-            );
+                if origin == "recipe" {
+                    let selected = config.as_object_mut().unwrap().remove("theme").unwrap();
+                    spec = spec.with_mermaid_compatibility(
+                        MermaidThemeCompatibility::default()
+                            .with_theme(selected.as_str().unwrap())
+                            .unwrap(),
+                    );
+                }
+                let source = if origin == "source" {
+                    config = serde_json::json!({});
+                    format!("{source}\n%%{{init: {}}}%%\n", case.config)
+                } else {
+                    source.to_owned()
+                };
+                let typed_applies = origin != "source" && case.typed_applies;
+                let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+                let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+                let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
+                    prepare_flowchart_family_with_theme_engine_and_portability(
+                        &source,
+                        &theme,
+                        engine,
+                        ThemePortabilityRequirement::BestEffort,
+                    );
+                let rendered =
+                    family::prepare(&fixture_parsed_2, &fixture_layout_2, fixture_session_2)
+                        .expect("prepare family fixture")
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "{} {family} NodeLabel fill must remain portable: {error}",
+                                case.name
+                            )
+                        });
+                let document =
+                    roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
+                let node = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("data-id") == Some("A")
+                            && node.attribute("data-et") == Some("node")
+                    })
+                    .unwrap_or_else(|| panic!("{} {family} node A: {}", case.name, rendered.svg()));
+                let label = node
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("class").is_some_and(|class| {
+                                class.split_ascii_whitespace().any(|part| part == "label")
+                            })
+                            && node
+                                .descendants()
+                                .any(|descendant| descendant.text() == Some("Alpha"))
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("{} {family} node label: {}", case.name, rendered.svg())
+                    });
+                let label_style = label.attribute("style").unwrap_or_default();
+                assert_eq!(
+                    label_style.contains("fill:#ef4444 !important;color:#ef4444 !important"),
+                    typed_applies,
+                    "{} {family}: {label_style}",
+                    case.name
+                );
 
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1, "{} {family}", case.name);
-            assert_eq!(evidence.accounted_count(), 1, "{} {family}", case.name);
-            assert_eq!(
-                evidence.applied_count(),
-                usize::from(case.typed_applies),
-                "{} {family}",
-                case.name
-            );
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(!case.typed_applies),
-                "{} {family}",
-                case.name
-            );
-            assert_eq!(evidence.theme_residual_count(), 0, "{} {family}", case.name);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{} {family}", case.name);
+                assert_eq!(evidence.accounted_count(), 1, "{} {family}", case.name);
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(typed_applies),
+                    "{} {family}",
+                    case.name
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!typed_applies),
+                    "{} {family}",
+                    case.name
+                );
+                assert_eq!(evidence.theme_residual_count(), 0, "{} {family}", case.name);
+            }
         }
     }
 }
@@ -7400,27 +7431,44 @@ fn flowchart_title_rule(color: &str) -> ThemeRule {
 
 #[test]
 fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
-    let baseline = flowchart_title_theme([]);
+    let compile = |rules: Vec<ThemeRule>| {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_mermaid_compatibility(
+                        MermaidThemeCompatibility::default()
+                            .with_theme("default")
+                            .unwrap(),
+                    )
+                    .with_styles(
+                        rules
+                            .into_iter()
+                            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule),
+                    ),
+            )
+            .unwrap()
+    };
+    let baseline = compile(vec![]);
     for swimlane in [false, true] {
         for html in [false, true] {
             for look in ["classic", "neo", "handDrawn"] {
                 for explicit_default in [false, true] {
                     let source = format!(
-                        "---\ntitle: Diagram title\nconfig:\n  theme: default\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
                         if swimlane { "  layout: swimlane\n" } else { "" }
                     );
                     let mut rule = flowchart_title_rule("#2468ac");
                     if explicit_default {
                         rule = rule.with_variant(ThemeVariant::Default);
                     }
-                    let theme = flowchart_title_theme([rule]);
+                    let theme = compile(vec![rule]);
                     let render = |theme: &DiagramTheme, engine| {
                         let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
                             prepare_flowchart_family_with_theme_engine_and_portability(
                                 &source,
                                 theme,
                                 engine,
-                                ThemePortabilityRequirement::RequirePortable,
+                                ThemePortabilityRequirement::BestEffort,
                             );
                         family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
                             .expect("prepare family fixture")

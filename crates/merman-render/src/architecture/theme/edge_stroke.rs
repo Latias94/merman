@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    DirectStaticSelectorDomain, FamilyThemeOutcomes, FamilyThemeResidualReason,
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
@@ -53,7 +53,7 @@ impl ArchitectureEdgeStrokePlan {
         effective_config: &PresentationConfig,
         edge_count: usize,
         work_meter: &OperationWorkMeter,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline();
         let config_owns_stroke = mermaid_owns_edge_stroke(effective_config);
@@ -207,7 +207,7 @@ impl ArchitectureEdgeStrokePlan {
         self.stroke.as_ref().map(|stroke| stroke.css.as_ref())
     }
 
-    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence, emitted: bool) {
+    pub(super) fn finish_evidence(&self, evidence: &mut FamilyThemeOutcomes, emitted: bool) {
         if emitted
             && let (Some(key), Some(stroke)) = (self.pending_key.clone(), self.stroke.as_ref())
         {
@@ -248,9 +248,9 @@ fn typed_static_stroke(
 }
 
 fn mermaid_owns_edge_stroke(config: &PresentationConfig) -> bool {
-    if merman_core::__private::config_path_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH) {
+    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH) {
         return true;
     }
-    merman_core::__private::config_path_overrides_typed_default(config, LINE_COLOR_PATH)
+    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
 }

@@ -11,7 +11,7 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
     FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
@@ -62,7 +62,7 @@ impl MindmapEdgeStrokeSource {
             Self::ColorScale { section } => MINDMAP_COLOR_SCALE_PATHS[section],
             Self::NodeBorder => "themeVariables.nodeBorder",
         };
-        merman_core::__private::config_path_overrides_typed_default(config, path)
+        merman_core::__private::config_paint_overrides_typed_default(config, path)
     }
 }
 
@@ -125,12 +125,12 @@ impl MindmapNodeFillOwnership {
     pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self {
             color_scale: std::array::from_fn(|section| {
-                merman_core::__private::config_path_overrides_typed_default(
+                merman_core::__private::config_paint_overrides_typed_default(
                     config,
                     MINDMAP_COLOR_SCALE_PATHS[section],
                 )
             }),
-            main_background: merman_core::__private::config_path_overrides_typed_default(
+            main_background: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.mainBkg",
             ),
@@ -197,7 +197,7 @@ pub(crate) struct MindmapNodePalettePlan {
     node_stroke: Option<DirectPaintExpectation>,
     edge_stroke: Option<MindmapEdgeStroke>,
     edge_stroke_winners: Vec<bool>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_node_paint:
         BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
@@ -294,7 +294,7 @@ impl MindmapNodePalettePlan {
 
         plan.inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(Some(theme), config);
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         plan.resolve_node_paint(theme, config, work_meter)?;
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, config, model, work_meter)?;
@@ -340,11 +340,11 @@ impl MindmapNodePalettePlan {
             None,
             work_meter,
         )?;
-        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.mainBkg",
         );
-        let config_owns_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let config_owns_stroke = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.nodeBorder",
         );
@@ -717,7 +717,7 @@ impl MindmapNodePalettePlan {
             node_stroke: None,
             edge_stroke: None,
             edge_stroke_winners: Vec::new(),
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             pending_node_paint: BTreeMap::new(),
             pending_edge_stroke_key: None,
@@ -865,8 +865,8 @@ impl MindmapNodePalettePlan {
         self.pending_edge_stroke_key.is_some() && self.edge_terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let has_visible_typography = self.node_count != 0;
         for (key, properties) in &self.pending_node_paint {
             let rule_index = match key {
@@ -894,7 +894,7 @@ impl MindmapNodePalettePlan {
             }
         }
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, has_visible_typography);
+            .record_unsupported_typography_evidence(evidence, has_visible_typography);
         if let Some(key) = self.palette_key.clone() {
             match self.node_terminal_receipt.get() {
                 Some(receipt) if receipt.unsupported_surface => evidence
@@ -947,7 +947,6 @@ impl MindmapNodePalettePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 
@@ -1053,6 +1052,15 @@ impl MindmapNodePaletteReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1303,10 +1311,11 @@ mod tests {
         let config = effective_config(json!({}));
         let model = model_with_sections([None]);
 
-        let evidence =
+        let evidence = collect_evidence(&theme, |evidence| {
             MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work_meter())
                 .expect("resolve Mindmap label terminal evidence")
-                .finish_evidence();
+                .record_evidence(evidence);
+        });
 
         assert_eq!(
             evidence.not_applicable_mechanisms(),
@@ -1341,10 +1350,11 @@ mod tests {
         let config = effective_config(json!({}));
         let model = model_with_sections([None]);
 
-        let evidence =
+        let evidence = collect_evidence(&theme, |evidence| {
             MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work_meter())
                 .expect("resolve terminal-less Mindmap title evidence")
-                .finish_evidence();
+                .record_evidence(evidence);
+        });
 
         assert_eq!(
             evidence.not_applicable_mechanisms(),

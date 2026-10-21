@@ -376,11 +376,11 @@ impl FlowchartBaseTypographyPlan {
         }
     }
 
-    pub(crate) fn finish_evidence(
+    pub(crate) fn record_evidence(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
-    ) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::outcomes();
+        evidence: &mut FamilyThemeEvidence,
+    ) {
         let _ = theme;
         let receipt = self
             .inner
@@ -401,7 +401,7 @@ impl FlowchartBaseTypographyPlan {
             for property in &self.inner.unsupported_properties {
                 evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(*property));
             }
-            return evidence;
+            return;
         }
 
         match self.inner.outcome {
@@ -470,7 +470,6 @@ impl FlowchartBaseTypographyPlan {
                 FamilyThemeResidualReason::UnsupportedTypography,
             );
         }
-        evidence
     }
 }
 
@@ -623,7 +622,8 @@ mod tests {
         );
         plan.record_label_emission(FlowchartBaseTypographyLabelEmission::diagram_title());
 
-        let evidence = plan.finish_evidence(Some(&resolved));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&resolved));
+        plan.record_evidence(Some(&resolved), &mut evidence);
         assert_eq!(
             evidence.applied(),
             &[FamilyThemeMechanismKey::Typography(
@@ -663,7 +663,8 @@ mod tests {
             true,
         ));
 
-        let evidence = plan.finish_evidence(Some(&resolved));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&resolved));
+        plan.record_evidence(Some(&resolved), &mut evidence);
         assert!(
             evidence
                 .applied()

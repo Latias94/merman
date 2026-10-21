@@ -9,8 +9,9 @@ use crate::diagram_theme::{
     Specified, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::VisibleTextStyleFacts;
@@ -64,7 +65,7 @@ pub(crate) struct RequirementTextPaintPlan {
     node_owned: bool,
     relation_owned: bool,
     ordinal_rules: bool,
-    terminal: OnceLock<FamilyThemeEvidence>,
+    terminal: OnceLock<FamilyThemeOutcomes>,
 }
 
 impl RequirementTextPaintPlan {
@@ -106,11 +107,11 @@ impl RequirementTextPaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            node_owned: merman_core::__private::config_path_overrides_typed_default(
+            node_owned: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.nodeTextColor",
             ),
-            relation_owned: merman_core::__private::config_path_overrides_typed_default(
+            relation_owned: merman_core::__private::config_paint_overrides_typed_default(
                 config,
                 "themeVariables.relationLabelColor",
             ),
@@ -167,15 +168,15 @@ impl RequirementTextPaintPlan {
             Some(receipt) => {
                 std::ptr::eq(receipt.plan, self)
                     && receipt.complete()
-                    && self.terminal.set(receipt.finish_evidence()).is_ok()
+                    && self.terminal.set(receipt.finish_outcomes()).is_ok()
             }
             None => !self.requested(),
         }
     }
 
-    pub(crate) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if let Some(terminal) = self.terminal.get() {
-            evidence.merge_accounted_from(terminal.clone());
+            evidence.merge_borrowed(terminal);
         }
     }
 }
@@ -316,9 +317,9 @@ impl RequirementTextPaintReceipt<'_> {
         self.valid && self.css_counts == [1, 1, 1] && self.terminals.values().all(|seen| *seen)
     }
 
-    fn finish_evidence(self) -> FamilyThemeEvidence {
+    fn finish_outcomes(self) -> FamilyThemeOutcomes {
         let theme = self.plan.theme.as_ref().expect("requested text plan");
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, (bool, Option<FamilyThemeResidualReason>)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {

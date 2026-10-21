@@ -1630,7 +1630,7 @@ mod tests {
                 DiagramFamilyId::GANTT,
                 ThemeTarget::Task,
                 Some(palette.surface),
-                None,
+                Some(palette.border),
             );
 
             // Family-qualified fallbacks must not become static winners for palette-owned
