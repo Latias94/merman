@@ -212,15 +212,6 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    pub(super) fn bump(&mut self) -> Option<u8> {
-        if self.pos >= self.input.len() {
-            return None;
-        }
-        let b = self.input.as_bytes()[self.pos];
-        self.pos += 1;
-        Some(b)
-    }
-
     pub(super) fn peek(&self) -> Option<u8> {
         self.input.as_bytes().get(self.pos).copied()
     }

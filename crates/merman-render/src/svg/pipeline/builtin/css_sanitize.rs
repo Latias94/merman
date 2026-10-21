@@ -280,6 +280,7 @@ enum CssViolation {
     NestingLimit,
     RootSelector,
     UnclosedBlock,
+    UnclosedToken,
     UnsafeUrl,
     UnsupportedAtRule(String),
 }
@@ -308,6 +309,7 @@ impl fmt::Display for CssViolation {
                 f.write_str(":root rules are not part of the resvg-safe contract")
             }
             Self::UnclosedBlock => f.write_str("unclosed CSS block or function"),
+            Self::UnclosedToken => f.write_str("unclosed CSS string, comment, or URL"),
             Self::UnsafeUrl => f.write_str("unsafe CSS URL"),
             Self::UnsupportedAtRule(name) => {
                 write!(f, "@{name} is not part of the resvg-safe contract")
@@ -571,7 +573,7 @@ fn rewrite_component_values(
     loop {
         control.step()?;
         let token_start = input.position();
-        let token = match input.next_including_whitespace() {
+        let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                 output.push_str(input.slice_from(token_start));
@@ -582,6 +584,11 @@ fn rewrite_component_values(
         let token_end = input.position();
 
         match token {
+            Token::QuotedString(_) | Token::Comment(_) => {
+                let raw = input.slice(token_start..token_end);
+                ensure_source_closed_token(raw, control)?;
+                output.push_str(raw);
+            }
             Token::Dimension {
                 value,
                 int_value,
@@ -601,6 +608,7 @@ fn rewrite_component_values(
                 );
             }
             Token::UnquotedUrl(url) => {
+                ensure_source_closed_token(input.slice(token_start..token_end), control)?;
                 if is_unsafe_render_resource_url_value(&url) {
                     return Err(ParseError::custom(CssViolation::UnsafeUrl));
                 }
@@ -649,6 +657,26 @@ fn rewrite_component_values(
 
 pub(in crate::svg::pipeline) fn matches_external_image_function(name: &str) -> bool {
     name.eq_ignore_ascii_case("image-set") || name.eq_ignore_ascii_case("-webkit-image-set")
+}
+
+fn ensure_source_closed_token(
+    raw_token: &str,
+    control: &mut CssParseControl<'_>,
+) -> std::result::Result<(), ParseError<CssViolation>> {
+    control.step()?;
+    // cssparser accepts EOF-terminated strings, comments, and URLs. Only an explicitly
+    // closed token ends at the original boundary when another space follows it.
+    let mut probe = String::with_capacity(raw_token.len() + 1);
+    probe.push_str(raw_token);
+    probe.push(' ');
+
+    let mut parser = Parser::new(&probe);
+    parser.next_including_whitespace_and_comments()?;
+    if parser.position().byte_index() == raw_token.len() {
+        Ok(())
+    } else {
+        Err(ParseError::custom(CssViolation::UnclosedToken))
+    }
 }
 
 fn ensure_source_closed_block(
@@ -976,6 +1004,102 @@ mod tests {
         assert_eq!(sanitize_css_value("5rl('file:///{animatiEtroke:#333"), None);
         assert_eq!(sanitize_css_value("rotate(45deg"), None);
         assert_eq!(sanitize_css_value("outer((red)"), None);
+    }
+
+    #[test]
+    fn css_sanitize_rejects_unclosed_component_value_tokens() {
+        for value in [
+            r#"""#,
+            "'",
+            r#""text}"#,
+            "'text}",
+            r#""text\""#,
+            r#"'text\'"#,
+            r#""text\"#,
+            r#"'text\"#,
+            r#""text\\"#,
+            r#"'text\\"#,
+            r#""text\22"#,
+            r#"'text\27"#,
+            "\"text\\\n",
+            "red/*",
+            "red/*/",
+            "red/*comment}",
+            "url(#paint",
+            "url(#paint ",
+            r#"url(#paint\)"#,
+            r#"u\72l(#paint"#,
+        ] {
+            assert_eq!(sanitize_css_value(value), None, "{value:?}");
+            let declaration = format!("content:{value}");
+            let error = validate_resvg_css_declaration_list(&declaration)
+                .expect_err("EOF-terminated tokens must fail validation");
+            assert!(error.contains("unclosed CSS"), "{value:?}: {error}");
+
+            let css = format!(".safe{{fill:red}}.a{{stroke:blue;{declaration}");
+            let sanitized = sanitize_css(&css);
+            assert_eq!(sanitized, ".safe{fill:red}.a{stroke:blue;}", "{value:?}");
+            assert!(validate_resvg_css_stylesheet(&css).is_err(), "{value:?}");
+            assert!(
+                validate_resvg_css_stylesheet(&sanitized).is_ok(),
+                "{value:?}"
+            );
+            assert_eq!(sanitize_css(&sanitized), sanitized, "{value:?}");
+        }
+        assert_eq!(sanitize_css(r#".a{b:"}"#), ".a{}");
+    }
+
+    #[test]
+    fn css_sanitize_preserves_explicitly_closed_component_value_tokens() {
+        for value in [
+            r#""""#,
+            "''",
+            r#""A\"B""#,
+            r#"'A\'B'"#,
+            r#""A\\""#,
+            r#"'A\\'"#,
+            r#""A\"""#,
+            r#"'A\''"#,
+            r#""A\22 B""#,
+            r#"'A\27 B'"#,
+            r#""Unicode \1F642 ""#,
+            "\"A\\\r\nB\"",
+            r#"/*before*/"A"/*after*/"#,
+            "red/**/",
+            "red/*comment*/",
+            "url(#paint)",
+            r#"url(#paint\))"#,
+            r#"u\72l(#paint)"#,
+            r##"url("#paint")"##,
+            "url('#paint')",
+        ] {
+            assert_eq!(
+                sanitize_css_value(value).as_deref(),
+                Some(value),
+                "{value:?}"
+            );
+            let css = format!(".a{{content:{value}}}");
+            assert_eq!(sanitize_css(&css), css, "{value:?}");
+            assert!(validate_resvg_css_stylesheet(&css).is_ok(), "{value:?}");
+            assert!(
+                validate_resvg_css_declaration_list(&format!("content:{value}")).is_ok(),
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn css_sanitize_drops_rules_with_unclosed_string_preludes() {
+        for rule in [
+            r#".a[title="}]{}"#,
+            ".a[title='}]{}",
+            r#"@media "all{}"#,
+            "@supports (font-family:'a){}",
+        ] {
+            let css = format!(".safe{{fill:red}}{rule}");
+            assert_eq!(sanitize_css(&css), ".safe{fill:red}", "{rule}");
+            assert!(validate_resvg_css_stylesheet(&css).is_err(), "{rule}");
+        }
     }
 
     #[test]
