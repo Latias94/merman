@@ -15,7 +15,7 @@ use crate::diagram_theme::{
     ThemeTextStyle, ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities,
     paint_capability,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::family::{FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason};
 use crate::mermaid_style::{
     CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value,
@@ -368,7 +368,7 @@ pub(crate) struct StateStylePlan {
     shadowed_self_loop_edges: BTreeSet<String>,
     effects: StateEffectPlan,
     residuals: Vec<SourceStyleResidual>,
-    theme_evidence: FamilyThemeEvidence,
+    theme_outcomes: FamilyThemeOutcomes,
     terminal_theme: StateThemeOutcomes,
 }
 
@@ -439,7 +439,7 @@ struct StateThemeUse {
 
 #[derive(Debug)]
 struct StateThemeEvidenceResolution {
-    planned: FamilyThemeEvidence,
+    planned: FamilyThemeOutcomes,
     selected_outcomes: BTreeMap<FamilyThemeMechanismKey, StateAppliedThemeOutcome>,
 }
 
@@ -681,18 +681,17 @@ impl StateStylePlan {
             &work_meter,
         )
         .expect("an unthemed State style plan cannot exhaust theme selector work")
-        .0
     }
 
     #[cfg(test)]
-    pub(crate) fn resolve_with_evidence(
+    pub(crate) fn resolve_for_test(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
+    ) -> Result<Self, OperationWorkError> {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_value(effective_config),
@@ -711,7 +710,7 @@ impl StateStylePlan {
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
+    ) -> Result<Self, OperationWorkError> {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_config(effective_config),
@@ -731,7 +730,7 @@ impl StateStylePlan {
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
+    ) -> Result<Self, OperationWorkError> {
         let config_text_style = TextStyle {
             font_family: Some(compatibility.font_family_css.clone()),
             font_size: compatibility.font_size_px,
@@ -987,7 +986,6 @@ impl StateStylePlan {
         }
 
         let theme_resolution = theme_evidence.finish();
-        let planned_theme_evidence = theme_resolution.planned;
         let terminal_theme = StateThemeOutcomes::new(theme_resolution.selected_outcomes);
         let plan = Self {
             compatibility,
@@ -1007,10 +1005,10 @@ impl StateStylePlan {
             shadowed_self_loop_edges,
             effects,
             residuals,
-            theme_evidence: planned_theme_evidence.clone(),
+            theme_outcomes: theme_resolution.planned,
             terminal_theme,
         };
-        Ok((plan, planned_theme_evidence))
+        Ok(plan)
     }
 
     pub(crate) const fn compatibility(&self) -> &StateCompatibilityPlan {
@@ -1093,14 +1091,13 @@ impl StateStylePlan {
             .record_output_visibility(include_nodes, include_edges);
     }
 
-    pub(crate) fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        self.terminal_theme.finish_evidence(&self.theme_evidence)
+    pub(crate) const fn planned_theme_outcomes(&self) -> &FamilyThemeOutcomes {
+        &self.theme_outcomes
     }
 
-    #[cfg(test)]
-    pub(crate) fn finish_theme_evidence_for_plan_test(&self) -> FamilyThemeEvidence {
-        self.record_output_visibility(true, true);
-        self.finish_theme_evidence()
+    pub(crate) fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(self.planned_theme_outcomes());
+        self.terminal_theme.record_theme_evidence(evidence);
     }
 
     pub(crate) fn residuals(&self) -> &[SourceStyleResidual] {
@@ -1468,7 +1465,7 @@ impl StateThemeEvidenceBuilder<'_> {
     }
 
     fn finish(self) -> StateThemeEvidenceResolution {
-        let mut evidence = FamilyThemeEvidence::from_theme(self.theme);
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut selected_outcomes = BTreeMap::new();
         let Some(theme) = self.theme else {
             return StateThemeEvidenceResolution {
@@ -3641,7 +3638,7 @@ mod tests {
         theme: &ResolvedDiagramTheme,
         title: Option<&str>,
     ) -> (StateStylePlan, FamilyThemeEvidence) {
-        let (plan, _) = StateStylePlan::resolve_with_evidence(
+        let plan = StateStylePlan::resolve_for_test(
             model,
             config,
             Some(theme),
@@ -3650,8 +3647,18 @@ mod tests {
             &test_work_meter(),
         )
         .expect("resolve State theme plan");
-        let evidence = plan.finish_theme_evidence_for_plan_test();
+        let evidence = emitted_theme_evidence(&plan, theme);
         (plan, evidence)
+    }
+
+    fn emitted_theme_evidence(
+        plan: &StateStylePlan,
+        theme: &ResolvedDiagramTheme,
+    ) -> FamilyThemeEvidence {
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.record_output_visibility(true, true);
+        plan.record_theme_evidence(&mut evidence);
+        evidence
     }
 
     fn rect_node() -> StateDiagramRenderNode {
@@ -4346,7 +4353,7 @@ mod tests {
         model.nodes.push(semantic_node("Ready", "rect"));
         let work_meter = test_work_meter();
 
-        let (plan, _) = StateStylePlan::resolve_with_evidence(
+        let plan = StateStylePlan::resolve_for_test(
             &model,
             &json!({}),
             Some(&resolved),
@@ -4355,7 +4362,7 @@ mod tests {
             &work_meter,
         )
         .expect("resolve metered State theme plan");
-        let evidence = plan.finish_theme_evidence_for_plan_test();
+        let evidence = emitted_theme_evidence(&plan, &resolved);
 
         let node = plan.node("Ready").unwrap();
         assert_eq!(node.fill_override(), Some("#22c55e"));
@@ -4445,7 +4452,7 @@ mod tests {
         });
         let work_meter = test_work_meter();
 
-        let (plan, evidence) = StateStylePlan::resolve_with_evidence(
+        let plan = StateStylePlan::resolve_for_test(
             &model,
             &json!({}),
             Some(&resolved),
@@ -4461,6 +4468,8 @@ mod tests {
         assert!(edge.label_background_style_attr().contains("fill:#0f172a"));
         assert_eq!(edge.text_style().font_size, 27.0);
         assert_eq!(work_meter.used(), 4);
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&resolved));
+        plan.record_theme_evidence(&mut evidence);
         for (index, target) in [
             (0, ThemeTarget::Transition),
             (1, ThemeTarget::TransitionMarker),
@@ -4473,7 +4482,7 @@ mod tests {
             assert!(evidence.residuals().iter().all(|item| item.key() != &key));
         }
 
-        let terminal_evidence = plan.finish_theme_evidence_for_plan_test();
+        let terminal_evidence = emitted_theme_evidence(&plan, &resolved);
         for (index, target) in [
             (0, ThemeTarget::Transition),
             (1, ThemeTarget::TransitionMarker),
@@ -4486,6 +4495,105 @@ mod tests {
                     .contains(&FamilyThemeMechanismKey::Rule { index, target })
             );
         }
+    }
+
+    #[test]
+    fn state_theme_evidence_follows_first_output_visibility() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::State,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Transition,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#22d3ee").unwrap()),
+                        )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        model.edges.push(StateDiagramRenderEdge {
+            id: "transition-1".to_string(),
+            start: "Ready".to_string(),
+            end: "Done".to_string(),
+            classes: "transition".to_string(),
+            arrow_type_end: "arrow_barb".to_string(),
+            label: "go".to_string(),
+        });
+        let plan = StateStylePlan::resolve_for_test(
+            &model,
+            &json!({}),
+            Some(&theme),
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            &test_work_meter(),
+        )
+        .unwrap();
+        let node_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        let edge_key = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Transition,
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        plan.record_theme_evidence(&mut evidence);
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
+
+        plan.record_output_visibility(false, true);
+        plan.record_output_visibility(true, false);
+        plan.record_theme_evidence(&mut evidence);
+        assert!(!evidence.applied().contains(&node_key));
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key() == &node_key
+                && residual.reason() == FamilyThemeResidualReason::OutputVisibilityFiltered
+        }));
+        assert!(evidence.applied().contains(&edge_key));
+    }
+
+    #[test]
+    fn state_theme_evidence_preserves_an_accounted_outcome() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let plan = resolve_theme_plan(&model, &json!({}), &theme);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+
+        plan.record_theme_evidence(&mut evidence);
+
+        assert!(!evidence.applied().contains(&key));
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(evidence.residuals()[0].key(), &key);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
     }
 
     #[test]
@@ -5122,7 +5230,7 @@ mod tests {
             label: "Next".to_string(),
         });
         let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
-        let (plan, _) = StateStylePlan::resolve_with_config(
+        let plan = StateStylePlan::resolve_with_config(
             &model,
             &parsed.metadata().effective_config,
             Some(&resolved),
@@ -5150,7 +5258,7 @@ mod tests {
                 Some("italic")
             );
         }
-        let evidence = plan.finish_theme_evidence_for_plan_test();
+        let evidence = emitted_theme_evidence(&plan, &resolved);
         let rule = FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::Text,
@@ -5194,7 +5302,7 @@ mod tests {
             let mut model = StateDiagramRenderModel::default();
             model.nodes.push(semantic_node("Ready", "rect"));
             let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
-            let (plan, _) = StateStylePlan::resolve_with_config(
+            let plan = StateStylePlan::resolve_with_config(
                 &model,
                 &parsed.metadata().effective_config,
                 Some(&resolved),
@@ -5212,7 +5320,7 @@ mod tests {
                 node.label_style_attr()
                     .contains(&format!("font-family:{family} !important"))
             );
-            let evidence = plan.finish_theme_evidence_for_plan_test();
+            let evidence = emitted_theme_evidence(&plan, &resolved);
             assert!(
                 !evidence
                     .applied()
@@ -5280,7 +5388,7 @@ mod tests {
                 .nodes
                 .extend([repaired, family_only, size_only, invalid_size]);
             let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
-            let (plan, _) = StateStylePlan::resolve_with_config(
+            let plan = StateStylePlan::resolve_with_config(
                 &model,
                 &parsed.metadata().effective_config,
                 Some(&resolved),

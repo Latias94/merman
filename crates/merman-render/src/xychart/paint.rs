@@ -11,9 +11,9 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, resolve_direct_static_fill, resolve_direct_static_stroke,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{XyChartDiagramLayout, XyChartDrawableElem};
 use crate::resources::OperationWorkMeter;
@@ -98,7 +98,7 @@ pub(crate) struct XyChartPaintPlan {
     text_effects: BTreeMap<XyChartPaintTerminalId, XyChartTextEffect>,
     pending_bindings: BTreeSet<FamilyThemeMechanismKey>,
     pending: BTreeMap<(ThemeTarget, usize), BTreeSet<ThemeCapability>>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<()>,
 }
 
@@ -119,7 +119,7 @@ impl XyChartPaintPlan {
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut plan = Self {
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             data_label_color: crate::config::config_string(
                 config.as_value(),
                 &["themeVariables", "xyChart", "dataLabelColor"],
@@ -557,8 +557,8 @@ impl XyChartPaintPlan {
             && self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if self.terminal_receipt.get().is_some() {
             for key in &self.pending_bindings {
                 evidence.mark_applied_with_capabilities(
@@ -573,7 +573,6 @@ impl XyChartPaintPlan {
                 );
             }
         }
-        evidence
     }
 }
 
@@ -1096,6 +1095,15 @@ impl XyChartPaintReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
@@ -1229,9 +1237,14 @@ mod tests {
                 plan.begin_terminal_receipt(|_| panic!("no payload to escape"), "test")
                     .is_none()
             );
-            assert!(plan.finish_evidence().applied().is_empty());
+            assert!(
+                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                    .applied()
+                    .is_empty()
+            );
             assert_eq!(
-                plan.finish_evidence().not_applicable_mechanisms(),
+                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                    .not_applicable_mechanisms(),
                 &[FamilyThemeMechanismKey::Rule {
                     index: 0,
                     target: ThemeTarget::Text
@@ -1323,9 +1336,14 @@ mod tests {
         );
         assert_eq!(plan.data_label_color(), "#123456");
         assert!(plan.begin_terminal_receipt(str::to_owned, "test").is_none());
-        assert!(plan.finish_evidence().applied().is_empty());
+        assert!(
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                .applied()
+                .is_empty()
+        );
         assert_eq!(
-            plan.finish_evidence().not_applicable_mechanisms(),
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                .not_applicable_mechanisms(),
             &[FamilyThemeMechanismKey::Rule {
                 index: 0,
                 target: ThemeTarget::Text

@@ -7,7 +7,7 @@ use crate::diagram_theme::{
     ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan, resolved_style_property_for_facet,
 };
 use crate::text::TextStyle;
@@ -33,7 +33,7 @@ pub(crate) struct ClassTextThemePlan {
     typed_font_size_active: bool,
     node_style_facts_requested: bool,
     node_style_facts: OnceLock<BTreeMap<Box<str>, ClassNodeLabelStyleFacts>>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     outcomes: OnceLock<ClassTextOutcomes>,
 }
 
@@ -299,7 +299,7 @@ impl ClassTextThemePlan {
                 })
             }),
             node_style_facts: OnceLock::new(),
-            evidence: FamilyThemeEvidence::outcomes(),
+            evidence: FamilyThemeOutcomes::default(),
             outcomes: OnceLock::new(),
         }
     }
@@ -420,11 +420,11 @@ impl ClassTextThemePlan {
         }
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
+            .record_unsupported_typography_evidence(
+                evidence,
                 self.outcomes
                     .get()
                     .is_none_or(ClassTextOutcomes::has_visible_font_run),
@@ -499,7 +499,6 @@ impl ClassTextThemePlan {
                 }
             }
         }
-        evidence
     }
 }
 

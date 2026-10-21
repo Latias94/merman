@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason,
     unsupported_residual_for_facet as unsupported_reason_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -1372,8 +1372,7 @@ struct FlowchartThemeEvidenceState {
     edge_ordinal: usize,
     edge_label: FlowchartRuleEvidenceState,
     cluster: FlowchartRuleEvidenceState,
-    title: Option<FamilyThemeEvidence>,
-    marker: Option<FamilyThemeEvidence>,
+    marker: Option<FamilyThemeOutcomes>,
     node_ordinal_palette: FlowchartMechanismObservation,
     node_effect_bindings: BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
     edge_effect_bindings: BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
@@ -1805,38 +1804,29 @@ impl FlowchartThemeEvidenceRecorder {
         Ok(())
     }
 
-    pub(crate) fn record_marker_evidence(&self, evidence: FamilyThemeEvidence) {
+    pub(crate) fn record_marker_evidence(&self, evidence: FamilyThemeOutcomes) {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .marker = Some(evidence);
     }
 
-    pub(crate) fn record_title_evidence(&self, evidence: FamilyThemeEvidence) {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .title = Some(evidence);
-    }
-
-    pub(crate) fn finish(
+    pub(crate) fn record_into(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
-    ) -> (FamilyThemeEvidence, Vec<SourceStyleResidual>) {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        canonical: &mut FamilyThemeEvidence,
+    ) -> Vec<SourceStyleResidual> {
+        let evidence = canonical;
         let state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let source_residuals = state.source_residuals.values().cloned().collect();
-        if let Some(title) = &state.title {
-            evidence.merge_accounted_from(title.clone());
-        }
         if let Some(marker) = &state.marker {
-            evidence.merge_accounted_from(marker.clone());
+            evidence.merge_borrowed(marker);
         }
         let Some(theme) = theme else {
-            return (evidence, source_residuals);
+            return source_residuals;
         };
 
         let mut rule_routes = BTreeSet::<(usize, ThemeTarget)>::new();
@@ -1952,7 +1942,7 @@ impl FlowchartThemeEvidenceRecorder {
             }
         }
 
-        (evidence, source_residuals)
+        source_residuals
     }
 }
 
@@ -2298,6 +2288,58 @@ mod tests {
         ThemeStrokePatch, ThemeStylePatch,
     };
 
+    #[test]
+    fn record_into_preserves_canonical_outcomes_before_marker_results() {
+        let mut rules = ThemeRuleSet::default();
+        for target in [ThemeTarget::Node, ThemeTarget::Title, ThemeTarget::Marker] {
+            rules = rules.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let node = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        };
+        let title = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Title,
+        };
+        let marker = FamilyThemeMechanismKey::Rule {
+            index: 2,
+            target: ThemeTarget::Marker,
+        };
+        let mut canonical = FamilyThemeEvidence::from_theme(Some(&theme));
+        canonical.mark_residual(node.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+        canonical.mark_applied_with_capabilities(title.clone(), [ThemeCapability::SolidPaint]);
+        let mut marker_outcomes = FamilyThemeOutcomes::default();
+        marker_outcomes.mark_residual(title.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+        marker_outcomes.mark_residual(marker.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+        marker_outcomes.mark_not_applicable(FamilyThemeMechanismKey::Rule {
+            index: 99,
+            target: ThemeTarget::Marker,
+        });
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_marker_evidence(marker_outcomes);
+
+        for _ in 0..2 {
+            assert!(
+                recorder
+                    .record_into(Some(&theme), &mut canonical)
+                    .is_empty()
+            );
+            assert_eq!(canonical.applied(), std::slice::from_ref(&title));
+            assert!(canonical.not_applicable_mechanisms().is_empty());
+            assert_eq!(canonical.residuals().len(), 2);
+            assert_eq!(canonical.residuals()[0].key(), &node);
+            assert_eq!(canonical.residuals()[1].key(), &marker);
+        }
+    }
+
     fn node_effect_theme(
         effect: Specified<String>,
         supported: bool,
@@ -2408,7 +2450,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, observed, &[], &meter)
                 .unwrap();
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(evidence.applied().contains(&node_effect_rule_key()));
             assert!(
                 evidence
@@ -2442,7 +2485,8 @@ mod tests {
                     .record_node_emission(&style, observed, &[], &meter)
                     .unwrap();
             }
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(evidence.applied().contains(&node_effect_rule_key()));
             assert_eq!(
                 evidence.applied().contains(&node_effect_binding_key()),
@@ -2480,7 +2524,8 @@ mod tests {
                     .record_node_emission(&style, observed, &[], &meter)
                     .unwrap();
             }
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(!evidence.applied().contains(&node_effect_rule_key()));
             assert_eq!(
                 evidence.residuals()[0].reason(),
@@ -2508,7 +2553,8 @@ mod tests {
         recorder
             .record_node_emission(&style, observed, &[], &meter)
             .unwrap();
-        let (evidence, _) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        recorder.record_into(Some(&theme), &mut evidence);
         assert!(evidence.applied().contains(&node_effect_rule_key()));
         assert_eq!(evidence.residuals().len(), 1);
         assert_eq!(evidence.residuals()[0].key(), &node_effect_binding_key());
@@ -2539,7 +2585,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, observed, &[], &meter)
                 .unwrap();
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(evidence.applied().contains(&node_effect_rule_key()));
             assert!(
                 evidence
@@ -2559,7 +2606,8 @@ mod tests {
     fn node_effect_without_node_occurrences_is_not_applicable() {
         let theme = node_effect_theme(Specified::Value("rule".to_owned()), true, true);
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        let (evidence, _) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        recorder.record_into(Some(&theme), &mut evidence);
         assert!(evidence.applied().is_empty());
         assert!(evidence.residuals().is_empty());
         assert!(
@@ -2654,7 +2702,8 @@ mod tests {
                     true,
                     &meter,
                 );
-                let (evidence, _) = recorder.finish(Some(&theme));
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                recorder.record_into(Some(&theme), &mut evidence);
                 let binding = FamilyThemeMechanismKey::EffectBinding {
                     target,
                     effect_id: "binding".into(),
@@ -2724,7 +2773,8 @@ mod tests {
                         true,
                         &meter,
                     );
-                    let (evidence, _) = recorder.finish(Some(&theme));
+                    let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                    recorder.record_into(Some(&theme), &mut evidence);
                     assert!(evidence.applied().is_empty());
                     assert_eq!(evidence.residuals().len(), 1);
                     assert_eq!(
@@ -2774,7 +2824,8 @@ mod tests {
                         precedence.is_some(),
                         &meter,
                     );
-                    let (evidence, _) = recorder.finish(Some(&theme));
+                    let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                    recorder.record_into(Some(&theme), &mut evidence);
                     assert!(evidence.applied().is_empty());
                     assert!(evidence.residuals().is_empty());
                     assert!(evidence.not_applicable_mechanisms().contains(
@@ -2816,7 +2867,8 @@ mod tests {
                 &meter,
             );
         }
-        let (evidence, _) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        recorder.record_into(Some(&theme), &mut evidence);
         assert!(evidence.residuals().is_empty());
         assert!(
             evidence
@@ -3023,7 +3075,8 @@ mod tests {
             recorder
                 .record_cluster_emission(&style, emission, &[], &meter)
                 .unwrap();
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert_eq!(evidence.applied().len(), usize::from(verified));
             if verified {
                 assert!(evidence.residuals().is_empty());
@@ -3055,7 +3108,8 @@ mod tests {
         assert_eq!(style.stroke_value(no_override(), true), Some("#2563eb"));
 
         let empty = FlowchartThemeEvidenceRecorder::default();
-        let (empty_evidence, source_residuals) = empty.finish(Some(&theme));
+        let mut empty_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = empty.record_into(Some(&theme), &mut empty_evidence);
         assert!(source_residuals.is_empty());
         assert!(empty_evidence.applied().is_empty());
         assert_eq!(
@@ -3070,7 +3124,8 @@ mod tests {
         incomplete
             .record_cluster_emission(&style, cluster_emission(true, false), &[], &meter)
             .expect("record metered theme emission");
-        let (incomplete_evidence, source_residuals) = incomplete.finish(Some(&theme));
+        let mut incomplete_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = incomplete.record_into(Some(&theme), &mut incomplete_evidence);
         assert!(source_residuals.is_empty());
         assert!(incomplete_evidence.applied().is_empty());
         assert_eq!(incomplete_evidence.residuals().len(), 1);
@@ -3083,7 +3138,8 @@ mod tests {
         complete
             .record_cluster_emission(&style, cluster_emission(true, true), &[], &meter)
             .expect("record metered theme emission");
-        let (complete_evidence, source_residuals) = complete.finish(Some(&theme));
+        let mut complete_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = complete.record_into(Some(&theme), &mut complete_evidence);
         assert!(source_residuals.is_empty());
         assert_eq!(
             complete_evidence.applied(),
@@ -3352,7 +3408,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -3405,7 +3462,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -3461,7 +3519,8 @@ mod tests {
                     &meter,
                 )
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert_eq!(
@@ -3513,7 +3572,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3551,7 +3611,8 @@ mod tests {
         recorder
             .record_edge_label_emission(&style, edge_label_emission(None, None), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3643,7 +3704,8 @@ mod tests {
                         }
                         _ => unreachable!(),
                     }
-                    let (evidence, source_residuals) = recorder.finish(Some(&theme));
+                    let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                    let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
                     let key = FamilyThemeMechanismKey::Rule { index: 0, target };
                     assert!(source_residuals.is_empty());
                     assert_eq!(evidence.applied().contains(&key), applied);
@@ -3728,7 +3790,8 @@ mod tests {
         recorder
             .record_node_emission(&style, font_size_emission(precedence, true), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -3763,7 +3826,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3793,7 +3857,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, font_size_emission(precedence, false), &[], &meter)
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert!(evidence.applied().is_empty());
@@ -3824,7 +3889,8 @@ mod tests {
         recorder
             .record_node_emission(&style, font_stack_emission(precedence, true), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -3860,7 +3926,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3890,7 +3957,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, font_stack_emission(precedence, false), &[], &meter)
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert!(evidence.applied().is_empty());
@@ -3918,7 +3986,8 @@ mod tests {
         recorder
             .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3960,7 +4029,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -3992,7 +4062,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4019,7 +4090,8 @@ mod tests {
         recorder
             .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4051,7 +4123,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, observed, &[], &meter)
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert!(evidence.applied().is_empty());
@@ -4087,7 +4160,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4118,7 +4192,8 @@ mod tests {
         recorder
             .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4157,7 +4232,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4186,7 +4262,8 @@ mod tests {
         recorder
             .record_node_emission(&style, observed, &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4221,7 +4298,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4252,7 +4330,8 @@ mod tests {
         recorder
             .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4301,7 +4380,8 @@ mod tests {
                         .record_node_emission(&style, observed, &[], &meter)
                         .unwrap();
                 }
-                let (evidence, _) = recorder.finish(Some(&theme));
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                recorder.record_into(Some(&theme), &mut evidence);
                 if channels.contains(&Some(false)) {
                     assert!(evidence.applied().is_empty());
                     assert_eq!(evidence.residuals().len(), 1);
@@ -4354,7 +4434,8 @@ mod tests {
             recorder
                 .record_node_emission(&style, observed, &[], &meter)
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert!(evidence.applied().is_empty());
@@ -4395,7 +4476,8 @@ mod tests {
         recorder
             .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4422,7 +4504,8 @@ mod tests {
             )
             .expect("record metered theme emission");
 
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4452,7 +4535,8 @@ mod tests {
         recorder
             .record_edge_emission(&style, edge_emission(precedence, true), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4490,7 +4574,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4528,7 +4613,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4566,7 +4652,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4606,7 +4693,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4655,7 +4743,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4686,7 +4775,8 @@ mod tests {
             recorder
                 .record_edge_emission(&style, edge_emission(precedence, false), &[], &meter)
                 .expect("record metered theme emission");
-            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
             assert!(source_residuals.is_empty());
             assert!(evidence.applied().is_empty());
@@ -4717,7 +4807,8 @@ mod tests {
         recorder
             .record_edge_emission(&style, edge_emission(no_override(), true), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4741,7 +4832,8 @@ mod tests {
         recorder
             .record_edge_emission(&style, edge_emission(no_override(), false), &[], &meter)
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4783,7 +4875,8 @@ mod tests {
             )
             .expect("record metered theme emission");
 
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4815,8 +4908,9 @@ mod tests {
             .expect("compile ordinal Flowchart theme")
             .resolve(DiagramFamilyId::FLOWCHART);
 
-        let (empty_evidence, source_residuals) =
-            FlowchartThemeEvidenceRecorder::default().finish(Some(&theme));
+        let mut empty_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = FlowchartThemeEvidenceRecorder::default()
+            .record_into(Some(&theme), &mut empty_evidence);
         assert!(source_residuals.is_empty());
         assert!(empty_evidence.applied().is_empty());
         assert!(empty_evidence.residuals().is_empty());
@@ -4859,7 +4953,8 @@ mod tests {
             )
             .expect("record metered theme emission");
 
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -4902,7 +4997,8 @@ mod tests {
             .record_node_emission(&style, observed, &[], &meter)
             .expect("record metered theme emission");
 
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -4957,7 +5053,8 @@ mod tests {
             )
             .expect("record metered theme emission");
 
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
@@ -5009,7 +5106,8 @@ mod tests {
                 &meter,
             )
             .expect("record metered theme emission");
-        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
 
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -5084,7 +5182,8 @@ mod tests {
                     )
                     .unwrap();
             }
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(evidence.applied().is_empty());
             assert_eq!(evidence.residuals().len(), 1);
             assert_eq!(
@@ -5111,7 +5210,8 @@ mod tests {
             recorder
                 .record_edge_emission(&style, edge_emission(precedence, false), &[], &meter)
                 .unwrap();
-            let (evidence, _) = recorder.finish(Some(&theme));
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            recorder.record_into(Some(&theme), &mut evidence);
             assert!(evidence.applied().is_empty());
             assert!(evidence.residuals().is_empty());
             assert_eq!(

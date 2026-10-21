@@ -9,9 +9,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -21,7 +21,7 @@ use super::{KanbanPreparedItem, KanbanPreparedMarkdownLabel, KanbanTaskTheme};
 #[derive(Debug)]
 pub(crate) struct KanbanTextPaintPlan {
     fill: Option<DirectStaticPaint>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
     text_keys: BTreeSet<FamilyThemeMechanismKey>,
     terminal: OnceLock<KanbanTextPaintOutcome>,
@@ -78,7 +78,7 @@ impl KanbanTextPaintPlan {
     pub(crate) fn baseline() -> Self {
         Self {
             fill: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             text_keys: BTreeSet::new(),
             terminal: OnceLock::new(),
@@ -97,7 +97,7 @@ impl KanbanTextPaintPlan {
             return Ok(Self::baseline());
         };
         let mut plan = Self {
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            evidence: FamilyThemeOutcomes::default(),
             ..Self::baseline()
         };
         for route in theme.family_mechanism_routes() {
@@ -252,8 +252,8 @@ impl KanbanTextPaintPlan {
         let _ = self.terminal.set(outcome);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if self
             .terminal
             .get()
@@ -262,7 +262,7 @@ impl KanbanTextPaintPlan {
             for key in &self.text_keys {
                 evidence.mark_not_applicable(key.clone());
             }
-            return evidence;
+            return;
         }
         for (key, residual) in &self.pending {
             if let Some(reason) = residual {
@@ -284,7 +284,6 @@ impl KanbanTextPaintPlan {
                 }
             }
         }
-        evidence
     }
 }
 

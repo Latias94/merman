@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -101,7 +101,7 @@ struct C4TypedPaint {
 pub(crate) struct C4ClusterThemePlan {
     explicit_boundary_count: usize,
     boundaries: BTreeMap<Box<str>, C4BoundaryTerminalExpectation>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, C4ClusterPendingEvidence>,
     terminal_receipt: OnceLock<C4ClusterThemeReceipt>,
 }
@@ -249,7 +249,7 @@ impl C4ClusterThemePlan {
             expectation.radius_rule_index = terminal_radius_rule;
         }
 
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, C4ClusterRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -410,7 +410,7 @@ impl C4ClusterThemePlan {
         Self {
             explicit_boundary_count: boundaries.len(),
             boundaries,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
         }
@@ -443,10 +443,10 @@ impl C4ClusterThemePlan {
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         for (key, pending) in &self.pending {
             let FamilyThemeMechanismKey::Rule { index, .. } = key else {
@@ -459,7 +459,6 @@ impl C4ClusterThemePlan {
                 );
             }
         }
-        evidence
     }
 }
 

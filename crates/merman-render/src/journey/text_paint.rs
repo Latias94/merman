@@ -9,9 +9,10 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::JourneyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -20,7 +21,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct JourneyTextPaintPlan {
     fill: Option<DirectStaticPaint>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
     terminal: OnceLock<()>,
 }
@@ -56,7 +57,7 @@ impl JourneyTextPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
             fill: None,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
         };
@@ -206,8 +207,8 @@ impl JourneyTextPaintPlan {
         receipt.is_complete() && self.terminal.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for (key, residual) in &self.pending {
             if let Some(reason) = residual {
                 evidence.mark_residual(key.clone(), *reason);
@@ -218,7 +219,6 @@ impl JourneyTextPaintPlan {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
         }
-        evidence
     }
 }
 

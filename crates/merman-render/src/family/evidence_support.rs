@@ -8,7 +8,7 @@ use crate::diagram_theme::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{DirectStaticPaint, FamilyThemeEvidence, FamilyThemeResidualReason};
+use super::{DirectStaticPaint, FamilyThemeOutcomes, FamilyThemeResidualReason};
 
 /// One direct paint value that a family writer must emit at a real terminal surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -377,7 +377,7 @@ impl UnsupportedMechanismObservation {
 /// winners, palette fallback, effect-binding selection, and final evidence accounting.
 pub(crate) fn reconcile_unsupported_terminal_domains(
     theme: &ResolvedDiagramTheme,
-    evidence: &mut FamilyThemeEvidence,
+    evidence: &mut FamilyThemeOutcomes,
     domains: &[UnsupportedTerminalDomain<'_>],
     work_meter: &OperationWorkMeter,
 ) -> Result<(), OperationWorkError> {
@@ -624,7 +624,7 @@ mod tests {
         OrdinalSelector, ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
         ThemeVariant,
     };
-    use crate::family::FamilyThemeEvidence;
+    use crate::family::FamilyThemeOutcomes;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn resolved_theme(
@@ -729,7 +729,7 @@ mod tests {
                     .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
                     .unwrap(),
             );
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let mut evidence = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
                 .unwrap();
             assert_eq!(meter.used(), required_work);
@@ -762,7 +762,7 @@ mod tests {
                     .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
                     .unwrap(),
             );
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let mut evidence = FamilyThemeOutcomes::default();
             let error =
                 reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &limited)
                     .unwrap_err();
@@ -790,7 +790,7 @@ mod tests {
             let mut samples = Vec::new();
             for iteration in 0..9 {
                 let meter = work_meter();
-                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                let mut evidence = FamilyThemeOutcomes::default();
                 let start = Instant::now();
                 reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
                     .unwrap();
@@ -822,7 +822,7 @@ mod tests {
             target: ThemeTarget::Node,
         };
 
-        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut visible = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut visible,
@@ -837,7 +837,7 @@ mod tests {
         assert_eq!(visible.residuals()[0].key(), &key);
         assert!(visible.not_applicable_mechanisms().is_empty());
 
-        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut absent = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut absent,
@@ -863,7 +863,7 @@ mod tests {
             target: ThemeTarget::Node,
         };
         for (source_owned, not_applicable) in [([true, true], true), ([true, false], false)] {
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let mut evidence = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 &theme,
                 &mut evidence,
@@ -906,7 +906,7 @@ mod tests {
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
             TerminalVariantDomain::uniform(2, ThemeVariant::Default),
         )];
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &work_meter())
             .unwrap();
         assert_eq!(evidence.residuals().len(), 1);
@@ -921,7 +921,7 @@ mod tests {
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
                 .unwrap(),
         );
-        let mut exact_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut exact_evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(&theme, &mut exact_evidence, &domains, &exact)
             .unwrap();
         assert_eq!(exact.used(), required_work);
@@ -930,7 +930,7 @@ mod tests {
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
                 .unwrap(),
         );
-        let mut short_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut short_evidence = FamilyThemeOutcomes::default();
         assert!(matches!(
             reconcile_unsupported_terminal_domains(&theme, &mut short_evidence, &domains, &short),
             Err(OperationWorkError::ResourceLimitExceeded(_))
@@ -945,7 +945,7 @@ mod tests {
                 ThemeRule::new(ThemeTarget::NodeLabel, clear),
             ],
         );
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let fill_key = FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::NodeLabel,
@@ -985,7 +985,7 @@ mod tests {
                 index: 0,
                 target: ThemeTarget::Node,
             };
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let mut evidence = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 &theme,
                 &mut evidence,
@@ -1023,7 +1023,7 @@ mod tests {
                     .with_ordinal(OrdinalSelector::exact(2).expect("valid exact ordinal")),
             ],
         );
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
         reconcile_unsupported_terminal_domains(
             &theme,
@@ -1070,7 +1070,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, route_count)
             .expect("exact route-scan work limit");
         let meter = OperationWorkMeter::new(policy);
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
         reconcile_unsupported_terminal_domains(
             &theme,
@@ -1093,7 +1093,7 @@ mod tests {
                 fill_rule(ThemeTarget::NodeLabel, "#222222").for_family(DiagramFamilyId::MINDMAP),
             ],
         );
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
         reconcile_unsupported_terminal_domains(
             &theme,
@@ -1139,7 +1139,7 @@ mod tests {
             target: ThemeTarget::Node,
         };
 
-        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut visible = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut visible,
@@ -1157,7 +1157,7 @@ mod tests {
             FamilyThemeResidualReason::UnsupportedOrdinalPalette,
         );
 
-        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut absent = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut absent,
@@ -1195,7 +1195,7 @@ mod tests {
         let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
             target: ThemeTarget::Edge,
         };
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
         reconcile_unsupported_terminal_domains(
             &theme,
@@ -1266,7 +1266,7 @@ mod tests {
             target: ThemeTarget::Edge,
             effect_id: bound_effect_id.to_string(),
         };
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut evidence = FamilyThemeOutcomes::default();
 
         reconcile_unsupported_terminal_domains(
             &theme,
@@ -1312,7 +1312,7 @@ mod tests {
             effect_id: effect_id.to_string(),
         };
 
-        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut visible = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut visible,
@@ -1331,7 +1331,7 @@ mod tests {
             FamilyThemeResidualReason::UnsupportedEffect,
         );
 
-        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut absent = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut absent,
@@ -1360,7 +1360,7 @@ mod tests {
                 [ThemeRule::new(ThemeTarget::Marker, patch)],
             );
             for (fill_owned, stroke_owned) in [(false, true), (true, false), (true, true)] {
-                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                let mut evidence = FamilyThemeOutcomes::default();
                 reconcile_unsupported_terminal_domains(
                     &theme,
                     &mut evidence,
@@ -1395,7 +1395,7 @@ mod tests {
             .with_ordinal(OrdinalSelector::exact(2).unwrap())],
         );
         for owned in [vec![true], vec![true, false], vec![false, true]] {
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let mut evidence = FamilyThemeOutcomes::default();
             reconcile_unsupported_terminal_domains(
                 &theme,
                 &mut evidence,
@@ -1412,7 +1412,7 @@ mod tests {
                 usize::from(owned.get(1) != Some(&true))
             );
         }
-        let mut unchanged = FamilyThemeEvidence::from_theme(Some(&theme));
+        let mut unchanged = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             &theme,
             &mut unchanged,

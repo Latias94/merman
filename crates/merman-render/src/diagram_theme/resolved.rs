@@ -745,6 +745,10 @@ impl ResolvedDiagramTheme {
         self.family
     }
 
+    pub(crate) fn family_program_owner(&self) -> Arc<FamilyThemeProgram> {
+        Arc::clone(&self.program)
+    }
+
     pub fn typography(&self) -> &TextStyle {
         self.program.base_typography()
     }
@@ -806,52 +810,11 @@ impl ResolvedDiagramTheme {
         self.program.ordinal_palette_disposition(target)
     }
 
-    /// Yields native-evidence keys in mechanism-route order.
-    ///
-    /// A key shared by multiple facets is yielded once per facet; the evidence ledger owns
-    /// ordered uniqueness through its required-key index.
-    pub(crate) fn family_evidence_mechanism_keys(
-        &self,
-    ) -> impl Iterator<Item = super::application::FamilyThemeMechanismKey> + '_ {
-        self.program
-            .mechanism_routes()
-            .iter()
-            .copied()
-            .map(|route| self.family_mechanism_key(route))
-    }
-
     pub(crate) fn family_mechanism_key(
         &self,
         route: super::family_mechanism_matrix::FamilyThemeRoute,
     ) -> super::application::FamilyThemeMechanismKey {
-        use super::application::FamilyThemeMechanismKey;
-        use super::family_mechanism_matrix::FamilyThemeMechanism;
-
-        match route.mechanism() {
-            FamilyThemeMechanism::BaseTypography(property) => {
-                FamilyThemeMechanismKey::Typography(property)
-            }
-            FamilyThemeMechanism::RuleFacet {
-                rule_index, target, ..
-            } => FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target,
-            },
-            FamilyThemeMechanism::OrdinalPalette { target } => {
-                FamilyThemeMechanismKey::OrdinalPalette { target }
-            }
-            FamilyThemeMechanism::EffectBinding {
-                binding_index,
-                target,
-            } => {
-                let binding = &self.theme.spec().effects().bindings()[binding_index];
-                debug_assert_eq!(binding.target(), target);
-                FamilyThemeMechanismKey::EffectBinding {
-                    target,
-                    effect_id: binding.effect_id().to_string(),
-                }
-            }
-        }
+        self.program.mechanism_key(route)
     }
 
     pub(crate) fn family_mechanism_routes(

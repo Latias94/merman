@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan,
 };
 
@@ -20,7 +20,7 @@ pub(crate) struct XyChartTypographyThemePlan {
     common_css: crate::svg::PreparedCommonCss,
     role_fonts: BTreeMap<XyChartTextRole, RoleFont>,
     source_sizes: [bool; 6],
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<XyChartTypographyTerminalSeal>,
 }
 
@@ -134,7 +134,7 @@ impl XyChartTypographyThemePlan {
             common_css,
             role_fonts,
             source_sizes,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         })
     }
@@ -207,34 +207,34 @@ impl XyChartTypographyThemePlan {
             .is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.inherited_font_stack.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(receipt) = self.terminal_receipt.get() else {
             self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
+                .record_unsupported_typography_evidence(evidence, true);
             if self.inherited_font_stack.typed_font_stack_requested() {
                 evidence.mark_residual(
                     FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
-            return evidence;
+            return;
         };
 
         let has_visible_text = receipt.emitted_visible_text_count != 0;
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, has_visible_text);
+            .record_unsupported_typography_evidence(evidence, has_visible_text);
         if !has_visible_text {
             if self.inherited_font_stack.typed_font_stack_requested() {
                 evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
                     ThemeTypographyProperty::FontStack,
                 ));
             }
-            return evidence;
+            return;
         }
 
         if self.inherited_font_stack.typed_font_stack_requested() {
@@ -254,7 +254,6 @@ impl XyChartTypographyThemePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
-        evidence
     }
 }
 

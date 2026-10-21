@@ -9,16 +9,16 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug)]
 pub(crate) struct TimelineTextPaintPlan {
     fill: Option<DirectStaticPaint>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: Vec<TimelinePendingTextMechanism>,
     terminal: OnceLock<TimelineTextPaintOutcome>,
 }
@@ -55,7 +55,7 @@ impl TimelineTextPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
             fill: None,
-            evidence: FamilyThemeEvidence::outcomes(),
+            evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
         };
@@ -132,7 +132,7 @@ impl TimelineTextPaintPlan {
                 plan.evidence.mark_not_applicable(key);
             }
         }
-        let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut fallbacks = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut fallbacks,
@@ -169,8 +169,8 @@ impl TimelineTextPaintPlan {
         let _ = self.terminal.set(outcome);
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         for pending in &self.pending {
             match self.terminal.get() {
                 Some(outcome)
@@ -204,7 +204,6 @@ impl TimelineTextPaintPlan {
                 ),
             }
         }
-        evidence
     }
 }
 

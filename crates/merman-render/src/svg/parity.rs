@@ -884,7 +884,7 @@ pub(crate) struct RootThemeAppliedSvg {
     svg: String,
     root_theme: crate::diagram_theme::RootThemeReport,
     preserves_typed_theme_evidence: bool,
-    family_theme_evidence: Option<crate::family::FamilyThemeEvidence>,
+    family_theme_evidence: Option<crate::family::FamilyThemeOutcomes>,
     #[cfg(feature = "diagram-packet")]
     packet_theme_outcome: Option<crate::packet::PacketThemeOutcome>,
     #[cfg(all(
@@ -902,7 +902,7 @@ impl RootThemeAppliedSvg {
 
     pub(crate) fn take_family_theme_evidence(
         &mut self,
-    ) -> Option<crate::family::FamilyThemeEvidence> {
+    ) -> Option<crate::family::FamilyThemeOutcomes> {
         self.family_theme_evidence.take()
     }
 
@@ -1257,7 +1257,7 @@ fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
-    family_theme_evidence: &mut Option<crate::family::FamilyThemeEvidence>,
+    family_theme_evidence: &mut Option<crate::family::FamilyThemeOutcomes>,
     #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
         crate::packet::PacketThemeOutcome,
     >,

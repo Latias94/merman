@@ -7,7 +7,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -58,8 +58,8 @@ impl ClassThemeEvidenceRecorder {
         theme: Option<&ResolvedDiagramTheme>,
         plan: &ClassRelationThemePlan,
         work_meter: &OperationWorkMeter,
-    ) -> Result<FamilyThemeEvidence, OperationWorkError> {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+    ) -> Result<FamilyThemeOutcomes, OperationWorkError> {
+        let mut evidence = FamilyThemeOutcomes::default();
         let Some(theme) = theme else {
             return Ok(evidence);
         };

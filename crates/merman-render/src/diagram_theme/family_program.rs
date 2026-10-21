@@ -1,10 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::DiagramFamilyId;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::DiagramThemeSpec;
+use super::application::FamilyThemeMechanismKey;
 use super::family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRoute, FamilyThemeRuleFacet,
     compile_base_typography_routes, compile_effect_binding_route, compile_ordinal_palette_route,
@@ -19,7 +20,7 @@ use super::typography::TextStyle;
 /// Family, target, and variant matching are compiled once. Only ordinal selectors remain dynamic
 /// because they depend on the concrete diagram element being styled.
 #[derive(Debug)]
-pub(super) struct FamilyThemeProgram {
+pub(crate) struct FamilyThemeProgram {
     spec: Arc<DiagramThemeSpec>,
     base_typography: TextStyle,
     rule_indices: Box<[usize]>,
@@ -28,6 +29,8 @@ pub(super) struct FamilyThemeProgram {
     ordinal_palette_dispositions: BTreeMap<ThemeTarget, FamilyThemeDisposition>,
     effect_binding_indices: Box<[usize]>,
     mechanism_routes: Box<[FamilyThemeRoute]>,
+    requested_mechanisms: Option<Arc<[FamilyThemeMechanismKey]>>,
+    requested_index: BTreeSet<FamilyThemeMechanismKey>,
     rule_facet_dispositions: BTreeMap<(usize, FamilyThemeRuleFacet), FamilyThemeDisposition>,
 }
 
@@ -142,6 +145,21 @@ impl FamilyThemeProgram {
             })
             .collect();
 
+        let mut requested_mechanisms = Vec::new();
+        let mut requested_index = BTreeSet::new();
+        for route in mechanism_routes.iter().copied() {
+            let key = mechanism_key(&spec, route);
+            if requested_index.insert(key.clone()) {
+                requested_mechanisms.push(key);
+            }
+        }
+        let requested_mechanisms: Option<Arc<[FamilyThemeMechanismKey]>> =
+            if requested_mechanisms.is_empty() {
+                None
+            } else {
+                Some(Arc::from(requested_mechanisms))
+            };
+
         Self {
             spec,
             base_typography,
@@ -151,8 +169,26 @@ impl FamilyThemeProgram {
             ordinal_palette_dispositions,
             effect_binding_indices: effect_binding_indices.into_boxed_slice(),
             mechanism_routes: mechanism_routes.into_boxed_slice(),
+            requested_mechanisms,
+            requested_index,
             rule_facet_dispositions,
         }
+    }
+
+    pub(crate) fn requested_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        self.requested_mechanisms.as_deref().unwrap_or_default()
+    }
+
+    pub(crate) fn shared_requested_mechanisms(&self) -> Option<Arc<[FamilyThemeMechanismKey]>> {
+        self.requested_mechanisms.clone()
+    }
+
+    pub(crate) fn contains_requested_mechanism(&self, key: &FamilyThemeMechanismKey) -> bool {
+        self.requested_index.contains(key)
+    }
+
+    pub(super) fn mechanism_key(&self, route: FamilyThemeRoute) -> FamilyThemeMechanismKey {
+        mechanism_key(&self.spec, route)
     }
 
     pub(super) const fn base_typography(&self) -> &TextStyle {
@@ -396,6 +432,34 @@ impl FamilyRuleSlot {
     }
 }
 
+fn mechanism_key(spec: &DiagramThemeSpec, route: FamilyThemeRoute) -> FamilyThemeMechanismKey {
+    match route.mechanism() {
+        FamilyThemeMechanism::BaseTypography(property) => {
+            FamilyThemeMechanismKey::Typography(property)
+        }
+        FamilyThemeMechanism::RuleFacet {
+            rule_index, target, ..
+        } => FamilyThemeMechanismKey::Rule {
+            index: rule_index,
+            target,
+        },
+        FamilyThemeMechanism::OrdinalPalette { target } => {
+            FamilyThemeMechanismKey::OrdinalPalette { target }
+        }
+        FamilyThemeMechanism::EffectBinding {
+            binding_index,
+            target,
+        } => {
+            let binding = &spec.effects().bindings()[binding_index];
+            debug_assert_eq!(binding.target(), target);
+            FamilyThemeMechanismKey::EffectBinding {
+                target,
+                effect_id: binding.effect_id().to_string(),
+            }
+        }
+    }
+}
+
 fn charge_ordinal_candidates(
     work_meter: Option<&OperationWorkMeter>,
     ordinal: Option<usize>,
@@ -412,11 +476,25 @@ fn charge_ordinal_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{CanvasPaint, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, Specified, ThemeColorValue, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
 
     #[test]
     fn cache_reuses_the_same_program_for_one_recipe_family() {
-        let spec = Arc::new(DiagramThemeSpec::default());
+        let spec = Arc::new(
+            DiagramThemeSpec::default().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::FLOWCHART),
+                ),
+            ),
+        );
         let cache = FamilyThemeProgramCache::new(spec);
 
         let first = cache.get_or_compile(DiagramFamilyId::FLOWCHART);
@@ -425,6 +503,23 @@ mod tests {
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(!Arc::ptr_eq(&first, &state));
+        let requested = first.shared_requested_mechanisms().unwrap();
+        assert!(Arc::ptr_eq(
+            &requested,
+            &second.shared_requested_mechanisms().unwrap()
+        ));
+        assert!(state.requested_mechanisms().is_empty());
+        assert!(state.shared_requested_mechanisms().is_none());
+        drop(cache);
+        drop(first);
+        drop(second);
+        assert_eq!(
+            requested.as_ref(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
     }
 
     #[test]
@@ -448,5 +543,194 @@ mod tests {
             program.rule_facet_disposition(0, facet),
             Some(FamilyThemeDisposition::TypedAdapter)
         );
+    }
+
+    #[test]
+    fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
+        let fill = CanvasPaint::solid("#123456").unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(fill.clone()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(fill.clone())
+                                .with_stroke(fill.clone()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(fill.clone())
+                                .with_stroke(fill),
+                        )),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let program = theme.family_program_owner();
+        let expected = vec![
+            FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Text,
+            },
+            FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::Node,
+            },
+            FamilyThemeMechanismKey::Rule {
+                index: 2,
+                target: ThemeTarget::Text,
+            },
+        ];
+        // Shadowed rules retain identity even when Class owns only some of their facets.
+        assert_eq!(program.requested_mechanisms(), expected.as_slice());
+        for key in &expected {
+            assert!(program.contains_requested_mechanism(key));
+        }
+        assert!(
+            !program.contains_requested_mechanism(&FamilyThemeMechanismKey::Rule {
+                index: 3,
+                target: ThemeTarget::Text,
+            })
+        );
+    }
+
+    #[test]
+    fn native_evidence_requirements_cover_empty_typed_text_and_many_rules() {
+        let empty = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let fill = CanvasPaint::solid("#123456").unwrap();
+        let typed_text = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(fill.clone()),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let empty_program = empty.family_program_owner();
+        assert!(empty_program.requested_mechanisms().is_empty());
+        assert!(empty_program.shared_requested_mechanisms().is_none());
+        assert!(
+            !empty_program.contains_requested_mechanism(&FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Text,
+            })
+        );
+        let typed_program = typed_text.family_program_owner();
+        assert_eq!(
+            typed_program.requested_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Text,
+            }]
+        );
+
+        let excluded = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Canvas,
+                            ThemeStylePatch::default().with_fill(fill.clone()),
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Node,
+                                ThemeStylePatch::default().with_fill(fill.clone()),
+                            )
+                            .for_family(DiagramFamilyId::FLOWCHART),
+                        ),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let excluded_program = excluded.family_program_owner();
+        assert!(excluded_program.rule_indices().is_empty());
+        assert!(excluded_program.mechanism_routes().is_empty());
+        assert!(excluded_program.shared_requested_mechanisms().is_none());
+
+        let mut rules = ThemeRuleSet::default();
+        for _ in 0..512 {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default()
+                    .with_fill(fill.clone())
+                    .with_stroke(fill.clone()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let program = theme.family_program_owner();
+        assert_eq!(theme.family_mechanism_routes().len(), 1024);
+        let expected = (0..512)
+            .map(|index| FamilyThemeMechanismKey::Rule {
+                index,
+                target: ThemeTarget::Node,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(program.requested_mechanisms(), expected.as_slice());
+    }
+
+    #[test]
+    fn native_evidence_effect_requirements_keep_binding_order_and_full_identity() {
+        use crate::diagram_theme::{
+            DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+        };
+
+        let mut effects = DiagramEffectSet::default();
+        for id in ["z-last", "a-first"] {
+            effects = effects
+                .with_graph(
+                    EffectGraph::new(
+                        id,
+                        [EffectPrimitive::DropShadow {
+                            input: EffectInput::SourceGraphic,
+                            offset_x: 1.0,
+                            offset_y: 1.0,
+                            blur_radius: 2.0,
+                            spread: 0.0,
+                            color: ThemeColorValue::parse("#00000080").unwrap(),
+                        }],
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+        let bindings = [
+            (ThemeTarget::Edge, "z-last"),
+            (ThemeTarget::Node, "a-first"),
+            (ThemeTarget::Cluster, "z-last"),
+        ];
+        for (target, id) in bindings {
+            effects = effects
+                .with_binding(EffectBinding::new(target, id).unwrap())
+                .unwrap();
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_effects(effects))
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let program = theme.family_program_owner();
+        let expected = bindings
+            .into_iter()
+            .map(|(target, id)| FamilyThemeMechanismKey::EffectBinding {
+                target,
+                effect_id: id.to_string(),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(program.requested_mechanisms(), expected.as_slice());
     }
 }

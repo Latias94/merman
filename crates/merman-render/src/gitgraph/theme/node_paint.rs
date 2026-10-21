@@ -213,7 +213,7 @@ impl GitGraphNodePaintPlan {
         complete && self.terminal.set(receipt.facts).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         for (key, observation) in &self.observations {
             let Some(facts) = self.terminal.get() else {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);

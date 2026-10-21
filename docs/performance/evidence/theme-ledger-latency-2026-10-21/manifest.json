@@ -1,0 +1,14 @@
+{
+  "created_at_utc": "2026-10-20T20:50:21.242357+00:00",
+  "base_revision": "f46f751f512600789dd6b3cf3cd734c747dae2f2",
+  "candidate_revision": "e76736165059b26333c0fed583fbe68f77d42b56",
+  "fixtures": 8,
+  "pairs_per_fixture": 4,
+  "timed_calls": 64,
+  "decision": "no_latency_admission; keep ledger for memory/work",
+  "compressed_sha256": "a5b89e81f560929cff20c64a189bd810b6757819fb4bcf431e61fae4f12c99d3",
+  "uncompressed_sha256": "d036571046d3d9fd4f63e71aec279591909ac77713f2bd8912a8fb5148824f95",
+  "compressed_bytes": 77107,
+  "uncompressed_bytes": 719837,
+  "file": "diagnostic.json.gz"
+}

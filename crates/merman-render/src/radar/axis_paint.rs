@@ -10,9 +10,10 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -26,7 +27,7 @@ pub(crate) struct RadarAxisPaintPlan {
     axis_count: usize,
     paint: Option<DirectStaticPaint>,
     pending_rule: Option<usize>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<()>,
 }
 
@@ -56,7 +57,7 @@ impl RadarAxisPaintPlan {
             axis_count,
             paint: None,
             pending_rule: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -81,7 +82,7 @@ impl RadarAxisPaintPlan {
     ) -> crate::Result<Self> {
         let mut plan = Self::baseline_with_binding(binding, axis_count);
         let Some(theme) = theme else { return Ok(plan) };
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         let owns_line = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.lineColor",
@@ -295,8 +296,8 @@ impl RadarAxisPaintPlan {
         self.pending_rule.is_some() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(index) = self.pending_rule
             && self.terminal_receipt.get().is_some()
             && let Some(paint) = &self.paint
@@ -309,7 +310,6 @@ impl RadarAxisPaintPlan {
                 [paint.capability()],
             );
         }
-        evidence
     }
 }
 
@@ -388,6 +388,15 @@ impl RadarAxisPaintReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
 
     fn receipt(plan: &RadarAxisPaintPlan) -> RadarAxisPaintReceipt {
@@ -407,7 +416,7 @@ mod tests {
         rules: impl IntoIterator<Item = crate::diagram_theme::ThemeRule>,
         config: MermaidConfig,
         count: usize,
-    ) -> RadarAxisPaintPlan {
+    ) -> (RadarAxisPaintPlan, ResolvedDiagramTheme) {
         use crate::diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec, ThemeRuleSet};
         let rules = rules
             .into_iter()
@@ -417,7 +426,8 @@ mod tests {
             .unwrap()
             .resolve(crate::DiagramFamilyId::RADAR);
         let meter = OperationWorkMeter::new(crate::RenderResourcePolicy::interactive());
-        RadarAxisPaintPlan::resolve(Some(&theme), &config, count, &meter).unwrap()
+        let plan = RadarAxisPaintPlan::resolve(Some(&theme), &config, count, &meter).unwrap();
+        (plan, theme)
     }
 
     fn effective_config(site_config: serde_json::Value) -> MermaidConfig {
@@ -438,12 +448,21 @@ mod tests {
             serde_json::json!({"radar":{"axisColor":"#abcdef"}}),
             serde_json::json!({"themeVariables":{"radar":{"axisColor":"#abcdef"}}}),
         ] {
-            let plan = plan_for_rules([rule.clone()], effective_config(config), 3);
+            let (plan, theme) = plan_for_rules([rule.clone()], effective_config(config), 3);
             assert_eq!(plan.line_color(), "#123456");
             assert_eq!(plan.axis_color(), "#abcdef");
             assert!(plan.begin_terminal_receipt().is_none());
-            assert_eq!(plan.finish_evidence().not_applicable_mechanisms().len(), 1);
-            assert!(plan.finish_evidence().applied().is_empty());
+            assert_eq!(
+                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                    .not_applicable_mechanisms()
+                    .len(),
+                1
+            );
+            assert!(
+                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                    .applied()
+                    .is_empty()
+            );
         }
     }
 
@@ -460,11 +479,11 @@ mod tests {
             } else {
                 MermaidConfig::empty_object()
             };
-            let plan = plan_for_rules([fill.clone(), axis_rule(clear.clone())], config, 3);
+            let (plan, theme) = plan_for_rules([fill.clone(), axis_rule(clear.clone())], config, 3);
             assert_ne!(plan.axis_color(), "#123456");
             assert_ne!(plan.line_color(), "#123456");
             assert!(plan.begin_terminal_receipt().is_none());
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.applied().is_empty());
             assert_eq!(
                 evidence.not_applicable_mechanisms().len(),
@@ -494,7 +513,7 @@ mod tests {
                 ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
             )
             .with_ordinal(ordinal);
-            let plan = plan_for_rules(
+            let (plan, theme) = plan_for_rules(
                 [static_rule.clone(), dynamic],
                 MermaidConfig::empty_object(),
                 3,
@@ -502,7 +521,7 @@ mod tests {
             // Best-effort CSS retains its static fallback; this is not proof of the ordinal request.
             assert_eq!(plan.axis_color(), "#123456");
             assert_eq!(plan.begin_terminal_receipt().is_some(), static_pending);
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert_eq!(evidence.residuals().len(), 1);
             assert_eq!(
                 evidence.not_applicable_mechanisms().len(),
@@ -512,7 +531,9 @@ mod tests {
         }
     }
 
-    fn plan_with_axis_palette(rule: crate::diagram_theme::ThemeRule) -> RadarAxisPaintPlan {
+    fn plan_with_axis_palette(
+        rule: crate::diagram_theme::ThemeRule,
+    ) -> (RadarAxisPaintPlan, ResolvedDiagramTheme) {
         use crate::diagram_theme::{
             DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
         };
@@ -527,19 +548,20 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::RADAR);
-        RadarAxisPaintPlan::resolve(
+        let plan = RadarAxisPaintPlan::resolve(
             Some(&theme),
             &MermaidConfig::empty_object(),
             3,
             &OperationWorkMeter::new(crate::RenderResourcePolicy::interactive()),
         )
-        .unwrap()
+        .unwrap();
+        (plan, theme)
     }
 
     #[test]
     fn axis_palette_is_not_applicable_when_static_stroke_owns_every_axis() {
         use crate::diagram_theme::{CanvasPaint, ThemeStylePatch};
-        let plan = plan_with_axis_palette(axis_rule(
+        let (plan, theme) = plan_with_axis_palette(axis_rule(
             ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
         ));
         assert!(plan.begin_terminal_receipt().is_some());
@@ -547,19 +569,32 @@ mod tests {
             target: ThemeTarget::Axis,
         };
         assert!(
-            plan.finish_evidence()
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
                 .not_applicable_mechanisms()
                 .contains(&palette_key)
         );
-        assert!(plan.finish_evidence().residuals().is_empty());
+        assert!(
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                .residuals()
+                .is_empty()
+        );
         let mut terminal = receipt(&plan);
         for index in 0..3 {
             terminal.record_axis_line(index, "radarAxisLine");
             terminal.record_axis_label(index, "radarAxisLabel");
         }
         assert!(plan.record_terminal(terminal));
-        assert_eq!(plan.finish_evidence().applied().len(), 1);
-        assert!(plan.finish_evidence().residuals().is_empty());
+        assert_eq!(
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                .applied()
+                .len(),
+            1
+        );
+        assert!(
+            collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
+                .residuals()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -580,9 +615,9 @@ mod tests {
             .unwrap(),
         ));
         for patch in [clear, gradient] {
-            let plan = plan_with_axis_palette(axis_rule(patch));
+            let (plan, theme) = plan_with_axis_palette(axis_rule(patch));
             assert!(plan.begin_terminal_receipt().is_none());
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.not_applicable_mechanisms().contains(
                 &FamilyThemeMechanismKey::OrdinalPalette {
                     target: ThemeTarget::Axis
@@ -602,13 +637,13 @@ mod tests {
     #[test]
     fn axis_palette_remains_residual_on_axes_without_an_ordinal_stroke_winner() {
         use crate::diagram_theme::{CanvasPaint, OrdinalSelector, ThemeStylePatch};
-        let plan = plan_with_axis_palette(
+        let (plan, theme) = plan_with_axis_palette(
             axis_rule(
                 ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
             )
             .with_ordinal(OrdinalSelector::Exact(2)),
         );
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
         assert!(evidence.not_applicable_mechanisms().is_empty());
         assert_eq!(evidence.residuals().len(), 2);
         assert!(evidence.residuals().iter().any(|residual| residual.key()

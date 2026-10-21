@@ -168,17 +168,16 @@ impl EdgeLabelBackgroundPlan {
         Ok(())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::from_theme(self.theme.as_ref());
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         let Some(theme) = &self.theme else {
-            return evidence;
+            return;
         };
         let receipt = self
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !receipt.stylesheet_emitted {
-            return evidence;
+            return;
         }
         let mut rules = BTreeMap::<usize, (bool, Option<FamilyThemeResidualReason>)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -250,6 +249,5 @@ impl EdgeLabelBackgroundPlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 }

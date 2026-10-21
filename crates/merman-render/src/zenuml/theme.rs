@@ -6,9 +6,10 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke,
 };
 use crate::resources::OperationWorkMeter;
 
@@ -112,6 +113,10 @@ impl ZenumlSourceStyle {
 
     fn source_owns_color(&self, key: &str) -> bool {
         self.colors.contains_key(key) && !self.typed_colors.contains_key(key)
+    }
+
+    pub(crate) fn uses_default_css(&self) -> bool {
+        self.colors.is_empty() && self.typography.uses_default_css()
     }
 }
 
@@ -384,7 +389,7 @@ const PAINT_SLOTS: &[PaintSlot] = &[
 #[derive(Debug)]
 pub(crate) struct ZenumlThemePlan {
     source_style: ZenumlSourceStyle,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     rules: Vec<(FamilyThemeMechanismKey, usize)>,
     font_routes: Vec<ThemeTypographyProperty>,
     fallback_not_applicable: std::collections::BTreeSet<FamilyThemeMechanismKey>,
@@ -400,7 +405,7 @@ impl ZenumlThemePlan {
         work_meter: &OperationWorkMeter,
         source_style: ZenumlSourceStyle,
     ) -> crate::Result<Self> {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut rules = Vec::new();
         let mut font_routes = Vec::new();
         let mut fallback_not_applicable = std::collections::BTreeSet::new();
@@ -454,7 +459,7 @@ impl ZenumlThemePlan {
                 .with_source_owned_stroke(&stroke);
                 // Text is a fallback for several independent roles. Reconcile each role
                 // separately, and retain any residual before applying absence receipts.
-                let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+                let mut fallbacks = FamilyThemeOutcomes::default();
                 reconcile_unsupported_terminal_domains(
                     theme,
                     &mut fallbacks,
@@ -488,10 +493,10 @@ impl ZenumlThemePlan {
         self.terminal.set(receipt).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal.get().filter(|receipt| receipt.stylesheet) else {
-            return evidence;
+            return;
         };
         for (key, index) in &self.rules {
             let paints = self
@@ -520,7 +525,6 @@ impl ZenumlThemePlan {
         for key in &self.fallback_not_applicable {
             evidence.mark_not_applicable(key.clone());
         }
-        evidence
     }
 }
 

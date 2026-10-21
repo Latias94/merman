@@ -7,8 +7,8 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -329,7 +329,7 @@ pub(crate) struct ErEntityThemePlan {
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
     table_rows: BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>>,
     relation_strokes: Vec<ErRelationStrokeVisual>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<terminal::ErThemeOutcomes>,
 }
@@ -431,7 +431,7 @@ impl ErEntityThemePlan {
                 text_terminals: BTreeMap::new(),
                 table_rows: BTreeMap::new(),
                 relation_strokes: Vec::new(),
-                evidence: FamilyThemeEvidence::default(),
+                evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             }
@@ -756,7 +756,7 @@ impl ErEntityThemePlan {
                 style_suffix,
             });
         }
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<(usize, ThemeTarget), ErRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -1024,10 +1024,10 @@ impl ErEntityThemePlan {
         self.terminal_receipt.set(receipt.into_outcomes()).is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, self.has_visible_typography);
+            .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
         let font_stack_key =
             FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if self.font_stack_pending {
@@ -1073,7 +1073,7 @@ impl ErEntityThemePlan {
             );
         }
         let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
+            return;
         };
         for (key, capabilities) in &self.pending {
             let rule_index = match key {
@@ -1088,7 +1088,6 @@ impl ErEntityThemePlan {
                 evidence.mark_not_applicable(key.clone());
             }
         }
-        evidence
     }
 }
 

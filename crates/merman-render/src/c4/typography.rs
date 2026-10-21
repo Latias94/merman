@@ -8,7 +8,9 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
+};
 
 /// Resolves C4's inherited base typography for the diagram title and root stylesheet.
 ///
@@ -29,7 +31,7 @@ pub(crate) struct C4TypographyThemePlan {
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title: Option<Box<str>>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_seal: OnceLock<C4TypographyTerminalSeal>,
 }
 
@@ -159,7 +161,7 @@ impl C4TypographyThemePlan {
             typed_font_size_requested,
             typed_font_size_active,
             title: normalize_title(title),
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_seal: OnceLock::new(),
         }
     }
@@ -246,45 +248,44 @@ impl C4TypographyThemePlan {
             .is_some_and(|seal| self.terminal_seal.set(seal).is_ok())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
-            return evidence;
+            return;
         }
 
         let Some(seal) = self.terminal_seal.get() else {
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontStack,
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
                 false,
             );
             self.mark_typed_property_evidence(
-                &mut evidence,
+                evidence,
                 ThemeTypographyProperty::FontSize,
                 self.typed_font_size_requested,
                 self.typed_font_size_active,
                 false,
             );
-            return evidence;
+            return;
         };
 
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
             seal.has_visible_title,
         );
         self.mark_typed_property_evidence(
-            &mut evidence,
+            evidence,
             ThemeTypographyProperty::FontSize,
             self.typed_font_size_requested,
             self.typed_font_size_active,
             seal.has_visible_title,
         );
-        evidence
     }
 
     fn mark_typed_property_evidence(

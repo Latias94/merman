@@ -272,26 +272,25 @@ impl FlowchartTextSurfacePaintPlan {
         Ok(())
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::outcomes();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         if self.background.requested() {
-            evidence.merge_accounted_from(self.background.finish_evidence());
+            self.background.record_evidence(evidence);
         }
         if self.generic_text.requested() {
-            evidence.merge_accounted_from(self.generic_text.finish_evidence());
+            self.generic_text.record_evidence(evidence);
         }
         let receipt = self
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(terminal) = receipt.as_ref() else {
-            return evidence;
+            return;
         };
         if terminal.css_emitted != [true, true] {
-            return evidence;
+            return;
         }
         let Some(theme) = self.theme.as_ref() else {
-            return evidence;
+            return;
         };
         let mut observations =
             BTreeMap::<(usize, ThemeTarget), (bool, Option<FamilyThemeResidualReason>)>::new();
@@ -369,7 +368,6 @@ impl FlowchartTextSurfacePaintPlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 }
 
@@ -444,7 +442,7 @@ mod tests {
                 )
                 .unwrap();
             let mut family = FamilyThemeEvidence::from_theme(Some(&theme));
-            family.merge_accounted_from(plan.finish_evidence());
+            plan.record_evidence(&mut family);
             assert_eq!(
                 family.applied().len(),
                 usize::from(targets.contains(&ThemeTarget::Text))
@@ -501,7 +499,8 @@ mod tests {
             )
             .unwrap();
         }
-        let evidence = plan.finish_evidence();
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        plan.record_evidence(&mut evidence);
         assert!(evidence.applied().is_empty());
         assert_eq!(evidence.residuals().len(), 1);
     }

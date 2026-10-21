@@ -8,9 +8,9 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -47,7 +47,7 @@ pub(crate) struct SankeyTypographyThemePlan {
     link_color: String,
     outlined_labels: bool,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     text_fill: Option<DirectStaticPaint>,
     text_rules: BTreeMap<usize, SankeyTextRuleObservation>,
     config_owns_text_fill: bool,
@@ -171,7 +171,7 @@ impl SankeyTypographyThemePlan {
             link_color: config_view.link_color(),
             outlined_labels: config_view.outlined_labels(),
             inherited_font_stack,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence: FamilyThemeOutcomes::default(),
             text_fill,
             text_rules,
             config_owns_text_fill,
@@ -218,12 +218,12 @@ impl SankeyTypographyThemePlan {
             .map(DirectStaticPaint::css)
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
             if self.inherited_font_stack.typed_font_stack_requested() {
                 self.inherited_font_stack
-                    .mark_unsupported_typography_evidence(&mut evidence, true);
+                    .record_unsupported_typography_evidence(evidence, true);
                 evidence.mark_residual(
                     FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     FamilyThemeResidualReason::UnsupportedTypography,
@@ -240,10 +240,10 @@ impl SankeyTypographyThemePlan {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
-            return evidence;
+            return;
         };
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_label);
+            .record_unsupported_typography_evidence(evidence, receipt.has_visible_label);
         if self.inherited_font_stack.typed_font_stack_requested() {
             let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
             if !receipt.has_visible_label {
@@ -282,7 +282,6 @@ impl SankeyTypographyThemePlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        evidence
     }
 }
 
@@ -475,7 +474,7 @@ pub(crate) struct SankeyNodePalettePlan {
     #[cfg(test)]
     endpoint_lookups: usize,
     paints: Vec<SankeyNodePaint>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     terminal_capabilities: OnceLock<BTreeSet<ThemeCapability>>,
 }
@@ -492,7 +491,7 @@ impl SankeyNodePalettePlan {
             return Ok(plan);
         };
 
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::Node) else {
             return Ok(plan);
         };
@@ -583,7 +582,7 @@ impl SankeyNodePalettePlan {
             #[cfg(test)]
             endpoint_lookups: 0,
             paints,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             terminal_capabilities: OnceLock::new(),
         }
@@ -708,10 +707,10 @@ impl SankeyNodePalettePlan {
             .is_ok()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         let Some(key) = self.palette_key.clone() else {
-            return evidence;
+            return;
         };
         match self.terminal_capabilities.get() {
             Some(capabilities) if capabilities.is_empty() => evidence.mark_not_applicable(key),
@@ -722,7 +721,6 @@ impl SankeyNodePalettePlan {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette)
             }
         }
-        evidence
     }
 }
 
@@ -780,6 +778,15 @@ impl SankeyNodePaletteReceipt {
 
 #[cfg(test)]
 mod tests {
+    fn collect_evidence(
+        theme: &crate::diagram_theme::ResolvedDiagramTheme,
+        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
+    ) -> crate::family::FamilyThemeEvidence {
+        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
+        record(&mut evidence);
+        evidence
+    }
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -910,19 +917,20 @@ mod tests {
         typography_css_emission(plan.font_family_css(), true, text_fill_css, text_fill_css)
     }
 
-    fn palette_plan(config: serde_json::Value) -> SankeyNodePalettePlan {
+    fn palette_plan(config: serde_json::Value) -> (SankeyNodePalettePlan, ResolvedDiagramTheme) {
         let layout = layout(&["A", "B"]);
         let config = MermaidConfig::from_value(config);
         let theme = resolved_node_palette(&["#123456", "#abcdef"]);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout, &work_meter)
-            .expect("resolve Sankey test palette")
+        let plan = SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout, &work_meter)
+            .expect("resolve Sankey test palette");
+        (plan, theme)
     }
 
     #[test]
     fn explicit_node_color_owns_only_its_node() {
-        let plan = palette_plan(json!({
+        let (plan, _) = palette_plan(json!({
             "sankey": { "nodeColors": { "A": "#fedcba" } }
         }));
 
@@ -932,7 +940,7 @@ mod tests {
 
     #[test]
     fn terminal_receipt_requires_every_node_in_order_with_exact_fill() {
-        let plan = palette_plan(json!({}));
+        let (plan, theme) = palette_plan(json!({}));
         let mut receipt = plan
             .begin_terminal_receipt()
             .expect("direct Sankey palette receipt");
@@ -940,7 +948,7 @@ mod tests {
         receipt.record_node(&plan, 1, "B", 2, Some("#abcdef"));
 
         assert!(plan.record_terminal(receipt));
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
         assert_eq!(evidence.applied().len(), 1);
         assert!(evidence.not_applicable_mechanisms().is_empty());
         assert!(evidence.residuals().is_empty());
@@ -949,7 +957,7 @@ mod tests {
     #[test]
     fn incomplete_or_mismatched_terminal_receipt_fails_closed() {
         for record_second in [false, true] {
-            let plan = palette_plan(json!({}));
+            let (plan, theme) = palette_plan(json!({}));
             let mut receipt = plan
                 .begin_terminal_receipt()
                 .expect("direct Sankey palette receipt");
@@ -959,7 +967,7 @@ mod tests {
             }
 
             assert!(!plan.record_terminal(receipt));
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.applied().is_empty());
             assert_eq!(evidence.residuals().len(), 1);
         }
@@ -985,7 +993,7 @@ mod tests {
                 layout.nodes.len(),
                 outlined_labels,
             )));
-            let evidence = plan.finish_evidence();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert_eq!(evidence.applied().len(), 1);
             assert!(evidence.not_applicable_mechanisms().is_empty());
             assert!(evidence.residuals().is_empty());
@@ -1012,7 +1020,12 @@ mod tests {
             receipt.record_label(SankeyLabelSurface::Plain, true);
         }
         assert!(!missing_css.record_terminal(receipt));
-        assert_eq!(missing_css.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&theme, |evidence| missing_css.record_evidence(evidence))
+                .residuals()
+                .len(),
+            1
+        );
 
         let duplicate_css = SankeyTypographyThemePlan::resolve(
             Some(&theme),
@@ -1028,7 +1041,12 @@ mod tests {
         receipt.record_css_emission(expected_typography_css_emission(&duplicate_css));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!duplicate_css.record_terminal(receipt));
-        assert_eq!(duplicate_css.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&theme, |evidence| duplicate_css.record_evidence(evidence))
+                .residuals()
+                .len(),
+            1
+        );
 
         let reordered = SankeyTypographyThemePlan::resolve(
             Some(&theme),
@@ -1044,7 +1062,12 @@ mod tests {
         receipt.record_label(SankeyLabelSurface::OutlineForeground, true);
         receipt.record_label(SankeyLabelSurface::OutlineBackground, true);
         assert!(!reordered.record_terminal(receipt));
-        assert_eq!(reordered.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&theme, |evidence| reordered.record_evidence(evidence))
+                .residuals()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -1070,7 +1093,12 @@ mod tests {
         ));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!wrong_font.record_terminal(receipt));
-        assert_eq!(wrong_font.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&theme, |evidence| wrong_font.record_evidence(evidence))
+                .residuals()
+                .len(),
+            1
+        );
 
         let inconsistent_surfaces = SankeyTypographyThemePlan::resolve(
             Some(&theme),
@@ -1090,7 +1118,13 @@ mod tests {
         ));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!inconsistent_surfaces.record_terminal(receipt));
-        assert_eq!(inconsistent_surfaces.finish_evidence().residuals().len(), 1);
+        assert_eq!(
+            collect_evidence(&theme, |evidence| inconsistent_surfaces
+                .record_evidence(evidence))
+            .residuals()
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -1112,7 +1146,7 @@ mod tests {
             layout.nodes.len(),
             false,
         )));
-        let evidence = plan.finish_evidence();
+        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
         assert!(evidence.applied().is_empty());
         assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
         assert!(evidence.residuals().is_empty());

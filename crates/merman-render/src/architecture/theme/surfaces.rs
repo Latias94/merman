@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeTarget};
-use crate::family::FamilyThemeEvidence;
+use crate::family::FamilyThemeOutcomes;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod styles;
@@ -108,7 +108,7 @@ impl ArchitectureSurfaceThemePlan {
 
     pub(super) fn finish_evidence(
         &self,
-        evidence: &mut FamilyThemeEvidence,
+        evidence: &mut FamilyThemeOutcomes,
         emission: Option<&ArchitectureSurfaceRenderState>,
     ) {
         for key in &self.title_keys {

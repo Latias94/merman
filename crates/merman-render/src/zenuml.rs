@@ -100,6 +100,10 @@ impl ZenumlTypography {
         )
     }
 
+    pub(crate) fn uses_default_css(&self) -> bool {
+        self.font_family.is_none() && self.font_size.is_none()
+    }
+
     fn style(&self, source_size: f64) -> TextStyle {
         TextStyle {
             font_family: Some(

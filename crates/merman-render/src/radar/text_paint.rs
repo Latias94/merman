@@ -10,9 +10,10 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::RadarDiagramLayout;
 use crate::resources::OperationWorkMeter;
@@ -28,7 +29,7 @@ pub(crate) struct RadarTextPaintPlan {
     paint: Option<DirectStaticPaint>,
     pending_rule: Option<usize>,
     title_fallback_rule: Option<usize>,
-    evidence: FamilyThemeEvidence,
+    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<()>,
 }
 
@@ -68,7 +69,7 @@ impl RadarTextPaintPlan {
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -90,7 +91,7 @@ impl RadarTextPaintPlan {
         work_meter.charge(layout.axes.len().saturating_add(layout.legend_items.len()))?;
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         let Some(theme) = theme else { return Ok(plan) };
-        plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.evidence = FamilyThemeOutcomes::default();
         let owns_text = merman_core::__private::config_paint_overrides_typed_default(
             config,
             "themeVariables.textColor",
@@ -284,8 +285,8 @@ impl RadarTextPaintPlan {
             && self.terminal_receipt.get().is_some()
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
+    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        evidence.merge_borrowed(&self.evidence);
         if let Some(index) = self.pending_rule
             && self.terminal_receipt.get().is_some()
             && let Some(paint) = &self.paint
@@ -298,7 +299,6 @@ impl RadarTextPaintPlan {
                 [paint.capability()],
             );
         }
-        evidence
     }
 }
 
@@ -399,7 +399,7 @@ mod tests {
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
-            evidence: FamilyThemeEvidence::default(),
+            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
     }

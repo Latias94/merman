@@ -491,18 +491,26 @@ fn drop_cloned_values(cloned: HashMap<*const Value, Value>) {
     }
 }
 
-pub(crate) fn drop_value_nonrecursive(value: Value) {
-    let mut stack = vec![value];
-    while let Some(value) = stack.pop() {
+pub(crate) fn drop_value_nonrecursive(mut value: Value) {
+    let mut pending = Vec::new();
+    loop {
+        let mut next = None;
+        let visit = |child| {
+            if matches!(child, Value::Array(_) | Value::Object(_))
+                && let Some(previous) = next.replace(child)
+            {
+                pending.push(previous);
+            }
+        };
         match value {
-            Value::Array(items) => {
-                stack.extend(items);
-            }
-            Value::Object(entries) => {
-                stack.extend(entries.into_values());
-            }
+            Value::Array(items) => items.into_iter().for_each(visit),
+            Value::Object(entries) => entries.into_values().for_each(visit),
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
+        let Some(child) = next.or_else(|| pending.pop()) else {
+            break;
+        };
+        value = child;
     }
 }
 
@@ -522,5 +530,29 @@ mod tests {
         );
         assert_eq!(number_value(-0.0), Value::Number(Number::from(0)));
         assert_eq!(number_value(f64::INFINITY), Value::Null);
+    }
+
+    #[test]
+    fn mixed_json_disposal_completes_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut value = Value::String("leaf".into());
+                for depth in 0..10_000 {
+                    value = if depth % 2 == 0 {
+                        Value::Array(vec![Value::Null, value, Value::String("sibling".into())])
+                    } else {
+                        Value::Object(Map::from_iter([
+                            ("child".into(), value),
+                            ("number".into(), Value::Number(Number::from(depth))),
+                            ("text".into(), Value::String("sibling".into())),
+                        ]))
+                    };
+                }
+                drop_value_nonrecursive(value);
+            })
+            .expect("spawn small-stack JSON disposal worker")
+            .join()
+            .expect("dispose deeply nested mixed JSON without recursion");
     }
 }
