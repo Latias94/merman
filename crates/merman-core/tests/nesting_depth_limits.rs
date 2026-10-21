@@ -1,4 +1,5 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
 use futures::executor::block_on;
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};

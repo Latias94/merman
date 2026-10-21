@@ -1,4 +1,20 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(feature = "editor-facts"),
+    doc = r#"
+The editor namespace requires the `editor-facts` capability:
+
+```compile_fail,E0432
+use merman_core::editor::EditorSemanticFacts;
+```
+
+Source-configuration provenance is part of the same capability:
+
+```compile_fail,E0432
+use merman_core::preprocess::SourceConfigEvidence;
+```
+"#
+)]
 //! Mermaid parser + semantic model (headless).
 //!
 //! Design goals:
@@ -17,6 +33,7 @@ pub mod config;
 pub mod detect;
 pub mod diagram;
 pub mod diagrams;
+#[cfg(feature = "editor-facts")]
 pub mod editor;
 pub mod entities;
 pub mod error;
@@ -65,8 +82,9 @@ pub use diagram::{
     DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
     FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
-#[cfg(any(feature = "editor-facts", feature = "compat-json"))]
+#[cfg(feature = "editor-facts")]
 pub use editor::ParsedEditorFacts;
+#[cfg(feature = "editor-facts")]
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorFamilySemantics, EditorRenamePolicy,
     EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
@@ -95,13 +113,16 @@ pub use preprocess::{preprocess_diagram, preprocess_diagram_with_known_type};
 use presentation::PresentationConfig;
 #[cfg(feature = "compat-json")]
 pub use presentation::diagram::{
-    BuiltinRenderSemantic, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
-    DiagramSemanticParser, DiagramSnapshotCapture, ParsedDiagram,
+    BuiltinRenderSemantic, DiagramRegistry, DiagramSemanticParser, ParsedDiagram,
 };
 #[cfg(feature = "presentation")]
 pub use presentation::diagram::{
     CustomJsonProvenance, CustomJsonRenderModel, CustomJsonRenderParser, ParsedDiagramRender,
     RenderDiagramRegistry, RenderSemanticModel,
+};
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub use presentation::diagram::{
+    DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
 };
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
 #[cfg(feature = "editor-facts")]

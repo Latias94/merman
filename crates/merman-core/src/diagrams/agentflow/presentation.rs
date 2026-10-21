@@ -1,8 +1,10 @@
 use super::{Declaration, ParseFailure, Parser};
+use crate::SourceSpan;
 #[cfg(feature = "presentation")]
 use crate::diagrams::flowchart::FlowchartModel;
 use crate::diagrams::flowchart::{self, ClickAction, FlowEdgeDefaults, LinkStylePos, Tok};
-use crate::{EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorSemanticKind, EditorSemanticSymbol};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -223,13 +225,16 @@ impl Parser<'_> {
                         authored_shape: None,
                         class: None,
                     });
-                    let reference = self.declared_entities.contains(&style.target);
-                    self.push_symbol(
-                        &style.target,
-                        EditorSemanticKind::Object,
-                        id_span,
-                        reference,
-                    );
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        let reference = self.declared_entities.contains(&style.target);
+                        self.push_symbol(
+                            &style.target,
+                            EditorSemanticKind::Object,
+                            id_span,
+                            reference,
+                        );
+                    }
                     self.authored
                         .nodes
                         .get_mut(&style.target)
@@ -247,15 +252,25 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for (id, span) in class.ids.into_iter().zip(class.id_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = class.ids.into_iter().zip(class.id_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = class.ids;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (id, source_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let id = entry;
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     self.authored
                         .class_defs
                         .entry(id.clone())
                         .or_default()
                         .extend(class.styles.iter().cloned());
-                    let span = SourceSpan::new(start + span.start, start + span.end);
+                    #[cfg(feature = "editor-facts")]
                     if let Some(facts) = &mut self.facts {
+                        let span =
+                            SourceSpan::new(start + source_span.start, start + source_span.end);
                         facts.push_symbol(EditorSemanticSymbol::class_definition(
                             id,
                             None,
@@ -278,22 +293,47 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for (target, span) in class.targets.into_iter().zip(class.target_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = class.targets.into_iter().zip(class.target_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = class.targets;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (target, source_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let target = entry;
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     self.assign_class(&target, &class.class_name);
-                    let span = SourceSpan::new(start + span.start, start + span.end);
-                    self.push_symbol(&target, EditorSemanticKind::Object, span, true);
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        let span =
+                            SourceSpan::new(start + source_span.start, start + source_span.end);
+                        self.push_symbol(&target, EditorSemanticKind::Object, span, true);
+                    }
                 }
             }
             Tok::ClickStmt(click) => {
-                for (ids, group_span) in click.ids.iter().zip(&click.id_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = click.ids.iter().zip(&click.id_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = &click.ids;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (ids, group_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let ids = entry;
+                    #[cfg(feature = "editor-facts")]
                     let mut offset = 0;
                     for id in ids.split(',') {
-                        let span = SourceSpan::new(
-                            start + group_span.start + offset,
-                            start + group_span.start + offset + id.len(),
-                        );
-                        offset += id.len() + 1;
+                        #[cfg(feature = "editor-facts")]
+                        let span = {
+                            let span = SourceSpan::new(
+                                start + group_span.start + offset,
+                                start + group_span.start + offset + id.len(),
+                            );
+                            offset += id.len() + 1;
+                            span
+                        };
                         self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                         if let Some(tooltip) = &click.tooltip {
                             self.authored.tooltips.insert(
@@ -321,6 +361,7 @@ impl Parser<'_> {
                                 }
                             }
                         }
+                        #[cfg(feature = "editor-facts")]
                         self.push_symbol(id, EditorSemanticKind::Object, span, true);
                     }
                 }

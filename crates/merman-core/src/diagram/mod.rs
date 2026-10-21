@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::{self, Debug, Formatter};
 
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub(crate) use crate::presentation::diagram::RegistryOwner;
 #[cfg(feature = "presentation")]
 pub use crate::presentation::diagram::*;
 #[cfg(feature = "compat-json")]
 pub(crate) use crate::presentation::diagram::{
-    BuiltInDiagramSemanticParser, RegistryOwner, ResolvedSemanticParser,
-    parse_or_unsupported_controlled,
+    BuiltInDiagramSemanticParser, ResolvedSemanticParser, parse_or_unsupported_controlled,
 };
 #[cfg(feature = "presentation")]
 pub(crate) use crate::presentation::diagram::{

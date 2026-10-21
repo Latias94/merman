@@ -12,10 +12,9 @@ use crate::diagram::BuiltInDiagramSemanticParser;
 use crate::diagram::{BuiltInRenderSemanticParser, RenderSemanticModel, RenderSemanticParseOutput};
 #[cfg(feature = "compat-json")]
 use crate::{DiagramWarningFact, ManagedSemanticJson};
-use crate::{
-    EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error, OperationControl,
-    OperationControlResult, Result,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
+use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
 use crate::{MermaidConfig, ParseMetadata};
 use serde::Serialize;
@@ -25,6 +24,7 @@ use std::fmt;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 pub(crate) enum EditorFactsDemand {
     Omit,
     Capture,
@@ -32,6 +32,7 @@ pub(crate) enum EditorFactsDemand {
 
 pub(crate) struct SemanticConstruction<M> {
     pub(crate) model: Result<M>,
+    #[cfg(feature = "editor-facts")]
     pub(crate) editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -39,12 +40,13 @@ impl<M> SemanticConstruction<M> {
     pub(crate) fn map_model<N>(self, project: impl FnOnce(M) -> N) -> SemanticConstruction<N> {
         SemanticConstruction {
             model: self.model.map(project),
+            #[cfg(feature = "editor-facts")]
             editor_facts: self.editor_facts,
         }
     }
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,
@@ -89,7 +91,7 @@ impl WarningSemanticParse {
 /// A successful construction hands typed warnings directly to the operation snapshot. A failed
 /// construction still owns the parser-derived editor facts produced before the error. This
 /// prevents callers from invoking a second recovery parser over the same source.
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) struct CombinedSemanticParse {
     model: Result<ManagedSemanticJson>,
     editor_facts: EditorSemanticFacts,
@@ -103,7 +105,9 @@ pub(crate) struct CombinedSemanticParse {
 )]
 pub(crate) struct CombinedSemanticFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Box<EditorSemanticFacts>>,
+    #[cfg(feature = "editor-facts")]
     recovery_parser: Option<&'static str>,
 }
 
@@ -112,40 +116,53 @@ pub(crate) struct CombinedSemanticFailure {
     reason = "Shared parser facilities have different consumers in each family selection."
 )]
 impl CombinedSemanticFailure {
-    pub(crate) fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
+    pub(crate) fn new(
+        error: Error,
+        #[cfg(feature = "editor-facts")] editor_facts: Option<EditorSemanticFacts>,
+    ) -> Self {
         Self {
             error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: editor_facts.map(Box::new),
+            #[cfg(feature = "editor-facts")]
             recovery_parser: None,
         }
     }
 
     pub(crate) fn parser_recovery(
-        parser: &'static str,
+        #[cfg(feature = "editor-facts")] parser: &'static str,
         error: Error,
-        editor_facts: EditorSemanticFacts,
+        #[cfg(feature = "editor-facts")] editor_facts: Option<EditorSemanticFacts>,
     ) -> Self {
+        #[cfg(feature = "editor-facts")]
+        let recovery_parser = editor_facts.as_ref().map(|_| parser);
         Self {
             error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-            recovery_parser: Some(parser),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: editor_facts.map(Box::new),
+            #[cfg(feature = "editor-facts")]
+            recovery_parser,
         }
     }
 
-    pub(crate) fn into_parts(mut self) -> (Error, EditorSemanticFacts) {
-        if let Some(parser) = self.recovery_parser.take() {
+    #[cfg(feature = "editor-facts")]
+    pub(crate) fn into_parts(self) -> (Error, EditorSemanticFacts) {
+        let mut editor_facts = self
+            .editor_facts
+            .expect("parser capture requests its failure journal");
+        if let Some(parser) = self.recovery_parser {
             let (message, span) = match self.error.as_ref() {
                 Error::DiagramParse { diagnostic, .. } => {
                     (diagnostic.message().to_string(), diagnostic.span())
                 }
                 error => (error.to_string(), None),
             };
-            self.editor_facts.mark_recovered_from_parse_error(
+            editor_facts.mark_recovered_from_parse_error(
                 format!("{parser} parser recovered after parse error: {message}"),
                 span,
             );
         }
-        (*self.error, *self.editor_facts)
+        (*self.error, *editor_facts)
     }
 
     pub(crate) fn into_error(self) -> Error {
@@ -153,7 +170,7 @@ impl CombinedSemanticFailure {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "editor-facts"))]
 mod combined_semantic_failure_tests {
     use super::*;
     use crate::{EditorSemanticDiagnosticKind, ParseDiagnosticSpanKind, SourceSpan};
@@ -164,7 +181,7 @@ mod combined_semantic_failure_tests {
         let failure = CombinedSemanticFailure::parser_recovery(
             "quadrant chart",
             Error::diagram_parse_exact("quadrantChart", "expected point coordinates", span),
-            EditorSemanticFacts::new(),
+            Some(EditorSemanticFacts::new()),
         );
 
         let (error, facts) = failure.into_parts();
@@ -192,7 +209,7 @@ mod combined_semantic_failure_tests {
     }
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 impl CombinedSemanticParse {
     pub(crate) fn from_parts(
         model: Result<Value>,
@@ -299,7 +316,7 @@ impl CombinedSemanticParse {
     }
 }
 
-#[cfg(all(test, feature = "compat-json"))]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 #[allow(
     dead_code,
     reason = "Test helpers serve different optional family suites."
@@ -356,7 +373,7 @@ pub(crate) struct RenderParserFact {
 }
 
 #[derive(Clone, Copy)]
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) struct CombinedParserFact {
     pub(crate) id: &'static str,
     pub(crate) parser: CombinedSemanticParser,
@@ -474,7 +491,7 @@ struct FamilyCatalogProjection {
     semantic_parser_facts: Vec<SemanticParserFact>,
     #[cfg(feature = "presentation")]
     render_parser_facts: Vec<RenderParserFact>,
-    #[cfg(feature = "compat-json")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     combined_parser_facts: Vec<CombinedParserFact>,
     supported_diagram_metadata_ids: Vec<&'static str>,
     diagram_header_facts: Vec<DiagramHeaderFact>,
@@ -491,7 +508,7 @@ impl FamilyCatalogProjection {
         let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
         #[cfg(feature = "presentation")]
         let mut render_parser_facts = Vec::<(u16, RenderParserFact)>::new();
-        #[cfg(feature = "compat-json")]
+        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
         let mut combined_parser_facts = Vec::<(u16, CombinedParserFact)>::new();
         let mut metadata_facts = Vec::<(u16, &'static str)>::new();
         let mut diagram_header_facts = Vec::<(u16, DiagramHeaderFact)>::new();
@@ -544,7 +561,7 @@ impl FamilyCatalogProjection {
                     },
                 ));
             }
-            #[cfg(feature = "compat-json")]
+            #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
             if let Some(ordered) = implementation.combined {
                 combined_parser_facts.push((
                     ordered.order,
@@ -594,7 +611,7 @@ impl FamilyCatalogProjection {
         let semantic_parser_facts = ordered_values(semantic_parser_facts);
         #[cfg(feature = "presentation")]
         let render_parser_facts = ordered_values(render_parser_facts);
-        #[cfg(feature = "compat-json")]
+        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
         let combined_parser_facts = ordered_values(combined_parser_facts);
         let metadata_facts = ordered_values(metadata_facts);
         let diagram_header_facts = ordered_values(diagram_header_facts);
@@ -637,7 +654,7 @@ impl FamilyCatalogProjection {
             semantic_parser_facts,
             #[cfg(feature = "presentation")]
             render_parser_facts,
-            #[cfg(feature = "compat-json")]
+            #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
             combined_parser_facts,
             supported_diagram_metadata_ids,
             diagram_header_facts,
@@ -671,12 +688,12 @@ pub(crate) fn render_parser_facts() -> &'static [RenderParserFact] {
     family_catalog_projection().render_parser_facts.as_slice()
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn combined_parser_facts() -> &'static [CombinedParserFact] {
     family_catalog_projection().combined_parser_facts.as_slice()
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticParser> {
     combined_parser_facts()
         .iter()
@@ -776,6 +793,7 @@ pub(crate) fn operation_family_id(
     Some(family)
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<EditorFamilySemantics> {
     find_variant(diagram_type).map(|(family, _)| family.editor_semantics)
 }
@@ -855,7 +873,7 @@ struct FamilyImplementation {
     semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
     #[cfg(feature = "compat-json")]
     warning_semantic: Option<WarningSemanticParser>,
-    #[cfg(feature = "compat-json")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     combined: Option<Ordered<CombinedSemanticParser>>,
     #[cfg(feature = "presentation")]
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
@@ -865,7 +883,7 @@ pub(crate) type CanonicalSemanticParser =
     fn(
         code: &str,
         metadata: &crate::SemanticMetadata,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<SemanticConstruction<crate::SemanticDiagramModel>>;
 
@@ -884,17 +902,17 @@ impl FamilyImplementation {
         }
     }
     fn has_combined_parser(&self) -> bool {
-        #[cfg(feature = "compat-json")]
+        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
         {
             self.combined.is_some()
         }
-        #[cfg(not(feature = "compat-json"))]
+        #[cfg(not(all(feature = "compat-json", feature = "editor-facts")))]
         {
             false
         }
     }
     fn has_editor_parser(&self) -> bool {
-        (cfg!(feature = "editor-facts") && self.canonical.is_some()) || self.has_combined_parser()
+        cfg!(feature = "editor-facts") && (self.canonical.is_some() || self.has_combined_parser())
     }
     fn has_render_parser(&self) -> bool {
         #[cfg(feature = "presentation")]
@@ -922,29 +940,40 @@ struct FamilyConfigDefinition {
 struct DiagramFamilyDefinition {
     id: DiagramFamilyId,
     selector: Option<&'static str>,
+    #[cfg(feature = "editor-facts")]
     editor_semantics: EditorFamilySemantics,
     config: Option<FamilyConfigDefinition>,
     variants: &'static [FamilyVariantDefinition],
 }
 
+#[cfg(feature = "editor-facts")]
 const GENERIC_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Variable);
+#[cfg(feature = "editor-facts")]
 const FLOWCHART_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Module);
+#[cfg(feature = "editor-facts")]
 const SWIMLANE_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Variable);
+#[cfg(feature = "editor-facts")]
 const MINDMAP_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Namespace);
+#[cfg(feature = "editor-facts")]
 const SEQUENCE_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Event);
+#[cfg(feature = "editor-facts")]
 const CLASS_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Class);
+#[cfg(feature = "editor-facts")]
 const ER_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Struct);
+#[cfg(feature = "editor-facts")]
 const CARDINAL_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Variable);
+#[cfg(feature = "editor-facts")]
 const STATE_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Class);
+#[cfg(feature = "editor-facts")]
 const BLOCK_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Object);
 
@@ -984,6 +1013,7 @@ macro_rules! define_family_catalog {
                 DiagramFamilyDefinition {
                     id: DiagramFamilyId::$constant,
                     selector: $selector,
+                    #[cfg(feature = "editor-facts")]
                     editor_semantics: $editor_semantics,
                     config: $config,
                     variants: $variants,
@@ -1030,7 +1060,7 @@ macro_rules! variant {
                         semantic: $semantic,
                         #[cfg(feature = "compat-json")]
                         warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
-                        #[cfg(feature = "compat-json")]
+                        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                         combined: $combined,
                         #[cfg(feature = "presentation")]
                         typed_render: $typed,
@@ -1044,7 +1074,7 @@ macro_rules! variant {
                         semantic: None,
                         #[cfg(feature = "compat-json")]
                         warning_semantic: None,
-                        #[cfg(feature = "compat-json")]
+                        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                         combined: None,
                         #[cfg(feature = "presentation")]
                         typed_render: None,
@@ -2422,6 +2452,7 @@ mod catalog_tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_semantics_follow_family_identity_across_variant_ids() {
         for variant in ["flowchart-v2", "flowchart-elk", "flowchart"] {
             assert_eq!(
@@ -2470,6 +2501,7 @@ mod catalog_tests {
         #[cfg(feature = "compat-json")]
         {
             assert!(projected.semantic_parser_facts.is_empty());
+            #[cfg(feature = "editor-facts")]
             assert!(projected.combined_parser_facts.is_empty());
         }
         #[cfg(feature = "presentation")]
@@ -2594,6 +2626,7 @@ mod catalog_tests {
         #[cfg(feature = "compat-json")]
         let mut semantic_orders = BTreeSet::new();
         #[cfg(feature = "compat-json")]
+        #[cfg(feature = "editor-facts")]
         let mut combined_orders = BTreeSet::new();
         #[cfg(feature = "presentation")]
         let mut render_orders = BTreeSet::new();
@@ -2630,6 +2663,7 @@ mod catalog_tests {
                     variant.identity.id
                 );
                 #[cfg(feature = "compat-json")]
+                #[cfg(feature = "editor-facts")]
                 assert!(
                     variant.implementation.combined.is_none()
                         || variant.implementation.semantic.is_some(),
@@ -2645,6 +2679,7 @@ mod catalog_tests {
                     assert!(semantic_orders.insert(fact.order));
                 }
                 #[cfg(feature = "compat-json")]
+                #[cfg(feature = "editor-facts")]
                 if let Some(fact) = variant.implementation.combined {
                     assert!(combined_orders.insert(fact.order));
                 }

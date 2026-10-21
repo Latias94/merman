@@ -1,12 +1,15 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::strip_line_ending;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan,
+    EditorSemanticSymbol,
 };
+use crate::{Error, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -66,12 +69,14 @@ struct FlatNode {
 
 struct IshikawaSemanticSource {
     nodes: Vec<FlatNode>,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct IshikawaParseFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
 impl IshikawaSemanticSource {
@@ -101,6 +106,7 @@ pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> 
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -114,7 +120,7 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
     )?;
     let construction = match construction {
         Ok(mut source) => {
-            let editor_facts = std::mem::take(&mut source.editor_facts);
+            let editor_facts = source.editor_facts.take().expect("requested editor facts");
             let model = source
                 .into_semantic_model_controlled(meta.effective_config.as_config(), control)?;
             let projected = render_model_to_compat_json_controlled(&model, meta, control)?;
@@ -265,6 +271,7 @@ pub(crate) fn parse_ishikawa_model_for_render_controlled(
     let construction = construct_ishikawa_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -280,47 +287,66 @@ pub(crate) fn parse_ishikawa_model_for_render_controlled(
 }
 
 impl IshikawaParseFailure {
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
-        (*self.error, *self.editor_facts)
+        (
+            *self.error,
+            *self.editor_facts.expect("requested editor facts"),
+        )
     }
 }
 
 pub(crate) fn parse_ishikawa_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<IshikawaDiagramModel>> {
     let construction = construct_ishikawa_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
-        Ok(mut source) => {
-            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
-                .then(|| std::mem::take(&mut source.editor_facts));
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let mut source = source;
+            #[cfg(feature = "editor-facts")]
+            let editor_facts = source.editor_facts.take();
             let model = source.into_semantic_model_controlled(&meta.semantic_config, control)?;
             control.checkpoint()?;
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_error_and_editor_facts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_error_and_editor_facts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(*failure.error),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(*failure.error),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(*failure.error),
+                }
+            }
+        }
     })
 }
 
@@ -336,6 +362,7 @@ fn construct_ishikawa_semantic_source(
     construct_ishikawa_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -345,7 +372,7 @@ fn construct_ishikawa_semantic_source(
 fn construct_ishikawa_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>>
 {
@@ -399,30 +426,39 @@ fn construct_ishikawa_semantic_source_controlled(
         ));
     }
 
-    let mut editor_facts = EditorSemanticFacts::new();
-    if editor_demand == EditorFactsDemand::Capture {
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts =
+        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
+    #[cfg(feature = "editor-facts")]
+    if let Some(facts) = &mut editor_facts {
         for (index, node) in nodes.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            push_ishikawa_node_fact(&mut editor_facts, node, index == 0);
+            push_ishikawa_node_fact(facts, node, index == 0);
         }
     }
-    if let Some((error, span)) = first_error {
-        if editor_demand == EditorFactsDemand::Capture {
-            editor_facts.mark_recovered_from_parse_error(
+    if let Some(failure) = first_error {
+        let error = failure.0;
+        #[cfg(feature = "editor-facts")]
+        let span = failure.1;
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = &mut editor_facts {
+            facts.mark_recovered_from_parse_error(
                 format!("ishikawa parser recovered after parse error: {error}"),
                 Some(span),
             );
         }
         return Ok(Err(IshikawaParseFailure {
             error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: editor_facts.map(Box::new),
         }));
     }
     control.checkpoint()?;
     Ok(Ok(IshikawaSemanticSource {
         nodes,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -496,6 +532,7 @@ fn parse_ishikawa_node_line(line: &str, line_start: usize, diagram_type: &str) -
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: &FlatNode, is_root: bool) {
     let detail = if is_root {
         "ishikawa effect"
@@ -573,10 +610,14 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
+    #[cfg(feature = "editor-facts")]
     use crate::{
         EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticKind,
-        EditorSemanticRole, Engine, ManagedSemanticJson, MermaidConfig, ParseDiagnosticSpanKind,
-        ParseMetadata, SourceSpan,
+        EditorSemanticRole,
+    };
+    use crate::{
+        Engine, ManagedSemanticJson, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
+        SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
@@ -604,6 +645,7 @@ mod tests {
     fn ishikawa_ordinary_projections_do_not_collect_editor_facts() {
         let source = "ishikawa Problem\n  Cause\n";
         reset_ishikawa_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_ishikawa_model_for_render_controlled(
             source,
@@ -613,12 +655,15 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(ishikawa_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         reset_ishikawa_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let projected = crate::ManagedSemanticJson::from(parse_ishikawa(source, &meta()).unwrap());
         assert!(projected.as_value().is_object());
         assert_eq!(ishikawa_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -722,6 +767,7 @@ mod tests {
             construct_ishikawa_semantic_source_controlled(
                 "ishikawa-beta Problem\n  Cause A\n  Cause B\n",
                 "ishikawa",
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             ),
@@ -799,11 +845,14 @@ Cause B
         let expected_model = parse_ishikawa_model_for_render(text, &meta()).unwrap();
 
         reset_ishikawa_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let (json, facts) = crate::family::test_support::into_result(
             parse_ishikawa_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
         )
         .unwrap();
 
+        #[cfg(not(feature = "editor-facts"))]
+        let json = parse_ishikawa(text, &meta()).unwrap();
         assert_eq!(ishikawa_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
         assert_eq!(
@@ -812,6 +861,7 @@ Cause B
         );
         assert_eq!(json["title"].as_str(), expected_model.title.as_deref());
 
+        #[cfg(feature = "editor-facts")]
         for name in ["Problem", "Cause A", "Cause A1", "Cause B"] {
             let start = text.find(name).unwrap();
             assert!(facts.symbols.iter().any(|symbol| {
@@ -842,16 +892,19 @@ Cause B
             assert_eq!(diagnostic.span(), Some(span));
             assert_eq!(diagnostic.span_kind(), span_kind);
 
-            reset_ishikawa_syntax_construction_count();
-            let facts = crate::family::test_support::editor_facts(
-                parse_ishikawa_json_and_editor_facts,
-                text,
-                &meta(),
-            );
-            assert_eq!(ishikawa_syntax_construction_count(), 1);
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert_eq!(facts.diagnostics.len(), 1);
-            assert_eq!(facts.diagnostics[0].span, Some(span));
+            #[cfg(feature = "editor-facts")]
+            {
+                reset_ishikawa_syntax_construction_count();
+                let facts = crate::family::test_support::editor_facts(
+                    parse_ishikawa_json_and_editor_facts,
+                    text,
+                    &meta(),
+                );
+                assert_eq!(ishikawa_syntax_construction_count(), 1);
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert_eq!(facts.diagnostics.len(), 1);
+                assert_eq!(facts.diagnostics[0].span, Some(span));
+            }
         }
     }
 
@@ -886,6 +939,7 @@ Cause B
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_ishikawa_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = r#"ishikawa-beta
@@ -939,6 +993,7 @@ Cause A
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_ishikawa_editor_facts_support_inline_root() {
         let engine = Engine::new();
         let text = "ishikawa Problem\n  Cause\n";
@@ -977,6 +1032,7 @@ mod semantic_tests {
     #[test]
     fn ishikawa_semantics_construct_once_without_editor_work() {
         reset_ishikawa_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_ishikawa_semantic_model_controlled(
             "ishikawa Problem
@@ -985,6 +1041,7 @@ mod semantic_tests {
   Cause B
 ",
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -998,6 +1055,7 @@ mod semantic_tests {
         assert_eq!(model.nodes[1].children, [2]);
         assert_eq!(model.nodes[2].text, "Detail");
         assert_eq!(ishikawa_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -1012,6 +1070,7 @@ mod semantic_tests {
  Cause
 ",
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -1020,11 +1079,13 @@ mod semantic_tests {
         .unwrap();
         assert_eq!(model.nodes[0].text, "<b>ok</b>");
         assert_eq!(model.title.as_deref(), Some("<b>ok</b>"));
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_ishikawa_semantic_model_controlled(
             "wrong
 ",
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -1039,6 +1100,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
@@ -1048,6 +1110,7 @@ mod semantic_tests {
   Cause
 ",
                 &metadata,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             )

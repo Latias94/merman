@@ -1,9 +1,12 @@
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, SourceSpan, family,
+    EditorSemanticSymbol,
 };
+use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
 use serde_json::Value;
@@ -124,6 +127,7 @@ struct SankeySemanticSource {
 
 struct SankeySemanticConstruction {
     model: SankeyDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -133,6 +137,7 @@ struct SankeySyntaxOutcome {
 }
 
 impl SankeySemanticSource {
+    #[cfg(feature = "editor-facts")]
     fn editor_facts_controlled(
         &self,
         _source: &str,
@@ -212,6 +217,7 @@ pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -256,6 +262,7 @@ pub(crate) fn parse_sankey_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?
@@ -269,6 +276,7 @@ fn parse_sankey_model(code: &str, meta: &ParseMetadata) -> Result<SankeyDiagramM
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -280,38 +288,52 @@ fn parse_sankey_model(code: &str, meta: &ParseMetadata) -> Result<SankeyDiagramM
 pub(crate) fn parse_sankey_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<SankeyDiagramModel>> {
     let construction = construct_sankey_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let model = source.model;
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -319,7 +341,7 @@ fn construct_sankey_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure>,
@@ -330,6 +352,7 @@ fn construct_sankey_semantic_source_controlled(
 
     let SankeySyntaxOutcome { source, errors } =
         parse_sankey_syntax_outcome_controlled(code, control)?;
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -338,6 +361,7 @@ fn construct_sankey_semantic_source_controlled(
             Some(source.editor_facts_controlled(code, control)?)
         }
     };
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = editor_facts.as_mut() {
         for (index, error) in errors.iter().enumerate() {
             if index % 128 == 0 {
@@ -350,7 +374,8 @@ fn construct_sankey_semantic_source_controlled(
     if let Some(error) = errors.into_iter().next() {
         return Ok(Err(family::CombinedSemanticFailure::new(
             Error::diagram_parse_exact(diagram_type.to_string(), error.message, error.span),
-            editor_facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
         )));
     }
 
@@ -358,10 +383,12 @@ fn construct_sankey_semantic_source_controlled(
     control.checkpoint()?;
     Ok(Ok(SankeySemanticConstruction {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_sankey_payload(
     facts: &mut EditorSemanticFacts,
     field: &SankeyField,
@@ -1032,6 +1059,7 @@ A,__proto__,0.403
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn sankey_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = r#"sankey-beta
@@ -1054,6 +1082,7 @@ A,B,0.597
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn sankey_editor_recovery_preserves_original_spans_and_surrounding_records() {
         let engine = Engine::new();
         let text = concat!(
@@ -1112,21 +1141,24 @@ A,B,0.597
         };
         assert_eq!(diagnostic.span(), Some(error_span));
 
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("sankey", text)
-            .unwrap()
-            .expect("Sankey editor recovery facts");
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(error_span)
-                && diagnostic
-                    .message
-                    .contains("expected sankey header followed by csv")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("sankey", text)
+                .unwrap()
+                .expect("Sankey editor recovery facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(error_span)
+                    && diagnostic
+                        .message
+                        .contains("expected sankey header followed by csv")
+            }));
+        }
     }
 }
 
@@ -1151,10 +1183,12 @@ mod semantic_tests {
     fn semantic_graph_uses_semantic_sanitization_and_constructs_once_without_editor_work() {
         let source = "sankey-beta\n<b>A</b>,B,12.5units\nB,<b>A</b>,NaN\n";
         reset_sankey_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_sankey_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -1171,6 +1205,7 @@ mod semantic_tests {
         assert_eq!(model.graph.links[0].value, Value::from(12.5));
         assert_eq!(model.graph.links[1].value, Value::Null);
         assert_eq!(sankey_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -1181,10 +1216,12 @@ mod semantic_tests {
     fn semantic_csv_error_preserves_the_source_span_without_editor_work() {
         let source = "  sankey-beta\r\nA,B,1\r\ninvalid\r\n";
         let end = source.find("invalid").unwrap() + "invalid".len();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_sankey_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -1200,6 +1237,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -1215,6 +1253,7 @@ mod semantic_tests {
             parse_sankey_semantic_model_controlled(
                 &source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             ),
@@ -1231,11 +1270,13 @@ mod semantic_tests {
             title: None,
         };
         let source = "sankey-beta\nA,B,1\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_sankey(source, &meta).unwrap();
         parse_sankey_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
             .unwrap()
             .unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default(),

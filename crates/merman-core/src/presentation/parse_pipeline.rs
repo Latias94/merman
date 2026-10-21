@@ -1,35 +1,39 @@
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use crate::EditorSemanticFacts;
 use crate::config::presentation::DetectorConfigCheckpoint;
 use crate::config::{AppearanceDecision, MaterializationPlan};
 #[cfg(any(feature = "compat-json", test))]
 use crate::diagram::CustomJsonRenderModel;
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::diagram::{
     CapturedPanic, DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
-    ParsedDiagram, ParsedEditorFacts, RegistryOwner, ResolvedSemanticParser,
+    ParsedEditorFacts, RegistryOwner,
 };
 use crate::diagram::{
     DiagramWarningFact, ParsedDiagramRender, RenderSemanticModel, RenderSemanticParseOutput,
     ResolvedRenderParser,
 };
+#[cfg(feature = "compat-json")]
+use crate::diagram::{ParsedDiagram, ResolvedSemanticParser};
 use crate::operation::OperationPhase;
 use crate::preprocess::{
     DirectiveRecoveryMode, PreprocessedSource,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
 };
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::preprocess::{
     PreprocessCaptureOutcome, SourceConfigEvidence,
     preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 use crate::presentation::PresentationConfig;
-#[cfg(feature = "compat-json")]
-use crate::{EditorSemanticFacts, ManagedSemanticJson, common_db, diagram};
 use crate::{
     Engine, Error, MermaidConfig, OperationControl, OperationControlResult, ParseMetadata,
     ParseOptions, Result, diagrams::error_diagram, family, runtime, sanitize, theme,
 };
+#[cfg(feature = "compat-json")]
+use crate::{ManagedSemanticJson, common_db, diagram};
 #[cfg(feature = "compat-json")]
 use serde::Deserialize;
 use serde_json::Value;
@@ -225,6 +229,7 @@ impl OperationConfigBuilder {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 struct PreparedPreprocessCapture {
     outcome: PreparedPreprocessOutcome,
     source_config: SourceConfigEvidence,
@@ -234,17 +239,18 @@ struct PreparedPreprocessCapture {
 // Boxing it would add one allocation to every parse only to shrink this short-lived control value.
 #[allow(clippy::large_enum_variant)]
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 enum PreparedPreprocessOutcome {
     Ready(PreprocessedSource, ParseMetadata),
     Failed(Error),
     Panicked(CapturedPanic),
 }
 
-struct EditorParseSourceMap<'a> {
+struct ParserSourceMap<'a> {
     source: &'a PreprocessedSource,
 }
 
-impl<'a> EditorParseSourceMap<'a> {
+impl<'a> ParserSourceMap<'a> {
     fn new(source: &'a PreprocessedSource) -> Self {
         Self { source }
     }
@@ -340,6 +346,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn parse_editor_snapshot(
         &self,
         timing: ParseTiming,
@@ -350,6 +357,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn parse_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -361,6 +369,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn capture_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -382,6 +391,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn parse_editor_snapshot_in_context_controlled(
         &self,
         timing: ParseTiming,
@@ -422,7 +432,7 @@ impl<'a> ParsePipeline<'a> {
             }
         };
         control.checkpoint()?;
-        let source_map = EditorParseSourceMap::new(&code);
+        let source_map = ParserSourceMap::new(&code);
         let recovered_incomplete_directive = code.recovered_incomplete_directive();
         let editor_input = source_map.parser_input();
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
@@ -573,12 +583,13 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn finish_snapshot_editor_facts(
         &self,
         owner: Option<RegistryOwner>,
         facts: Option<EditorSemanticFacts>,
         meta: &ParseMetadata,
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
         control: &OperationControl,
     ) -> OperationControlResult<ParsedEditorFacts> {
         control.checkpoint()?;
@@ -677,7 +688,7 @@ impl<'a> ParsePipeline<'a> {
             };
             let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
-            let source_map = EditorParseSourceMap::new(&code);
+            let source_map = ParserSourceMap::new(&code);
             let parse_start = operation_timing.map(runtime::OperationTiming::start);
             let parsed = self.parse_render_semantic_model_controlled(
                 source_map.parser_input(),
@@ -740,7 +751,7 @@ impl<'a> ParsePipeline<'a> {
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
         suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
+        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
         self.with_operation_context(|operation_context| {
@@ -768,7 +779,7 @@ impl<'a> ParsePipeline<'a> {
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
         suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
+        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
         let operation_timing = timing.operation_timing(operation_context);
@@ -778,7 +789,7 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess_for(preprocess_path)? else {
             return Ok(None);
         };
-        let source_map = EditorParseSourceMap::new(&code);
+        let source_map = ParserSourceMap::new(&code);
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
@@ -818,7 +829,7 @@ impl<'a> ParsePipeline<'a> {
     #[cfg(feature = "compat-json")]
     fn remap_compatibility_semantic_warnings(
         parsed: &mut CompatibilitySemanticParse,
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
     ) {
         match &mut parsed.warnings {
             CompatibilityWarnings::Typed(warning_facts) => {
@@ -849,7 +860,7 @@ impl<'a> ParsePipeline<'a> {
     #[cfg(feature = "compat-json")]
     fn remap_custom_compatibility_json_warning_facts(
         model: &mut serde_json::Value,
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
     ) {
         let Some(warning_facts_value) = model.get_mut("warningFacts") else {
             return;
@@ -895,7 +906,7 @@ impl<'a> ParsePipeline<'a> {
     #[cfg(feature = "compat-json")]
     fn remap_warning_facts_controlled(
         warning_facts: &mut [DiagramWarningFact],
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         for (index, fact) in warning_facts.iter_mut().enumerate() {
@@ -920,10 +931,7 @@ impl<'a> ParsePipeline<'a> {
         );
     }
 
-    fn remap_warning_fact_spans(
-        fact: &mut DiagramWarningFact,
-        source_map: &EditorParseSourceMap<'_>,
-    ) {
+    fn remap_warning_fact_spans(fact: &mut DiagramWarningFact, source_map: &ParserSourceMap<'_>) {
         source_map.source.remap_warning_fact_spans(fact);
     }
 
@@ -1076,6 +1084,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn preprocess_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1292,6 +1301,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn preprocess_input_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1436,12 +1446,14 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 #[cfg(test)]
 mod editor_parse_source_map_tests {
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     use std::time::Duration;
 
     #[cfg(feature = "compat-json")]
-    use super::EditorParseSourceMap;
+    #[cfg(feature = "editor-facts")]
+    use super::ParserSourceMap;
     use super::{CustomJsonRenderModel, ParsePipeline, PreprocessPath};
     use crate::{
         CancelReason, DetectorRegistry, Engine, Error, OperationCancelled, OperationControl,
@@ -1449,20 +1461,24 @@ mod editor_parse_source_map_tests {
         Result,
     };
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     use crate::{
         DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
         EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan,
     };
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         panic!("detector fixture panic")
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     static FRONTMATTER_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn frontmatter_probe_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
         panic!("frontmatter probe detector must not run")
@@ -1567,6 +1583,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
         let control = OperationControl::new();
         control.cancel();
@@ -1622,6 +1639,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_capture_cancellation_never_returns_partial_evidence() {
         let control = OperationControl::new();
         control.cancel();
@@ -1636,6 +1654,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_source_config_on_detection_failure() {
         let source = "%%{ initialize: { theme: 'dark' } }%%\nnot a diagram\n";
         let captured = Engine::new()
@@ -1656,6 +1675,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_source_config_when_init_config_detection_panics() {
         let source = concat!(
             "%%{ initialize: { lazyLoadedDiagrams: true, config: { htmlLabels: false } } }%%\n",
@@ -1692,6 +1712,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn legacy_snapshot_facade_resumes_the_original_detector_panic_payload() {
         let source = "detector-panic-fixture\n";
         let mut engine = Engine::new();
@@ -1713,6 +1734,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_later_source_config_on_preprocessing_failure() {
         let source = concat!(
             "---\n",
@@ -1739,6 +1761,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_preserves_frontmatter_error_before_later_detector_panic() {
         let source = concat!(
             "---\n",
@@ -1773,6 +1796,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn lenient_editor_capture_preserves_suppressed_detection_semantics() {
         let engine = Engine::new();
         let pipeline = ParsePipeline::detect(&engine, "not a diagram\n", ParseOptions::lenient());
@@ -1786,6 +1810,7 @@ mod editor_parse_source_map_tests {
     #[test]
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..4_096 {
@@ -1808,6 +1833,7 @@ mod editor_parse_source_map_tests {
     #[test]
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
+    #[cfg(feature = "editor-facts")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
         let engine = Engine::new();
@@ -1877,6 +1903,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {
         let original = "flowchart TD\nA%%{wrap}%%B\nC\n";
         let engine = Engine::new();
@@ -1887,7 +1914,7 @@ mod editor_parse_source_map_tests {
         )
         .unwrap()
         .source;
-        let map = EditorParseSourceMap::new(&preprocessed);
+        let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let joined_start = preprocessed.text().find("AB").unwrap();
         facts.push_symbol(EditorSemanticSymbol::new(
@@ -1931,6 +1958,7 @@ mod editor_parse_source_map_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn fact_remap_observes_cancellation_during_large_fact_batches() {
         let original = "flowchart TD\nA\n";
         let engine = Engine::new();
@@ -1941,7 +1969,7 @@ mod editor_parse_source_map_tests {
         )
         .unwrap()
         .source;
-        let map = EditorParseSourceMap::new(&preprocessed);
+        let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let offset = preprocessed.text().find('A').unwrap();
         for index in 0..256 {

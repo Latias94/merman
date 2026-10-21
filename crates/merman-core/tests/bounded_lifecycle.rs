@@ -1,6 +1,8 @@
-#![cfg(feature = "all-diagrams")]
+#![cfg(all(feature = "all-diagrams", feature = "compat-json"))]
 
-use merman_core::{EditorSemanticCompleteness, Engine, ParseOptions};
+#[cfg(feature = "editor-facts")]
+use merman_core::EditorSemanticCompleteness;
+use merman_core::{Engine, ParseOptions};
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -161,12 +163,15 @@ fn railroad_groups(engine: &Engine) {
         );
         let excessive = railroad_source(dialect, LOCAL_DEPTH + 1, false, false);
         rejected(engine, &excessive, "railroad nesting depth exceeds 256");
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(dialect, &excessive)
-            .unwrap()
-            .unwrap();
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync(dialect, &excessive)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+        }
         rejected(
             engine,
             &railroad_source(dialect, LOCAL_DEPTH, true, false),
@@ -198,12 +203,15 @@ fn railroad_postfix(engine: &Engine) {
                     &source.replacen(" ;", " ) ;", 1),
                     "railroad nesting depth exceeds 256",
                 );
-                let facts = engine
-                    .parse_editor_semantic_facts_with_type_sync("railroadEbnf", &source)
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-                assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = engine
+                        .parse_editor_semantic_facts_with_type_sync("railroadEbnf", &source)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                    assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+                }
             }
         }
     }

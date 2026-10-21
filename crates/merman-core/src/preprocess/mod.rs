@@ -8,26 +8,37 @@ pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
 #[cfg(feature = "presentation")]
 pub(crate) use full::{
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
-    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
+};
+#[cfg(all(feature = "presentation", feature = "editor-facts"))]
+pub(crate) use full::{
+    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 
-#[cfg(any(feature = "editor-facts", feature = "compat-json"))]
+#[cfg(feature = "editor-facts")]
 mod editor;
+#[cfg(feature = "editor-facts")]
 mod source_config;
 mod source_edit_map;
 
+#[cfg(feature = "editor-facts")]
 pub(crate) use source_config::SourceConfigPath;
+#[cfg(feature = "editor-facts")]
 pub use source_config::{
     FrontmatterSourceEvidence, SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
     SourceDirectiveEvidence,
 };
 pub use source_edit_map::PreprocessedSource;
 
+#[cfg(feature = "editor-facts")]
+use crate::EditorExpectedSyntaxKind;
+#[cfg(feature = "editor-facts")]
+use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
+use crate::source_span::line_content_end;
 use crate::{
-    EditorExpectedSyntaxKind, Error, MermaidConfig, OperationControl, OperationControlResult,
-    Result, SourceSpan, diagram::CapturedPanic, source_span::line_content_end,
+    Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -61,6 +72,7 @@ pub struct PreprocessResult {
 #[derive(Debug)]
 pub(crate) struct PreprocessCaptureOutcome {
     pub(crate) outcome: PreprocessCaptureResult,
+    #[cfg(feature = "editor-facts")]
     pub(crate) source_config: SourceConfigEvidence,
 }
 
@@ -83,18 +95,21 @@ impl PreprocessCaptureOutcome {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourceConfigCaptureMode {
     Omit,
     Collect,
 }
 
+#[cfg(feature = "editor-facts")]
 impl SourceConfigCaptureMode {
     const fn collects(self) -> bool {
         matches!(self, Self::Collect)
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug)]
 struct LocalConfigKeyEvidence {
     path: SourceConfigPath,
@@ -183,6 +198,7 @@ pub(crate) fn preprocess_builtin_semantic_controlled(
             &detector,
             diagram_type,
             DirectiveRecoveryMode::Strict,
+            #[cfg(feature = "editor-facts")]
             SourceConfigCaptureMode::Omit,
             control,
         )?
@@ -214,7 +230,7 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
     detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     let captured = preprocess_single_pass_controlled(
@@ -222,6 +238,7 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
         detector,
         diagram_type,
         directive_recovery,
+        #[cfg(feature = "editor-facts")]
         capture_mode,
         control,
     )?;
@@ -236,6 +253,7 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
     control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
         outcome,
+        #[cfg(feature = "editor-facts")]
         source_config: captured.source_config,
     })
 }
@@ -245,7 +263,7 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
     detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     #[cfg(test)]
@@ -257,6 +275,7 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
         detector,
         diagram_type,
         directive_recovery,
+        #[cfg(feature = "editor-facts")]
         capture_mode,
         control,
     )
@@ -267,13 +286,16 @@ fn preprocess_single_pass_controlled(
     detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
     let capture_editor_evidence = capture_mode.collects();
     cleanup_text_controlled(&mut source, control)?;
+    #[cfg(feature = "editor-facts")]
     let mut source_config = SourceConfigEvidence::empty();
+    #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         if let Some(config_insert_span) = source.try_map_span(SourceSpan::new(0, 0)) {
             source_config.set_config_insert_span(config_insert_span);
@@ -281,7 +303,13 @@ fn preprocess_single_pass_controlled(
             source_config.mark_rewrite_unsafe();
         }
     }
-    let frontmatter = process_frontmatter_controlled(source.text(), capture_mode, control)?;
+    let frontmatter = process_frontmatter_controlled(
+        source.text(),
+        #[cfg(feature = "editor-facts")]
+        capture_mode,
+        control,
+    )?;
+    #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_frontmatter_evidence(&source, &frontmatter, &mut source_config, control)?;
     }
@@ -290,18 +318,27 @@ fn preprocess_single_pass_controlled(
     let (title, mut frontmatter_config) = match frontmatter.result {
         Ok(processed) => (processed.title, processed.config),
         Err(error) => {
-            source_config.mark_rewrite_unsafe();
-            if !capture_mode.collects() {
-                return Ok(PreprocessCaptureOutcome {
-                    outcome: PreprocessCaptureResult::Failed(error),
-                    source_config,
-                });
+            #[cfg(feature = "editor-facts")]
+            {
+                source_config.mark_rewrite_unsafe();
+                if capture_mode.collects() {
+                    first_error = Some(error);
+                    (None, MermaidConfig::empty_object())
+                } else {
+                    return Ok(PreprocessCaptureOutcome {
+                        outcome: PreprocessCaptureResult::Failed(error),
+                        source_config,
+                    });
+                }
             }
-            first_error = Some(error);
-            (None, MermaidConfig::empty_object())
+            #[cfg(not(feature = "editor-facts"))]
+            return Ok(PreprocessCaptureOutcome {
+                outcome: PreprocessCaptureResult::Failed(error),
+            });
         }
     };
     if frontmatter_len > 0 {
+        #[cfg(feature = "editor-facts")]
         if capture_editor_evidence {
             let expected_end = editor_evidence_line_end(source.text(), frontmatter_len);
             source.record_global_expected_syntax(
@@ -319,20 +356,24 @@ fn preprocess_single_pass_controlled(
         detector,
         diagram_type,
         directive_recovery,
+        #[cfg(feature = "editor-facts")]
         capture_mode,
         first_error.is_none(),
         control,
     )?;
+    #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
     }
     if let Some(panic) = processed_directives.panic {
         return Ok(PreprocessCaptureOutcome {
             outcome: PreprocessCaptureResult::Panicked(panic),
+            #[cfg(feature = "editor-facts")]
             source_config,
         });
     }
     if let Some(error) = processed_directives.error {
+        #[cfg(feature = "editor-facts")]
         source_config.mark_rewrite_unsafe();
         if first_error.is_none() {
             first_error = Some(error);
@@ -342,12 +383,15 @@ fn preprocess_single_pass_controlled(
         control.checkpoint()?;
         return Ok(PreprocessCaptureOutcome {
             outcome: PreprocessCaptureResult::Failed(error),
+            #[cfg(feature = "editor-facts")]
             source_config,
         });
     }
+    #[cfg(feature = "editor-facts")]
     if processed_directives.recovered_incomplete_directive {
         source.mark_recovered_incomplete_directive();
     }
+    #[cfg(feature = "editor-facts")]
     if capture_editor_evidence {
         for prefix in processed_directives.editor_prefixes.iter().cloned() {
             source.record_global_directive_prefix(prefix);
@@ -386,8 +430,16 @@ fn preprocess_single_pass_controlled(
                 || crate::detect::detector_eventmodeling(header)
         }
     };
-    let mut with_comments = preserve_comments.then(|| source.clone());
-    remove_mermaid_comments_controlled(&mut source, capture_editor_evidence, control)?;
+    let with_comments = preserve_comments.then(|| source.clone());
+    #[cfg(feature = "editor-facts")]
+    let mut with_comments = with_comments;
+    remove_mermaid_comments_controlled(
+        &mut source,
+        #[cfg(feature = "editor-facts")]
+        capture_editor_evidence,
+        control,
+    )?;
+    #[cfg(feature = "editor-facts")]
     if let Some(with_comments) = &mut with_comments {
         with_comments.copy_global_editor_evidence_from(&source);
     }
@@ -398,10 +450,12 @@ fn preprocess_single_pass_controlled(
             config: frontmatter_config,
             with_comments,
         })),
+        #[cfg(feature = "editor-facts")]
         source_config,
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn append_frontmatter_evidence(
     source: &PreprocessedSource,
     captured: &FrontmatterCapture,
@@ -457,6 +511,7 @@ fn append_frontmatter_evidence(
     control.checkpoint()
 }
 
+#[cfg(feature = "editor-facts")]
 fn map_frontmatter_body_span_to_original(
     source: &PreprocessedSource,
     body: FrontmatterByteSpan,
@@ -475,6 +530,7 @@ fn map_frontmatter_body_span_to_original(
     Some(mapped)
 }
 
+#[cfg(feature = "editor-facts")]
 fn append_directive_evidence(
     source: &PreprocessedSource,
     captured: &ProcessedDirectives,
@@ -567,12 +623,13 @@ fn strip_leading_utf8_bom(
 
 fn remove_mermaid_comments_controlled(
     source: &mut PreprocessedSource,
-    capture_editor_evidence: bool,
+    #[cfg(feature = "editor-facts")] capture_editor_evidence: bool,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
     let text = source.text();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut comments = Vec::new();
     let mut line_start = 0usize;
     while line_start < text.len() {
@@ -585,6 +642,7 @@ fn remove_mermaid_comments_controlled(
             let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
             if !after_marker.starts_with('{') && has_comment_body {
                 let range = line_start..line_end;
+                #[cfg(feature = "editor-facts")]
                 if capture_editor_evidence {
                     comments.push(SourceSpan::new(
                         range.start,
@@ -600,6 +658,7 @@ fn remove_mermaid_comments_controlled(
         line_start = newline + 1;
     }
     checkpoints.finish()?;
+    #[cfg(feature = "editor-facts")]
     for (index, expected_span) in comments.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
@@ -618,6 +677,7 @@ fn remove_mermaid_comments_controlled(
     control.checkpoint()
 }
 
+#[cfg(feature = "editor-facts")]
 fn editor_evidence_line_end(source: &str, end: usize) -> usize {
     let end = end.min(source.len());
     let newline_start = end
@@ -961,16 +1021,23 @@ struct ProcessedFrontmatter {
 struct FrontmatterCapture {
     result: Result<ProcessedFrontmatter>,
     full: Option<FrontmatterByteSpan>,
+    #[cfg(feature = "editor-facts")]
     body: Option<FrontmatterByteSpan>,
+    #[cfg(feature = "editor-facts")]
     indent: String,
+    #[cfg(feature = "editor-facts")]
     keys: Vec<LocalConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
     has_config: bool,
+    #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
+    #[cfg(feature = "editor-facts")]
     fields: Option<MermaidConfig>,
 }
 
 enum FrontmatterYamlInput<'a> {
     Plain(Cow<'a, str>),
+    #[cfg(feature = "editor-facts")]
     Mapped(Box<PreprocessedSource>),
 }
 
@@ -978,25 +1045,31 @@ impl FrontmatterYamlInput<'_> {
     fn text(&self) -> &str {
         match self {
             Self::Plain(text) => text.as_ref(),
+            #[cfg(feature = "editor-facts")]
             Self::Mapped(source) => source.text(),
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn try_map_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
         match self {
             Self::Plain(_) => Some(span),
+            #[cfg(feature = "editor-facts")]
             Self::Mapped(source) => source.try_map_span(span),
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn try_map_enclosing_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
         match self {
             Self::Plain(_) => Some(span),
+            #[cfg(feature = "editor-facts")]
             Self::Mapped(source) => source.try_map_enclosing_span(span),
         }
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn map_frontmatter_yaml_span_to_preprocessed_source(
     yaml_input: &FrontmatterYamlInput<'_>,
     body_start: usize,
@@ -1016,7 +1089,7 @@ fn map_frontmatter_yaml_span_to_preprocessed_source(
 
 fn process_frontmatter_controlled(
     input: &str,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<FrontmatterCapture> {
     control.checkpoint()?;
@@ -1027,19 +1100,32 @@ fn process_frontmatter_controlled(
                 config: MermaidConfig::empty_object(),
             }),
             full: None,
+            #[cfg(feature = "editor-facts")]
             body: None,
+            #[cfg(feature = "editor-facts")]
             indent: String::new(),
+            #[cfg(feature = "editor-facts")]
             keys: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             has_config: false,
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: true,
+            #[cfg(feature = "editor-facts")]
             fields: None,
         });
     };
     let body = &input[location.body.start..location.body.end];
-    let yaml_input =
-        dedented_frontmatter_yaml_input_controlled(body, location.indent, capture_mode, control)?;
+    let yaml_input = dedented_frontmatter_yaml_input_controlled(
+        body,
+        location.indent,
+        #[cfg(feature = "editor-facts")]
+        capture_mode,
+        control,
+    )?;
     let yaml_body = yaml_input.text();
+    #[cfg(feature = "editor-facts")]
     let mut keys = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut rewrite_safe = true;
 
     if config_nesting_exceeds_limit_controlled(yaml_body, control)? {
@@ -1048,50 +1134,71 @@ fn process_frontmatter_controlled(
                 message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
             }),
             full: Some(location.full),
+            #[cfg(feature = "editor-facts")]
             body: Some(location.body),
+            #[cfg(feature = "editor-facts")]
             indent: location.indent.to_string(),
+            #[cfg(feature = "editor-facts")]
             keys,
+            #[cfg(feature = "editor-facts")]
             has_config: false,
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
+            #[cfg(feature = "editor-facts")]
             fields: None,
         });
     }
 
     control.checkpoint()?;
-    let parsed = if capture_mode.collects() {
-        let captured = crate::yaml_config::parse_yaml_value_capture_controlled(
-            yaml_body,
-            MAX_CONFIG_NESTING_DEPTH,
-            control,
-        )?;
-        rewrite_safe = captured.rewrite_safe;
-        keys.reserve(captured.keys.len());
-        for key in captured.keys {
-            // Compose exactly once through each coordinate space: parser span in the dedented
-            // YAML input -> body-relative source -> cleaned preprocess source. The outer source
-            // edit map is applied later when the operation evidence is appended.
-            let mapped = key.span.and_then(|span| {
-                map_frontmatter_yaml_span_to_preprocessed_source(
-                    &yaml_input,
-                    location.body.start,
-                    span,
-                )
-            });
-            let (span, exact) = mapped.map_or((None, false), |(span, exact)| (Some(span), exact));
-            let rewrite_safe = key.rewrite_safe && exact;
-            keys.push(LocalConfigKeyEvidence {
-                path: key.path,
-                span,
-                rewrite_safe,
-            });
+    let parsed = {
+        #[cfg(feature = "editor-facts")]
+        {
+            if capture_mode.collects() {
+                let captured = crate::yaml_config::parse_yaml_value_capture_controlled(
+                    yaml_body,
+                    MAX_CONFIG_NESTING_DEPTH,
+                    control,
+                )?;
+                rewrite_safe = captured.rewrite_safe;
+                keys.reserve(captured.keys.len());
+                for key in captured.keys {
+                    // Compose exactly once through each coordinate space: parser span in the dedented
+                    // YAML input -> body-relative source -> cleaned preprocess source. The outer source
+                    // edit map is applied later when the operation evidence is appended.
+                    let mapped = key.span.and_then(|span| {
+                        map_frontmatter_yaml_span_to_preprocessed_source(
+                            &yaml_input,
+                            location.body.start,
+                            span,
+                        )
+                    });
+                    let (span, exact) =
+                        mapped.map_or((None, false), |(span, exact)| (Some(span), exact));
+                    let rewrite_safe = key.rewrite_safe && exact;
+                    keys.push(LocalConfigKeyEvidence {
+                        path: key.path,
+                        span,
+                        #[cfg(feature = "editor-facts")]
+                        rewrite_safe,
+                    });
+                }
+                captured.value
+            } else {
+                crate::yaml_config::parse_yaml_value_controlled(
+                    yaml_body,
+                    MAX_CONFIG_NESTING_DEPTH,
+                    control,
+                )?
+            }
         }
-        captured.value
-    } else {
-        crate::yaml_config::parse_yaml_value_controlled(
-            yaml_body,
-            MAX_CONFIG_NESTING_DEPTH,
-            control,
-        )?
+        #[cfg(not(feature = "editor-facts"))]
+        {
+            crate::yaml_config::parse_yaml_value_controlled(
+                yaml_body,
+                MAX_CONFIG_NESTING_DEPTH,
+                control,
+            )?
+        }
     };
     let parsed_obj = match frontmatter_fields_from_yaml_value(parsed) {
         Ok(parsed) => parsed,
@@ -1099,11 +1206,17 @@ fn process_frontmatter_controlled(
             return Ok(FrontmatterCapture {
                 result: Err(Error::InvalidFrontMatterYaml { message }),
                 full: Some(location.full),
+                #[cfg(feature = "editor-facts")]
                 body: Some(location.body),
+                #[cfg(feature = "editor-facts")]
                 indent: location.indent.to_string(),
+                #[cfg(feature = "editor-facts")]
                 has_config: keys.iter().any(|key| key.path.first() == Some("config")),
+                #[cfg(feature = "editor-facts")]
                 keys,
+                #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
+                #[cfg(feature = "editor-facts")]
                 fields: None,
             });
         }
@@ -1142,22 +1255,32 @@ fn process_frontmatter_controlled(
         config.set_value("gantt.displayMode", Value::String(dm));
     }
 
+    #[cfg(feature = "editor-facts")]
     let has_config = parsed_obj.contains_key("config");
+    #[cfg(feature = "editor-facts")]
     let fields = if capture_mode.collects() && has_config && rewrite_safe {
         Some(MermaidConfig::from_value(Value::Object(parsed_obj)))
     } else {
         crate::json_value::drop_value_nonrecursive(Value::Object(parsed_obj));
         None
     };
+    #[cfg(not(feature = "editor-facts"))]
+    crate::json_value::drop_value_nonrecursive(Value::Object(parsed_obj));
     control.checkpoint()?;
     Ok(FrontmatterCapture {
         result: Ok(ProcessedFrontmatter { title, config }),
         full: Some(location.full),
+        #[cfg(feature = "editor-facts")]
         body: Some(location.body),
+        #[cfg(feature = "editor-facts")]
         indent: location.indent.to_string(),
+        #[cfg(feature = "editor-facts")]
         keys,
+        #[cfg(feature = "editor-facts")]
         has_config,
+        #[cfg(feature = "editor-facts")]
         rewrite_safe,
+        #[cfg(feature = "editor-facts")]
         fields,
     })
 }
@@ -1165,37 +1288,45 @@ fn process_frontmatter_controlled(
 fn dedented_frontmatter_yaml_input_controlled<'a>(
     body: &'a str,
     indent: &str,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<FrontmatterYamlInput<'a>> {
-    if !capture_mode.collects() {
-        return dedent_frontmatter_body_controlled(body, indent, control)
-            .map(FrontmatterYamlInput::Plain);
+    #[cfg(not(feature = "editor-facts"))]
+    {
+        dedent_frontmatter_body_controlled(body, indent, control).map(FrontmatterYamlInput::Plain)
     }
-    if indent.is_empty() {
-        control.checkpoint()?;
-        return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
-    }
+    #[cfg(feature = "editor-facts")]
+    {
+        if !capture_mode.collects() {
+            return dedent_frontmatter_body_controlled(body, indent, control)
+                .map(FrontmatterYamlInput::Plain);
+        }
+        if indent.is_empty() {
+            control.checkpoint()?;
+            return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
+        }
 
-    let mut source = PreprocessedSource::new_controlled(body, control)?;
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let mut edits = Vec::new();
-    let mut line_start = 0usize;
-    loop {
-        let line_ending = find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
-        let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
-        let line = &body[line_start..line_end];
-        if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
-            edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
+        let mut source = PreprocessedSource::new_controlled(body, control)?;
+        let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+        let mut edits = Vec::new();
+        let mut line_start = 0usize;
+        loop {
+            let line_ending =
+                find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
+            let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
+            let line = &body[line_start..line_end];
+            if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
+                edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
+            }
+            if line_ending.is_none() || next_line_start == body.len() {
+                break;
+            }
+            line_start = next_line_start;
         }
-        if line_ending.is_none() || next_line_start == body.len() {
-            break;
-        }
-        line_start = next_line_start;
+        checkpoints.finish()?;
+        source.apply_edits(edits, control)?;
+        Ok(FrontmatterYamlInput::Mapped(Box::new(source)))
     }
-    checkpoints.finish()?;
-    source.apply_edits(edits, control)?;
-    Ok(FrontmatterYamlInput::Mapped(Box::new(source)))
 }
 
 /// Splits an optional frontmatter block using a private, non-cancellable parse control.
@@ -1592,13 +1723,17 @@ fn merge_top_level_frontmatter_diagram_configs(
 struct ProcessedDirectives {
     config: MermaidConfig,
     removals: Vec<std::ops::Range<usize>>,
+    #[cfg(feature = "editor-facts")]
     editor_prefixes: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     recovered_incomplete_directive: bool,
+    #[cfg(feature = "editor-facts")]
     evidence: Vec<LocalDirectiveEvidence>,
     error: Option<Error>,
     panic: Option<CapturedPanic>,
 }
 
+#[cfg(feature = "editor-facts")]
 struct LocalDirectiveEvidence {
     keyword: String,
     full_span: SourceSpan,
@@ -1613,7 +1748,7 @@ fn process_directives_controlled(
     detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     evaluate_config: bool,
     control: &OperationControl,
 ) -> OperationControlResult<ProcessedDirectives> {
@@ -1623,31 +1758,44 @@ fn process_directives_controlled(
         return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
             removals: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             editor_prefixes: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             recovered_incomplete_directive: false,
+            #[cfg(feature = "editor-facts")]
             evidence: Vec::new(),
             error: None,
             panic: None,
         });
     }
+    #[cfg(feature = "editor-facts")]
     let recovered_incomplete_directive = blocks.iter().any(|block| !block.complete);
     let mut directives = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut evidence = Vec::new();
     let mut first_error = None;
     for (index, block) in blocks.iter().enumerate() {
         if index % 32 == 0 {
             control.checkpoint()?;
         }
-        if !block.complete && !capture_mode.collects() {
+        if !block.complete {
+            #[cfg(feature = "editor-facts")]
+            if !capture_mode.collects() {
+                continue;
+            }
+            #[cfg(not(feature = "editor-facts"))]
             continue;
         }
         let parsed = parse_directive_like_upstream_capture_controlled(
             block.raw,
+            #[cfg(feature = "editor-facts")]
             capture_mode,
+            #[cfg(feature = "editor-facts")]
             block.complete,
             control,
         )?;
         if let Some(directive) = parsed.directive {
+            #[cfg(feature = "editor-facts")]
             if capture_mode.collects() {
                 let keyword_span = SourceSpan::new(
                     block.raw_start.saturating_add(directive.keyword_span.start),
@@ -1683,12 +1831,19 @@ fn process_directives_controlled(
         if block.complete && first_error.is_none() {
             first_error = parsed.error;
         }
-        if first_error.is_some() && !capture_mode.collects() {
+        if first_error.is_some() {
+            #[cfg(feature = "editor-facts")]
+            if capture_mode.collects() {
+                continue;
+            }
             return Ok(ProcessedDirectives {
                 config: MermaidConfig::empty_object(),
                 removals: Vec::new(),
+                #[cfg(feature = "editor-facts")]
                 editor_prefixes: Vec::new(),
+                #[cfg(feature = "editor-facts")]
                 recovered_incomplete_directive,
+                #[cfg(feature = "editor-facts")]
                 evidence,
                 error: first_error,
                 panic: None,
@@ -1698,22 +1853,26 @@ fn process_directives_controlled(
     control.checkpoint()?;
     let input_without_directives = remove_directive_blocks_controlled(input, &blocks, control)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
+    #[cfg(feature = "editor-facts")]
     let mut editor_prefixes = Vec::new();
-    for (index, directive) in directives.iter().enumerate() {
-        if index % 32 == 0 {
-            control.checkpoint()?;
-        }
-        if matches!(directive.ty.as_str(), "init" | "initialize" | "wrap")
-            && !editor_prefixes.contains(&directive.ty)
-        {
-            editor_prefixes.push(directive.ty.clone());
+    #[cfg(feature = "editor-facts")]
+    if capture_mode.collects() {
+        for (index, directive) in directives.iter().enumerate() {
+            if index % 32 == 0 {
+                control.checkpoint()?;
+            }
+            if matches!(directive.ty.as_str(), "init" | "initialize" | "wrap")
+                && !editor_prefixes.contains(&directive.ty)
+            {
+                editor_prefixes.push(directive.ty.clone());
+            }
         }
     }
 
     let detected_init = if !evaluate_config || first_error.is_some() {
         Ok(MermaidConfig::empty_object())
-    } else if capture_mode.collects() {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    } else {
+        let detect_init = || {
             detect_init_controlled(
                 &directives,
                 input_without_directives.as_ref(),
@@ -1721,28 +1880,35 @@ fn process_directives_controlled(
                 diagram_type,
                 control,
             )
-        })) {
-            Ok(result) => result?,
-            Err(payload) => {
-                return Ok(ProcessedDirectives {
-                    config: MermaidConfig::empty_object(),
-                    removals: blocks.into_iter().map(|block| block.range).collect(),
-                    editor_prefixes,
-                    recovered_incomplete_directive,
-                    evidence,
-                    error: first_error,
-                    panic: Some(CapturedPanic::from_payload(payload)),
-                });
+        };
+        #[cfg(feature = "editor-facts")]
+        {
+            if capture_mode.collects() {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(detect_init)) {
+                    Ok(result) => result?,
+                    Err(payload) => {
+                        return Ok(ProcessedDirectives {
+                            config: MermaidConfig::empty_object(),
+                            removals: blocks.into_iter().map(|block| block.range).collect(),
+                            #[cfg(feature = "editor-facts")]
+                            editor_prefixes,
+                            #[cfg(feature = "editor-facts")]
+                            recovered_incomplete_directive,
+                            #[cfg(feature = "editor-facts")]
+                            evidence,
+                            error: first_error,
+                            panic: Some(CapturedPanic::from_payload(payload)),
+                        });
+                    }
+                }
+            } else {
+                detect_init()?
             }
         }
-    } else {
-        detect_init_controlled(
-            &directives,
-            input_without_directives.as_ref(),
-            detector,
-            diagram_type,
-            control,
-        )?
+        #[cfg(not(feature = "editor-facts"))]
+        {
+            detect_init()?
+        }
     };
     let init = match detected_init {
         Ok(init) => init,
@@ -1762,8 +1928,11 @@ fn process_directives_controlled(
     Ok(ProcessedDirectives {
         config: merged,
         removals: blocks.into_iter().map(|block| block.range).collect(),
+        #[cfg(feature = "editor-facts")]
         editor_prefixes,
+        #[cfg(feature = "editor-facts")]
         recovered_incomplete_directive,
+        #[cfg(feature = "editor-facts")]
         evidence,
         error: first_error,
         panic: None,
@@ -1835,14 +2004,18 @@ fn detect_init_controlled(
 struct Directive {
     ty: String,
     args: Option<Value>,
+    #[cfg(feature = "editor-facts")]
     keyword_span: std::ops::Range<usize>,
+    #[cfg(feature = "editor-facts")]
     config_keys: Vec<source_config::Json5ConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
 }
 
 #[derive(Debug)]
 struct DirectiveBlock<'a> {
     raw: &'a str,
+    #[cfg(feature = "editor-facts")]
     raw_start: usize,
     complete: bool,
     range: std::ops::Range<usize>,
@@ -1921,6 +2094,7 @@ fn directive_blocks_controlled<'a>(
                 trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
             blocks.push(DirectiveBlock {
                 raw: &raw[trimmed_start..trimmed_end],
+                #[cfg(feature = "editor-facts")]
                 raw_start: content_start + trimmed_start,
                 complete: true,
                 range: start..end,
@@ -1943,6 +2117,7 @@ fn directive_blocks_controlled<'a>(
             trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
         blocks.push(DirectiveBlock {
             raw: &raw[trimmed_start..trimmed_end],
+            #[cfg(feature = "editor-facts")]
             raw_start: content_start + trimmed_start,
             complete: false,
             range: start..end,
@@ -2002,18 +2177,29 @@ fn find_line_break_controlled(
 #[cfg(test)]
 fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
     let control = OperationControl::new();
-    parse_directive_like_upstream_controlled(raw, SourceConfigCaptureMode::Omit, &control)
-        .expect("a private parse control cannot be cancelled")
+    parse_directive_like_upstream_controlled(
+        raw,
+        #[cfg(feature = "editor-facts")]
+        SourceConfigCaptureMode::Omit,
+        &control,
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(test)]
 fn parse_directive_like_upstream_controlled(
     raw: &str,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Option<Directive>>> {
-    let captured =
-        parse_directive_like_upstream_capture_controlled(raw, capture_mode, true, control)?;
+    let captured = parse_directive_like_upstream_capture_controlled(
+        raw,
+        #[cfg(feature = "editor-facts")]
+        capture_mode,
+        #[cfg(feature = "editor-facts")]
+        true,
+        control,
+    )?;
     Ok(match captured.error {
         Some(error) => Err(error),
         None => Ok(captured.directive),
@@ -2027,17 +2213,25 @@ struct DirectiveParseCapture {
 
 fn parse_directive_like_upstream_capture_controlled(
     raw: &str,
-    capture_mode: SourceConfigCaptureMode,
-    parse_arguments: bool,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] parse_arguments: bool,
     control: &OperationControl,
 ) -> OperationControlResult<DirectiveParseCapture> {
     // Incomplete authoring evidence only needs the directive keyword. Avoid walking an
     // arbitrarily large unfinished argument merely to normalize quotes that will not be parsed.
+    #[cfg(feature = "editor-facts")]
     if !parse_arguments {
         return parse_directive_capture_controlled(raw, capture_mode, false, control);
     }
     let normalized = normalize_directive_quotes_controlled(raw, control)?;
-    parse_directive_capture_controlled(normalized.as_ref(), capture_mode, true, control)
+    parse_directive_capture_controlled(
+        normalized.as_ref(),
+        #[cfg(feature = "editor-facts")]
+        capture_mode,
+        #[cfg(feature = "editor-facts")]
+        true,
+        control,
+    )
 }
 
 fn normalize_directive_quotes_controlled<'a>(
@@ -2372,8 +2566,8 @@ pub(crate) fn directive_removal_ranges_controlled(
 
 fn parse_directive_capture_controlled(
     raw: &str,
-    capture_mode: SourceConfigCaptureMode,
-    parse_arguments: bool,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] parse_arguments: bool,
     control: &OperationControl,
 ) -> OperationControlResult<DirectiveParseCapture> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
@@ -2404,16 +2598,21 @@ fn parse_directive_capture_controlled(
     }
     let mut ty = String::with_capacity(type_end);
     push_frontmatter_str_controlled(&mut ty, &raw[..type_end], &mut checkpoints)?;
+    #[cfg(feature = "editor-facts")]
     let keyword_span = raw_start..raw_start + type_end;
 
+    #[cfg(feature = "editor-facts")]
     if !parse_arguments {
         checkpoints.finish()?;
         return Ok(DirectiveParseCapture {
             directive: Some(Directive {
                 ty,
                 args: None,
+                #[cfg(feature = "editor-facts")]
                 keyword_span,
+                #[cfg(feature = "editor-facts")]
                 config_keys: Vec::new(),
+                #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
             }),
             error: None,
@@ -2422,7 +2621,9 @@ fn parse_directive_capture_controlled(
 
     let whitespace = trim_start_whitespace_controlled(&raw[type_end..], &mut checkpoints)?;
     let mut position = type_end + whitespace;
+    #[cfg(feature = "editor-facts")]
     let mut config_keys = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut rewrite_safe = true;
 
     let args = if raw.as_bytes().get(position) == Some(&b':') {
@@ -2433,6 +2634,7 @@ fn parse_directive_capture_controlled(
         let rest = &raw[position..];
         let (rest_start, rest_end) = trim_whitespace_bounds_controlled(rest, &mut checkpoints)?;
         let rest = &rest[rest_start..rest_end];
+        #[cfg(feature = "editor-facts")]
         let rest_offset = raw_start
             .saturating_add(position)
             .saturating_add(rest_start);
@@ -2444,8 +2646,11 @@ fn parse_directive_capture_controlled(
                     directive: Some(Directive {
                         ty,
                         args: None,
+                        #[cfg(feature = "editor-facts")]
                         keyword_span,
+                        #[cfg(feature = "editor-facts")]
                         config_keys,
+                        #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
@@ -2460,8 +2665,11 @@ fn parse_directive_capture_controlled(
                     directive: Some(Directive {
                         ty,
                         args: None,
+                        #[cfg(feature = "editor-facts")]
                         keyword_span,
+                        #[cfg(feature = "editor-facts")]
                         config_keys,
+                        #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
@@ -2472,21 +2680,36 @@ fn parse_directive_capture_controlled(
                 });
             }
             checkpoints.finish()?;
-            let captured = parse_directive_config_value_controlled(rest, capture_mode, control)?;
-            rewrite_safe &= captured.rewrite_safe;
-            config_keys = captured
-                .keys
-                .into_iter()
-                .map(|mut key| {
-                    key.span = key.span.map(|span| {
-                        rest_offset.saturating_add(span.start)..rest_offset.saturating_add(span.end)
-                    });
-                    key
-                })
-                .collect();
+            let captured = parse_directive_config_value_controlled(
+                rest,
+                #[cfg(feature = "editor-facts")]
+                capture_mode,
+                control,
+            )?;
+            #[cfg(feature = "editor-facts")]
+            {
+                rewrite_safe &= captured.rewrite_safe;
+            }
+            #[cfg(feature = "editor-facts")]
+            {
+                config_keys = captured
+                    .keys
+                    .into_iter()
+                    .map(|mut key| {
+                        key.span = key.span.map(|span| {
+                            rest_offset.saturating_add(span.start)
+                                ..rest_offset.saturating_add(span.end)
+                        });
+                        key
+                    })
+                    .collect();
+            }
             captured.value
         } else {
-            rewrite_safe = false;
+            #[cfg(feature = "editor-facts")]
+            {
+                rewrite_safe = false;
+            }
             let mut value = String::with_capacity(rest.len());
             push_frontmatter_str_controlled(&mut value, rest, &mut checkpoints)?;
             Some(Value::String(value))
@@ -2500,8 +2723,11 @@ fn parse_directive_capture_controlled(
         directive: Some(Directive {
             ty,
             args,
+            #[cfg(feature = "editor-facts")]
             keyword_span,
+            #[cfg(feature = "editor-facts")]
             config_keys,
+            #[cfg(feature = "editor-facts")]
             rewrite_safe,
         }),
         error: None,
@@ -2510,31 +2736,46 @@ fn parse_directive_capture_controlled(
 
 struct DirectiveConfigCapture {
     value: Option<Value>,
+    #[cfg(feature = "editor-facts")]
     keys: Vec<source_config::Json5ConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
 }
 
 fn parse_directive_config_value_controlled(
     input: &str,
-    capture_mode: SourceConfigCaptureMode,
+    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
 ) -> OperationControlResult<DirectiveConfigCapture> {
     control.checkpoint()?;
     // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
     // this is a bounded atomic parser region rather than an unbounded cancellation gap.
-    let captured = if capture_mode.collects() {
-        let captured = source_config::parse_json5_config(input);
-        DirectiveConfigCapture {
-            value: captured.value,
-            keys: captured.keys,
-            rewrite_safe: captured.rewrite_safe,
+    let captured = {
+        #[cfg(feature = "editor-facts")]
+        {
+            if capture_mode.collects() {
+                let captured = source_config::parse_json5_config(input);
+                DirectiveConfigCapture {
+                    value: captured.value,
+                    keys: captured.keys,
+                    #[cfg(feature = "editor-facts")]
+                    rewrite_safe: captured.rewrite_safe,
+                }
+            } else {
+                let value = json5::from_str::<Value>(input).ok();
+                DirectiveConfigCapture {
+                    #[cfg(feature = "editor-facts")]
+                    rewrite_safe: value.is_some(),
+                    value,
+                    keys: Vec::new(),
+                }
+            }
         }
-    } else {
-        let value = json5::from_str::<Value>(input).ok();
-        DirectiveConfigCapture {
-            rewrite_safe: value.is_some(),
-            value,
-            keys: Vec::new(),
+        #[cfg(not(feature = "editor-facts"))]
+        {
+            DirectiveConfigCapture {
+                value: json5::from_str::<Value>(input).ok(),
+            }
         }
     };
     if let Err(cancelled) = control.checkpoint() {
@@ -2765,6 +3006,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn captured_detection_panic_does_not_swallow_cancellation() {
         let control = OperationControl::new();
@@ -3036,6 +3278,7 @@ mod tests {
         assert!(error.contains("safe materialization budget"));
     }
 
+    #[cfg(feature = "editor-facts")]
     fn capture_source_config(input: &str) -> PreprocessCaptureOutcome {
         let detector = |text: &str, control: &OperationControl| {
             Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
@@ -3051,6 +3294,7 @@ mod tests {
         .expect("an active parse control must not cancel")
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_maps_crlf_unicode_and_indentation_to_original_source() {
         let source = concat!(
@@ -3116,6 +3360,7 @@ mod tests {
         assert!(evidence.rewrite_safe());
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn json5_evidence_omits_escaped_and_array_nested_keys_without_disabling_rewrite() {
         let source = concat!(
@@ -3142,6 +3387,7 @@ mod tests {
         }));
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_retains_first_yaml_error_and_later_directive_facts() {
         let source = concat!(
@@ -3178,6 +3424,7 @@ mod tests {
         }));
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_retains_later_directives_after_a_directive_budget_error() {
         let nested = format!(
@@ -3202,6 +3449,7 @@ mod tests {
         assert!(!captured.source_config.rewrite_safe());
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn incomplete_directive_capture_stops_after_the_keyword() {
         let nested = format!(
@@ -3223,6 +3471,7 @@ mod tests {
         assert!(!captured.source_config.rewrite_safe());
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_weight_does_not_scale_with_unrelated_diagram_body() {
         let prefix = "%%{init: { theme: 'dark' }}%%\nflowchart TD\n";
@@ -3238,6 +3487,7 @@ mod tests {
         assert!(large.estimated_owned_heap_bytes() < large_source.len() / 100);
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_paths_remain_linear_for_deep_wide_json5() {
         let mut config = String::new();
@@ -3261,6 +3511,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn source_config_evidence_drops_unneeded_frontmatter_field_values() {
         let small =
@@ -3279,6 +3530,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn frontmatter_rewrite_safety_distinguishes_insertion_from_materialization() {
         let commented_without_config = capture_source_config(concat!(

@@ -471,6 +471,7 @@ impl SemanticParser {
         let mut model = match parser(
             source.text(),
             &metadata,
+            #[cfg(feature = "editor-facts")]
             crate::family::EditorFactsDemand::Omit,
             control,
         )?
@@ -785,17 +786,20 @@ mod tests {
     #[cfg(feature = "diagram-timeline")]
     #[test]
     fn semantic_timeline_is_available_without_presentation_or_editor_work() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let parsed = SemanticParser::new()
             .parse_diagram_sync("timeline\nsection Phase\n2026 : Launch\n")
             .expect("Timeline semantics");
         assert_eq!(parsed.metadata.diagram_type, "timeline");
         assert!(matches!(parsed.model, SemanticDiagramModel::Timeline(_)));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
     #[cfg(feature = "diagram-state")]
     #[test]
     fn semantic_state_parses_without_presentation_or_editor_work() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let parsed = SemanticParser::new()
             .parse_diagram_with_type_sync(
@@ -804,6 +808,7 @@ mod tests {
             )
             .expect("State semantics are available without presentation");
         assert_eq!(parsed.metadata.diagram_type, "stateDiagram");
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -893,6 +898,7 @@ mod tests {
     #[cfg(feature = "diagram-info")]
     #[test]
     fn semantic_info_matches_full_typed_model_without_editor_or_compat_state() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let source = "info\nshowInfo\ntitle Version\n";
         let parsed = SemanticParser::new()
@@ -909,6 +915,7 @@ mod tests {
             serde_json::to_value(&semantic_model).unwrap(),
             json!({"showInfo": true})
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
         #[cfg(feature = "presentation")]
@@ -926,6 +933,7 @@ mod tests {
             };
             assert_eq!(semantic_model.show_info, full_model.show_info);
         }
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
     }
 
@@ -947,6 +955,7 @@ mod tests {
     #[cfg(feature = "diagram-pie")]
     #[test]
     fn semantic_pie_matches_full_typed_model_without_editor_or_compat_state() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let source = "pie showData\ntitle Revenue\n\"A\": 1\n\"B\": 2\n";
         let parsed = SemanticParser::new()
@@ -970,6 +979,7 @@ mod tests {
                 ]
             })
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
         #[cfg(feature = "presentation")]
@@ -996,6 +1006,7 @@ mod tests {
                 })
             );
         }
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
     }
 
@@ -1018,6 +1029,7 @@ mod tests {
     #[cfg(feature = "diagram-journey")]
     #[test]
     fn semantic_journey_matches_full_typed_model_without_editor_or_compat_state() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let source = concat!(
             "journey\n",
@@ -1034,6 +1046,7 @@ mod tests {
             _ => panic!("expected semantic Journey model"),
         };
         assert_eq!(semantic_model.tasks.len(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
         #[cfg(feature = "presentation")]
@@ -1054,6 +1067,7 @@ mod tests {
                 serde_json::to_value(full_model).unwrap()
             );
         }
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
     }
 

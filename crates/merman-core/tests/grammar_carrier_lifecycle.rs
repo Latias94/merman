@@ -1,4 +1,5 @@
 #![cfg(all(feature = "diagram-class", feature = "diagram-sequence"))]
+#![cfg(feature = "presentation")]
 
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
@@ -77,15 +78,15 @@ fn run_worker(case: &str, size: usize) {
         match parsed.model() {
             RenderSemanticModel::Class(model) => {
                 let expected_classes = if case == "class-wide" { size } else { 1 };
-                assert_eq!(model.classes.len(), expected_classes);
+                assert_eq!(model.classes().len(), expected_classes);
                 if case == "class-deep" {
-                    assert_eq!(model.namespaces.len(), size);
+                    assert_eq!(model.namespaces().len(), size);
                 }
-                let namespace_id_bytes: usize = model.namespaces.keys().map(String::len).sum();
+                let namespace_id_bytes: usize = model.namespaces().map(|(id, _)| id.len()).sum();
                 println!(
                     "class_records={} namespace_records={} namespace_id_bytes={namespace_id_bytes}",
-                    model.classes.len(),
-                    model.namespaces.len(),
+                    model.classes().len(),
+                    model.namespaces().len(),
                 );
             }
             RenderSemanticModel::Sequence(model) => {

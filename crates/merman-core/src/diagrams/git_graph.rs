@@ -4,18 +4,20 @@ use crate::common_db::LangiumCommonDbFields;
 #[cfg(feature = "compat-json")]
 use crate::diagram::legacy_warning_messages;
 use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, strip_langium_inline_comment,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
 };
 #[cfg(feature = "compat-json")]
 use crate::family;
-use crate::family::{EditorFactsDemand, SemanticConstruction};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
 use crate::sanitize::sanitize_text;
-use crate::{
-    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, Result, SemanticMetadata, SourceSpan,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
+use crate::{Error, MermaidConfig, Result, SemanticMetadata, SourceSpan};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -25,6 +27,7 @@ thread_local! {
     static GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_reference(candidate: &str) -> bool {
     is_gitgraph_reference(candidate)
 }
@@ -168,6 +171,7 @@ struct SpannedValue {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum GitGraphEditorFactRole {
     Entity,
     Reference,
@@ -175,6 +179,7 @@ enum GitGraphEditorFactRole {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct GitGraphEditorFact {
     value: SpannedValue,
     detail: &'static str,
@@ -194,12 +199,14 @@ enum GitGraphOperation {
 #[derive(Debug, Clone)]
 struct GitGraphCommand {
     operation: GitGraphOperation,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<Vec<GitGraphEditorFact>>,
     statement_span: SourceSpan,
 }
 
 struct GitGraphCommandParseError {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<Vec<GitGraphEditorFact>>,
     recovery_span: SourceSpan,
 }
@@ -223,11 +230,13 @@ impl From<GitGraphCommandParseError> for GitGraphCommandParseAbort {
 
 struct GitGraphSemanticSource {
     model: GitGraphDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct GitGraphParseFailure {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
@@ -239,6 +248,7 @@ struct GitGraphHeader {
 struct GitGraphSyntaxOutcome {
     commands: Vec<GitGraphCommand>,
     common: LangiumCommonFacts,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
     first_error: Option<Error>,
 }
@@ -961,6 +971,7 @@ impl<'a> LineParser<'a> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_gitgraph_reference(value: &str) -> bool {
     fn is_word(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || byte == b'_'
@@ -1039,6 +1050,7 @@ impl GitGraphCommand {
         result.map_err(|error| error.with_exact_span_if_missing(self.statement_span))
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_editor_facts_controlled(
         &self,
         facts: &mut EditorSemanticFacts,
@@ -1055,6 +1067,7 @@ impl GitGraphCommand {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 impl GitGraphEditorFact {
     fn push_to(&self, facts: &mut EditorSemanticFacts) {
         match self.role {
@@ -1071,6 +1084,7 @@ impl GitGraphEditorFact {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_editor_fact(
     facts: &mut Option<Vec<GitGraphEditorFact>>,
     value: &SpannedValue,
@@ -1091,11 +1105,12 @@ fn push_gitgraph_editor_fact(
 
 fn command_parse_result<T>(
     result: Result<T>,
-    editor_facts: &Option<Vec<GitGraphEditorFact>>,
+    #[cfg(feature = "editor-facts")] editor_facts: &Option<Vec<GitGraphEditorFact>>,
     recovery_span: SourceSpan,
 ) -> std::result::Result<T, GitGraphCommandParseError> {
     result.map_err(|error| GitGraphCommandParseError {
         error: Box::new(error),
+        #[cfg(feature = "editor-facts")]
         editor_facts: editor_facts.clone(),
         recovery_span,
     })
@@ -1104,7 +1119,7 @@ fn command_parse_result<T>(
 fn unexpected_gitgraph_argument(
     command: &str,
     parser: &LineParser<'_>,
-    editor_facts: Option<Vec<GitGraphEditorFact>>,
+    #[cfg(feature = "editor-facts")] editor_facts: Option<Vec<GitGraphEditorFact>>,
     statement_span: SourceSpan,
 ) -> GitGraphCommandParseError {
     GitGraphCommandParseError {
@@ -1113,6 +1128,7 @@ fn unexpected_gitgraph_argument(
             format!("unexpected {command} argument: {}", parser.remaining()),
             statement_span,
         )),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         recovery_span: statement_span,
     }
@@ -1121,7 +1137,7 @@ fn unexpected_gitgraph_argument(
 fn parse_git_graph_command(
     raw: &str,
     line_start: usize,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> std::result::Result<Option<GitGraphCommand>, GitGraphCommandParseAbort> {
     control.checkpoint()?;
@@ -1141,6 +1157,7 @@ fn parse_git_graph_command(
     let Some(command) = parser.parse_word_until_ws_or_colon_spanned(control)? else {
         return Ok(None);
     };
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = (editor_demand == EditorFactsDemand::Capture).then(Vec::new);
 
     let operation = match command.text.as_str() {
@@ -1161,9 +1178,11 @@ fn parse_git_graph_command(
                 if matches!(parser.peek_char(), Some('"' | '\'')) {
                     let message = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &message,
@@ -1177,9 +1196,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1193,9 +1214,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("msg", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1209,9 +1232,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1225,9 +1250,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("type", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("commit type", control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1237,6 +1264,7 @@ fn parse_git_graph_command(
                     );
                     commit.commit_type = command_parse_result(
                         parse_commit_type(&value.text),
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
@@ -1245,6 +1273,7 @@ fn parse_git_graph_command(
                 return Err(unexpected_gitgraph_argument(
                     "commit",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1255,9 +1284,11 @@ fn parse_git_graph_command(
         "branch" => {
             let name = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
+            #[cfg(feature = "editor-facts")]
             push_gitgraph_editor_fact(
                 &mut editor_facts,
                 &name,
@@ -1272,6 +1303,7 @@ fn parse_git_graph_command(
                     return Err(unexpected_gitgraph_argument(
                         "branch",
                         &parser,
+                        #[cfg(feature = "editor-facts")]
                         editor_facts,
                         statement_span,
                     )
@@ -1279,9 +1311,11 @@ fn parse_git_graph_command(
                 };
                 let value = command_parse_result(
                     parser.parse_bare_token_spanned("branch order", control)?,
+                    #[cfg(feature = "editor-facts")]
                     &editor_facts,
                     statement_span,
                 )?;
+                #[cfg(feature = "editor-facts")]
                 push_gitgraph_editor_fact(
                     &mut editor_facts,
                     &value,
@@ -1291,12 +1325,14 @@ fn parse_git_graph_command(
                 );
                 order = command_parse_result(
                     parse_gitgraph_int(&value),
+                    #[cfg(feature = "editor-facts")]
                     &editor_facts,
                     statement_span,
                 )?;
             }
             command_parse_result(
                 parser.expect_eof("branch", control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
@@ -1308,9 +1344,11 @@ fn parse_git_graph_command(
         "checkout" | "switch" => {
             let name = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
+            #[cfg(feature = "editor-facts")]
             push_gitgraph_editor_fact(
                 &mut editor_facts,
                 &name,
@@ -1320,6 +1358,7 @@ fn parse_git_graph_command(
             );
             command_parse_result(
                 parser.expect_eof(command.text.as_str(), control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
@@ -1328,9 +1367,11 @@ fn parse_git_graph_command(
         "merge" => {
             let branch = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
+            #[cfg(feature = "editor-facts")]
             push_gitgraph_editor_fact(
                 &mut editor_facts,
                 &branch,
@@ -1353,9 +1394,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1369,9 +1412,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1385,9 +1430,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("type", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("merge type", control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1397,6 +1444,7 @@ fn parse_git_graph_command(
                     );
                     merge.commit_type = Some(command_parse_result(
                         parse_commit_type(&value.text),
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?);
@@ -1405,6 +1453,7 @@ fn parse_git_graph_command(
                 return Err(unexpected_gitgraph_argument(
                     "merge",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1428,9 +1477,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1444,9 +1495,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("parent", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1460,9 +1513,11 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
+                    #[cfg(feature = "editor-facts")]
                     push_gitgraph_editor_fact(
                         &mut editor_facts,
                         &value,
@@ -1479,6 +1534,7 @@ fn parse_git_graph_command(
                 return Err(unexpected_gitgraph_argument(
                     "cherry-pick",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1493,6 +1549,7 @@ fn parse_git_graph_command(
                     format!("Unknown statement: {}", command.text),
                     command.span,
                 )),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
                 recovery_span: statement_span,
             }
@@ -1503,6 +1560,7 @@ fn parse_git_graph_command(
     control.checkpoint()?;
     Ok(Some(GitGraphCommand {
         operation,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         statement_span,
     }))
@@ -1526,7 +1584,7 @@ pub(crate) fn parse_git_graph_with_warning_facts(
     ))
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_git_graph_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1607,6 +1665,7 @@ pub(crate) fn parse_git_graph_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -1616,6 +1675,7 @@ pub(crate) fn parse_git_graph_model_for_render_controlled(
         .map_err(|failure| *failure.error))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_entity_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1637,6 +1697,7 @@ fn push_gitgraph_entity_fact(
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_payload_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1655,6 +1716,7 @@ fn push_gitgraph_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_reference_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1679,13 +1741,14 @@ fn push_gitgraph_reference_fact(
 pub(crate) fn parse_git_graph_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<SemanticConstruction<GitGraphDiagramModel>> {
     let construction = construct_git_graph_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
@@ -1697,11 +1760,13 @@ pub(crate) fn parse_git_graph_semantic_model_controlled(
                 .sanitize_common_db_fields(&metadata.semantic_config);
             SemanticConstruction {
                 model: Ok(source.model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: source.editor_facts,
             }
         }
         Err(failure) => SemanticConstruction {
             model: Err(*failure.error),
+            #[cfg(feature = "editor-facts")]
             editor_facts: failure.editor_facts.map(|facts| *facts),
         },
     })
@@ -1716,6 +1781,7 @@ fn parse_git_graph_semantic_source(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -1727,7 +1793,7 @@ fn construct_git_graph_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     effective_config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<GitGraphSemanticSource, GitGraphParseFailure>>
 {
@@ -1740,7 +1806,9 @@ fn construct_git_graph_semantic_source_controlled(
         Err(error) => {
             return Ok(Err(gitgraph_parse_failure(
                 error,
+                #[cfg(feature = "editor-facts")]
                 new_gitgraph_editor_facts(editor_demand),
+                #[cfg(feature = "editor-facts")]
                 SourceSpan::new(0, code.len()),
             )));
         }
@@ -1748,19 +1816,23 @@ fn construct_git_graph_semantic_source_controlled(
     let GitGraphSyntaxOutcome {
         commands,
         common,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_error,
     } = collect_gitgraph_commands(
         code,
         header.body_start,
         diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     if let Some(error) = first_error {
         return Ok(Err(gitgraph_parse_failure(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             SourceSpan::new(0, code.len()),
         )));
     }
@@ -1776,7 +1848,9 @@ fn construct_git_graph_semantic_source_controlled(
     {
         return Ok(Err(gitgraph_parse_failure(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             SourceSpan::new(0, code.len()),
         )));
     }
@@ -1784,10 +1858,12 @@ fn construct_git_graph_semantic_source_controlled(
     let model = db.into_model_controlled(diagram_type, control)?;
     Ok(Ok(GitGraphSemanticSource {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
+#[cfg(feature = "editor-facts")]
 fn new_gitgraph_editor_facts(demand: EditorFactsDemand) -> Option<EditorSemanticFacts> {
     (demand == EditorFactsDemand::Capture).then(|| {
         #[cfg(test)]
@@ -1798,9 +1874,10 @@ fn new_gitgraph_editor_facts(demand: EditorFactsDemand) -> Option<EditorSemantic
 
 fn gitgraph_parse_failure(
     error: Error,
-    mut editor_facts: Option<EditorSemanticFacts>,
-    fallback_span: SourceSpan,
+    #[cfg(feature = "editor-facts")] mut editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")] fallback_span: SourceSpan,
 ) -> GitGraphParseFailure {
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = editor_facts.as_mut() {
         let (message, span) = match &error {
             Error::DiagramParse { diagnostic, .. } => (
@@ -1813,6 +1890,7 @@ fn gitgraph_parse_failure(
     }
     GitGraphParseFailure {
         error: Box::new(error),
+        #[cfg(feature = "editor-facts")]
         editor_facts: editor_facts.map(Box::new),
     }
 }
@@ -1909,16 +1987,18 @@ fn collect_gitgraph_commands(
     code: &str,
     mut offset: usize,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<GitGraphSyntaxOutcome> {
     let mut commands = Vec::new();
     let mut common = LangiumCommonFacts::default();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = new_gitgraph_editor_facts(editor_demand);
     let mut first_error = None;
     while offset < code.len() {
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts.as_mut() {
                 push_langium_common_editor_fact(facts, &parsed.fact, "gitGraph");
             }
@@ -1938,8 +2018,15 @@ fn collect_gitgraph_commands(
         let line_start = offset;
         let (line, next_offset) = physical_line(code, offset);
         offset = next_offset;
-        match parse_git_graph_command(line, line_start, editor_demand, control) {
+        match parse_git_graph_command(
+            line,
+            line_start,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+            control,
+        ) {
             Ok(Some(command)) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     command.push_editor_facts_controlled(facts, control)?;
                 }
@@ -1948,6 +2035,7 @@ fn collect_gitgraph_commands(
             Ok(None) => {}
             Err(GitGraphCommandParseAbort::Cancelled(cancelled)) => return Err(cancelled),
             Err(GitGraphCommandParseAbort::Invalid(error)) => {
+                #[cfg(feature = "editor-facts")]
                 if let (Some(recovered), Some(facts)) = (error.editor_facts, editor_facts.as_mut())
                 {
                     for fact in recovered {
@@ -1964,6 +2052,7 @@ fn collect_gitgraph_commands(
     Ok(GitGraphSyntaxOutcome {
         commands,
         common,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_error,
     })
@@ -2090,6 +2179,7 @@ mod tests {
                 &text,
                 &test_meta().diagram_type,
                 test_meta().effective_config.as_config(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             ),
@@ -2166,6 +2256,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_gitgraph_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = concat!(
@@ -2198,6 +2289,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_usage_occurrences_are_typed_references_without_polluting_entities() {
         let text = concat!(
             "gitGraph\n",
@@ -2284,6 +2376,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_parser_recovery_keeps_later_semantic_facts_without_rescanning() {
         let text = concat!(
             "gitGraph\r\n",
@@ -2496,6 +2589,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_recovery_reports_parser_diagnostic_with_exact_crlf_span() {
         let text = concat!(
             "gitGraph\r\n",
@@ -2545,21 +2639,24 @@ merge feature id:"M1"
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
 
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
-            .unwrap()
-            .expect("gitGraph editor recovery facts");
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "missing"));
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(expected_span)
-                && diagnostic.message.contains("not yet created")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
+                .unwrap()
+                .expect("gitGraph editor recovery facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "missing"));
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(expected_span)
+                    && diagnostic.message.contains("not yet created")
+            }));
+        }
     }
 
     #[test]
@@ -2868,6 +2965,7 @@ mod semantic_tests {
     fn reset_construction_counts() {
         crate::diagrams::langium_common::reset_family_syntax_construction_count("gitGraph");
         GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.set(0);
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
     }
 
@@ -2877,10 +2975,12 @@ mod semantic_tests {
             1
         );
         assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn canonical_gitgraph_capture_retains_facts_on_success_and_database_failure() {
         for (source, valid) in [
             ("gitGraph\ncommit id:\"root\"\n", true),
@@ -2908,6 +3008,7 @@ mod semantic_tests {
                 1
             );
             assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             assert_eq!(
                 facts.completeness,
@@ -2971,6 +3072,7 @@ mod semantic_tests {
                 serde_json::to_value(&model).unwrap(),
                 serde_json::to_value(full).unwrap()
             );
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         }
     }
@@ -3068,6 +3170,7 @@ mod semantic_tests {
 
     #[test]
     fn canonical_gitgraph_preserves_exact_errors_and_cooperative_cancellation() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let source = "gitGraph\r\ncommit id:\"C0\"\r\n  checkout missing  \r\n";
         let error = canonical(source).unwrap_err();
@@ -3087,6 +3190,7 @@ mod semantic_tests {
                 .unwrap_err();
             assert_eq!(error.to_string(), full.to_string());
         }
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
         let mut source = String::from("gitGraph\ncommit id:\"root\"");
@@ -3100,11 +3204,13 @@ mod semantic_tests {
             crate::SemanticParser::new().parse_diagram_controlled_sync(&source, &control),
             Err(crate::OperationCancelled { .. })
         ));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[cfg(feature = "compat-json")]
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn combined_gitgraph_capture_uses_one_seeded_construction_and_keeps_parser_spans() {
         reset_construction_counts();
         let source = "gitGraph\r\ncommit id:\"ROOT\"\r\nbranch feature\r\ncommit id:\"F1\"\r\ncheckout main\r\nmerge feature id:\"M1\"\r\n";

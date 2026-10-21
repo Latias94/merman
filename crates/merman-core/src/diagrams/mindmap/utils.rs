@@ -1,6 +1,7 @@
 #[cfg(feature = "presentation")]
 use crate::MermaidConfig;
 use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 
 use super::{
@@ -53,9 +54,11 @@ pub(super) struct NodeSpec {
     pub ty: i32,
     pub descr_is_markdown: bool,
     pub selection: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     pub trace: Option<NodeSpecTrace>,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Default)]
 pub(super) struct NodeSpecTrace {
     pub description_span: Option<SourceSpan>,
@@ -97,7 +100,7 @@ impl NodeSpecContinuation {
 
 pub(super) fn parse_node_spec(
     input: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
     let input = input.trim_end();
     if input.is_empty() {
@@ -109,6 +112,7 @@ pub(super) fn parse_node_spec(
             .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
         let parsed_text = parse_node_text(inner, start.len());
         let selection = parsed_text.content;
+        #[cfg(feature = "editor-facts")]
         let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
             description_span: None,
         });
@@ -122,6 +126,7 @@ pub(super) fn parse_node_spec(
             ty,
             descr_is_markdown: parsed_text.is_markdown,
             selection,
+            #[cfg(feature = "editor-facts")]
             trace,
         });
     }
@@ -137,6 +142,7 @@ pub(super) fn parse_node_spec(
             ty: NODE_TYPE_DEFAULT,
             descr_is_markdown: false,
             selection: SourceSpan::new(0, id_end),
+            #[cfg(feature = "editor-facts")]
             trace: matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
                 ..NodeSpecTrace::default()
             }),
@@ -152,6 +158,7 @@ pub(super) fn parse_node_spec(
         .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
     let parsed_text = parse_node_text(inner, rest_start + start.len());
     let selection = SourceSpan::new(0, input[..rest_start].trim_end().len());
+    #[cfg(feature = "editor-facts")]
     let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
         description_span: Some(parsed_text.content),
     });
@@ -166,6 +173,7 @@ pub(super) fn parse_node_spec(
         ty,
         descr_is_markdown: parsed_text.is_markdown,
         selection,
+        #[cfg(feature = "editor-facts")]
         trace,
     })
 }

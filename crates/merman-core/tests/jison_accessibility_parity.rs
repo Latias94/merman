@@ -1,9 +1,10 @@
-#![cfg(feature = "all-diagrams")]
+#![cfg(all(feature = "all-diagrams", feature = "compat-json"))]
 
+#[cfg(feature = "editor-facts")]
 use merman_core::{
-    DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, Engine, ParseOptions,
-    ParsedEditorFacts, RenderSemanticModel,
+    DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, ParsedEditorFacts,
 };
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use serde_json::{Value, json};
 
 struct JisonCase {
@@ -14,6 +15,7 @@ struct JisonCase {
     accepted: bool,
 }
 
+#[cfg(feature = "editor-facts")]
 fn available_facts(snapshot: &merman_core::DiagramParseSnapshot) -> &EditorSemanticFacts {
     let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
         panic!("Jison-backed family must retain editor facts");
@@ -148,14 +150,23 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
     ];
 
     for case in cases {
-        let snapshot = Engine::new()
+        let engine = Engine::new();
+        let parsed = engine.parse_diagram_with_type_sync(
+            case.diagram_type,
+            case.source,
+            ParseOptions::strict(),
+        );
+        #[cfg(feature = "editor-facts")]
+        let snapshot = engine
             .parse_diagram_snapshot_with_type_sync(case.diagram_type, case.source)
             .unwrap_or_else(|error| panic!("{} operation failed: {error}", case.family))
             .unwrap_or_else(|| panic!("{} snapshot missing", case.family));
+        #[cfg(feature = "editor-facts")]
         let facts = available_facts(&snapshot);
 
-        match snapshot.outcome() {
-            DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
+        match parsed {
+            Ok(Some(parsed)) if case.accepted => {
+                let model = &parsed.model;
                 assert_eq!(
                     model["accDescr"],
                     json!("desc"),
@@ -164,10 +175,18 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
                     case.oracle
                 );
                 assert_tail_semantics(case.family, model);
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                #[cfg(feature = "editor-facts")]
+                {
+                    assert_eq!(snapshot.outcome().parsed_model(), Some(model));
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                }
             }
-            DiagramParseOutcome::Failed(_) if !case.accepted => {
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            Err(_) if !case.accepted => {
+                #[cfg(feature = "editor-facts")]
+                {
+                    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                }
             }
             outcome => panic!(
                 "{} diverged from {}: accepted={}, outcome={outcome:?}",
@@ -274,14 +293,23 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
     ];
 
     for case in cases {
-        let snapshot = Engine::new()
+        let engine = Engine::new();
+        let parsed = engine.parse_diagram_with_type_sync(
+            case.diagram_type,
+            case.source,
+            ParseOptions::strict(),
+        );
+        #[cfg(feature = "editor-facts")]
+        let snapshot = engine
             .parse_diagram_snapshot_with_type_sync(case.diagram_type, case.source)
             .unwrap_or_else(|error| panic!("{} operation failed: {error}", case.family))
             .unwrap_or_else(|| panic!("{} snapshot missing", case.family));
+        #[cfg(feature = "editor-facts")]
         let facts = available_facts(&snapshot);
 
-        match snapshot.outcome() {
-            DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
+        match parsed {
+            Ok(Some(parsed)) if case.accepted => {
+                let model = &parsed.model;
                 // State's multiline lexer emits a final empty value at EOF, overwriting
                 // any partial description. Other accepting families leave it unset.
                 let expected_description = if case.family == "state" {
@@ -291,6 +319,7 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
                 };
                 assert_eq!(model["accDescr"], expected_description, "{}", case.family);
                 // State recognizes the multiline token even when EOF supplies its empty value.
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(
                     facts
                         .directive_prefixes
@@ -307,10 +336,18 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
                     "xychart" => assert_eq!(model["plots"], json!([])),
                     _ => unreachable!(),
                 }
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                #[cfg(feature = "editor-facts")]
+                {
+                    assert_eq!(snapshot.outcome().parsed_model(), Some(model));
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                }
             }
-            DiagramParseOutcome::Failed(_) if !case.accepted => {
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            Err(_) if !case.accepted => {
+                #[cfg(feature = "editor-facts")]
+                {
+                    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                }
             }
             outcome => panic!(
                 "{} diverged from {}: accepted={}, outcome={outcome:?}",
@@ -323,20 +360,27 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
 #[test]
 fn sequence_multiline_accessibility_preserves_an_ordinary_next_line() {
     let source = "sequenceDiagram\naccDescr {desc}\nparticipant A";
-    let snapshot = Engine::new()
-        .parse_diagram_snapshot_with_type_sync("sequence", source)
-        .expect("sequence operation")
-        .expect("sequence snapshot");
-    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
-        panic!("ordinary next-line sequence input must parse");
-    };
-
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_with_type_sync("sequence", source, ParseOptions::strict())
+        .expect("ordinary next-line sequence input must parse")
+        .expect("sequence diagram");
+    let model = &parsed.model;
     assert_eq!(model["accDescr"], json!("desc"));
     assert!(model["actors"].get("A").is_some());
-    assert_eq!(
-        available_facts(&snapshot).completeness,
-        EditorSemanticCompleteness::Complete
-    );
+
+    #[cfg(feature = "editor-facts")]
+    {
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("sequence", source)
+            .expect("sequence operation")
+            .expect("sequence snapshot");
+        assert_eq!(snapshot.outcome().parsed_model(), Some(model));
+        assert_eq!(
+            available_facts(&snapshot).completeness,
+            EditorSemanticCompleteness::Complete
+        );
+    }
 }
 
 #[test]
@@ -379,18 +423,21 @@ fn sequence_empty_comments_preserve_semantics_render_models_and_editor_facts() {
             "{source:?}"
         );
 
-        let snapshot = engine
-            .parse_diagram_snapshot_with_type_sync("sequence", source)
-            .expect("editor parsing terminates")
-            .expect("sequence snapshot");
-        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
-            panic!("empty comments must preserve parsing: {source:?}");
-        };
-        assert_eq!(model, &expected.model);
-        assert_eq!(
-            available_facts(&snapshot).completeness,
-            EditorSemanticCompleteness::Complete,
-            "{source:?}"
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let snapshot = engine
+                .parse_diagram_snapshot_with_type_sync("sequence", source)
+                .expect("editor parsing terminates")
+                .expect("sequence snapshot");
+            let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+                panic!("empty comments must preserve parsing: {source:?}");
+            };
+            assert_eq!(model, &expected.model);
+            assert_eq!(
+                available_facts(&snapshot).completeness,
+                EditorSemanticCompleteness::Complete,
+                "{source:?}"
+            );
+        }
     }
 }

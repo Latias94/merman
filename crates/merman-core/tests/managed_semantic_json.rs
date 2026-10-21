@@ -1,3 +1,5 @@
+#![cfg(feature = "compat-json")]
+
 use merman_core::ManagedSemanticJson;
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -254,11 +256,14 @@ fn managed_json_lifecycle_child() {
             drop(parsed.clone());
             parsed.model.write_json(io::sink()).unwrap();
             drop(parsed);
-            let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
-            let model = snapshot.outcome().parsed_model().unwrap();
-            model.write_json(io::sink()).unwrap();
-            drop(model.clone());
-            drop(snapshot);
+            #[cfg(feature = "editor-facts")]
+            {
+                let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+                let model = snapshot.outcome().parsed_model().unwrap();
+                model.write_json(io::sink()).unwrap();
+                drop(model.clone());
+                drop(snapshot);
+            }
             let typed = engine
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
@@ -291,11 +296,14 @@ fn managed_json_lifecycle_child() {
                 )
                 .unwrap_err();
             assert_eq!(error, control.checkpoint().unwrap_err());
-            let control = merman_core::OperationControl::new();
-            let error = engine
-                .parse_diagram_snapshot_controlled_sync(source, &control)
-                .unwrap_err();
-            assert_eq!(error, control.checkpoint().unwrap_err());
+            #[cfg(feature = "editor-facts")]
+            {
+                let control = merman_core::OperationControl::new();
+                let error = engine
+                    .parse_diagram_snapshot_controlled_sync(source, &control)
+                    .unwrap_err();
+                assert_eq!(error, control.checkpoint().unwrap_err());
+            }
             println!("managed-custom-overlay-snapshot-budget-cancellation-drop=done");
             io::stdout().flush().unwrap();
             let shallow = ManagedSemanticJson::from(json!({"still": "usable"}));

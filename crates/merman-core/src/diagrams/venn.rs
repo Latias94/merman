@@ -1,10 +1,13 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan,
+    EditorSemanticSymbol,
 };
+use crate::{Error, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
@@ -71,16 +74,18 @@ struct VennSemanticState {
     known_sets: HashSet<String>,
     current_sets: Option<Vec<String>>,
     indent_mode: bool,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 impl VennSemanticState {
-    fn new(editor_demand: EditorFactsDemand) -> Self {
+    fn new(#[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand) -> Self {
         Self {
             model: VennDiagramModel::default(),
             known_sets: HashSet::new(),
             current_sets: None,
             indent_mode: false,
+            #[cfg(feature = "editor-facts")]
             editor_facts: match editor_demand {
                 EditorFactsDemand::Omit => None,
                 EditorFactsDemand::Capture => {
@@ -147,6 +152,7 @@ impl VennSemanticState {
 
 struct VennSemanticSource {
     model: VennDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -453,6 +459,7 @@ pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -470,7 +477,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
-            source.editor_facts.unwrap_or_default(),
+            source.editor_facts,
         )),
         None => Ok(source),
     };
@@ -505,6 +512,7 @@ pub(crate) fn parse_venn_model_for_render_controlled(
     let outcome = construct_venn_parse_outcome_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -532,6 +540,7 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
     construct_venn_parse_outcome_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -542,7 +551,7 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
 pub(crate) fn parse_venn_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<VennDiagramModel>> {
     let VennParseOutcome {
@@ -551,9 +560,11 @@ pub(crate) fn parse_venn_semantic_model_controlled(
     } = construct_venn_parse_outcome_controlled(
         code,
         &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
+    #[cfg(feature = "editor-facts")]
     let editor_facts = source.editor_facts;
     let model = match first_error {
         Some(error) => Err(error),
@@ -565,6 +576,7 @@ pub(crate) fn parse_venn_semantic_model_controlled(
     };
     Ok(crate::family::SemanticConstruction {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     })
 }
@@ -572,14 +584,17 @@ pub(crate) fn parse_venn_semantic_model_controlled(
 fn construct_venn_parse_outcome_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<VennParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("venn");
 
-    let mut state = VennSemanticState::new(editor_demand);
+    let mut state = VennSemanticState::new(
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+    );
     let mut header_decided = false;
     let mut offset = 0usize;
     let mut first_error = None;
@@ -609,19 +624,23 @@ fn construct_venn_parse_outcome_controlled(
                     &mut state,
                     &mut first_error,
                     parse_error(diagram_type, "expected venn-beta header"),
+                    #[cfg(feature = "editor-facts")]
                     "expected venn-beta header",
                     span,
                 );
                 continue;
             };
 
+            #[cfg(feature = "editor-facts")]
             let header_span = SourceSpan::new(statement_start, statement_start + "venn-beta".len());
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = state.editor_facts.as_mut() {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::Payload,
                     header_span,
                 ));
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = state.editor_facts.as_mut() {
                 facts.push_symbol(EditorSemanticSymbol::payload(
                     "venn-beta".to_string(),
@@ -646,6 +665,7 @@ fn construct_venn_parse_outcome_controlled(
                     &mut state,
                     &mut first_error,
                     error,
+                    #[cfg(feature = "editor-facts")]
                     format!("venn parser recovered after parse error: {message}"),
                     SourceSpan::new(
                         statement_start,
@@ -666,6 +686,7 @@ fn construct_venn_parse_outcome_controlled(
                 &mut state,
                 &mut first_error,
                 error,
+                #[cfg(feature = "editor-facts")]
                 format!("venn parser recovered after parse error: {message}"),
                 SourceSpan::new(line_start + indent, line_start + stripped.trim_end().len()),
             );
@@ -678,6 +699,7 @@ fn construct_venn_parse_outcome_controlled(
             &mut state,
             &mut first_error,
             parse_error(diagram_type, "expected venn-beta"),
+            #[cfg(feature = "editor-facts")]
             "expected venn-beta",
             SourceSpan::new(0, 0),
         );
@@ -687,6 +709,7 @@ fn construct_venn_parse_outcome_controlled(
     Ok(VennParseOutcome {
         source: VennSemanticSource {
             model: state.model,
+            #[cfg(feature = "editor-facts")]
             editor_facts: state.editor_facts,
         },
         first_error,
@@ -698,7 +721,7 @@ fn recover_venn_error(
     state: &mut VennSemanticState,
     first_error: &mut Option<Error>,
     error: Error,
-    recovery_message: impl Into<String>,
+    #[cfg(feature = "editor-facts")] recovery_message: impl Into<String>,
     span: SourceSpan,
 ) {
     if first_error.is_none() {
@@ -708,6 +731,7 @@ fn recover_venn_error(
             span,
         ));
     }
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.editor_facts.as_mut() {
         facts.mark_recovered_from_parse_error(recovery_message, Some(span));
     }
@@ -736,6 +760,7 @@ fn parse_venn_statement_facts(
 
     let statement_start = line_start + indent;
     if indent > 0 && state.indent_mode && starts_with_keyword_ci(statement, "text") {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("text");
         }
@@ -764,6 +789,7 @@ fn parse_venn_statement_facts(
         {
             return Err(parse_error(diagram_type, "invalid Venn title syntax"));
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("title");
         }
@@ -771,6 +797,7 @@ fn parse_venn_statement_facts(
         let Some(payload) = cursor.take_remaining_payload() else {
             return Err(parse_error(diagram_type, "expected title text"));
         };
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             &payload,
@@ -782,6 +809,7 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "set") {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("set");
         }
@@ -794,6 +822,7 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "union") {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("union");
         }
@@ -806,6 +835,7 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "text") {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("text");
         }
@@ -819,6 +849,7 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "style") {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_directive_prefix("style");
         }
@@ -862,12 +893,14 @@ fn parse_venn_set_statement_facts(
     })();
     let (identifier, label, size, size_value) = parsed?;
 
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.editor_facts.as_mut() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::NodeIdentifier,
             identifier.span,
         ));
     }
+    #[cfg(feature = "editor-facts")]
     push_venn_entity_fact(
         state.editor_facts.as_mut(),
         &identifier,
@@ -875,6 +908,7 @@ fn parse_venn_set_statement_facts(
         EditorSemanticKind::Namespace,
     );
     if let Some(label) = label.as_ref() {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             label,
@@ -883,6 +917,7 @@ fn parse_venn_set_statement_facts(
         );
     }
     if let Some(size) = size.as_ref() {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             size,
@@ -933,6 +968,7 @@ fn parse_venn_union_statement_facts(
     state.validate_union_identifiers(&identifier_values, diagram_type)?;
 
     let list_span = venn_list_span(&identifiers);
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.editor_facts.as_mut() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::IdList,
@@ -940,6 +976,7 @@ fn parse_venn_union_statement_facts(
         ));
     }
     for identifier in &identifiers {
+        #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
             state.editor_facts.as_mut(),
             identifier,
@@ -949,6 +986,7 @@ fn parse_venn_union_statement_facts(
     }
 
     if let Some(label) = label.as_ref() {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             label,
@@ -957,6 +995,7 @@ fn parse_venn_union_statement_facts(
         );
     }
     if let Some(size) = size.as_ref() {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             size,
@@ -1011,6 +1050,7 @@ fn parse_venn_text_statement_facts(
 
     if let Some(sets) = set_fields {
         let list_span = venn_list_span(&sets);
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.editor_facts.as_mut() {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::IdList,
@@ -1018,6 +1058,7 @@ fn parse_venn_text_statement_facts(
             ));
         }
         for set in &sets {
+            #[cfg(feature = "editor-facts")]
             push_venn_reference_fact(
                 state.editor_facts.as_mut(),
                 set,
@@ -1027,12 +1068,14 @@ fn parse_venn_text_statement_facts(
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.editor_facts.as_mut() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::NodeIdentifier,
             identifier.span,
         ));
     }
+    #[cfg(feature = "editor-facts")]
     push_venn_entity_fact(
         state.editor_facts.as_mut(),
         &identifier,
@@ -1040,6 +1083,7 @@ fn parse_venn_text_statement_facts(
         EditorSemanticKind::Namespace,
     );
     if let Some(label) = label.as_ref() {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             label,
@@ -1097,6 +1141,7 @@ fn parse_venn_style_statement_facts(
     let (targets, styles) = parsed?;
 
     let list_span = venn_list_span(&targets);
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.editor_facts.as_mut() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::IdList,
@@ -1104,6 +1149,7 @@ fn parse_venn_style_statement_facts(
         ));
     }
     for target in &targets {
+        #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
             state.editor_facts.as_mut(),
             target,
@@ -1112,6 +1158,7 @@ fn parse_venn_style_statement_facts(
         );
     }
     for (_, value) in &styles {
+        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.editor_facts.as_mut(),
             value,
@@ -1154,6 +1201,7 @@ fn venn_list_span(items: &[VennFieldSpan]) -> SourceSpan {
     SourceSpan::new(start, end)
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_venn_entity_fact(
     facts: Option<&mut EditorSemanticFacts>,
     field: &VennFieldSpan,
@@ -1175,6 +1223,7 @@ fn push_venn_entity_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_venn_reference_fact(
     facts: Option<&mut EditorSemanticFacts>,
     field: &VennFieldSpan,
@@ -1196,6 +1245,7 @@ fn push_venn_reference_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_venn_payload_fact(
     facts: Option<&mut EditorSemanticFacts>,
     field: &VennFieldSpan,
@@ -1449,10 +1499,9 @@ fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseMetadata,
-        ParseOptions, RenderSemanticModel,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+    use crate::{Engine, MermaidConfig, ParseMetadata, ParseOptions, RenderSemanticModel};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -1688,6 +1737,7 @@ text A,B 42
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_venn_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = r##"venn-beta
@@ -1794,6 +1844,7 @@ style A,B fill:#00ffcc, color:#003333
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn venn_reference_roles_do_not_promote_occurrences_to_set_definitions() {
         let text = concat!(
             "venn-beta\n",
@@ -1844,6 +1895,7 @@ style A,B fill:#00ffcc, color:#003333
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn venn_combined_parse_constructs_once_and_preserves_projections() {
         let text = r##"venn-beta
 title "Product overlap"
@@ -1898,6 +1950,7 @@ style A,B fill:#ff6b6b, color:red
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn venn_editor_projection_preserves_quoted_and_numeric_token_spans() {
         let text = "venn-beta\nset \"Frontend Team\"[\"Core\"]:.5\ntext \"Frontend Team\" 42\n";
         let facts = crate::family::test_support::editor_facts(
@@ -1952,24 +2005,26 @@ style A,B fill:#ff6b6b, color:red
             crate::ParseDiagnosticSpanKind::Exact
         );
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_venn_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(
-            facts.symbols.iter().any(|symbol| {
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_venn_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| {
                 symbol.name == "A" && symbol.detail.as_deref() == Some("venn set")
-            })
-        );
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.message.contains("expected identifier")
-                && diagnostic.span == Some(statement_span)
-        }));
+            }));
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.message.contains("expected identifier")
+                    && diagnostic.span == Some(statement_span)
+            }));
+        }
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn venn_recovery_preserves_later_semantic_facts_with_crlf_spans() {
         let text = concat!(
             "venn-beta\r\n",
@@ -2065,10 +2120,12 @@ mod semantic_tests {
             "style B,A fill:#ff0000, color:blue\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_venn_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2090,6 +2147,7 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("venn"),
             1
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -2100,10 +2158,12 @@ mod semantic_tests {
     fn semantic_union_error_retains_the_exact_crlf_statement_span_without_editor_work() {
         let source = "venn-beta\r\nset A\r\n  union A, %% missing identifier\r\nset Later\r\n";
         let start = source.find("union A,").unwrap();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_venn_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2122,6 +2182,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -2137,6 +2198,7 @@ mod semantic_tests {
             parse_venn_semantic_model_controlled(
                 source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             ),
@@ -2153,11 +2215,13 @@ mod semantic_tests {
             title: None,
         };
         let source = "venn-beta\nset A\nset B\nunion A,B\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_venn(source, &meta).unwrap();
         parse_venn_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
             .unwrap()
             .unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default(),

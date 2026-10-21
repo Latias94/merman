@@ -1,12 +1,17 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::LineCursor;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
-    SourceSpan, family::CombinedSemanticFailure,
+    EditorSemanticSymbol,
+};
+use crate::{
+    Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan,
+    family::CombinedSemanticFailure,
 };
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
@@ -168,6 +173,7 @@ impl QuadrantDb {
 
 struct QuadrantSemanticSource {
     model: QuadrantChartDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -672,6 +678,7 @@ fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>>
     out
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_quadrant_payload_fact(
     facts: Option<&mut EditorSemanticFacts>,
     text: &str,
@@ -697,6 +704,7 @@ fn push_quadrant_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_quadrant_outline_fact(
     facts: Option<&mut EditorSemanticFacts>,
     text: &str,
@@ -735,6 +743,7 @@ fn quadrant_error_at(error: Error, diagram_type: &str, span: SourceSpan) -> Erro
     Error::diagram_parse_exact(diagram_type.to_string(), message, span)
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_quadrant_class_fact(
     facts: Option<&mut EditorSemanticFacts>,
     statement_span: SourceSpan,
@@ -758,6 +767,7 @@ fn push_quadrant_class_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_quadrant_point_facts(
     facts: Option<&mut EditorSemanticFacts>,
     statement_span: SourceSpan,
@@ -814,6 +824,7 @@ fn construct_quadrant_chart_semantic_source(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
@@ -824,26 +835,34 @@ fn construct_quadrant_chart_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_quadrant_chart_semantic_source(code, diagram_type, config, editor_demand, control)
+    parse_quadrant_chart_semantic_source(
+        code,
+        diagram_type,
+        config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )
 }
 
 fn parse_quadrant_chart_semantic_source(
     code: &str,
     diagram_type: &str,
     config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = QuadrantDb::default();
     db.clear();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -869,6 +888,7 @@ fn parse_quadrant_chart_semantic_source(
                 block.text.push_str(&line.text[..end]);
                 let text = block.text.trim().to_string();
                 if !text.is_empty() {
+                    #[cfg(feature = "editor-facts")]
                     push_quadrant_payload_fact(
                         editor_facts.as_mut(),
                         &text,
@@ -921,9 +941,11 @@ fn parse_quadrant_chart_semantic_source(
             }
 
             if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     facts.push_directive_prefix("accTitle");
                 }
+                #[cfg(feature = "editor-facts")]
                 if editor_facts.is_some()
                     && let Ok(value) = parse_text_slice(directive.value)
                 {
@@ -943,6 +965,7 @@ fn parse_quadrant_chart_semantic_source(
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "accDescr") {
                 let rest = directive.rest;
                 if rest.text.starts_with('{') {
+                    #[cfg(feature = "editor-facts")]
                     if let Some(facts) = editor_facts.as_mut() {
                         facts.push_directive_prefix("accDescr");
                     }
@@ -952,6 +975,7 @@ fn parse_quadrant_chart_semantic_source(
                         let content = after_brace.subslice(0, end);
                         let text = content.text.trim().to_string();
                         if !text.is_empty() {
+                            #[cfg(feature = "editor-facts")]
                             push_quadrant_payload_fact(
                                 editor_facts.as_mut(),
                                 &text,
@@ -986,9 +1010,11 @@ fn parse_quadrant_chart_semantic_source(
                 }
                 if rest.text.starts_with(':') {
                     let value = rest.subslice(1, rest.text.len()).trim();
+                    #[cfg(feature = "editor-facts")]
                     if let Some(facts) = editor_facts.as_mut() {
                         facts.push_directive_prefix("accDescr");
                     }
+                    #[cfg(feature = "editor-facts")]
                     if editor_facts.is_some()
                         && let Ok(parsed) = parse_text_slice(value)
                     {
@@ -1008,9 +1034,11 @@ fn parse_quadrant_chart_semantic_source(
 
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
                 let value = directive.rest;
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     facts.push_directive_prefix("title");
                 }
+                #[cfg(feature = "editor-facts")]
                 if editor_facts.is_some()
                     && let Ok(parsed) = parse_text_slice(value)
                 {
@@ -1037,6 +1065,7 @@ fn parse_quadrant_chart_semantic_source(
                         continue;
                     }
                 };
+                #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
                     editor_facts.as_mut(),
                     &axis.left.value,
@@ -1045,6 +1074,7 @@ fn parse_quadrant_chart_semantic_source(
                     "quadrant chart x-axis",
                     EditorSemanticKind::String,
                 );
+                #[cfg(feature = "editor-facts")]
                 if let Some(right) = &axis.right {
                     push_quadrant_outline_fact(
                         editor_facts.as_mut(),
@@ -1076,6 +1106,7 @@ fn parse_quadrant_chart_semantic_source(
                         continue;
                     }
                 };
+                #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
                     editor_facts.as_mut(),
                     &axis.left.value,
@@ -1084,6 +1115,7 @@ fn parse_quadrant_chart_semantic_source(
                     "quadrant chart y-axis",
                     EditorSemanticKind::String,
                 );
+                #[cfg(feature = "editor-facts")]
                 if let Some(top) = &axis.right {
                     push_quadrant_outline_fact(
                         editor_facts.as_mut(),
@@ -1125,6 +1157,7 @@ fn parse_quadrant_chart_semantic_source(
                         break;
                     }
                 };
+                #[cfg(feature = "editor-facts")]
                 push_quadrant_outline_fact(
                     editor_facts.as_mut(),
                     &text.value,
@@ -1161,6 +1194,7 @@ fn parse_quadrant_chart_semantic_source(
                 }
                 let style_text = rest.subslice(name_end, rest.text.len()).trim();
                 let styles = split_style_slices(style_text);
+                #[cfg(feature = "editor-facts")]
                 push_quadrant_class_fact(editor_facts.as_mut(), statement_span, name);
                 let style_values = styles
                     .items
@@ -1177,6 +1211,7 @@ fn parse_quadrant_chart_semantic_source(
 
             match parse_point_statement(statement_trimmed) {
                 Ok(Some(point)) => {
+                    #[cfg(feature = "editor-facts")]
                     push_quadrant_point_facts(editor_facts.as_mut(), statement_span, &point);
                     let class_name = point.class_name.map(|class| class.text.to_string());
                     let styles = point
@@ -1220,6 +1255,7 @@ fn parse_quadrant_chart_semantic_source(
     if let Some(block) = acc_descr_block {
         let text = block.text.trim().to_string();
         if !text.is_empty() {
+            #[cfg(feature = "editor-facts")]
             push_quadrant_payload_fact(
                 editor_facts.as_mut(),
                 &text,
@@ -1249,10 +1285,13 @@ fn parse_quadrant_chart_semantic_source(
     }
 
     if let Some(error) = first_error {
-        return Ok(Err(match editor_facts {
-            Some(facts) => CombinedSemanticFailure::parser_recovery("quadrant chart", error, facts),
-            None => CombinedSemanticFailure::new(error, EditorSemanticFacts::new()),
-        }));
+        return Ok(Err(CombinedSemanticFailure::parser_recovery(
+            #[cfg(feature = "editor-facts")]
+            "quadrant chart",
+            error,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        )));
     }
 
     control.checkpoint()?;
@@ -1276,6 +1315,7 @@ fn parse_quadrant_chart_semantic_source(
             points: db.points,
             classes: db.classes.into_iter().collect(),
         },
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -1288,6 +1328,7 @@ pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<V
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1356,6 +1397,7 @@ pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -1368,39 +1410,53 @@ pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
 pub(crate) fn parse_quadrant_chart_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<QuadrantChartDiagramModel>> {
     let construction = construct_quadrant_chart_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
             model.sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -1408,10 +1464,9 @@ pub(crate) fn parse_quadrant_chart_semantic_model_controlled(
 mod tests {
     use super::*;
     use crate::generated;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole, Engine,
-        ParseOptions, RenderSemanticModel,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
@@ -1560,6 +1615,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn quadrant_class_definitions_and_uses_have_typed_roles() {
         let text = concat!(
             "quadrantChart\n",
@@ -1783,6 +1839,7 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let (combined_json, combined_editor) =
             crate::family::test_support::into_result(parse_quadrant_chart_json_and_editor_facts(
                 text,
@@ -1790,8 +1847,11 @@ Project A:::priority : [0.2, 0.8]
                 &OperationControl::new(),
             ))
             .expect("Quadrant combined projection succeeds");
+        #[cfg(not(feature = "editor-facts"))]
+        let combined_json = parse_quadrant_chart(text, &parsed.meta).unwrap();
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
+        #[cfg(feature = "editor-facts")]
         assert!(!combined_editor.symbols.is_empty());
         assert_eq!(
             render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
@@ -1827,6 +1887,7 @@ Project A:::priority : [0.2, 0.8]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("quoted semicolons parse")
             .expect("quadrant model");
+        #[cfg(feature = "editor-facts")]
         let facts = crate::family::test_support::editor_facts(
             parse_quadrant_chart_json_and_editor_facts,
             text,
@@ -1840,6 +1901,7 @@ Project A:::priority : [0.2, 0.8]
             json!("Build; Learn")
         );
         assert_eq!(parsed.model["points"][0]["text"], json!("Point; A"));
+        #[cfg(feature = "editor-facts")]
         for expected in [
             "Plan; Execute",
             "first %% literal; second",
@@ -1867,29 +1929,33 @@ Project A:::priority : [0.2, 0.8]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("multiline accDescr parses")
             .expect("quadrant model");
-        let facts = crate::family::test_support::editor_facts(
-            parse_quadrant_chart_json_and_editor_facts,
-            text,
-            &parsed.meta,
-        );
-        let description = facts
-            .symbols
-            .iter()
-            .find(|symbol| {
-                symbol.detail.as_deref() == Some("quadrant chart accessibility description")
-            })
-            .expect("multiline accessibility description fact");
-        let content_start = text.find('{').expect("opening brace") + 1;
-        let content_end = text.rfind('}').expect("closing brace");
-
         assert_eq!(parsed.model["accDescr"], json!("First line\nSecond line"));
-        assert_eq!(
-            description.selection,
-            SourceSpan::new(content_start, content_end)
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_quadrant_chart_json_and_editor_facts,
+                text,
+                &parsed.meta,
+            );
+            let description = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.detail.as_deref() == Some("quadrant chart accessibility description")
+                })
+                .expect("multiline accessibility description fact");
+            let content_start = text.find('{').expect("opening brace") + 1;
+            let content_end = text.rfind('}').expect("closing brace");
+
+            assert_eq!(
+                description.selection,
+                SourceSpan::new(content_start, content_end)
+            );
+        }
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn malformed_point_recovers_prior_parser_facts() {
         let engine = Engine::new();
         let text = "quadrantChart\nx-axis Low --> High\nBroken: [1.2, 0.4]\n";
@@ -1919,23 +1985,33 @@ Project A:::priority : [0.2, 0.8]
         let text = "quadrantChart\naccDescr {\npartial description\n";
 
         reset_quadrant_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let snapshot = Engine::new()
             .parse_diagram_snapshot_with_type_sync("quadrantChart", text)
             .expect("Quadrant snapshot operation")
             .expect("Quadrant snapshot");
+        #[cfg(not(feature = "editor-facts"))]
+        assert!(
+            Engine::new()
+                .parse_diagram_sync(text, ParseOptions::strict())
+                .is_err()
+        );
         assert_eq!(quadrant_syntax_construction_count(), 1);
-        assert!(matches!(
-            snapshot.outcome(),
-            crate::DiagramParseOutcome::Failed(_)
-        ));
-        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
-            panic!("Quadrant recovery facts");
-        };
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(!facts.diagnostics.is_empty());
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            assert!(matches!(
+                snapshot.outcome(),
+                crate::DiagramParseOutcome::Failed(_)
+            ));
+            let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("Quadrant recovery facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(!facts.diagnostics.is_empty());
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
+            }));
+        }
     }
 }
 
@@ -1967,10 +2043,12 @@ mod semantic_tests {
             "<b>Idea</b>:::priority: [0.25, 0.75]\n",
         );
         reset_quadrant_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_quadrant_chart_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -1988,6 +2066,7 @@ mod semantic_tests {
         assert_eq!(model.points[0].class_name.as_deref(), Some("priority"));
         assert_eq!(model.classes["priority"].radius, Some(10));
         assert_eq!(quadrant_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -1998,10 +2077,12 @@ mod semantic_tests {
     fn semantic_coordinate_errors_preserve_exact_spans_without_editor_work() {
         let source = "quadrantChart\r\n  Broken: [1.2, 0.4]\r\n";
         let start = source.find("Broken").unwrap();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_quadrant_chart_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -2020,6 +2101,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -2035,6 +2117,7 @@ mod semantic_tests {
             parse_quadrant_chart_semantic_model_controlled(
                 "quadrantChart\n",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             ),
@@ -2052,6 +2135,7 @@ mod semantic_tests {
             title: None,
         };
         let source = "quadrantChart\nx-axis Low --> High\nA: [0.2, 0.8]\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_quadrant_chart(source, &meta).unwrap();
         parse_quadrant_chart_model_for_render_controlled(
@@ -2061,6 +2145,7 @@ mod semantic_tests {
         )
         .unwrap()
         .unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default(),

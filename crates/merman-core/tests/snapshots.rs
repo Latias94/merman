@@ -1,4 +1,5 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
 use merman_core::presentation::PresentationConfig;
 use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};

@@ -4,11 +4,15 @@
 //! syntax borrows Flowchart's node and edge spelling, while the meaning of shapes, containers,
 //! metadata, and the three edge operators is domain specific.
 
-use crate::family::{EditorFactsDemand, SemanticConstruction};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorFamilySemantics, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, SourceSpan, family,
+    EditorSemanticSymbol,
 };
+use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
@@ -310,7 +314,8 @@ struct Construction {
     model: AgentflowDiagramModel,
     #[cfg(feature = "presentation")]
     visuals: Option<AgentflowVisuals>,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 #[cfg(test)]
@@ -347,6 +352,7 @@ pub(crate) fn parse_agentflow_with_warning_facts(
         &meta.diagram_type,
         meta.effective_config.as_config(),
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         false,
         &control,
@@ -362,7 +368,7 @@ pub(crate) fn parse_agentflow_with_warning_facts(
 pub(crate) fn parse_agentflow_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<SemanticConstruction<AgentflowDiagramModel>> {
     let construction = construct_source(
@@ -370,6 +376,7 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
         &meta.diagram_type,
         &meta.semantic_config,
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         #[cfg(feature = "presentation")]
         false,
@@ -381,19 +388,22 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
             model.sanitize_common_db_fields(&meta.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
-                editor_facts: (editor_demand == EditorFactsDemand::Capture)
-                    .then_some(construction.editor_facts),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: construction.editor_facts,
             }
         }
+        #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand == EditorFactsDemand::Capture => {
             let (error, editor_facts) = failure.into_parts();
             SemanticConstruction {
                 model: Err(error),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: Some(editor_facts),
             }
         }
         Err(failure) => SemanticConstruction {
             model: Err(failure.into_error()),
+            #[cfg(feature = "editor-facts")]
             editor_facts: None,
         },
     })
@@ -410,6 +420,7 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
         &meta.diagram_type,
         meta.effective_config.as_config(),
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         true,
         control,
@@ -423,7 +434,7 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
     .map_err(family::CombinedSemanticFailure::into_error))
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_agentflow_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -444,7 +455,9 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
             |construction| {
                 (
                     semantic_model_to_compat_json(&construction.model, &meta.diagram_type),
-                    construction.editor_facts,
+                    construction
+                        .editor_facts
+                        .expect("Agentflow combined parse requests editor facts"),
                     construction.model.warning_facts,
                 )
             },
@@ -544,7 +557,7 @@ fn construct_source(
     diagram_type: &str,
     config: &crate::MermaidConfig,
     title: Option<&str>,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     #[cfg(feature = "presentation")] capture_visuals: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
@@ -555,6 +568,7 @@ fn construct_source(
         code,
         config,
         title,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         #[cfg(feature = "presentation")]
         capture_visuals,
@@ -567,16 +581,19 @@ fn construct_source(
             model,
             #[cfg(feature = "presentation")]
             visuals: parser.visuals,
-            editor_facts: parser.facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: parser.facts,
         })),
         Err(ParseFailure::Cancelled(cancelled)) => Err(cancelled),
         Err(ParseFailure::Syntax { message, span }) => {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut parser.facts {
                 facts.mark_recovered_from_parse_error(message.clone(), Some(span));
             }
             Ok(Err(family::CombinedSemanticFailure::new(
                 Error::diagram_parse_exact(diagram_type.to_string(), message, span),
-                parser.facts.unwrap_or_default(),
+                #[cfg(feature = "editor-facts")]
+                parser.facts,
             )))
         }
     }
@@ -593,6 +610,7 @@ fn construct(
         &meta.diagram_type,
         meta.effective_config.as_config(),
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         false,
         control,
@@ -604,7 +622,9 @@ struct Parser<'a> {
     config: &'a crate::MermaidConfig,
     title: Option<&'a str>,
     control: &'a OperationControl,
+    #[cfg(feature = "editor-facts")]
     facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
     declared_entities: HashSet<String>,
     authored: AgentflowAuthoredStyles,
     #[cfg(feature = "presentation")]
@@ -634,10 +654,11 @@ impl<'a> Parser<'a> {
         source: &'a str,
         config: &'a crate::MermaidConfig,
         title: Option<&'a str>,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         #[cfg(feature = "presentation")] capture_visuals: bool,
         control: &'a OperationControl,
     ) -> Self {
+        #[cfg(feature = "editor-facts")]
         let facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -650,7 +671,9 @@ impl<'a> Parser<'a> {
             config,
             title,
             control,
+            #[cfg(feature = "editor-facts")]
             facts,
+            #[cfg(feature = "editor-facts")]
             declared_entities: HashSet::new(),
             authored: AgentflowAuthoredStyles::default(),
             #[cfg(feature = "presentation")]
@@ -720,6 +743,7 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(header_start, header_start + header.len()),
             )));
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut self.facts {
             facts.push_expected_syntax(crate::EditorExpectedSyntax::new(
                 crate::EditorExpectedSyntaxKind::NodeIdentifier,
@@ -822,12 +846,14 @@ impl<'a> Parser<'a> {
                     ) {
                         Ok(Declaration {
                             id,
+                            #[cfg(feature = "editor-facts")]
                             id_span,
                             label: title,
                             label_type,
                             metadata,
                             ..
                         }) => {
+                            #[cfg(feature = "editor-facts")]
                             self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, false);
                             (Some(id), title, label_type.or(Some("text")), metadata)
                         }
@@ -904,6 +930,7 @@ impl<'a> Parser<'a> {
                 self.diagnostic_spans
                     .entry(id.clone())
                     .or_insert_with(|| span_of(line_start, line, trimmed));
+                #[cfg(feature = "editor-facts")]
                 self.push_symbol(&id, EditorSemanticKind::Object, id_span, false);
                 continue;
             }
@@ -1000,7 +1027,7 @@ impl<'a> Parser<'a> {
         statement: &str,
         line_start: usize,
         line: &str,
-        reference: bool,
+        #[cfg(feature = "editor-facts")] reference: bool,
     ) -> std::result::Result<(String, bool), ParseFailure> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
@@ -1051,11 +1078,13 @@ impl<'a> Parser<'a> {
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
             self.sub_graphs[index].metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, true);
         } else if declaration.metadata_span.is_some()
             && let Some(&index) = self.connector_index.get(&id)
         {
             self.connectors[index].metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else if let Some(edge) = self
             .edges
@@ -1065,11 +1094,14 @@ impl<'a> Parser<'a> {
             self.authored
                 .attach_edge_metadata(&id, &declaration.metadata);
             edge.metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else {
             declaration.validate_shape()?;
+            #[cfg(feature = "editor-facts")]
             let reference = reference && self.declared_entities.contains(&id);
             self.upsert_node(declaration);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, reference);
         }
         if let Some(class) = class {
@@ -1149,7 +1181,13 @@ impl<'a> Parser<'a> {
                 self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
             }
             let start = source_start + offset;
-            let (id, metadata_call) = self.parse_node(endpoint, start, endpoint, reference)?;
+            let (id, metadata_call) = self.parse_node(
+                endpoint,
+                start,
+                endpoint,
+                #[cfg(feature = "editor-facts")]
+                reference,
+            )?;
             if let Some(previous) = pending_metadata.take() {
                 self.record_vertex_call(&previous);
             }
@@ -1397,6 +1435,7 @@ impl<'a> Parser<'a> {
         index
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_symbol(
         &mut self,
         id: &str,
@@ -2248,6 +2287,7 @@ fn direction_has_prior_token(value: &str) -> bool {
             .any(|keyword| keyword_with_whitespace(value, keyword))
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
     crate::diagrams::flowchart::is_valid_editor_node_id(candidate)
         && !starts_reserved_identifier(candidate)
@@ -2515,6 +2555,7 @@ mod semantic_tests {
     );
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn canonical_agentflow_capture_retains_success_and_failure_facts() {
         for (source, valid) in [
             ("agentflow-beta\nA --> B\n", true),
@@ -2527,6 +2568,7 @@ mod semantic_tests {
                 title: None,
             };
             AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let parsed = parse_agentflow_semantic_model_controlled(
                 source,
@@ -2539,6 +2581,7 @@ mod semantic_tests {
             let facts = parsed.editor_facts.expect("same-pass Agentflow facts");
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
             assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             assert_eq!(
                 facts.completeness,
@@ -2554,6 +2597,7 @@ mod semantic_tests {
 
     #[test]
     fn canonical_agentflow_keeps_authored_facts_without_dom_or_editor_work() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
         let parsed = crate::SemanticParser::new()
@@ -2594,6 +2638,7 @@ mod semantic_tests {
                 .all(|node| node.get("dom_index").is_none())
         );
         assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
         #[cfg(feature = "presentation")]
@@ -2615,12 +2660,14 @@ mod semantic_tests {
                 serde_json::to_value(&full.model).unwrap()
             );
             assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         }
     }
 
     #[test]
     fn canonical_agentflow_preserves_security_limits_diagnostics_and_cancellation() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let source = "agentflow-beta\nA((Circle))\nclick A call test(\"one\", two) \"Run\"\n";
         for (security, expected_callback) in [("strict", false), ("loose", true)] {
@@ -2671,6 +2718,7 @@ mod semantic_tests {
             .parse_diagram_sync("agentflow-beta\nA --> B --> C\n")
             .unwrap_err();
         assert!(error.to_string().contains("Edge limit exceeded"));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = OperationControl::new();
         control.cancel();
@@ -2714,6 +2762,7 @@ mod semantic_tests {
 
     #[cfg(feature = "compat-json")]
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn agentflow_observes_editor_facts_only_for_combined_request() {
         let meta = ParseMetadata {
             diagram_type: "agentflow".into(),
@@ -2721,6 +2770,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
         let json = parse_agentflow(SOURCE, &meta).unwrap();
@@ -2732,6 +2782,7 @@ mod semantic_tests {
             json!({"instruction": "run"})
         );
         assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
         let combined =
@@ -2739,6 +2790,7 @@ mod semantic_tests {
         let (combined_model, editor_facts, _) = combined.into_parts();
         assert_eq!(combined_model.unwrap().as_value(), &json);
         assert!(editor_facts.symbols.iter().any(|symbol| symbol.name == "A"));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read().collections, 1);
         assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
     }
@@ -3129,6 +3181,7 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_edge_endpoints_declare_entities_once_and_preserve_occurrence_spans() {
         use crate::EditorSemanticRole::{Entity, Reference};
 
@@ -3176,6 +3229,7 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_container_identifiers_do_not_select_keyword_prefixes_or_duplicate_symbols() {
         use crate::EditorSemanticRole::{Entity, Reference};
 
@@ -3217,6 +3271,7 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_presentation_symbols_use_lexer_spans_and_separate_class_definitions() {
         use crate::EditorSemanticRole::{ClassDefinition, Entity, Reference};
 
@@ -3632,7 +3687,7 @@ a --> b
                 .unwrap()
                 .err()
                 .unwrap();
-            let (error, _) = failure.into_parts();
+            let error = failure.into_error();
             assert!(
                 error.to_string().contains("No such shape:"),
                 "{shape}: {error}"
@@ -3645,6 +3700,7 @@ a --> b
             source,
             metadata.effective_config.as_config(),
             metadata.title.as_deref(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             false,
             &control,

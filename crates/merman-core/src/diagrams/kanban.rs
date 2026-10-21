@@ -1,12 +1,12 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
-use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, Result,
-    SourceSpan,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
+use crate::{Error, MermaidConfig, Result, SourceSpan};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
@@ -176,16 +176,20 @@ impl KanbanPresentationPolicy {
 
 struct KanbanSemanticSource {
     db: KanbanDb,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct KanbanParseFailure {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
 impl KanbanParseFailure {
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = self.editor_facts.unwrap_or_default();
         facts.mark_recovered_from_parse_error(
@@ -199,6 +203,7 @@ impl KanbanParseFailure {
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -212,11 +217,14 @@ struct KanbanNodeSpec {
 #[derive(Debug, Clone)]
 struct ParsedKanbanNode {
     spec: KanbanNodeSpec,
+    #[cfg(feature = "editor-facts")]
     entity: Option<SpannedText>,
+    #[cfg(feature = "editor-facts")]
     label: Option<SpannedText>,
     span: SourceSpan,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone)]
 struct KanbanMetadataField {
     key: SpannedText,
@@ -228,6 +236,7 @@ struct KanbanMetadataField {
 struct KanbanShapeData {
     text: String,
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     fields: Vec<KanbanMetadataField>,
 }
 
@@ -481,7 +490,7 @@ fn strip_inline_comment(line: &str) -> &str {
 fn parse_node_spec_for_render(
     input: &str,
     input_start: usize,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> Result<ParsedKanbanNode> {
     let input = input.trim_end();
     if input.is_empty() {
@@ -504,7 +513,11 @@ fn parse_node_spec_for_render(
                 ));
             }
         };
-        let label = parse_kanban_label(inner, inner_start);
+        let label = parse_kanban_label(
+            inner,
+            #[cfg(feature = "editor-facts")]
+            inner_start,
+        );
         let closing_start = inner_start + inner.len();
         if !tail.trim().is_empty() {
             let tail_start = input_start + input.len() - tail.len();
@@ -524,15 +537,19 @@ fn parse_node_spec_for_render(
                 descr_raw: label.text.clone(),
                 ty,
             },
+            #[cfg(feature = "editor-facts")]
             entity: matches!(editor_demand, EditorFactsDemand::Capture).then_some(label),
+            #[cfg(feature = "editor-facts")]
             label: None,
             span: SourceSpan::new(input_start, closing_start + end.len()),
         });
     }
 
     let (id_raw, rest) = split_node_id(input);
+    #[cfg(feature = "editor-facts")]
     let id = matches!(editor_demand, EditorFactsDemand::Capture).then(|| SpannedText {
         text: id_raw.to_string(),
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan::new(input_start, input_start + id_raw.len()),
     });
     let rest = rest.trim_end();
@@ -543,7 +560,9 @@ fn parse_node_spec_for_render(
                 descr_raw: id_raw.to_string(),
                 ty: NODE_TYPE_DEFAULT,
             },
+            #[cfg(feature = "editor-facts")]
             entity: id,
+            #[cfg(feature = "editor-facts")]
             label: None,
             span: SourceSpan::new(input_start, input_start + input.len()),
         });
@@ -569,7 +588,11 @@ fn parse_node_spec_for_render(
             ));
         }
     };
-    let label = parse_kanban_label(inner, inner_start);
+    let label = parse_kanban_label(
+        inner,
+        #[cfg(feature = "editor-facts")]
+        inner_start,
+    );
     let closing_start = inner_start + inner.len();
     if !tail.trim().is_empty() {
         let tail_start = rest_start + rest.len() - tail.len();
@@ -589,46 +612,36 @@ fn parse_node_spec_for_render(
             descr_raw: label.text.clone(),
             ty,
         },
+        #[cfg(feature = "editor-facts")]
         entity: id,
+        #[cfg(feature = "editor-facts")]
         label: matches!(editor_demand, EditorFactsDemand::Capture).then_some(label),
         span: SourceSpan::new(input_start, closing_start + end.len()),
     })
 }
 
-fn parse_kanban_label(raw: &str, raw_start: usize) -> SpannedText {
-    let (text, span) = if let Some(raw) = raw.strip_prefix("\"`") {
-        if let Some(raw) = raw.strip_suffix("`\"") {
-            let closing_start = raw_start + 2 + raw.len();
-            (
-                raw.to_string(),
-                SourceSpan::new(raw_start + 2, closing_start),
-            )
-        } else {
-            (
-                raw.to_string(),
-                SourceSpan::new(raw_start + 2, raw_start + 2 + raw.len()),
-            )
-        }
-    } else if let Some(raw) = raw.strip_prefix('"') {
-        if let Some(raw) = raw.strip_suffix('"') {
-            let closing_start = raw_start + 1 + raw.len();
-            (
-                raw.to_string(),
-                SourceSpan::new(raw_start + 1, closing_start),
-            )
-        } else {
-            (
-                raw.to_string(),
-                SourceSpan::new(raw_start + 1, raw_start + 1 + raw.len()),
-            )
-        }
-    } else {
-        (
-            raw.to_string(),
-            SourceSpan::new(raw_start, raw_start + raw.len()),
-        )
-    };
-    SpannedText { text, span }
+fn parse_kanban_label(raw: &str, #[cfg(feature = "editor-facts")] raw_start: usize) -> SpannedText {
+    if let Some(raw) = raw.strip_prefix("\"`") {
+        let raw = raw.strip_suffix("`\"").unwrap_or(raw);
+        return SpannedText {
+            text: raw.to_string(),
+            #[cfg(feature = "editor-facts")]
+            span: SourceSpan::new(raw_start + 2, raw_start + 2 + raw.len()),
+        };
+    }
+    if let Some(raw) = raw.strip_prefix('"') {
+        let raw = raw.strip_suffix('"').unwrap_or(raw);
+        return SpannedText {
+            text: raw.to_string(),
+            #[cfg(feature = "editor-facts")]
+            span: SourceSpan::new(raw_start + 1, raw_start + 1 + raw.len()),
+        };
+    }
+    SpannedText {
+        text: raw.to_string(),
+        #[cfg(feature = "editor-facts")]
+        span: SourceSpan::new(raw_start, raw_start + raw.len()),
+    }
 }
 
 fn split_node_id(input: &str) -> (&str, &str) {
@@ -740,6 +753,7 @@ fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     cur.as_i64().or_else(|| cur.as_f64().map(|f| f as i64))
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KanbanMetadataMode {
     Key,
@@ -748,6 +762,7 @@ enum KanbanMetadataMode {
     AfterValue,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Copy)]
 struct KanbanMetadataQuote {
     delimiter: char,
@@ -755,15 +770,18 @@ struct KanbanMetadataQuote {
     is_key: bool,
 }
 
+#[cfg(feature = "editor-facts")]
 struct KanbanMetadataCursor<'a> {
     source: &'a str,
     mode: KanbanMetadataMode,
     token_start: Option<usize>,
     current_key: Option<SpannedText>,
     quote: Option<KanbanMetadataQuote>,
+    #[cfg(feature = "editor-facts")]
     fields: Vec<KanbanMetadataField>,
 }
 
+#[cfg(feature = "editor-facts")]
 impl<'a> KanbanMetadataCursor<'a> {
     fn new(source: &'a str) -> Self {
         Self {
@@ -772,6 +790,7 @@ impl<'a> KanbanMetadataCursor<'a> {
             token_start: None,
             current_key: None,
             quote: None,
+            #[cfg(feature = "editor-facts")]
             fields: Vec::new(),
         }
     }
@@ -783,6 +802,7 @@ impl<'a> KanbanMetadataCursor<'a> {
                 if quote.is_key {
                     self.current_key = Some(SpannedText {
                         text: self.source[span.start..span.end].to_string(),
+                        #[cfg(feature = "editor-facts")]
                         span,
                     });
                     self.mode = KanbanMetadataMode::AfterKey;
@@ -904,6 +924,7 @@ impl<'a> KanbanMetadataCursor<'a> {
         };
         self.current_key = Some(SpannedText {
             text: self.source[span.start..span.end].to_string(),
+            #[cfg(feature = "editor-facts")]
             span,
         });
     }
@@ -927,6 +948,7 @@ impl<'a> KanbanMetadataCursor<'a> {
         };
         let value = value_span.map(|span| SpannedText {
             text: self.source[span.start..span.end].to_string(),
+            #[cfg(feature = "editor-facts")]
             span,
         });
         self.fields.push(KanbanMetadataField {
@@ -963,12 +985,13 @@ fn consume_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     first: &str,
     first_start: usize,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> Result<KanbanShapeData> {
     let Some(mut rest) = first.strip_prefix("@{") else {
         return Ok(KanbanShapeData {
             text: String::new(),
             span: SourceSpan::new(first_start, first_start),
+            #[cfg(feature = "editor-facts")]
             fields: Vec::new(),
         });
     };
@@ -978,6 +1001,7 @@ fn consume_shape_data(
     let mut quoted = String::new();
     let block_start = first_start;
     let mut current_scan_start = first_start + "@{".len();
+    #[cfg(feature = "editor-facts")]
     let mut metadata = matches!(editor_demand, EditorFactsDemand::Capture)
         .then(|| KanbanMetadataCursor::new(lines.source));
 
@@ -986,6 +1010,7 @@ fn consume_shape_data(
         for (idx, ch) in it {
             let source_offset = current_scan_start + idx;
             if !in_quote && ch == '}' {
+                #[cfg(feature = "editor-facts")]
                 let fields = if let Some(mut metadata) = metadata.take() {
                     metadata.close(source_offset);
                     metadata.into_fields()
@@ -1008,9 +1033,11 @@ fn consume_shape_data(
                 return Ok(KanbanShapeData {
                     text: out,
                     span: SourceSpan::new(block_start, source_offset + ch.len_utf8()),
+                    #[cfg(feature = "editor-facts")]
                     fields,
                 });
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(metadata) = &mut metadata {
                 metadata.consume(source_offset, ch);
             }
@@ -1035,11 +1062,13 @@ fn consume_shape_data(
             out.push(ch);
         }
 
+        #[cfg(feature = "editor-facts")]
         if let Some(metadata) = &mut metadata {
             metadata.line_break(current_scan_start + rest.len());
         }
 
         let Some(next_line) = lines.next() else {
+            #[cfg(feature = "editor-facts")]
             if let Some(metadata) = &mut metadata {
                 metadata.finish_at_eof(lines.offset());
             }
@@ -1079,7 +1108,7 @@ fn split_node_and_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     rest: &str,
     rest_start: usize,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> Result<(String, Option<KanbanShapeData>)> {
     let mut in_quote = false;
     let mut in_backtick_quote = false;
@@ -1112,8 +1141,13 @@ fn split_node_and_shape_data(
 
         if rest[idx..].starts_with("@{") {
             let node_part = rest[..idx].trim_end().to_string();
-            let shape_data =
-                consume_shape_data(lines, &rest[idx..], rest_start + idx, editor_demand)?;
+            let shape_data = consume_shape_data(
+                lines,
+                &rest[idx..],
+                rest_start + idx,
+                #[cfg(feature = "editor-facts")]
+                editor_demand,
+            )?;
             return Ok((node_part, Some(shape_data)));
         }
     }
@@ -1125,7 +1159,7 @@ fn construct_kanban_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     #[cfg(feature = "presentation")] presentation: Option<&KanbanPresentationPolicy>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
@@ -1134,6 +1168,7 @@ fn construct_kanban_semantic_source_controlled(
     KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut db = KanbanDb::default();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -1154,7 +1189,9 @@ fn construct_kanban_semantic_source_controlled(
                     "expected kanban header",
                     span.start,
                 )),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
+                #[cfg(feature = "editor-facts")]
                 span,
             }));
         };
@@ -1186,7 +1223,9 @@ fn construct_kanban_semantic_source_controlled(
                 "expected kanban header",
                 span,
             )),
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             span,
         }));
     };
@@ -1197,8 +1236,10 @@ fn construct_kanban_semantic_source_controlled(
             &mut lines,
             KanbanStatementContext {
                 db: &mut db,
+                #[cfg(feature = "editor-facts")]
                 facts: editor_facts.as_mut(),
                 config,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
                 #[cfg(feature = "presentation")]
                 presentation,
@@ -1208,8 +1249,14 @@ fn construct_kanban_semantic_source_controlled(
             *tail_start,
         )?
     {
+        #[cfg(feature = "editor-facts")]
         let fallback = SourceSpan::new(*tail_start, *tail_start + tail.len());
-        record_kanban_failure(&mut first_failure, error, fallback);
+        record_kanban_failure(
+            &mut first_failure,
+            error,
+            #[cfg(feature = "editor-facts")]
+            fallback,
+        );
     }
     control.checkpoint()?;
     while let Some(source_line) = lines.next() {
@@ -1218,8 +1265,10 @@ fn construct_kanban_semantic_source_controlled(
             &mut lines,
             KanbanStatementContext {
                 db: &mut db,
+                #[cfg(feature = "editor-facts")]
                 facts: editor_facts.as_mut(),
                 config,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
                 #[cfg(feature = "presentation")]
                 presentation,
@@ -1228,40 +1277,61 @@ fn construct_kanban_semantic_source_controlled(
             source_line.text,
             source_line.start,
         )? {
+            #[cfg(feature = "editor-facts")]
             let fallback = SourceSpan::new(
                 source_line.start,
                 source_line.start + source_line.text.len(),
             );
-            record_kanban_failure(&mut first_failure, error, fallback);
+            record_kanban_failure(
+                &mut first_failure,
+                error,
+                #[cfg(feature = "editor-facts")]
+                fallback,
+            );
         }
     }
-    if let Some((error, span)) = first_failure {
-        Ok(Err(KanbanParseFailure {
-            error: Box::new(error),
-            editor_facts,
-            span,
-        }))
+    if let Some(failure) = first_failure {
+        #[cfg(feature = "editor-facts")]
+        let mut failure = failure;
+        #[cfg(feature = "editor-facts")]
+        {
+            failure.editor_facts = editor_facts;
+        }
+        Ok(Err(failure))
     } else {
         control.checkpoint()?;
-        Ok(Ok(KanbanSemanticSource { db, editor_facts }))
+        Ok(Ok(KanbanSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }))
     }
 }
 
 fn record_kanban_failure(
-    first_failure: &mut Option<(Error, SourceSpan)>,
+    first_failure: &mut Option<KanbanParseFailure>,
     error: Error,
-    fallback: SourceSpan,
+    #[cfg(feature = "editor-facts")] fallback: SourceSpan,
 ) {
     if first_failure.is_none() {
+        #[cfg(feature = "editor-facts")]
         let span = kanban_error_span(&error, fallback);
-        *first_failure = Some((error, span));
+        *first_failure = Some(KanbanParseFailure {
+            error: Box::new(error),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: None,
+            #[cfg(feature = "editor-facts")]
+            span,
+        });
     }
 }
 
 struct KanbanStatementContext<'a> {
     db: &'a mut KanbanDb,
+    #[cfg(feature = "editor-facts")]
     facts: Option<&'a mut EditorSemanticFacts>,
     config: &'a MermaidConfig,
+    #[cfg(feature = "editor-facts")]
     editor_demand: EditorFactsDemand,
     #[cfg(feature = "presentation")]
     presentation: Option<&'a KanbanPresentationPolicy>,
@@ -1276,8 +1346,10 @@ fn parse_kanban_statement(
 ) -> crate::OperationControlResult<Result<()>> {
     let KanbanStatementContext {
         db,
+        #[cfg(feature = "editor-facts")]
         mut facts,
         config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         #[cfg(feature = "presentation")]
         presentation,
@@ -1306,6 +1378,7 @@ fn parse_kanban_statement(
         let trailing = raw_value.trim_end().len();
         let icon = SpannedText {
             text: raw_value[leading.min(trailing)..trailing].to_string(),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(
                 rest_start + value_start + leading.min(trailing),
                 rest_start + value_start + trailing,
@@ -1332,6 +1405,7 @@ fn parse_kanban_statement(
                 span,
             )));
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_deref_mut() {
             facts.push_directive_prefix("icon");
         }
@@ -1339,6 +1413,7 @@ fn parse_kanban_statement(
             return Ok(Ok(()));
         }
         db.decorate_last(None, Some(icon.text.clone()), config);
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_deref_mut() {
             facts.push_symbol(EditorSemanticSymbol::payload(
                 icon.text,
@@ -1353,9 +1428,11 @@ fn parse_kanban_statement(
 
     if let Some(after) = rest.strip_prefix(":::") {
         let class_raw = after.trim();
+        #[cfg(feature = "editor-facts")]
         let leading = after.len() - after.trim_start().len();
         let class_name = SpannedText {
             text: class_raw.to_string(),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(
                 rest_start + 3 + leading,
                 rest_start + 3 + leading + class_raw.len(),
@@ -1363,9 +1440,11 @@ fn parse_kanban_statement(
         };
         db.decorate_last(Some(class_name.text.clone()), None, config);
         if !class_name.text.is_empty() {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = facts.as_deref_mut() {
                 facts.push_directive_prefix(":::");
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = facts.as_deref_mut() {
                 facts.push_symbol(EditorSemanticSymbol::payload(
                     class_name.text,
@@ -1379,19 +1458,31 @@ fn parse_kanban_statement(
         return Ok(Ok(()));
     }
 
-    let (node_part, shape_data) =
-        match split_node_and_shape_data(lines, rest, rest_start, editor_demand) {
-            Ok(parsed) => parsed,
-            Err(error) => return Ok(Err(error)),
-        };
-    if node_part.trim().is_empty() {
-        return Ok(Ok(()));
-    }
-    let parsed = match parse_node_spec_for_render(&node_part, rest_start, editor_demand) {
+    let (node_part, shape_data) = match split_node_and_shape_data(
+        lines,
+        rest,
+        rest_start,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+    ) {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
+    if node_part.trim().is_empty() {
+        return Ok(Ok(()));
+    }
+    let parsed = match parse_node_spec_for_render(
+        &node_part,
+        rest_start,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    #[cfg(feature = "editor-facts")]
     let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = facts.as_deref_mut()
         && let Some(shape_data) = &shape_data
     {
@@ -1428,6 +1519,7 @@ fn parse_kanban_statement(
     if let Err(error) = db.add_node(indent, parsed.spec, parsed.span, shape_data, config) {
         return Ok(Err(error));
     }
+    #[cfg(feature = "editor-facts")]
     if let Some(facts) = facts {
         let entity = parsed.entity.expect("captured node entity");
         let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
@@ -1462,6 +1554,7 @@ fn parse_kanban_statement(
     Ok(Ok(()))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_kanban_metadata_facts(facts: &mut EditorSemanticFacts, fields: &[KanbanMetadataField]) {
     for field in fields {
         facts.push_symbol(EditorSemanticSymbol::payload(
@@ -1485,6 +1578,7 @@ fn push_kanban_metadata_facts(facts: &mut EditorSemanticFacts, fields: &[KanbanM
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn kanban_node_editor_kind(ty: i32) -> EditorSemanticKind {
     if matches!(
         ty,
@@ -1496,6 +1590,7 @@ fn kanban_node_editor_kind(ty: i32) -> EditorSemanticKind {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
     match error {
         Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
@@ -1506,34 +1601,40 @@ fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
 pub(crate) fn parse_kanban_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<KanbanDiagramModel>> {
     let construction = construct_kanban_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         #[cfg(feature = "presentation")]
         None,
         control,
     )?;
-    let (model, editor_facts) = match construction {
-        Ok(source) => (
-            Ok(source.db.into_semantic_model(&metadata.semantic_config)),
-            source.editor_facts,
-        ),
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Omit => (Err(*failure.error), None),
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_error_and_editor_facts();
-                (Err(error), Some(facts))
-            }
+    Ok(match construction {
+        Ok(source) => crate::family::SemanticConstruction {
+            model: Ok(source.db.into_semantic_model(&metadata.semantic_config)),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: source.editor_facts,
         },
-    };
-    Ok(crate::family::SemanticConstruction {
-        model,
-        editor_facts,
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            if editor_demand == EditorFactsDemand::Capture {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                return Ok(crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                });
+            }
+            crate::family::SemanticConstruction {
+                model: Err(*failure.error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: None,
+            }
+        }
     })
 }
 
@@ -1609,7 +1710,7 @@ pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     render_model_to_compat_json(&model, meta)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1621,6 +1722,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
             code,
             &meta.diagram_type,
             meta.effective_config.as_config(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             Some(&KanbanPresentationPolicy::from_config(
                 meta.effective_config.as_config(),
@@ -1734,6 +1836,7 @@ pub(crate) fn parse_kanban_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         Some(&KanbanPresentationPolicy::from_config(
             meta.effective_config.as_config(),
@@ -1754,10 +1857,9 @@ pub(crate) fn parse_kanban_model_for_render_controlled(
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
-        ParseOptions,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticCompleteness;
+    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
@@ -1786,6 +1888,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn combined_parse_constructs_once_and_preserves_all_projections() {
         let text = concat!(
             "kanban\r\n",
@@ -1834,6 +1937,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn malformed_editor_input_recovers_from_one_construction() {
         let text = "kanban\n  backlog[Backlog]\n    broken[Open\n";
         reset_kanban_syntax_construction_count();
@@ -1865,19 +1969,22 @@ mod tests {
             Some(SourceSpan::new(broken_end, broken_end))
         );
 
-        reset_kanban_syntax_construction_count();
-        let facts = crate::family::test_support::editor_facts(
-            parse_kanban_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(kanban_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.diagnostics.len(), 1);
-        assert_eq!(facts.diagnostics[0].span, strict_diagnostic.span());
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "todo"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
-        assert!(!facts.symbols.iter().any(|symbol| symbol.name == "invalid"));
+        #[cfg(feature = "editor-facts")]
+        {
+            reset_kanban_syntax_construction_count();
+            let facts = crate::family::test_support::editor_facts(
+                parse_kanban_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(kanban_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(facts.diagnostics[0].span, strict_diagnostic.span());
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "todo"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "invalid"));
+        }
     }
 
     fn sections(model: &Value) -> Vec<Value> {
@@ -1889,6 +1996,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_kanban_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = "kanban\n    root\n      child1\n    :::highlight\n";
@@ -1908,6 +2016,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn kanban_recovered_editor_fact_diagnostics_are_english() {
         let engine = Engine::new();
         let text = "kanban\n  broken[Open\n";
@@ -2112,12 +2221,15 @@ mod tests {
         let sections = sections(&model);
         assert!(sections[0].get("icon").is_none());
 
-        let (_, facts) = crate::family::test_support::into_result(
-            parse_kanban_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
-        )
-        .unwrap();
-        assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));
-        assert!(facts.symbols.iter().all(|symbol| symbol.name != "icon"));
+        #[cfg(feature = "editor-facts")]
+        {
+            let (_, facts) = crate::family::test_support::into_result(
+                parse_kanban_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
+            )
+            .unwrap();
+            assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));
+            assert!(facts.symbols.iter().all(|symbol| symbol.name != "icon"));
+        }
     }
 
     #[test]
@@ -2353,10 +2465,11 @@ mod semantic_tests {
     #[test]
     fn semantic_cards_preserve_authored_metadata_without_editor_work() {
         reset_kanban_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_kanban_semantic_model_controlled(
             "kanban\n  todo[Todo]\n    card[Caption]@{ ticket: MC-1, priority: high, custom: [1, 2] }\n    ::icon(star)\n    :::highlight\n",
-            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+            &metadata(), #[cfg(feature = "editor-facts")] EditorFactsDemand::Omit, &crate::OperationControl::new(),
         ).unwrap().model.unwrap();
         assert_eq!(model.nodes.len(), 2);
         assert!(model.nodes[0].is_group);
@@ -2377,6 +2490,7 @@ mod semantic_tests {
             serde_json::json!([1, 2])
         );
         assert_eq!(kanban_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -2388,6 +2502,7 @@ mod semantic_tests {
         let model = parse_kanban_semantic_model_controlled(
             "kanban\n  a[<script>bad()</script>Safe]\n",
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2399,6 +2514,7 @@ mod semantic_tests {
         let error = parse_kanban_semantic_model_controlled(
             input,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2444,6 +2560,7 @@ mod semantic_tests {
             parse_kanban_semantic_model_controlled(
                 "kanban\n  root",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )
@@ -2460,6 +2577,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         reset_kanban_syntax_construction_count();
         parse_kanban_model_for_render_controlled(
@@ -2470,10 +2588,12 @@ mod semantic_tests {
         .unwrap()
         .unwrap();
         assert_eq!(kanban_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         reset_kanban_syntax_construction_count();
         parse_kanban("kanban\n  section\n    card", &full).unwrap();
         assert_eq!(kanban_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
     #[cfg(feature = "presentation")]
@@ -2483,6 +2603,7 @@ mod semantic_tests {
         let canonical = parse_kanban_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2531,15 +2652,18 @@ mod semantic_tests {
             diagnostic.span(),
             Some(SourceSpan::new(start, start + "section[Section]".len()))
         );
-        let facts = crate::family::test_support::editor_facts(
-            parse_kanban_json_and_editor_facts,
-            source,
-            &full,
-        );
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_kanban_json_and_editor_facts,
+                source,
+                &full,
+            );
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+        }
     }
 }

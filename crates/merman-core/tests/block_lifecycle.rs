@@ -1,4 +1,5 @@
 #![cfg(feature = "diagram-block")]
+#![cfg(feature = "presentation")]
 
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;

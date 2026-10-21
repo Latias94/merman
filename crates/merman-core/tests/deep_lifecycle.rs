@@ -1,4 +1,5 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
 use merman_core::{BuiltinRenderSemantic, Engine, ParseOptions};
 use std::fmt::Write as _;

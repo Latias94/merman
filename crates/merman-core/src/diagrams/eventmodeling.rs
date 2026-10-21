@@ -1,19 +1,24 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
-use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
-};
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::push_langium_common_editor_fact;
+use crate::diagrams::langium_common::{LangiumCommonFacts, parse_langium_common};
 use crate::diagrams::scan::physical_line_at;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, Result, SourceSpan,
+    EditorSemanticKind, EditorSemanticSymbol,
 };
+use crate::{Error, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(feature = "editor-facts")]
+use std::collections::HashSet;
 
 #[cfg(test)]
 pub(crate) fn reset_eventmodeling_syntax_construction_count() {
@@ -89,6 +94,7 @@ pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Va
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -102,7 +108,7 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
         control,
     )? {
         Ok(mut source) => {
-            let editor_facts = std::mem::take(&mut source.editor_facts);
+            let editor_facts = source.editor_facts.take().expect("requested editor facts");
             let json = source.into_compat_json_controlled(meta, control)?;
             Ok((json, editor_facts))
         }
@@ -151,6 +157,7 @@ pub(crate) fn parse_eventmodeling_model_for_render_controlled(
     let construction = construct_eventmodeling_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -164,38 +171,53 @@ pub(crate) fn parse_eventmodeling_model_for_render_controlled(
 pub(crate) fn parse_eventmodeling_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<EventModelingDiagramModel>> {
     let construction = construct_eventmodeling_semantic_source_controlled(
         code,
         &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
-        Ok(mut source) => {
-            let editor_facts = (editor_demand == EditorFactsDemand::Capture)
-                .then(|| std::mem::take(&mut source.editor_facts));
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let mut source = source;
+            #[cfg(feature = "editor-facts")]
+            let editor_facts = source.editor_facts.take();
             let model = source.into_model_controlled(&metadata.semantic_config, control)?;
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_error_and_editor_facts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_error_and_editor_facts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(*failure.error),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(*failure.error),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(*failure.error),
+                }
+            }
+        }
     })
 }
 
@@ -251,6 +273,7 @@ struct EventModelingGwtFacts {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct EventModelingValidationDiagnostic {
     message: String,
     span: SourceSpan,
@@ -265,21 +288,26 @@ struct EventModelingSyntaxFacts {
     data_entities: Vec<EventModelingDataEntityFacts>,
     note_entities: Vec<EventModelingNoteFacts>,
     gwt_entities: Vec<EventModelingGwtFacts>,
+    #[cfg(feature = "editor-facts")]
     validation_diagnostics: Vec<EventModelingValidationDiagnostic>,
 }
 
 struct EventModelingSemanticSource {
     syntax: EventModelingSyntaxFacts,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct EventModelingParseFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Box<EditorSemanticFacts>>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
 impl EventModelingSyntaxFacts {
+    #[cfg(feature = "editor-facts")]
     fn editor_facts_controlled(
         &self,
         control: &crate::OperationControl,
@@ -438,8 +466,9 @@ impl EventModelingSemanticSource {
 }
 
 impl EventModelingParseFailure {
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
-        let mut facts = *self.editor_facts;
+        let mut facts = *self.editor_facts.expect("requested editor facts");
         facts.mark_recovered_from_parse_error(
             format!(
                 "eventmodeling parser recovered after parse error: {}",
@@ -459,6 +488,7 @@ fn construct_eventmodeling_semantic_source(
     construct_eventmodeling_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -468,7 +498,7 @@ fn construct_eventmodeling_semantic_source(
 fn construct_eventmodeling_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<EventModelingSemanticSource, EventModelingParseFailure>,
@@ -481,12 +511,17 @@ fn construct_eventmodeling_semantic_source_controlled(
     let mut cursor = EventModelingCursor::new(code, control);
     if let Err(error) = cursor.skip_hidden(diagram_type) {
         control.checkpoint()?;
+        #[cfg(feature = "editor-facts")]
         let fallback = cursor.insertion_span();
         return Ok(Err(eventmodeling_failure_controlled(
             error,
+            #[cfg(feature = "editor-facts")]
             syntax,
+            #[cfg(feature = "editor-facts")]
             fallback,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
+            #[cfg(feature = "editor-facts")]
             control,
         )?));
     }
@@ -496,12 +531,17 @@ fn construct_eventmodeling_semantic_source_controlled(
     match header {
         Ok(header) => syntax.header = Some(header),
         Err(error) => {
+            #[cfg(feature = "editor-facts")]
             let fallback = cursor.insertion_span();
             return Ok(Err(eventmodeling_failure_controlled(
                 error,
+                #[cfg(feature = "editor-facts")]
                 syntax,
+                #[cfg(feature = "editor-facts")]
                 fallback,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
+                #[cfg(feature = "editor-facts")]
                 control,
             )?));
         }
@@ -593,25 +633,40 @@ fn construct_eventmodeling_semantic_source_controlled(
         }
     }
 
-    if let Some(error) = validate_eventmodeling_semantics(&mut syntax, diagram_type, control)? {
+    if let Some(error) = validate_eventmodeling_semantics(
+        &mut syntax,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )? {
         let span = eventmodeling_error_span(&error, cursor.insertion_span());
         first_failure.get_or_insert((error, span));
     }
-    if let Some((error, span)) = first_failure {
+    if let Some(failure) = first_failure {
+        let error = failure.0;
+        #[cfg(feature = "editor-facts")]
+        let span = failure.1;
         return Ok(Err(eventmodeling_failure_controlled(
             error,
+            #[cfg(feature = "editor-facts")]
             syntax,
+            #[cfg(feature = "editor-facts")]
             span,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
+            #[cfg(feature = "editor-facts")]
             control,
         )?));
     }
+    #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
-        EditorFactsDemand::Capture => syntax.editor_facts_controlled(control)?,
-        EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+        EditorFactsDemand::Capture => Some(syntax.editor_facts_controlled(control)?),
+        EditorFactsDemand::Omit => None,
     };
     Ok(Ok(EventModelingSemanticSource {
         syntax,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -862,19 +917,23 @@ fn eventmodeling_yaml_end(
 
 fn eventmodeling_failure_controlled(
     error: Error,
-    syntax: EventModelingSyntaxFacts,
-    fallback: SourceSpan,
-    editor_demand: EditorFactsDemand,
-    control: &crate::OperationControl,
+    #[cfg(feature = "editor-facts")] syntax: EventModelingSyntaxFacts,
+    #[cfg(feature = "editor-facts")] fallback: SourceSpan,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] control: &crate::OperationControl,
 ) -> crate::OperationControlResult<EventModelingParseFailure> {
+    #[cfg(feature = "editor-facts")]
     let span = eventmodeling_error_span(&error, fallback);
+    #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
-        EditorFactsDemand::Capture => syntax.editor_facts_controlled(control)?,
-        EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+        EditorFactsDemand::Capture => Some(syntax.editor_facts_controlled(control)?),
+        EditorFactsDemand::Omit => None,
     };
     Ok(EventModelingParseFailure {
         error: Box::new(error),
-        editor_facts: Box::new(editor_facts),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: editor_facts.map(Box::new),
+        #[cfg(feature = "editor-facts")]
         span,
     })
 }
@@ -1556,6 +1615,7 @@ fn parse_eventmodeling_gwt_cursor(
 fn validate_eventmodeling_semantics(
     syntax: &mut EventModelingSyntaxFacts,
     diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Option<Error>> {
     let mut frame_types = HashMap::with_capacity(syntax.frames.len());
@@ -1577,90 +1637,94 @@ fn validate_eventmodeling_semantics(
             }
         }
     }
-    let mut data_names = HashSet::with_capacity(syntax.data_entities.len());
-    for data in &syntax.data_entities {
-        control.checkpoint()?;
-        data_names.insert(data.name.text.as_str());
-    }
-    let mut model_entity_names = HashSet::with_capacity(syntax.model_entities.len());
-    for entity in &syntax.model_entities {
-        control.checkpoint()?;
-        model_entity_names.insert(entity.text.as_str());
-    }
-    let mut diagnostics = Vec::new();
-
-    for frame in &syntax.frames {
-        control.checkpoint()?;
-        for source in &frame.source_frames {
+    #[cfg(feature = "editor-facts")]
+    if editor_demand == EditorFactsDemand::Capture {
+        let mut data_names = HashSet::with_capacity(syntax.data_entities.len());
+        for data in &syntax.data_entities {
             control.checkpoint()?;
-            let Some(source_type) = frame_types.get(&source.text) else {
-                diagnostics.push(EventModelingValidationDiagnostic {
-                    message: format!("unknown eventmodeling frame reference '{}'", source.text),
-                    span: source.span,
-                });
-                continue;
-            };
-            if let Some((target_label, expected_label, allowed)) =
-                eventmodeling_allowed_source_types(&frame.model_entity_type)
-                && !allowed.contains(&source_type.as_str())
-            {
-                diagnostics.push(EventModelingValidationDiagnostic {
+            data_names.insert(data.name.text.as_str());
+        }
+        let mut model_entity_names = HashSet::with_capacity(syntax.model_entities.len());
+        for entity in &syntax.model_entities {
+            control.checkpoint()?;
+            model_entity_names.insert(entity.text.as_str());
+        }
+        let mut diagnostics = Vec::new();
+
+        for frame in &syntax.frames {
+            control.checkpoint()?;
+            for source in &frame.source_frames {
+                control.checkpoint()?;
+                let Some(source_type) = frame_types.get(&source.text) else {
+                    diagnostics.push(EventModelingValidationDiagnostic {
+                        message: format!("unknown eventmodeling frame reference '{}'", source.text),
+                        span: source.span,
+                    });
+                    continue;
+                };
+                if let Some((target_label, expected_label, allowed)) =
+                    eventmodeling_allowed_source_types(&frame.model_entity_type)
+                    && !allowed.contains(&source_type.as_str())
+                {
+                    diagnostics.push(EventModelingValidationDiagnostic {
                     message: format!(
                         "A {target_label} can only receive input from a {expected_label}, not from '{source_type}'."
                     ),
                     span: source.span,
                 });
+                }
             }
-        }
-        if let Some(reference) = &frame.data_reference
-            && !data_names.contains(reference.text.as_str())
-        {
-            diagnostics.push(EventModelingValidationDiagnostic {
-                message: format!("unknown eventmodeling data reference '{}'", reference.text),
-                span: reference.span,
-            });
-        }
-    }
-    for note in &syntax.note_entities {
-        control.checkpoint()?;
-        if !frame_types.contains_key(&note.source_frame.text) {
-            diagnostics.push(EventModelingValidationDiagnostic {
-                message: format!(
-                    "unknown eventmodeling frame reference '{}'",
-                    note.source_frame.text
-                ),
-                span: note.source_frame.span,
-            });
-        }
-    }
-    for gwt in &syntax.gwt_entities {
-        control.checkpoint()?;
-        if !frame_types.contains_key(&gwt.source_frame.text) {
-            diagnostics.push(EventModelingValidationDiagnostic {
-                message: format!(
-                    "unknown eventmodeling frame reference '{}'",
-                    gwt.source_frame.text
-                ),
-                span: gwt.source_frame.span,
-            });
-        }
-        for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
-            control.checkpoint()?;
-            if !model_entity_names.contains(statement.entity_reference.text.as_str()) {
+            if let Some(reference) = &frame.data_reference
+                && !data_names.contains(reference.text.as_str())
+            {
                 diagnostics.push(EventModelingValidationDiagnostic {
-                    message: format!(
-                        "unknown eventmodeling model entity reference '{}'",
-                        statement.entity_reference.text
-                    ),
-                    span: statement.entity_reference.span,
+                    message: format!("unknown eventmodeling data reference '{}'", reference.text),
+                    span: reference.span,
                 });
             }
         }
+        for note in &syntax.note_entities {
+            control.checkpoint()?;
+            if !frame_types.contains_key(&note.source_frame.text) {
+                diagnostics.push(EventModelingValidationDiagnostic {
+                    message: format!(
+                        "unknown eventmodeling frame reference '{}'",
+                        note.source_frame.text
+                    ),
+                    span: note.source_frame.span,
+                });
+            }
+        }
+        for gwt in &syntax.gwt_entities {
+            control.checkpoint()?;
+            if !frame_types.contains_key(&gwt.source_frame.text) {
+                diagnostics.push(EventModelingValidationDiagnostic {
+                    message: format!(
+                        "unknown eventmodeling frame reference '{}'",
+                        gwt.source_frame.text
+                    ),
+                    span: gwt.source_frame.span,
+                });
+            }
+            for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
+                control.checkpoint()?;
+                if !model_entity_names.contains(statement.entity_reference.text.as_str()) {
+                    diagnostics.push(EventModelingValidationDiagnostic {
+                        message: format!(
+                            "unknown eventmodeling model entity reference '{}'",
+                            statement.entity_reference.text
+                        ),
+                        span: statement.entity_reference.span,
+                    });
+                }
+            }
+        }
+        syntax.validation_diagnostics = diagnostics;
     }
-    syntax.validation_diagnostics = diagnostics;
     Ok(duplicate_frame)
 }
 
+#[cfg(feature = "editor-facts")]
 fn eventmodeling_allowed_source_types(
     target: &str,
 ) -> Option<(&'static str, &'static str, &'static [&'static str])> {
@@ -1674,6 +1738,7 @@ fn eventmodeling_allowed_source_types(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_eventmodeling_frame_facts(
     facts: &mut EditorSemanticFacts,
     frame: &EventModelingFrameFacts,
@@ -1752,6 +1817,7 @@ fn push_eventmodeling_frame_facts(
     Ok(())
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_eventmodeling_data_facts(
     facts: &mut EditorSemanticFacts,
     data_entity: &EventModelingDataEntityFacts,
@@ -1790,6 +1856,7 @@ fn push_eventmodeling_data_facts(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventModelingNoteFacts) {
     if !note.source_frame.text.is_empty() {
         facts.push_symbol(
@@ -1825,6 +1892,7 @@ fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventMo
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_eventmodeling_gwt_facts(
     facts: &mut EditorSemanticFacts,
     gwt: &EventModelingGwtFacts,
@@ -1866,10 +1934,11 @@ fn push_eventmodeling_gwt_facts(
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseMetadata,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::Engine;
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+    use crate::{MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -1894,6 +1963,7 @@ mod tests {
             construct_eventmodeling_semantic_source_controlled(
                 &text,
                 &meta().diagram_type,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             ),
@@ -1919,6 +1989,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn late_syntax_error_recovery_can_cancel_while_projecting_prefix_facts() {
         let header = "eventmodeling";
         let mut source = format!("{header}\n");
@@ -2007,17 +2078,20 @@ tf 03 evt Cart.ItemAdded ->> 01 ->> 02
 
         assert_eq!(model.frames[0].entity_identifier, "Sales.Order");
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert!(
-            facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "Sales.Order")
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == "Sales.Order")
+            );
+        }
     }
 
     #[test]
@@ -2084,6 +2158,7 @@ data ItemAddedData {
         let expected_model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
 
         reset_eventmodeling_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let (json, facts) =
             crate::family::test_support::into_result(parse_eventmodeling_json_and_editor_facts(
                 text,
@@ -2092,6 +2167,8 @@ data ItemAddedData {
             ))
             .unwrap();
 
+        #[cfg(not(feature = "editor-facts"))]
+        let json = parse_eventmodeling(text, &meta()).unwrap();
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
         assert_eq!(
@@ -2107,25 +2184,31 @@ data ItemAddedData {
             serde_json::to_value(&expected_model.data_entities).unwrap()
         );
 
-        let block_start = text.find("{\r\n").unwrap();
-        let block_end = text.rfind('}').unwrap() + 1;
-        let block = facts
-            .symbols
-            .iter()
-            .find(|symbol| symbol.detail.as_deref() == Some("eventmodeling data block"))
-            .expect("missing multiline data block fact");
-        assert_eq!(block.span, SourceSpan::new(block_start, block_end));
-        assert_eq!(block.selection, block.span);
-        assert_eq!(block.name, &text[block_start..block_end]);
+        #[cfg(feature = "editor-facts")]
+        {
+            let block_start = text.find("{\r\n").unwrap();
+            let block_end = text.rfind('}').unwrap() + 1;
+            let block = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("eventmodeling data block"))
+                .expect("missing multiline data block fact");
+            assert_eq!(block.span, SourceSpan::new(block_start, block_end));
+            assert_eq!(block.selection, block.span);
+            assert_eq!(block.name, &text[block_start..block_end]);
+        }
     }
 
     #[test]
     fn data_block_closing_brace_accepts_pinned_trailing_whitespace() {
         for suffix in ["  \n", "\t"] {
             let text = format!("eventmodeling\ndata Payload {{\nvalue\n}}{suffix}");
+            #[cfg(feature = "editor-facts")]
             let block_start = text.find('{').expect("opening brace");
+            #[cfg(feature = "editor-facts")]
             let block_end = text.rfind('}').expect("closing brace") + 1;
 
+            #[cfg(feature = "editor-facts")]
             let (json, facts) = crate::family::test_support::into_result(
                 parse_eventmodeling_json_and_editor_facts(
                     &text,
@@ -2134,18 +2217,25 @@ data ItemAddedData {
                 ),
             )
             .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
+            #[cfg(not(feature = "editor-facts"))]
+            let json = parse_eventmodeling(&text, &meta())
+                .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
             let typed = parse_eventmodeling_model_for_render(&text, &meta())
                 .expect("typed projection accepts the same block");
+            #[cfg(feature = "editor-facts")]
             let block = facts
                 .symbols
                 .iter()
                 .find(|symbol| symbol.detail.as_deref() == Some("eventmodeling data block"))
                 .expect("data block semantic fact");
 
+            #[cfg(feature = "editor-facts")]
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
             assert_eq!(json["dataEntities"][0]["name"], "Payload");
             assert_eq!(typed.data_entities[0].name, "Payload");
+            #[cfg(feature = "editor-facts")]
             assert_eq!(block.span, SourceSpan::new(block_start, block_end));
+            #[cfg(feature = "editor-facts")]
             assert_eq!(block.name, text[block_start..block_end]);
         }
     }
@@ -2172,24 +2262,28 @@ data ItemAddedData {
             ParseDiagnosticSpanKind::InsertionPoint
         );
 
-        reset_eventmodeling_syntax_construction_count();
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(eventmodeling_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "01"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Broken"));
-        let block_start = text.find('{').unwrap();
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.detail.as_deref() == Some("eventmodeling data block")
-                && symbol.span == SourceSpan::new(block_start, text.len())
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            reset_eventmodeling_syntax_construction_count();
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(eventmodeling_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "01"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Broken"));
+            let block_start = text.find('{').unwrap();
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.detail.as_deref() == Some("eventmodeling data block")
+                    && symbol.span == SourceSpan::new(block_start, text.len())
+            }));
+        }
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_eventmodeling_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = r#"eventmodeling
@@ -2235,6 +2329,7 @@ data ItemAddedData {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_facts_assign_entity_reference_and_payload_roles_explicitly() {
         let text = concat!(
             "eventmodeling\n",
@@ -2339,32 +2434,33 @@ gwt 002
         assert_eq!(model.frames.len(), 2);
         assert_eq!(model.data_entities.len(), 1);
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert!(facts.diagnostics.is_empty());
-        for (name, detail) in [
-            ("CartUpdated", "eventmodeling model entity"),
-            ("CartData", "eventmodeling data entity"),
-            ("002", "eventmodeling note source frame"),
-            ("ProductChanged", "eventmodeling gwt entity reference"),
-        ] {
-            assert!(
-                facts.symbols.iter().any(|symbol| {
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (name, detail) in [
+                ("CartUpdated", "eventmodeling model entity"),
+                ("CartData", "eventmodeling data entity"),
+                ("002", "eventmodeling note source frame"),
+                ("ProductChanged", "eventmodeling gwt entity reference"),
+            ] {
+                assert!(facts.symbols.iter().any(|symbol| {
                     symbol.name == name && symbol.detail.as_deref() == Some(detail)
-                })
-            );
-        }
-        for directive in ["title", "accTitle", "accDescr"] {
-            assert!(
-                facts
-                    .directive_prefixes
-                    .iter()
-                    .any(|item| item == directive)
-            );
+                }));
+            }
+            for directive in ["title", "accTitle", "accDescr"] {
+                assert!(
+                    facts
+                        .directive_prefixes
+                        .iter()
+                        .any(|item| item == directive)
+                );
+            }
         }
     }
 
@@ -2387,14 +2483,17 @@ gwt 002
         };
         assert_eq!(diagnostic.span(), Some(invalid_span));
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Done"));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Done"));
+        }
     }
 
     #[test]
@@ -2407,14 +2506,17 @@ gwt 002
             "entity After\r\n",
         );
         parse_eventmodeling(text, &meta()).expect("C-style comments are hidden family grammar");
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
 
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
+        }
     }
 
     #[test]
@@ -2439,12 +2541,15 @@ gwt 002
             ParseDiagnosticSpanKind::InsertionPoint
         );
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        }
     }
 
     #[test]
@@ -2494,26 +2599,29 @@ gwt 02
 "#;
 
         parse_eventmodeling(text, &meta()).unwrap();
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        for expected in [
-            "event can only receive input from a command",
-            "unknown eventmodeling data reference 'MissingData'",
-            "unknown eventmodeling frame reference '99'",
-            "unknown eventmodeling model entity reference 'MissingEntity'",
-        ] {
-            assert!(
-                facts
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.message.contains(expected)),
-                "missing validation diagnostic containing {expected:?}: {:?}",
-                facts.diagnostics
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                text,
+                &meta(),
             );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            for expected in [
+                "event can only receive input from a command",
+                "unknown eventmodeling data reference 'MissingData'",
+                "unknown eventmodeling frame reference '99'",
+                "unknown eventmodeling model entity reference 'MissingEntity'",
+            ] {
+                assert!(
+                    facts
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.message.contains(expected)),
+                    "missing validation diagnostic containing {expected:?}: {:?}",
+                    facts.diagnostics
+                );
+            }
         }
     }
 }
@@ -2546,10 +2654,12 @@ mod semantic_tests {
             "}\n",
         );
         reset_eventmodeling_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_eventmodeling_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2572,6 +2682,7 @@ mod semantic_tests {
                 .contains("productId: 7")
         );
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
@@ -2590,11 +2701,13 @@ mod semantic_tests {
             )
             .unwrap()
             .unwrap();
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
 
             #[cfg(feature = "compat-json")]
             {
                 parse_eventmodeling(source, &full_metadata).unwrap();
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(crate::editor::test_work::read(), Default::default());
             }
         }
@@ -2604,10 +2717,12 @@ mod semantic_tests {
     fn semantic_errors_keep_exact_spans_and_observe_cancellation() {
         let source = "eventmodeling\ntf 01 invalid Started\n";
         let metadata = metadata();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_eventmodeling_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2622,6 +2737,7 @@ mod semantic_tests {
             diagnostic.span(),
             Some(SourceSpan::new(start, start + "invalid".len())),
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
@@ -2629,6 +2745,7 @@ mod semantic_tests {
             parse_eventmodeling_semantic_model_controlled(
                 source,
                 &metadata,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )

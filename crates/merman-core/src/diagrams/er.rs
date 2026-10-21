@@ -1,13 +1,21 @@
 use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
-use crate::family::{EditorFactsDemand, SemanticConstruction};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
 use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
+#[cfg(feature = "editor-facts")]
+use crate::source_span::{
+    has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, SourceSpan,
+    EditorSemanticSymbol,
+};
+use crate::{
+    Error, OperationControl, OperationControlResult, SourceSpan,
     parse_diagnostic::lalrpop_parse_diagnostic,
-    source_span::{
-        has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
-    },
 };
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
@@ -672,6 +680,12 @@ type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
 type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
 type ErParsedActions = std::result::Result<(ErActionArena, ErActionList), ErGrammarError>;
 
+struct ErSyntaxOutcome {
+    actions: ErParsedActions,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
 struct ErSyntax {
     events: Vec<ErLexicalEvent>,
 }
@@ -690,14 +704,15 @@ impl ErSyntax {
         Ok(Self { events })
     }
 
-    fn into_editor_facts_and_actions(
+    fn into_actions(
         self,
-        code: &str,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] code: &str,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<(EditorSemanticFacts, ErParsedActions)> {
-        let mut facts = EditorSemanticFacts::new();
-        if editor_demand == EditorFactsDemand::Capture {
+    ) -> OperationControlResult<ErSyntaxOutcome> {
+        #[cfg(feature = "editor-facts")]
+        let editor_facts = if editor_demand == EditorFactsDemand::Capture {
+            let mut facts = EditorSemanticFacts::new();
             #[cfg(test)]
             crate::editor::test_work::record_collection();
             let mut collector = ErEditorFactCollector::default();
@@ -713,7 +728,10 @@ impl ErSyntax {
                 }
             }
             collector.finish(code, &mut facts);
-        }
+            Some(facts)
+        } else {
+            None
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
@@ -726,21 +744,28 @@ impl ErSyntax {
             .parse(&mut arena, controlled_events)
             .map(|actions| (arena, actions));
         control.checkpoint()?;
-        Ok((facts, actions))
+        Ok(ErSyntaxOutcome {
+            actions,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
     }
 }
 
 struct ErSemanticSource {
     db: ErDb,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct ErSemanticFailure {
     error: ErGrammarError,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 impl ErSemanticFailure {
+    #[cfg(feature = "editor-facts")]
     fn recovery_span(&self, fallback_offset: usize) -> SourceSpan {
         match &self.error {
             lalrpop_util::ParseError::User { error } => error.span,
@@ -760,6 +785,7 @@ impl ErSemanticFailure {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
         meta: &ParseMetadata,
@@ -768,37 +794,51 @@ impl ErSemanticFailure {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
-        mut self,
+        self,
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         let error = self.parse_error(diagram_type, fallback_offset);
         let span = self.recovery_span(fallback_offset);
-        self.editor_facts.mark_recovered_from_parse_error(
+        let mut editor_facts = self
+            .editor_facts
+            .expect("ER capture requests its failure journal");
+        editor_facts.mark_recovered_from_parse_error(
             format!(
                 "er parser recovered after parse error: {}",
                 format_lalrpop_parse_error(&self.error)
             ),
             Some(span),
         );
-        (error, self.editor_facts)
+        (error, editor_facts)
     }
 }
 
 fn construct_er_semantic_source(
     code: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
     let syntax = ErSyntax::lex(code, control)?;
-    let (editor_facts, actions) =
-        syntax.into_editor_facts_and_actions(code, editor_demand, control)?;
+    let ErSyntaxOutcome {
+        actions,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = syntax.into_actions(
+        #[cfg(feature = "editor-facts")]
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     let (arena, actions) = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Ok(Err(Box::new(ErSemanticFailure {
                 error,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
@@ -806,35 +846,52 @@ fn construct_er_semantic_source(
 
     let mut db = ErDb::new();
     db.replay(arena, actions, control)?;
-    Ok(Ok(ErSemanticSource { db, editor_facts }))
+    Ok(Ok(ErSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
 pub(crate) fn parse_er_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<SemanticConstruction<ErDiagramModel>> {
-    let construction = construct_er_semantic_source(code, editor_demand, control)?;
+    let construction = construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     Ok(match construction {
-        Ok(ErSemanticSource { db, editor_facts }) => {
+        Ok(ErSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
             let mut model = db.into_semantic_model();
             model.sanitize_common_db_fields(&metadata.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
-                editor_facts: (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
             }
         }
+        #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand == EditorFactsDemand::Capture => {
             let (error, editor_facts) =
                 (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
             SemanticConstruction {
                 model: Err(error),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: Some(editor_facts),
             }
         }
         Err(failure) => SemanticConstruction {
             model: Err((*failure).into_parse_error(&metadata.diagram_type, code.len())),
+            #[cfg(feature = "editor-facts")]
             editor_facts: None,
         },
     })
@@ -842,9 +899,14 @@ pub(crate) fn parse_er_semantic_model_controlled(
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
-    construct_er_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
+    construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
 }
 
 #[cfg(all(test, feature = "presentation"))]
@@ -863,7 +925,12 @@ pub(crate) fn parse_er_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ErDiagramModel>> {
-    let construction = construct_er_semantic_source(code, EditorFactsDemand::Omit, control)?;
+    let construction = construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => {
@@ -882,6 +949,7 @@ pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -890,7 +958,16 @@ pub(crate) fn parse_er_json_and_editor_facts(
     let construction = construct_er_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
+        |ErSemanticSource {
+             db,
+             #[cfg(feature = "editor-facts")]
+             editor_facts,
+         }| {
+            (
+                db.into_model(meta),
+                editor_facts.expect("ER combined parse requests editor facts"),
+            )
+        },
         |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
     );
     control.checkpoint()?;
@@ -898,6 +975,7 @@ pub(crate) fn parse_er_json_and_editor_facts(
 }
 
 #[derive(Debug, Default)]
+#[cfg(feature = "editor-facts")]
 struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
     deferred_styled_entity: Option<ErTokenSymbol>,
@@ -914,6 +992,7 @@ struct ErEditorFactCollector {
     attr_word_index: usize,
 }
 
+#[cfg(feature = "editor-facts")]
 impl ErEditorFactCollector {
     fn finish(&mut self, code: &str, facts: &mut EditorSemanticFacts) {
         self.finish_line(code, line_content_end(code, code.len()), facts);
@@ -964,18 +1043,21 @@ impl ErEditorFactCollector {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum ErEntityOccurrence {
     Definition,
     Relationship,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedErIdList {
     StyleEntities,
     ClassDef,
@@ -985,11 +1067,13 @@ enum ExpectedErIdList {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 struct PendingErExpectation {
     kind: ExpectedErIdList,
     anchor_end: Option<usize>,
 }
 
+#[cfg(feature = "editor-facts")]
 impl ErEditorFactCollector {
     fn accept(
         &mut self,
@@ -1488,6 +1572,7 @@ impl ErEditorFactCollector {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxKind {
     match expected {
         ExpectedErIdList::ClassDef
@@ -2355,7 +2440,9 @@ impl Iterator for Lexer<'_> {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticRole, MermaidConfig};
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticRole;
+    use crate::MermaidConfig;
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -2523,6 +2610,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn er_entity_occurrence_role_does_not_depend_on_display_detail() {
         let span = SourceSpan::new(0, "CUSTOMER".len());
         let symbol = || ErTokenSymbol {
@@ -2642,9 +2730,16 @@ mod tests {
             let source = nested_subgraphs(depth);
             let control = OperationControl::new();
             let syntax = ErSyntax::lex(&source, &control).unwrap();
-            let (_, parsed) = syntax
-                .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
-                .unwrap();
+            let parsed = syntax
+                .into_actions(
+                    #[cfg(feature = "editor-facts")]
+                    &source,
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &control,
+                )
+                .unwrap()
+                .actions;
             let (arena, actions) = parsed.unwrap();
             assert_eq!(arena.records.len(), depth + 1);
             assert_eq!(actions.first, actions.last, "one top-level subgraph");
@@ -2665,9 +2760,16 @@ mod tests {
         let source = nested_subgraphs(depth);
         let parsing = OperationControl::new();
         let syntax = ErSyntax::lex(&source, &parsing).unwrap();
-        let (_, parsed) = syntax
-            .into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &parsing)
-            .unwrap();
+        let parsed = syntax
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &parsing,
+            )
+            .unwrap()
+            .actions;
         let (arena, actions) = parsed.unwrap();
         assert_eq!(actions.first, actions.last, "one top-level action");
 
@@ -2695,12 +2797,19 @@ mod tests {
         let source = nested_subgraphs(64);
         let control = OperationControl::new();
         let syntax = ErSyntax::lex(&source, &control).unwrap();
+        #[cfg(feature = "editor-facts")]
         let fact_checkpoints = syntax.events.len().div_ceil(128) + 1;
+        #[cfg(not(feature = "editor-facts"))]
+        let fact_checkpoints = 0;
         // Cancel during the third token batch, after inner grammar fragments have completed.
         control.cancel_after_checkpoints(fact_checkpoints + 2);
-        let Err(cancelled) =
-            syntax.into_editor_facts_and_actions(&source, EditorFactsDemand::Capture, &control)
-        else {
+        let Err(cancelled) = syntax.into_actions(
+            #[cfg(feature = "editor-facts")]
+            &source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &control,
+        ) else {
             panic!("token delivery observes cancellation");
         };
         assert_eq!(control.checkpoint(), Err(cancelled));
@@ -2721,12 +2830,14 @@ mod semantic_tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn er_canonical_capture_retains_success_and_grammar_failure_facts() {
         for (source, valid) in [
             ("erDiagram\nA\n", true),
             ("erDiagram\nA {\n string\n}\n", false),
         ] {
             reset_er_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let parsed = parse_er_semantic_model_controlled(
                 source,
@@ -2739,6 +2850,7 @@ mod semantic_tests {
             let facts = parsed.editor_facts.expect("same-pass ER facts");
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
             assert_eq!(er_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             assert_eq!(
                 facts.completeness,
@@ -2756,10 +2868,12 @@ mod semantic_tests {
     fn er_canonical_model_constructs_once_without_editor_work() {
         let source = "erDiagram\ndirection LR\nsubgraph Orders [Order Domain]\nCUSTOMER ||--o{ ORDER : places\nend\n";
         reset_er_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_er_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -2778,16 +2892,19 @@ mod semantic_tests {
         assert_eq!(model.relationships[0].role_a, "places");
         assert_eq!(model.subgraphs[0].nodes, ["CUSTOMER", "ORDER"]);
         assert_eq!(er_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
     fn er_canonical_errors_keep_spans_without_editor_work() {
         let source = "erDiagram\nA {\n string\n}\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_er_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -2798,6 +2915,7 @@ mod semantic_tests {
             panic!("expected parse diagnostic")
         };
         assert!(diagnostic.span().is_some());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "compat-json")]
         {
@@ -2828,6 +2946,7 @@ mod semantic_tests {
             parse_er_semantic_model_controlled(
                 "erDiagram\nA\n",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             )
@@ -2843,6 +2962,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_er_model_for_render_controlled(
             "erDiagram\nA\n",
@@ -2852,6 +2972,7 @@ mod semantic_tests {
         .unwrap()
         .unwrap();
         assert!(!model.entities.is_empty());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

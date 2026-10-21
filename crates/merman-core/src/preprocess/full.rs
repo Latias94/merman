@@ -1,10 +1,12 @@
 #[cfg(test)]
 use super::{Directive, detect_init_controlled};
 use super::{
-    DirectiveRecoveryMode, PreprocessCaptureOutcome, PreprocessResult, SourceConfigCaptureMode,
+    DirectiveRecoveryMode, PreprocessResult,
     preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled,
 };
+#[cfg(feature = "editor-facts")]
+use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
 #[cfg(test)]
 use crate::MermaidConfig;
 use crate::presentation::PresentationConfig;
@@ -65,6 +67,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
             &registry_detector(registry),
             diagram_type,
             directive_recovery,
+            #[cfg(feature = "editor-facts")]
             SourceConfigCaptureMode::Omit,
             control,
         )?
@@ -72,6 +75,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
     )
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
     input: &str,
     registry: &DetectorRegistry,
@@ -134,6 +138,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
             &registry_detector(registry),
             diagram_type,
             directive_recovery,
+            #[cfg(feature = "editor-facts")]
             SourceConfigCaptureMode::Omit,
             control,
         )?
@@ -141,6 +146,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
     )
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
     input: &str,
     registry: &DetectorRegistry,
@@ -178,10 +184,9 @@ pub(super) fn detect_init(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        SourceSpan, Value, detect_directives, preprocess_builtin_semantic_controlled,
-    };
+    use super::super::{Value, detect_directives, preprocess_builtin_semantic_controlled};
     use super::*;
+    use crate::SourceSpan;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

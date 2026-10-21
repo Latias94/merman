@@ -229,6 +229,7 @@ mod tests {
             source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             crate::family::EditorFactsDemand::Omit,
             &OperationControl::new(),
         )

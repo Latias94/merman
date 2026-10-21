@@ -40,7 +40,7 @@ pub(crate) use parse::parse_state;
 pub(crate) use parse::parse_state_model_for_render_controlled;
 pub(crate) use parse::parse_state_semantic_model_controlled;
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::parse_state_json_and_editor_facts;
 #[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
@@ -109,6 +109,7 @@ pub(crate) enum Tok {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<crate::SourceSpan>,
+    #[cfg(feature = "editor-facts")]
     pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
@@ -117,6 +118,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            #[cfg(feature = "editor-facts")]
             expected_syntax: None,
         }
     }
@@ -125,6 +127,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            #[cfg(feature = "editor-facts")]
             expected_syntax: None,
         }
     }

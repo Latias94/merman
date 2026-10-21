@@ -4,11 +4,13 @@ use crate::diagrams::scan::{
     LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
     starts_with_case_insensitive,
 };
+use crate::family::CombinedSemanticFailure;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
-    family::{CombinedSemanticFailure, EditorFactsDemand},
+    EditorSemanticSymbol, family::EditorFactsDemand,
 };
+use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -197,6 +199,7 @@ struct JourneySemanticSource {
     model: JourneyDiagramModel,
     #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -318,13 +321,18 @@ fn strip_comment_prefix(line: &str) -> &str {
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source =
-        construct_journey_semantic_source(code, &meta.diagram_type, EditorFactsDemand::Omit)
-            .map_err(CombinedSemanticFailure::into_error)?;
+    let source = construct_journey_semantic_source(
+        code,
+        &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+    )
+    .map_err(CombinedSemanticFailure::into_error)?;
     render_model_to_compat_json(&source.into_render_model(), meta)
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -351,34 +359,52 @@ pub(crate) fn parse_journey_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<JourneyDiagramModel>> {
-    let construction =
-        construct_journey_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    let construction = construct_journey_semantic_source_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
             model.sanitize_common_db_fields(config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -416,9 +442,14 @@ pub(crate) fn parse_journey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<JourneyDiagramRenderModel> {
-    construct_journey_semantic_source(code, &meta.diagram_type, EditorFactsDemand::Omit)
-        .map(JourneySemanticSource::into_render_model)
-        .map_err(CombinedSemanticFailure::into_error)
+    construct_journey_semantic_source(
+        code,
+        &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+    )
+    .map(JourneySemanticSource::into_render_model)
+    .map_err(CombinedSemanticFailure::into_error)
 }
 
 #[cfg(feature = "presentation")]
@@ -430,6 +461,7 @@ pub(crate) fn parse_journey_model_for_render_controlled(
     let construction = construct_journey_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -445,11 +477,12 @@ pub(crate) fn parse_journey_model_for_render_controlled(
 fn construct_journey_semantic_source(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
     construct_journey_semantic_source_controlled(
         code,
         diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         &OperationControl::new(),
     )
@@ -459,24 +492,31 @@ fn construct_journey_semantic_source(
 fn construct_journey_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_journey_semantic_source(code, diagram_type, editor_demand, control)
+    parse_journey_semantic_source(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )
 }
 
 fn parse_journey_semantic_source(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = JourneyDb::default();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts =
         (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
     let mut lines = LineCursor::new(code);
@@ -524,6 +564,7 @@ fn parse_journey_semantic_source(
         }
 
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 facts.push_directive_prefix("title");
                 if let Some(value) = spanned_keyword_value(line, line_start, "title") {
@@ -539,6 +580,7 @@ fn parse_journey_semantic_source(
             continue;
         }
         if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 facts.push_directive_prefix("accTitle");
                 if let Some(value) = spanned_colon_value(line, line_start, "accTitle") {
@@ -554,6 +596,7 @@ fn parse_journey_semantic_source(
             continue;
         }
         if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 facts.push_directive_prefix("accDescr");
                 if let Some(value) = spanned_colon_value(line, line_start, "accDescr") {
@@ -569,6 +612,7 @@ fn parse_journey_semantic_source(
             continue;
         }
         if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 facts.push_directive_prefix("accDescr");
                 push_journey_payload_fact_spanned(
@@ -580,6 +624,7 @@ fn parse_journey_semantic_source(
                 );
             }
             if v.closing.is_none() {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     facts.mark_recovered_from_parse_error(
                         "journey parser recovered from unterminated accDescr block",
@@ -599,6 +644,7 @@ fn parse_journey_semantic_source(
         }
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
             let v = v.split(':').next().unwrap_or("").to_string();
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts
                 && let Some(value) = spanned_keyword_value(line, line_start, "section")
             {
@@ -632,6 +678,7 @@ fn parse_journey_semantic_source(
             });
             continue;
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
             let task_start = line_start + task_name_source.find(task_name).unwrap_or(0);
             let task_end = task_start + task_name.len();
@@ -671,6 +718,7 @@ fn parse_journey_semantic_source(
             continue;
         }
 
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
             let rest_source = &stripped[colon + ':'.len_utf8()..];
             let rest = rest_source.trim_start();
@@ -723,9 +771,11 @@ fn parse_journey_semantic_source(
 
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
+            #[cfg(feature = "editor-facts")]
             "journey",
             error,
-            editor_facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
         )));
     }
 
@@ -747,10 +797,12 @@ fn parse_journey_semantic_source(
         } else {
             CompatibilityOutputState::Empty
         },
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
+#[cfg(feature = "editor-facts")]
 fn spanned_keyword_value<'a>(
     line: &'a str,
     line_start: usize,
@@ -777,6 +829,7 @@ fn spanned_keyword_value<'a>(
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn spanned_colon_value<'a>(
     line: &'a str,
     line_start: usize,
@@ -800,6 +853,7 @@ fn spanned_colon_value<'a>(
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_journey_payload_fact(
     facts: &mut EditorSemanticFacts,
     span: EditorPayloadSpan<'_>,
@@ -819,6 +873,7 @@ fn push_journey_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_journey_payload_fact_spanned(
     facts: &mut EditorSemanticFacts,
     text: &str,
@@ -839,6 +894,7 @@ fn push_journey_payload_fact_spanned(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 struct EditorPayloadSpan<'a> {
     text: &'a str,
     start: usize,
@@ -849,11 +905,13 @@ struct EditorPayloadSpan<'a> {
 mod tests {
     use super::*;
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    #[cfg(feature = "editor-facts")]
     use crate::{
         EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
-        EditorSemanticKind, EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions,
-        SourceSpan,
+        EditorSemanticKind, EditorSemanticRole,
     };
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan};
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
     use serde_json::json;
@@ -1063,6 +1121,7 @@ A task: 5: Alice, Bob\n";
 
     #[test]
     fn journey_semantic_model_omits_editor_facts_and_compatibility_state() {
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         reset_journey_syntax_construction_count();
         let source = concat!(
@@ -1077,6 +1136,7 @@ A task: 5: Alice, Bob\n";
             source,
             "journey",
             &crate::MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -1085,6 +1145,7 @@ A task: 5: Alice, Bob\n";
         .unwrap();
 
         assert_eq!(journey_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         assert_eq!(semantic.sections, ["Repeat", "Repeat"]);
         assert_eq!(
@@ -1112,6 +1173,7 @@ A task: 5: Alice, Bob\n";
                 serde_json::to_value(render).unwrap()
             );
         }
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
     }
 
@@ -1121,6 +1183,7 @@ A task: 5: Alice, Bob\n";
             "",
             "journey",
             &crate::MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )

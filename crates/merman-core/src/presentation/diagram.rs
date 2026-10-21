@@ -1,9 +1,11 @@
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::diagram::CapturedPanic;
 use crate::diagram::DiagramWarningFact;
 use crate::json_value::ManagedJson as ManagedSemanticJson;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use crate::preprocess::SourceConfigEvidence;
 #[cfg(feature = "compat-json")]
-use crate::{Error, OperationPhase, preprocess::SourceConfigEvidence};
+use crate::{Error, OperationPhase};
 use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,7 +50,7 @@ pub type CustomJsonRenderParser = fn(
 
 /// Ownership of a parser resolved from a built-in registry plus its custom overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) enum RegistryOwner {
     BuiltIn,
     Custom,
@@ -61,7 +63,7 @@ pub(crate) enum ResolvedSemanticParser {
     Custom(DiagramSemanticParser),
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 impl ResolvedSemanticParser {
     pub(crate) const fn owner(self) -> RegistryOwner {
         match self {
@@ -149,11 +151,13 @@ pub struct ParsedDiagram {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub use crate::editor::ParsedEditorFacts;
 
 /// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub enum DiagramParseOutcome {
     Parsed {
         /// Mermaid-compatible semantic JSON retained for existing projections.
@@ -167,6 +171,7 @@ pub enum DiagramParseOutcome {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 impl DiagramParseOutcome {
     /// Returns the semantic model when family construction succeeded.
     pub fn parsed_model(&self) -> Option<&ManagedSemanticJson> {
@@ -184,6 +189,7 @@ impl DiagramParseOutcome {
 /// JSON or by parsing the source again.
 #[derive(Debug)]
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub struct DiagramParseSnapshot {
     meta: ParseMetadata,
     outcome: DiagramParseOutcome,
@@ -193,6 +199,7 @@ pub struct DiagramParseSnapshot {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 impl DiagramParseSnapshot {
     pub(crate) fn new(
         meta: ParseMetadata,
@@ -264,6 +271,7 @@ impl DiagramParseSnapshot {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub enum DiagramSnapshotCapture {
     Snapshot(Option<DiagramParseSnapshot>),
     Failed {
@@ -280,6 +288,7 @@ pub enum DiagramSnapshotCapture {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 impl DiagramSnapshotCapture {
     pub(crate) fn into_result(self) -> Result<Option<DiagramParseSnapshot>> {
         match self {
@@ -1420,6 +1429,7 @@ mod registry_clone_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn custom_semantic_parsers_share_the_operation_control() {
         let mut engine = crate::Engine::new();
         engine
@@ -1436,6 +1446,7 @@ mod registry_clone_tests {
 
     #[test]
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn custom_parser_cancellation_is_typed_for_non_cancellable_snapshot_apis() {
         let mut engine = crate::Engine::new();
         engine

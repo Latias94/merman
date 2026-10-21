@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(feature = "editor-facts")]
 use crate::EditorRenamePolicy;
 #[cfg(test)]
 use std::cell::Cell;
@@ -20,6 +21,7 @@ struct ArchitectureSpannedValue {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ArchitectureTraceFactRole {
     Entity,
     Reference,
@@ -27,6 +29,7 @@ enum ArchitectureTraceFactRole {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct ArchitectureTraceFact {
     value: ArchitectureSpannedValue,
     detail: &'static str,
@@ -67,9 +70,13 @@ enum ArchitectureStatement {
 #[derive(Debug, Clone)]
 struct ArchitectureTraceEntry {
     statement: Option<ArchitectureStatement>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     facts: Vec<ArchitectureTraceFact>,
+    #[cfg(feature = "editor-facts")]
     diagnostic: Option<crate::ParseDiagnostic>,
+    #[cfg(feature = "editor-facts")]
     directive_prefix: Option<&'static str>,
 }
 
@@ -82,30 +89,40 @@ struct ArchitectureTrace {
 #[derive(Debug)]
 pub(super) struct ArchitectureSemanticSource {
     db: ArchitectureDb,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchitectureParseMode {
     Strict,
+    #[cfg(feature = "editor-facts")]
     Recovering,
 }
 
 struct StatementFailure {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     facts: Vec<ArchitectureTraceFact>,
+    #[cfg(feature = "editor-facts")]
     directive_prefix: Option<&'static str>,
 }
 
 impl StatementFailure {
-    fn new(error: Error, facts: Vec<ArchitectureTraceFact>) -> Self {
+    fn new(
+        error: Error,
+        #[cfg(feature = "editor-facts")] facts: Vec<ArchitectureTraceFact>,
+    ) -> Self {
         Self {
             error: Box::new(error),
+            #[cfg(feature = "editor-facts")]
             facts,
+            #[cfg(feature = "editor-facts")]
             directive_prefix: None,
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn with_directive_prefix(mut self, prefix: &'static str) -> Self {
         self.directive_prefix = Some(prefix);
         self
@@ -116,33 +133,50 @@ struct ArchitectureStatementParser<'a> {
     input: &'a str,
     base_offset: usize,
     pos: usize,
+    #[cfg(feature = "editor-facts")]
     facts: Vec<ArchitectureTraceFact>,
+    #[cfg(feature = "editor-facts")]
     editor_demand: EditorFactsDemand,
 }
 
 impl<'a> ArchitectureStatementParser<'a> {
-    fn new(input: &'a str, base_offset: usize, editor_demand: EditorFactsDemand) -> Self {
+    fn new(
+        input: &'a str,
+        base_offset: usize,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    ) -> Self {
         Self {
             input,
             base_offset,
             pos: 0,
+            #[cfg(feature = "editor-facts")]
             facts: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         }
     }
 
     fn parse(mut self) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
+        #[cfg(feature = "editor-facts")]
         let span = SourceSpan::new(self.base_offset, self.base_offset + self.input.len());
         let statement = self.parse_statement();
         match statement {
             Ok(statement) => Ok(ArchitectureTraceEntry {
                 statement: Some(statement),
+                #[cfg(feature = "editor-facts")]
                 span,
+                #[cfg(feature = "editor-facts")]
                 facts: self.facts,
+                #[cfg(feature = "editor-facts")]
                 diagnostic: None,
+                #[cfg(feature = "editor-facts")]
                 directive_prefix: None,
             }),
-            Err(error) => Err(StatementFailure::new(error, self.facts)),
+            Err(error) => Err(StatementFailure::new(
+                error,
+                #[cfg(feature = "editor-facts")]
+                self.facts,
+            )),
         }
     }
 
@@ -166,15 +200,21 @@ impl<'a> ArchitectureStatementParser<'a> {
         self.expect_keyword("group");
         let id = self.parse_id(
             "invalid group id",
+            #[cfg(feature = "editor-facts")]
             "architecture group",
+            #[cfg(feature = "editor-facts")]
             EditorSemanticKind::Namespace,
         )?;
         let icon = self.parse_icon()?;
+        #[cfg(feature = "editor-facts")]
         if let Some(icon) = &icon {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(icon, "architecture group icon", EditorSemanticKind::String);
         }
         let title = self.parse_title()?;
+        #[cfg(feature = "editor-facts")]
         if let Some(title) = &title {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 title,
                 "architecture group title",
@@ -184,7 +224,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         let in_group = if self.consume_keyword("in") {
             Some(self.parse_reference(
                 "invalid group parent id",
+                #[cfg(feature = "editor-facts")]
                 "architecture group parent",
+                #[cfg(feature = "editor-facts")]
                 EditorSemanticKind::Namespace,
             )?)
         } else {
@@ -203,7 +245,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         self.expect_keyword("service");
         let id = self.parse_id(
             "invalid service id",
+            #[cfg(feature = "editor-facts")]
             "architecture service",
+            #[cfg(feature = "editor-facts")]
             EditorSemanticKind::Variable,
         )?;
         let mut icon = None;
@@ -212,7 +256,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         match self.peek_char() {
             Some('(') => {
                 icon = self.parse_icon()?;
+                #[cfg(feature = "editor-facts")]
                 if let Some(value) = &icon {
+                    #[cfg(feature = "editor-facts")]
                     self.push_payload(
                         value,
                         "architecture service icon",
@@ -222,6 +268,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             }
             Some('"' | '\'') => {
                 icon_text = Some(self.parse_string()?);
+                #[cfg(feature = "editor-facts")]
                 self.push_payload(
                     icon_text.as_ref().expect("icon text was just parsed"),
                     "architecture service icon text",
@@ -231,7 +278,9 @@ impl<'a> ArchitectureStatementParser<'a> {
             _ => {}
         }
         let title = self.parse_title()?;
+        #[cfg(feature = "editor-facts")]
         if let Some(title) = &title {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 title,
                 "architecture service title",
@@ -241,7 +290,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         let in_group = if self.consume_keyword("in") {
             Some(self.parse_reference(
                 "invalid service parent id",
+                #[cfg(feature = "editor-facts")]
                 "architecture service parent",
+                #[cfg(feature = "editor-facts")]
                 EditorSemanticKind::Namespace,
             )?)
         } else {
@@ -261,13 +312,17 @@ impl<'a> ArchitectureStatementParser<'a> {
         self.expect_keyword("junction");
         let id = self.parse_id(
             "invalid junction id",
+            #[cfg(feature = "editor-facts")]
             "architecture junction",
+            #[cfg(feature = "editor-facts")]
             EditorSemanticKind::Object,
         )?;
         let in_group = if self.consume_keyword("in") {
             Some(self.parse_reference(
                 "invalid junction parent id",
+                #[cfg(feature = "editor-facts")]
                 "architecture junction parent",
+                #[cfg(feature = "editor-facts")]
                 EditorSemanticKind::Namespace,
             )?)
         } else {
@@ -287,6 +342,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 direction.selection,
             ));
         }
+        #[cfg(feature = "editor-facts")]
         self.push_payload(
             &direction,
             "architecture alignment direction",
@@ -300,7 +356,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         } {
             members.push(self.parse_reference(
                 "invalid align member id",
+                #[cfg(feature = "editor-facts")]
                 "architecture alignment member",
+                #[cfg(feature = "editor-facts")]
                 EditorSemanticKind::Variable,
             )?);
         }
@@ -316,13 +374,16 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_edge(&mut self) -> Result<ArchitectureStatement> {
         let lhs = self.parse_reference(
             "invalid id",
+            #[cfg(feature = "editor-facts")]
             "architecture edge endpoint",
+            #[cfg(feature = "editor-facts")]
             EditorSemanticKind::Variable,
         )?;
         let lhs_group = self.parse_group_modifier();
         self.expect_delimiter(':', "expected ':' for lhs port")?;
         let lhs_direction =
             self.parse_direction("expected lhs direction", "invalid lhs direction")?;
+        #[cfg(feature = "editor-facts")]
         self.push_payload(
             &lhs_direction,
             "architecture edge lhs direction",
@@ -339,6 +400,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             let title = self
                 .parse_title()?
                 .ok_or_else(|| self.insertion_error("expected edge title"))?;
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 &title,
                 "architecture edge title",
@@ -353,6 +415,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         let rhs_into = self.parse_arrow_into();
         let rhs_direction =
             self.parse_direction("expected rhs direction", "invalid rhs direction")?;
+        #[cfg(feature = "editor-facts")]
         self.push_payload(
             &rhs_direction,
             "architecture edge rhs direction",
@@ -361,7 +424,9 @@ impl<'a> ArchitectureStatementParser<'a> {
         self.expect_delimiter(':', "expected ':' for rhs port")?;
         let rhs = self.parse_reference(
             "invalid id",
+            #[cfg(feature = "editor-facts")]
             "architecture edge endpoint",
+            #[cfg(feature = "editor-facts")]
             EditorSemanticKind::Variable,
         )?;
         let rhs_group = self.parse_group_modifier();
@@ -385,8 +450,8 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_id(
         &mut self,
         message: &str,
-        detail: &'static str,
-        kind: EditorSemanticKind,
+        #[cfg(feature = "editor-facts")] detail: &'static str,
+        #[cfg(feature = "editor-facts")] kind: EditorSemanticKind,
     ) -> Result<ArchitectureIdentifier> {
         let token = self.parse_raw_id(message)?;
         if is_architecture_reserved_id(&token.value) {
@@ -396,6 +461,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 token.selection,
             ));
         }
+        #[cfg(feature = "editor-facts")]
         self.push_entity(&token, detail, kind);
         Ok(ArchitectureIdentifier {
             text: token.value,
@@ -406,8 +472,8 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_reference(
         &mut self,
         message: &str,
-        detail: &'static str,
-        kind: EditorSemanticKind,
+        #[cfg(feature = "editor-facts")] detail: &'static str,
+        #[cfg(feature = "editor-facts")] kind: EditorSemanticKind,
     ) -> Result<ArchitectureIdentifier> {
         let token = self.parse_raw_id(message)?;
         if is_architecture_reserved_id(&token.value) {
@@ -417,6 +483,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 token.selection,
             ));
         }
+        #[cfg(feature = "editor-facts")]
         self.push_reference(&token, detail, kind);
         Ok(ArchitectureIdentifier {
             text: token.value,
@@ -614,12 +681,14 @@ impl<'a> ArchitectureStatementParser<'a> {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_entity(
         &mut self,
         value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Omit {
             return;
         }
@@ -632,12 +701,14 @@ impl<'a> ArchitectureStatementParser<'a> {
         });
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_reference(
         &mut self,
         value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Omit {
             return;
         }
@@ -650,12 +721,14 @@ impl<'a> ArchitectureStatementParser<'a> {
         });
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_payload(
         &mut self,
         value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Omit {
             return;
         }
@@ -816,13 +889,19 @@ pub(super) fn parse_semantic_source(
         code,
         &meta.diagram_type,
         ArchitectureParseMode::Strict,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         &crate::OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")?;
     let db = trace.build_db()?;
+    #[cfg(feature = "editor-facts")]
     let editor_facts = trace.editor_facts(Some(&db), None);
-    Ok(ArchitectureSemanticSource { db, editor_facts })
+    Ok(ArchitectureSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    })
 }
 
 #[cfg(feature = "presentation")]
@@ -831,31 +910,42 @@ pub(super) fn parse_model_controlled(
     diagram_type: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
-    Ok(
-        parse_semantic_model_controlled(code, diagram_type, EditorFactsDemand::Omit, control)?
-            .model,
-    )
+    Ok(parse_semantic_model_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .model)
 }
 
 pub(super) fn parse_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
-    let construction =
-        construct_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    let construction = construct_semantic_source_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     let model = match construction.model {
         Ok(db) => Ok(db.semantic_model_controlled(control)?),
         Err(error) => Err(error),
     };
     Ok(crate::family::SemanticConstruction {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts: construction.editor_facts,
     })
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -866,6 +956,7 @@ pub(super) fn parse_combined_semantic_source_controlled(
     let construction = construct_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         control,
     )?;
@@ -876,7 +967,8 @@ pub(super) fn parse_combined_semantic_source_controlled(
         Ok(db) => Ok(ArchitectureSemanticSource { db, editor_facts }),
         Err(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            #[cfg(feature = "editor-facts")]
+            Some(editor_facts),
         )),
     })
 }
@@ -884,17 +976,28 @@ pub(super) fn parse_combined_semantic_source_controlled(
 fn construct_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<ArchitectureDb>> {
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
     let mode = match editor_demand {
         EditorFactsDemand::Omit => ArchitectureParseMode::Strict,
         EditorFactsDemand::Capture => ArchitectureParseMode::Recovering,
     };
-    let trace = match parse_trace_controlled(code, diagram_type, mode, editor_demand, control)? {
+    #[cfg(not(feature = "editor-facts"))]
+    let mode = ArchitectureParseMode::Strict;
+    let trace = match parse_trace_controlled(
+        code,
+        diagram_type,
+        mode,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )? {
         Ok(trace) => trace,
         Err(error) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
                 let mut facts = EditorSemanticFacts::new();
                 push_recovery_error(&mut facts, &error);
@@ -902,12 +1005,15 @@ fn construct_semantic_source_controlled(
             });
             return Ok(crate::family::SemanticConstruction {
                 model: Err(error),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             });
         }
     };
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
     let mut syntax_error = None;
+    #[cfg(feature = "editor-facts")]
     if editor_demand == EditorFactsDemand::Capture {
         for (index, entry) in trace.entries.iter().enumerate() {
             if index % 128 == 0 {
@@ -924,6 +1030,7 @@ fn construct_semantic_source_controlled(
     }
     control.checkpoint()?;
     let db = trace.build_db_controlled(control)?;
+    #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -931,11 +1038,14 @@ fn construct_semantic_source_controlled(
         }
     };
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    let db = match syntax_error {
+        Some(error) => Err(error),
+        None => db,
+    };
     Ok(crate::family::SemanticConstruction {
-        model: match syntax_error {
-            Some(error) => Err(error),
-            None => db,
-        },
+        model: db,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     })
 }
@@ -944,12 +1054,13 @@ fn parse_trace_controlled(
     code: &str,
     diagram_type: &str,
     mode: ArchitectureParseMode,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<ArchitectureTrace>> {
     control.checkpoint()?;
     #[cfg(test)]
     ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.set(ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+    #[cfg(feature = "editor-facts")]
     if editor_demand == EditorFactsDemand::Capture {
         #[cfg(test)]
         crate::editor::test_work::record_collection();
@@ -999,6 +1110,7 @@ fn parse_trace_controlled(
                 statement_start,
                 common_start,
                 mode,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
             ) {
                 Ok(entry) => entry,
@@ -1032,6 +1144,7 @@ fn parse_trace_controlled(
             trimmed_start,
             line.start,
             mode,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         ) {
             Ok(entry) => entry,
@@ -1069,9 +1182,13 @@ fn handle_header_error(
     }
     trace.entries.push(ArchitectureTraceEntry {
         statement: None,
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan::new(start, start + len),
+        #[cfg(feature = "editor-facts")]
         facts: Vec::new(),
+        #[cfg(feature = "editor-facts")]
         diagnostic: Some(take_parse_diagnostic(error)),
+        #[cfg(feature = "editor-facts")]
         directive_prefix: None,
     });
     Ok(std::mem::take(trace))
@@ -1084,50 +1201,62 @@ fn parse_trace_statement(
     statement_start: usize,
     common_start: usize,
     mode: ArchitectureParseMode,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> Result<ArchitectureTraceEntry> {
     let parsed = if let Some(common) = parse_langium_common(code, common_start) {
         lines.offset = common_start + common.consumed;
-        architecture_common_trace_entry(common, editor_demand)
+        architecture_common_trace_entry(
+            common,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+        )
     } else {
         let statement = extend_quoted_statement(code, lines, statement, statement_start);
-        ArchitectureStatementParser::new(statement, statement_start, editor_demand).parse()
+        ArchitectureStatementParser::new(
+            statement,
+            statement_start,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+        )
+        .parse()
     };
     match parsed {
         Ok(entry) => Ok(entry),
         Err(failure) if mode == ArchitectureParseMode::Strict => Err(*failure.error),
-        Err(failure) => Ok(ArchitectureTraceEntry {
+        Err(_failure) => Ok(ArchitectureTraceEntry {
             statement: None,
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(statement_start, statement_start + statement.len()),
-            facts: failure.facts,
-            diagnostic: Some(take_parse_diagnostic(*failure.error)),
-            directive_prefix: failure.directive_prefix,
+            #[cfg(feature = "editor-facts")]
+            facts: _failure.facts,
+            #[cfg(feature = "editor-facts")]
+            diagnostic: Some(take_parse_diagnostic(*_failure.error)),
+            #[cfg(feature = "editor-facts")]
+            directive_prefix: _failure.directive_prefix,
         }),
     }
 }
 
 fn architecture_common_trace_entry(
     parsed: LangiumCommonParse,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
     let LangiumCommonParse {
         fact, diagnostic, ..
     } = parsed;
     let spanned = architecture_common_value(&fact);
-    let (statement, detail) = match fact.field {
-        LangiumCommonField::Title => (
-            ArchitectureStatement::Title(spanned.clone()),
-            "architecture title",
-        ),
-        LangiumCommonField::AccTitle => (
-            ArchitectureStatement::AccTitle(spanned.clone()),
-            "architecture accessibility title",
-        ),
-        LangiumCommonField::AccDescr => (
-            ArchitectureStatement::AccDescr(spanned.clone()),
-            "architecture accessibility description",
-        ),
+    let statement = match fact.field {
+        LangiumCommonField::Title => ArchitectureStatement::Title(spanned.clone()),
+        LangiumCommonField::AccTitle => ArchitectureStatement::AccTitle(spanned.clone()),
+        LangiumCommonField::AccDescr => ArchitectureStatement::AccDescr(spanned.clone()),
     };
+    #[cfg(feature = "editor-facts")]
+    let detail = match fact.field {
+        LangiumCommonField::Title => "architecture title",
+        LangiumCommonField::AccTitle => "architecture accessibility title",
+        LangiumCommonField::AccDescr => "architecture accessibility description",
+    };
+    #[cfg(feature = "editor-facts")]
     let facts = if editor_demand == EditorFactsDemand::Capture {
         common_payload_fact(&spanned, detail)
     } else {
@@ -1135,22 +1264,29 @@ fn architecture_common_trace_entry(
     };
 
     if let Some(diagnostic) = diagnostic {
-        return Err(StatementFailure::new(
+        let failure = StatementFailure::new(
             Error::diagram_parse_insertion_point(
                 "architecture",
                 diagnostic.message,
                 diagnostic.span.start,
             ),
+            #[cfg(feature = "editor-facts")]
             facts,
-        )
-        .with_directive_prefix(fact.field.directive()));
+        );
+        #[cfg(feature = "editor-facts")]
+        let failure = failure.with_directive_prefix(fact.field.directive());
+        return Err(failure);
     }
 
     Ok(ArchitectureTraceEntry {
         statement: Some(statement),
+        #[cfg(feature = "editor-facts")]
         span: fact.raw_span,
+        #[cfg(feature = "editor-facts")]
         facts,
+        #[cfg(feature = "editor-facts")]
         diagnostic: None,
+        #[cfg(feature = "editor-facts")]
         directive_prefix: Some(fact.field.directive()),
     })
 }
@@ -1240,6 +1376,7 @@ fn line_ending_end(code: &str, offset: usize) -> usize {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn common_payload_fact(
     value: &ArchitectureSpannedValue,
     detail: &'static str,
@@ -1257,6 +1394,7 @@ fn common_payload_fact(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {
     match error {
         Error::DiagramParse { diagnostic, .. } => diagnostic,
@@ -1264,6 +1402,7 @@ fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
     match error {
         Error::DiagramParse { diagnostic, .. } => {
@@ -1385,6 +1524,7 @@ impl ArchitectureTrace {
     }
 
     #[cfg(all(test, feature = "compat-json"))]
+    #[cfg(feature = "editor-facts")]
     fn editor_facts(
         &self,
         db: Option<&ArchitectureDb>,
@@ -1395,6 +1535,7 @@ impl ArchitectureTrace {
             .expect("a private parse control cannot be cancelled")
     }
 
+    #[cfg(feature = "editor-facts")]
     fn declaration_kinds_controlled<'a>(
         &'a self,
         control: &crate::OperationControl,
@@ -1424,6 +1565,7 @@ impl ArchitectureTrace {
         Ok(kinds)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn editor_facts_controlled(
         &self,
         db: Option<&ArchitectureDb>,
@@ -1518,11 +1660,12 @@ impl ArchitectureSemanticSource {
         self.db.semantic_model()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "editor-facts"))]
     pub(super) fn editor_facts(&self) -> EditorSemanticFacts {
         self.editor_facts.clone()
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(super) fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,

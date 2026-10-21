@@ -758,9 +758,12 @@ mod tests {
             .push(
                 Stmt::ClassAssign(ClassAssignStmt {
                     targets: vec!["missing-edge".to_string()],
+                    #[cfg(feature = "editor-facts")]
                     target_spans: Vec::new(),
                     class_name: "hot".to_string(),
+                    #[cfg(feature = "editor-facts")]
                     class_name_span: None,
+                    #[cfg(feature = "editor-facts")]
                     editor_evidence: Default::default(),
                 }),
                 &construction_control,

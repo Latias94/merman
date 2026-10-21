@@ -11,7 +11,9 @@ mod model;
 mod parser;
 mod semantic;
 
+#[cfg(feature = "editor-facts")]
 use crate::EditorSemanticFacts;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::{Error, OperationControl, OperationControlResult, SemanticMetadata};
 #[cfg(feature = "presentation")]
@@ -30,6 +32,7 @@ pub(crate) use model::{render_model_to_compat_json, render_model_to_compat_json_
 
 struct ZenumlSemanticSource {
     model: ZenumlDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
     first_diagnostic: Option<ast::SyntaxDiagnostic>,
 }
@@ -54,7 +57,12 @@ pub(crate) fn parse_zenuml_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ZenumlDiagramRenderModel>> {
-    let source = construct_semantic_source(code, EditorFactsDemand::Omit, control)?;
+    let source = construct_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     if let Some(diagnostic) = source.first_diagnostic {
         return Ok(Err(Error::diagram_parse_exact(
             meta.diagram_type.clone(),
@@ -66,12 +74,18 @@ pub(crate) fn parse_zenuml_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let source = construct_semantic_source(code, EditorFactsDemand::Capture, control)?;
+    let source = construct_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let construction = match &source.first_diagnostic {
         Some(diagnostic) => Err(crate::family::CombinedSemanticFailure::new(
             Error::diagram_parse_exact(
@@ -79,7 +93,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
                 diagnostic.message.clone(),
                 diagnostic.span,
             ),
-            source.editor_facts,
+            Some(source.editor_facts),
         )),
         None => Ok((
             model::render_model_to_compat_json_controlled(&source.model, meta, control)?,
@@ -97,8 +111,13 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
-    let source = construct_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled");
+    let source = construct_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled");
     if let Some(diagnostic) = &source.first_diagnostic {
         return Err(Error::diagram_parse_exact(
             meta.diagram_type.clone(),
@@ -112,10 +131,16 @@ fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSeman
 pub(crate) fn parse_zenuml_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<ZenumlDiagramModel>> {
-    let source = construct_semantic_source(code, editor_demand, control)?;
+    let source = construct_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    #[cfg(feature = "editor-facts")]
     let editor_facts =
         matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts);
     let model = match source.first_diagnostic {
@@ -132,13 +157,14 @@ pub(crate) fn parse_zenuml_semantic_model_controlled(
     };
     Ok(crate::family::SemanticConstruction {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     })
 }
 
 fn construct_semantic_source(
     code: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<ZenumlSemanticSource> {
     #[cfg(test)]
@@ -148,10 +174,16 @@ fn construct_semantic_source(
     let tokens = lexer::lex_controlled(code, control)?;
     let parsed = parser::parse_controlled(code, &tokens, control)?;
     control.checkpoint()?;
-    let built = semantic::build_controlled(parsed, editor_demand, control)?;
+    let built = semantic::build_controlled(
+        parsed,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     control.checkpoint()?;
     Ok(ZenumlSemanticSource {
         model: built.model,
+        #[cfg(feature = "editor-facts")]
         editor_facts: built.editor_facts,
         first_diagnostic: built.diagnostics.into_iter().next(),
     })
@@ -180,10 +212,12 @@ mod semantic_tests {
             "@Starter(Client)\nService.call(){new Model(x=1)}\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("zenuml");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_zenuml_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -222,21 +256,33 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("zenuml"),
             1
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn observer_demand_preserves_models_recovery_and_exact_error_spans() {
         let source = "zenuml\n@Starter(A) A.call() ? B.call()";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
-        let omitted =
-            construct_semantic_source(source, EditorFactsDemand::Omit, &OperationControl::new())
-                .unwrap();
+        let omitted = construct_semantic_source(
+            source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap();
         assert!(omitted.editor_facts.symbols.is_empty());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
-        let captured =
-            construct_semantic_source(source, EditorFactsDemand::Capture, &OperationControl::new())
-                .unwrap();
+        let captured = construct_semantic_source(
+            source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
         assert_eq!(omitted.model, captured.model);
         assert_eq!(omitted.first_diagnostic, captured.first_diagnostic);
         assert_eq!(omitted.model.statements.len(), 2);
@@ -247,12 +293,15 @@ mod semantic_tests {
                 .iter()
                 .any(|symbol| symbol.name == "B")
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read().collections, 1);
         let expected = captured.first_diagnostic.unwrap();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_zenuml_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -263,11 +312,13 @@ mod semantic_tests {
             panic!("expected diagram parse diagnostic");
         };
         assert_eq!(diagnostic.span(), Some(expected.span));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
     fn semantic_construction_keeps_control_cancellation() {
+        #[cfg(feature = "editor-facts")]
         for demand in [EditorFactsDemand::Omit, EditorFactsDemand::Capture] {
             let control = OperationControl::new();
             control.cancel_after_checkpoints(3);
@@ -279,6 +330,7 @@ mod semantic_tests {
             parse_zenuml_semantic_model_controlled(
                 "zenuml\nA.call()",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             )
@@ -295,6 +347,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_zenuml_model_for_render_controlled(
             "zenuml\n@Starter(A) B.call()",
@@ -303,10 +356,12 @@ mod semantic_tests {
         )
         .unwrap()
         .unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "compat-json")]
         {
             parse_zenuml("zenuml\n@Starter(A) B.call()", &meta).unwrap();
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         }
     }
@@ -356,6 +411,7 @@ mod tests {
                 phase("semantic-begin");
                 let built = semantic::build_controlled(
                     parsed,
+                    #[cfg(feature = "editor-facts")]
                     EditorFactsDemand::Capture,
                     &OperationControl::new(),
                 )

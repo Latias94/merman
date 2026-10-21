@@ -68,6 +68,7 @@ pub(crate) struct ArrowToken {
 pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
+    #[cfg(feature = "editor-facts")]
     pub trigger_span: Option<SourceSpan>,
     /// Strict parser error represented by this editor-recovery token.
     ///
@@ -95,7 +96,9 @@ pub(crate) struct DirectionStatementToken {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")]
     pub expected_syntax: Vec<crate::EditorExpectedSyntax>,
+    #[cfg(feature = "editor-facts")]
     pub directive_prefix: Option<&'static str>,
 }
 
@@ -104,7 +107,9 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            #[cfg(feature = "editor-facts")]
             expected_syntax: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             directive_prefix: None,
         }
     }
@@ -113,11 +118,14 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            #[cfg(feature = "editor-facts")]
             expected_syntax: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             directive_prefix: None,
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn expecting(
         mut self,
         kind: crate::EditorExpectedSyntaxKind,
@@ -130,6 +138,7 @@ impl LexError {
         self
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn in_directive(mut self, prefix: &'static str, span: SourceSpan) -> Self {
         self.directive_prefix = Some(prefix);
         self.expecting(crate::EditorExpectedSyntaxKind::Directive, span)

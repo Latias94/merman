@@ -1,9 +1,10 @@
-#![cfg(feature = "diagram-usecase")]
+#![cfg(all(feature = "diagram-usecase", feature = "compat-json"))]
 
+#[cfg(feature = "editor-facts")]
 use merman_core::{
-    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticKind, EditorSemanticRole, Engine,
-    ParseOptions, RenderSemanticModel,
+    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticKind, EditorSemanticRole,
 };
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
 #[test]
 fn usecase_public_parse_routes_preserve_preprocessed_source_identity() {
@@ -33,35 +34,39 @@ fn usecase_public_parse_routes_preserve_preprocessed_source_identity() {
         parsed.model
     );
 
-    let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("usecase", source)
-        .expect("editor parse")
-        .expect("parser-backed facts");
-    assert!(facts.diagnostics.is_empty(), "{:?}", facts.diagnostics);
-    for id in ["Customer", "Checkout"] {
-        let occurrences = facts
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == id)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            occurrences.len(),
-            2,
-            "declaration and relationship endpoint for {id}"
-        );
-        for occurrence in occurrences {
+    #[cfg(feature = "editor-facts")]
+    {
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("usecase", source)
+            .expect("editor parse")
+            .expect("parser-backed facts");
+        assert!(facts.diagnostics.is_empty(), "{:?}", facts.diagnostics);
+        for id in ["Customer", "Checkout"] {
+            let occurrences = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == id)
+                .collect::<Vec<_>>();
             assert_eq!(
-                &source[occurrence.selection.start..occurrence.selection.end],
-                id
+                occurrences.len(),
+                2,
+                "declaration and relationship endpoint for {id}"
             );
-            assert_eq!(
-                occurrence.rename_policy,
-                EditorRenamePolicy::UsecaseIdentifier
-            );
+            for occurrence in occurrences {
+                assert_eq!(
+                    &source[occurrence.selection.start..occurrence.selection.end],
+                    id
+                );
+                assert_eq!(
+                    occurrence.rename_policy,
+                    EditorRenamePolicy::UsecaseIdentifier
+                );
+            }
         }
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[test]
 fn usecase_rename_accepts_only_a_complete_identifier_token() {
     let policy = EditorRenamePolicy::UsecaseIdentifier;
@@ -89,6 +94,7 @@ fn usecase_rename_accepts_only_a_complete_identifier_token() {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[test]
 fn usecase_recovery_preserves_declared_and_implicit_identity() {
     let engine = Engine::new();
@@ -194,6 +200,7 @@ fn usecase_recovery_preserves_declared_and_implicit_identity() {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[test]
 fn usecase_recovery_disables_rename_for_conflicting_declaration_kinds() {
     let facts = Engine::new()
@@ -240,18 +247,21 @@ Data --> Consumer
         semantic.model["jsonNodes"][0]["stringEncoding"],
         "json-utf16"
     );
-    let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("usecase", source)
-        .unwrap()
-        .unwrap();
-    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert!(facts.diagnostics.is_empty(), "{:?}", facts.diagnostics);
-    assert!(
-        facts
-            .symbols
-            .iter()
-            .any(|symbol| symbol.name == "Data" && symbol.kind == EditorSemanticKind::Object)
-    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("usecase", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty(), "{:?}", facts.diagnostics);
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "Data" && symbol.kind == EditorSemanticKind::Object)
+        );
+    }
 }
 
 #[test]
@@ -276,19 +286,22 @@ fn usecase_eof_diagnostics_keep_original_positions_across_public_routes() {
                 };
                 assert_eq!(diagnostic.span(), Some(expected), "{body}/{separator:?}");
             }
-            let facts = engine
-                .parse_editor_semantic_facts_with_type_sync("usecase", &source)
-                .unwrap()
-                .unwrap();
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(
-                facts
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.span == Some(expected)),
-                "{body}: {:?}",
-                facts.diagnostics
-            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = engine
+                    .parse_editor_semantic_facts_with_type_sync("usecase", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    facts
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.span == Some(expected)),
+                    "{body}: {:?}",
+                    facts.diagnostics
+                );
+            }
         }
     }
 }

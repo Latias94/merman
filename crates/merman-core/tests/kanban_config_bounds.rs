@@ -1,4 +1,5 @@
 #![cfg(feature = "diagram-kanban")]
+#![cfg(feature = "compat-json")]
 
 use merman_core::{Engine, Error, ParseOptions};
 

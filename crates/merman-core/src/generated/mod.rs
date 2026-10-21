@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 pub mod dompurify_defaults;
+#[cfg(feature = "editor-facts")]
 pub(crate) mod editor_rename_policy;
 pub mod mermaid_reference;
 

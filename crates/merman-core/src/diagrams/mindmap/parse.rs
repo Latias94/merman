@@ -8,11 +8,14 @@ use super::utils::{
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan, family::CombinedSemanticFailure,
+    EditorSemanticSymbol,
 };
+use crate::{Error, Result, SourceSpan, family::CombinedSemanticFailure};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -31,35 +34,45 @@ pub(crate) fn mindmap_syntax_construction_count() -> usize {
 
 struct MindmapSemanticSource {
     model: MindmapDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 pub(crate) fn parse_mindmap_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<MindmapDiagramModel>> {
     let construction = construct_mindmap_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
-    let (model, editor_facts) = match construction {
-        Ok(source) => (Ok(source.model), source.editor_facts),
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Omit => (Err(failure.into_error()), None),
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                (Err(error), Some(facts))
-            }
+    Ok(match construction {
+        Ok(source) => crate::family::SemanticConstruction {
+            model: Ok(source.model),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: source.editor_facts,
         },
-    };
-    Ok(crate::family::SemanticConstruction {
-        model,
-        editor_facts,
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            if editor_demand == EditorFactsDemand::Capture {
+                let (error, facts) = failure.into_parts();
+                return Ok(crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                });
+            }
+            crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: None,
+            }
+        }
     })
 }
 
@@ -71,7 +84,7 @@ pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     super::render_model_to_compat_json(&model, meta)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -82,6 +95,7 @@ pub(crate) fn parse_mindmap_json_and_editor_facts(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         control,
     )? {
@@ -128,6 +142,7 @@ pub(crate) fn parse_mindmap_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )? {
@@ -138,18 +153,24 @@ pub(crate) fn parse_mindmap_model_for_render_controlled(
     }
 }
 
-fn mindmap_failure(error: Error, facts: Option<EditorSemanticFacts>) -> CombinedSemanticFailure {
-    match facts {
-        Some(facts) => CombinedSemanticFailure::parser_recovery("mindmap", error, facts),
-        None => CombinedSemanticFailure::new(error, EditorSemanticFacts::new()),
-    }
+fn mindmap_failure(
+    error: Error,
+    #[cfg(feature = "editor-facts")] facts: Option<EditorSemanticFacts>,
+) -> CombinedSemanticFailure {
+    CombinedSemanticFailure::parser_recovery(
+        #[cfg(feature = "editor-facts")]
+        "mindmap",
+        error,
+        #[cfg(feature = "editor-facts")]
+        facts,
+    )
 }
 
 fn construct_mindmap_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<MindmapSemanticSource, CombinedSemanticFailure>,
@@ -160,22 +181,40 @@ fn construct_mindmap_semantic_source_controlled(
     let MindmapParseOutcome {
         parsed,
         first_error,
-    } = parse_mindmap_lines(code, diagram_type, editor_demand, control)?;
+    } = parse_mindmap_lines(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
     let editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => Some(mindmap_editor_facts_from_parsed(&parsed, control)?),
     };
     if let Some(error) = first_error {
-        return Ok(Err(mindmap_failure(error, editor_facts)));
+        return Ok(Err(mindmap_failure(
+            error,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        )));
     }
     let db = match mindmap_db_from_events(parsed.events, diagram_type, config, control)? {
         Ok(db) => db,
-        Err(error) => return Ok(Err(mindmap_failure(error, editor_facts))),
+        Err(error) => {
+            return Ok(Err(mindmap_failure(
+                error,
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            )));
+        }
     };
     control.checkpoint()?;
     Ok(Ok(MindmapSemanticSource {
         model: db.into_semantic_model(),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -231,18 +270,23 @@ struct MindmapParsedNodeLine {
     descr_raw: String,
     descr_is_markdown: bool,
     ty: i32,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
     selection: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     payload_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone)]
 struct MindmapParsedPayloadLine {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     tokens: Vec<MindmapParsedPayloadToken>,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone)]
 struct MindmapParsedPayloadToken {
     value: String,
@@ -259,7 +303,9 @@ enum MindmapParsedEvent {
 #[derive(Debug, Default)]
 struct MindmapParsedLines {
     events: Vec<MindmapParsedEvent>,
+    #[cfg(feature = "editor-facts")]
     directive_prefixes: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     capture_editor: bool,
 }
 
@@ -268,6 +314,7 @@ struct MindmapParseOutcome {
     first_error: Option<Error>,
 }
 
+#[cfg(feature = "editor-facts")]
 fn mindmap_editor_facts_from_parsed(
     parsed: &MindmapParsedLines,
     control: &crate::OperationControl,
@@ -294,13 +341,16 @@ fn mindmap_editor_facts_from_parsed(
                 if let Some(payload_span) = node.payload_span {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::Payload,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
                     ));
                     facts.push_symbol(EditorSemanticSymbol::payload(
                         node.descr_raw.clone(),
                         Some("mindmap node label".to_string()),
                         EditorSemanticKind::String,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
                     ));
                 }
@@ -350,6 +400,7 @@ fn absolute_mindmap_span(base: usize, span: SourceSpan) -> SourceSpan {
     SourceSpan::new(base + span.start, base + span.end)
 }
 
+#[cfg(feature = "editor-facts")]
 fn mindmap_payload_tokens(raw: &str, raw_start: usize) -> Vec<MindmapParsedPayloadToken> {
     let mut tokens = Vec::new();
     let mut cursor = 0usize;
@@ -456,8 +507,11 @@ fn handle_mindmap_line(
             );
             return MindmapLineOutcome::Done;
         }
+        #[cfg(feature = "editor-facts")]
         let icon_leading = icon_raw.len() - icon_raw.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let selection_start = statement_start + "::icon(".len() + icon_leading;
+        #[cfg(feature = "editor-facts")]
         let tokens = if parsed.capture_editor {
             parsed.directive_prefixes.push("::icon".to_string());
             vec![MindmapParsedPayloadToken {
@@ -471,7 +525,9 @@ fn handle_mindmap_line(
             .events
             .push(MindmapParsedEvent::Icon(MindmapParsedPayloadLine {
                 value: icon.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: statement_span,
+                #[cfg(feature = "editor-facts")]
                 tokens,
             }));
         return MindmapLineOutcome::Done;
@@ -488,8 +544,11 @@ fn handle_mindmap_line(
             );
             return MindmapLineOutcome::Done;
         }
+        #[cfg(feature = "editor-facts")]
         let class_leading = after.len() - after.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let class_start = statement_start + ":::".len() + class_leading;
+        #[cfg(feature = "editor-facts")]
         let tokens = if parsed.capture_editor {
             parsed.directive_prefixes.push(":::".to_string());
             mindmap_payload_tokens(class, class_start)
@@ -500,7 +559,9 @@ fn handle_mindmap_line(
             .events
             .push(MindmapParsedEvent::Class(MindmapParsedPayloadLine {
                 value: class.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: statement_span,
+                #[cfg(feature = "editor-facts")]
                 tokens,
             }));
         return MindmapLineOutcome::Done;
@@ -511,21 +572,28 @@ fn handle_mindmap_line(
         return MindmapLineOutcome::Done;
     }
     let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
+    #[cfg(feature = "editor-facts")]
     let editor_demand = if parsed.capture_editor {
         EditorFactsDemand::Capture
     } else {
         EditorFactsDemand::Omit
     };
-    match parse_node_spec(rest, editor_demand) {
+    match parse_node_spec(
+        rest,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+    ) {
         Ok(NodeSpec {
             id_raw,
             descr_raw,
             ty,
             descr_is_markdown,
             selection,
+            #[cfg(feature = "editor-facts")]
             trace,
         }) => {
             let selection = absolute_mindmap_span(statement_start, selection);
+            #[cfg(feature = "editor-facts")]
             let payload_span = trace
                 .and_then(|trace| trace.description_span)
                 .map(|span| absolute_mindmap_span(statement_start, span));
@@ -537,8 +605,10 @@ fn handle_mindmap_line(
                     descr_raw,
                     descr_is_markdown,
                     ty,
+                    #[cfg(feature = "editor-facts")]
                     span: statement_span,
                     selection,
+                    #[cfg(feature = "editor-facts")]
                     payload_span,
                 }));
             MindmapLineOutcome::Done
@@ -659,13 +729,14 @@ fn process_mindmap_physical_line(
 fn parse_mindmap_lines(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<MindmapParseOutcome> {
     control.checkpoint()?;
     let mut lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut parsed = MindmapParsedLines {
+        #[cfg(feature = "editor-facts")]
         capture_editor: matches!(editor_demand, EditorFactsDemand::Capture),
         ..Default::default()
     };
@@ -775,10 +846,11 @@ mod semantic_tests {
     #[test]
     fn semantic_tree_constructs_once_without_render_fields_or_editor_work() {
         reset_mindmap_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_mindmap_semantic_model_controlled(
             "mindmap\n  root[Root]\n    child((Child))\n      leaf[\"`Markdown`\"]\n      ::icon(star)\n      :::highlight\n",
-            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+            &metadata(), #[cfg(feature = "editor-facts")] EditorFactsDemand::Omit, &crate::OperationControl::new(),
         ).unwrap().model.unwrap();
         assert_eq!(model.nodes.len(), 3);
         assert_eq!(model.nodes[0].node_id, "root");
@@ -790,6 +862,7 @@ mod semantic_tests {
         assert_eq!(model.nodes[2].icon.as_deref(), Some("star"));
         assert_eq!(model.nodes[2].class.as_deref(), Some("highlight"));
         assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let value = serde_json::to_value(model).unwrap();
         for key in ["width", "height", "padding", "section", "shape", "look"] {
@@ -810,6 +883,7 @@ mod semantic_tests {
         let model = parse_mindmap_semantic_model_controlled(
             "mindmap\n  root[<script>bad()</script>Safe]\n    leaf[\"`**Markdown**`\"]",
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -823,10 +897,12 @@ mod semantic_tests {
     #[test]
     fn semantic_database_error_preserves_exact_selection_without_editor_work() {
         let input = "mindmap\n  root\n  second[Other]\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_mindmap_semantic_model_controlled(
             input,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -842,6 +918,7 @@ mod semantic_tests {
             Some(SourceSpan::new(offset, offset + "second".len()))
         );
         assert!(diagnostic.message().contains("There can be only one root"));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
@@ -871,6 +948,7 @@ mod semantic_tests {
             parse_mindmap_semantic_model_controlled(
                 "mindmap\n  root",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )
@@ -887,6 +965,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         reset_mindmap_syntax_construction_count();
         parse_mindmap_model_for_render_controlled(
@@ -897,10 +976,12 @@ mod semantic_tests {
         .unwrap()
         .unwrap();
         assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         reset_mindmap_syntax_construction_count();
         parse_mindmap("mindmap\n  root\n    child", &full).unwrap();
         assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

@@ -1,15 +1,30 @@
-use merman_core::{DiagramParseOutcome, Engine};
+#![cfg(all(feature = "diagram-agentflow", feature = "compat-json"))]
+
+#[cfg(feature = "editor-facts")]
+use merman_core::DiagramParseOutcome;
+use merman_core::Engine;
 use serde_json::Value;
 
 fn diagnostics(source: &str) -> Value {
-    let snapshot = Engine::new()
-        .parse_diagram_snapshot_with_type_sync("agentflow", source)
-        .expect("snapshot parse")
-        .expect("snapshot");
-    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
-        panic!("Agentflow source should parse");
-    };
-    model["diagnostics"].clone()
+    #[cfg(feature = "editor-facts")]
+    {
+        let snapshot = Engine::new()
+            .parse_diagram_snapshot_with_type_sync("agentflow", source)
+            .expect("snapshot parse")
+            .expect("snapshot");
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("Agentflow source should parse");
+        };
+        model["diagnostics"].clone()
+    }
+    #[cfg(not(feature = "editor-facts"))]
+    {
+        let parsed = Engine::new()
+            .parse_diagram_with_type_sync("agentflow", source, merman_core::ParseOptions::strict())
+            .expect("semantic parse")
+            .expect("Agentflow diagram");
+        parsed.model["diagnostics"].clone()
+    }
 }
 
 #[test]

@@ -36,9 +36,11 @@ pub(crate) use parse::parse_gantt_semantic_model_controlled;
 pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};
 #[cfg(feature = "compat-json")]
 pub(crate) use parse::{
-    parse_gantt, parse_gantt_json_and_editor_facts, render_model_to_compat_json,
-    render_model_to_compat_json_controlled,
+    parse_gantt, render_model_to_compat_json, render_model_to_compat_json_controlled,
 };
+
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub(crate) use parse::parse_gantt_json_and_editor_facts;
 
 const ALL_WEEKDAYS_MASK: u8 = 0b0111_1111;
 const MAX_CONSECUTIVE_EXCLUDED_DAYS: usize = 366;
@@ -180,6 +182,7 @@ mod tests;
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+    #[cfg(feature = "editor-facts")]
     use crate::family::EditorFactsDemand;
     use crate::{OperationControl, SemanticMetadata};
 
@@ -193,6 +196,7 @@ mod semantic_tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gantt_canonical_capture_retains_same_pass_facts_on_success_and_failure() {
         for (source, valid) in [
             (
@@ -202,6 +206,7 @@ mod semantic_tests {
             ("gantt\nsection Delivery\nweekday someday\n", false),
         ] {
             reset_gantt_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let parsed = parse_gantt_semantic_model_controlled(
                 source,
@@ -214,6 +219,7 @@ mod semantic_tests {
             let facts = parsed.editor_facts.expect("same-pass Gantt facts");
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "Delivery"));
             assert_eq!(gantt_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             assert_eq!(
                 facts.completeness,
@@ -237,10 +243,12 @@ mod semantic_tests {
         crate::runtime::with_operation_context(&context, || {
             let source = "gantt\ndateFormat MM-DD\nsection Delivery\nBase: base,03-01,1d\nShip: ship,after base,1d\n";
             reset_gantt_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let model = parse_gantt_semantic_model_controlled(
                 source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
@@ -258,6 +266,7 @@ mod semantic_tests {
                 }
             );
             assert_eq!(gantt_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         });
     }
@@ -273,10 +282,12 @@ mod semantic_tests {
             metadata.semantic_config = crate::MermaidConfig::from_value(serde_json::json!({
                 "securityLevel": level, "gantt": {"displayMode": "compact"}
             }));
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let model = parse_gantt_semantic_model_controlled(
                 source,
                 &metadata,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
@@ -288,6 +299,7 @@ mod semantic_tests {
             let serialized = serde_json::to_value(&model).unwrap();
             assert!(serialized.get("displayMode").is_none());
             assert!(serialized["tasks"][0].get("renderEndTime").is_none());
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         }
     }
@@ -295,10 +307,12 @@ mod semantic_tests {
     #[test]
     fn gantt_canonical_errors_keep_exact_spans_without_editor_work() {
         let source = "gantt\nweekday someday\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_gantt_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -317,6 +331,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -328,6 +343,7 @@ mod semantic_tests {
             parse_gantt_semantic_model_controlled(
                 "gantt\n",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             )
@@ -348,6 +364,7 @@ mod semantic_tests {
             title: None,
         };
         reset_gantt_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model =
             parse_gantt_model_for_render_controlled(source, &metadata, &OperationControl::new())
@@ -356,6 +373,7 @@ mod semantic_tests {
         assert_eq!(model.display_mode, "compact");
         assert!(model.tasks[0].render_end_ms.is_some());
         assert_eq!(gantt_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

@@ -1,8 +1,9 @@
 use super::*;
+#[cfg(feature = "editor-facts")]
+use crate::{EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole};
 use crate::{
-    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
-    MermaidConfig, OperationControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
-    SourceSpan,
+    Engine, Error, MermaidConfig, OperationControl, ParseDiagnosticSpanKind, ParseOptions,
+    RenderSemanticModel, SourceSpan,
 };
 use futures::executor::block_on;
 use serde_json::json;
@@ -97,15 +98,19 @@ fn gantt_entrypoints_construct_one_semantic_source() {
         .unwrap();
     assert_eq!(gantt_syntax_construction_count(), 1);
 
-    reset_gantt_syntax_construction_count();
-    engine
-        .parse_editor_semantic_facts_with_type_sync("gantt", text)
-        .unwrap()
-        .unwrap();
-    assert_eq!(gantt_syntax_construction_count(), 1);
+    #[cfg(feature = "editor-facts")]
+    {
+        reset_gantt_syntax_construction_count();
+        engine
+            .parse_editor_semantic_facts_with_type_sync("gantt", text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(gantt_syntax_construction_count(), 1);
+    }
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
     let text = concat!(
         "gantt\n",
@@ -384,17 +389,20 @@ fn gantt_date_format_consumes_one_separator_and_preserves_extra_whitespace() {
         let model = parse(&text);
         assert_eq!(model["dateFormat"], expected);
 
-        let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("gantt", &text)
-            .unwrap()
-            .expect("gantt editor facts");
-        let value_start = text.find("YYYY-MM-DD").unwrap();
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "YYYY-MM-DD"
-                && symbol.detail.as_deref() == Some("gantt date format")
-                && symbol.selection
-                    == SourceSpan::new(value_start, value_start + "YYYY-MM-DD".len())
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = Engine::new()
+                .parse_editor_semantic_facts_with_type_sync("gantt", &text)
+                .unwrap()
+                .expect("gantt editor facts");
+            let value_start = text.find("YYYY-MM-DD").unwrap();
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "YYYY-MM-DD"
+                    && symbol.detail.as_deref() == Some("gantt date format")
+                    && symbol.selection
+                        == SourceSpan::new(value_start, value_start + "YYYY-MM-DD".len())
+            }));
+        }
     }
 }
 
@@ -428,21 +436,24 @@ fn gantt_title_preserves_jison_separator_and_last_assignment_semantics() {
     let model = parse(unicode);
     assert_eq!(model["title"], " 😀 Delivery  ");
 
-    let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", unicode)
-        .unwrap()
-        .expect("gantt editor facts");
-    let title = facts
-        .symbols
-        .iter()
-        .find(|symbol| symbol.detail.as_deref() == Some("gantt title"))
-        .expect("title payload");
-    let payload_start = unicode.find("😀 Delivery").unwrap();
-    assert_eq!(title.name, "😀 Delivery");
-    assert_eq!(
-        title.selection,
-        SourceSpan::new(payload_start, payload_start + "😀 Delivery".len(),)
-    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gantt", unicode)
+            .unwrap()
+            .expect("gantt editor facts");
+        let title = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+            .expect("title payload");
+        let payload_start = unicode.find("😀 Delivery").unwrap();
+        assert_eq!(title.name, "😀 Delivery");
+        assert_eq!(
+            title.selection,
+            SourceSpan::new(payload_start, payload_start + "😀 Delivery".len(),)
+        );
+    }
 }
 
 #[test]
@@ -472,26 +483,30 @@ fn gantt_title_requires_content_after_the_separator() {
         Some(SourceSpan::new(title_start, title_start + "title ".len()))
     );
 
-    let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text)
-        .unwrap()
-        .expect("gantt editor facts");
-    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-    assert!(
-        facts
-            .diagnostics
-            .iter()
-            .any(|item| item.message.contains("unrecognized statement: title"))
-    );
-    assert!(
-        !facts
-            .symbols
-            .iter()
-            .any(|symbol| symbol.detail.as_deref() == Some("gantt title"))
-    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gantt", text)
+            .unwrap()
+            .expect("gantt editor facts");
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(
+            facts
+                .diagnostics
+                .iter()
+                .any(|item| item.message.contains("unrecognized statement: title"))
+        );
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+        );
+    }
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let text = concat!(
         "gantt\n",
@@ -697,6 +712,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
     let source = concat!(
         "gantt\n",
@@ -726,6 +742,7 @@ fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
     let text = concat!("gantt\n", "accDescr {\n", "  Draft release notes\n");
     let facts = Engine::new()
@@ -754,6 +771,7 @@ fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_recovers_from_incomplete_input() {
     let text = concat!(
         "gantt\n",
@@ -786,6 +804,7 @@ fn gantt_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_skip_leading_mermaid_directives() {
     let text = concat!(
         "%%{init: {\"theme\": \"dark\"}}%%\n",
@@ -812,6 +831,7 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
     let text = "gantt\nweekday foo\n";
     reset_gantt_syntax_construction_count();
@@ -844,6 +864,7 @@ fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_skip_frontmatter() {
     let text = concat!(
         "---\n",

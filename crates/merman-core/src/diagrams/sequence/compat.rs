@@ -1,14 +1,17 @@
+#[cfg(feature = "editor-facts")]
+use super::parse::SequenceSemanticSource;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
+#[cfg(feature = "editor-facts")]
+use crate::OperationControlResult;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::{OperationControl, OperationControlResult, ParseMetadata, Result};
+use crate::{OperationControl, ParseMetadata, Result};
 
 use super::model::SequenceDiagramModel;
-use super::parse::{
-    SequenceSemanticSource, construct_sequence_semantic_source, sequence_wrap_enabled_from_config,
-};
+use super::parse::{construct_sequence_semantic_source, sequence_wrap_enabled_from_config};
 use super::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
 
 impl SequenceDiagramModel {
@@ -96,6 +99,7 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(meta.effective_config.as_config()),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
@@ -105,6 +109,7 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
     Ok(source.db.into_model().to_compat_json(&meta.diagram_type))
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -121,7 +126,7 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
         |SequenceSemanticSource { db, editor_facts }| {
             (
                 Ok(db.into_model().to_compat_json(&meta.diagram_type)),
-                editor_facts,
+                editor_facts.expect("Sequence combined parse requests editor facts"),
             )
         },
         |failure| failure.into_error_and_editor_facts_for_type(&meta.diagram_type, code.len()),

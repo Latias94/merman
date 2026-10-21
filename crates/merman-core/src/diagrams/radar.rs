@@ -2,15 +2,22 @@
 use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
 };
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::{
+    push_langium_common_editor_fact, push_langium_common_recovery,
+};
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
+use crate::source_span::recovery_fallback_span;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, Result, SourceSpan, editor::ensure_editor_recovery_from_error,
-    family, source_span::recovery_fallback_span,
+    EditorSemanticSymbol, editor::ensure_editor_recovery_from_error,
 };
+use crate::{Error, Result, SourceSpan, family};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
@@ -200,6 +207,7 @@ struct RadarDb {
 
 struct RadarSemanticSource {
     model: Option<RadarDiagramModel>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -320,11 +328,13 @@ struct SpannedText {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum RadarEntityOccurrence {
     Definition,
     Reference,
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_radar_entity(
     facts: &mut EditorSemanticFacts,
     text: SpannedText,
@@ -351,6 +361,7 @@ fn push_radar_entity(
     facts.push_symbol(symbol);
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_radar_payload(
     facts: &mut EditorSemanticFacts,
     text: SpannedText,
@@ -447,6 +458,7 @@ fn parse_radar_statement(
     Ok(Err(format!("unexpected radar statement: {}", stmt.trim())))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_radar_statement_facts(
     facts: &mut EditorSemanticFacts,
     event: &RadarStatementEvent,
@@ -638,6 +650,7 @@ pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -681,6 +694,7 @@ pub(crate) fn parse_radar_model_for_render_controlled(
     let construction = construct_radar_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -718,6 +732,7 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
     construct_radar_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -728,45 +743,59 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
 pub(crate) fn parse_radar_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<RadarDiagramModel>> {
     let construction = construct_radar_semantic_source_controlled(
         code,
         &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model.unwrap_or_default();
             model.sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
 fn construct_radar_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure>,
@@ -780,6 +809,7 @@ fn construct_radar_semantic_source_controlled(
         Ok(None) => {
             return Ok(Ok(RadarSemanticSource {
                 model: None,
+                #[cfg(feature = "editor-facts")]
                 editor_facts: (editor_demand == EditorFactsDemand::Capture)
                     .then(EditorSemanticFacts::new),
             }));
@@ -787,10 +817,12 @@ fn construct_radar_semantic_source_controlled(
         Err(error) => {
             return Ok(Err(radar_parse_failure(
                 error,
+                #[cfg(feature = "editor-facts")]
                 match editor_demand {
                     EditorFactsDemand::Omit => None,
                     EditorFactsDemand::Capture => Some(EditorSemanticFacts::new()),
                 },
+                #[cfg(feature = "editor-facts")]
                 code,
             )));
         }
@@ -798,6 +830,7 @@ fn construct_radar_semantic_source_controlled(
     let mut offset = body.offset;
 
     let mut common = LangiumCommonFacts::default();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -815,6 +848,7 @@ fn construct_radar_semantic_source_controlled(
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             if let Some(diagnostic) = &parsed.diagnostic {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     push_langium_common_recovery(facts, diagnostic);
                 }
@@ -826,6 +860,7 @@ fn construct_radar_semantic_source_controlled(
                     )
                 });
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts.as_mut() {
                 push_langium_common_editor_fact(facts, &parsed.fact, "radar");
             }
@@ -842,6 +877,7 @@ fn construct_radar_semantic_source_controlled(
 
         match parse_radar_statement(&statement, statement_start, control)? {
             Ok(parsed) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     push_radar_statement_facts(facts, &parsed.event, control)?;
                 }
@@ -854,7 +890,9 @@ fn construct_radar_semantic_source_controlled(
                 )?;
             }
             Err(message) => {
+                #[cfg(feature = "editor-facts")]
                 let invalid = statement.trim_end();
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = editor_facts.as_mut() {
                     facts.mark_recovered_from_parse_error(
                         message.clone(),
@@ -878,6 +916,7 @@ fn construct_radar_semantic_source_controlled(
     db.acc_descr = common.acc_descr;
     db.set_axes_controlled(axes, control)?;
     if let Err(error) = db.set_curves_controlled(curves, control)? {
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = editor_facts.take() {
             editor_facts = Some(ensure_editor_recovery_from_error(
                 facts,
@@ -895,25 +934,32 @@ fn construct_radar_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
         )));
     }
 
     Ok(Ok(RadarSemanticSource {
         model: Some(db.into_model()),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
 fn radar_parse_failure(
     error: Error,
-    editor_facts: Option<EditorSemanticFacts>,
-    code: &str,
+    #[cfg(feature = "editor-facts")] editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")] code: &str,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts = editor_facts
-        .map(|facts| ensure_editor_recovery_from_error(facts, &error, recovery_fallback_span(code)))
-        .unwrap_or_default();
-    family::CombinedSemanticFailure::new(error, editor_facts)
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = editor_facts.map(|facts| {
+        ensure_editor_recovery_from_error(facts, &error, recovery_fallback_span(code))
+    });
+    family::CombinedSemanticFailure::new(
+        error,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    )
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -1665,7 +1711,9 @@ impl<'input> TokenParser<'input> {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticRole, Engine, ParseOptions};
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticRole;
+    use crate::{Engine, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1705,6 +1753,7 @@ mod tests {
             construct_radar_semantic_source_controlled(
                 &text,
                 &meta.diagram_type,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             ),
@@ -1889,6 +1938,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn radar_editor_facts_preserve_every_repeated_occurrence_span() {
         let text = concat!(
             "radar-beta\r\n",
@@ -1948,6 +1998,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn radar_forward_axis_occurrence_is_a_reference_before_its_definition() {
         let text = concat!("radar-beta\n", "curve Forward{Later: 1}\n", "axis Later\n",);
         let facts = Engine::new()
@@ -1967,6 +2018,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn radar_entity_occurrence_role_does_not_depend_on_display_detail() {
         let span = SourceSpan::new(0, "axis".len());
         let mut facts = EditorSemanticFacts::new();
@@ -2033,6 +2085,7 @@ curve
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn radar_recovery_reports_parser_diagnostic_with_exact_crlf_span() {
         let text = concat!(
             "radar-beta\r\n",
@@ -2075,20 +2128,23 @@ curve
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
 
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("radar", text)
-            .unwrap()
-            .expect("radar editor recovery facts");
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "sample"));
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(expected_span)
-                && diagnostic.message.contains("Missing entry for axis Axis B")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("radar", text)
+                .unwrap()
+                .expect("radar editor recovery facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "sample"));
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(expected_span)
+                    && diagnostic.message.contains("Missing entry for axis Axis B")
+            }));
+        }
     }
 
     #[test]
@@ -2211,6 +2267,7 @@ mod semantic_tests {
         let parsed = parse_radar_semantic_model_controlled(
             "",
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             &crate::OperationControl::new(),
         )
@@ -2220,15 +2277,18 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("radar"),
             1
         );
-        let facts = parsed
-            .editor_facts
-            .expect("empty input still provides requested facts");
-        assert!(facts.symbols.is_empty());
-        assert!(facts.diagnostics.is_empty());
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Complete
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = parsed
+                .editor_facts
+                .expect("empty input still provides requested facts");
+            assert!(facts.symbols.is_empty());
+            assert!(facts.diagnostics.is_empty());
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Complete
+            );
+        }
     }
 
     fn metadata() -> crate::SemanticMetadata {
@@ -2254,10 +2314,12 @@ mod semantic_tests {
             "ticks 40, min 1, max 9, graticule polygon, showLegend false\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("radar");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_radar_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2280,6 +2342,7 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("radar"),
             1
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -2291,6 +2354,7 @@ mod semantic_tests {
         let model = parse_radar_semantic_model_controlled(
             "",
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2307,10 +2371,12 @@ mod semantic_tests {
     fn semantic_curve_validation_keeps_exact_error_span_without_editor_work() {
         let source = "radar-beta\r\naxis A,B\r\n  curve sample{A: 1}\r\n";
         let start = source.find("sample").unwrap();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_radar_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2329,6 +2395,7 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default()
@@ -2348,6 +2415,7 @@ mod semantic_tests {
             parse_radar_semantic_model_controlled(
                 &source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             ),
@@ -2364,11 +2432,13 @@ mod semantic_tests {
             title: None,
         };
         let source = "radar-beta\naxis A,B\ncurve Sample{1,2}\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         parse_radar(source, &meta).unwrap();
         parse_radar_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
             .unwrap()
             .unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default(),

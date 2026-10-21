@@ -1,11 +1,16 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, OperationControl,
-    OperationControlResult, Result, SemanticMetadata, SourceSpan,
+    EditorSemanticKind, EditorSemanticSymbol,
+};
+use crate::{
+    Error, MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, Result,
+    SemanticMetadata, SourceSpan,
 };
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -65,6 +70,7 @@ impl RailroadDialect {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn common_detail_prefix(self) -> &'static str {
         match self {
             Self::Ir => "railroad",
@@ -74,6 +80,7 @@ impl RailroadDialect {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn editor_rename_policy(self) -> EditorRenamePolicy {
         match self {
             Self::Ir => EditorRenamePolicy::RailroadIrRule,
@@ -84,21 +91,25 @@ impl RailroadDialect {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_ir_rule_identifier(candidate: &str) -> bool {
     is_valid_railroad_rule_identifier(candidate, RailroadDialect::Ir)
         && railroad_rule_name_conflict(candidate, RailroadDialect::Ir).is_none()
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_ebnf_rule_identifier(candidate: &str) -> bool {
     is_valid_railroad_rule_identifier(candidate, RailroadDialect::Ebnf)
         && railroad_rule_name_conflict(candidate, RailroadDialect::Ebnf).is_none()
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_peg_rule_identifier(candidate: &str) -> bool {
     is_valid_railroad_rule_identifier(candidate, RailroadDialect::Peg)
         && railroad_rule_name_conflict(candidate, RailroadDialect::Peg).is_none()
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_abnf_rule_identifier(candidate: &str) -> bool {
     is_valid_railroad_rule_identifier(candidate, RailroadDialect::Abnf)
         && railroad_rule_name_conflict(candidate, RailroadDialect::Abnf).is_none()
@@ -290,10 +301,13 @@ pub struct RailroadDiagramModel {
     #[serde(default)]
     pub rules: Vec<RailroadRuleModel>,
     #[serde(skip_serializing)]
+    #[cfg(feature = "editor-facts")]
     title_span: Option<SourceSpan>,
     #[serde(skip_serializing)]
+    #[cfg(feature = "editor-facts")]
     acc_title_span: Option<SourceSpan>,
     #[serde(skip_serializing)]
+    #[cfg(feature = "editor-facts")]
     acc_descr_span: Option<SourceSpan>,
 }
 
@@ -307,8 +321,11 @@ impl RailroadDiagramModel {
             acc_descr: None,
             title: None,
             rules: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             title_span: None,
+            #[cfg(feature = "editor-facts")]
             acc_title_span: None,
+            #[cfg(feature = "editor-facts")]
             acc_descr_span: None,
         }
     }
@@ -329,6 +346,7 @@ pub struct RailroadRuleModel {
     pub name: String,
     pub definition: RailroadAstNode,
     #[serde(skip_serializing, default = "zero_span")]
+    #[cfg(feature = "editor-facts")]
     name_span: SourceSpan,
 }
 
@@ -509,6 +527,7 @@ pub(crate) fn parse_railroad_peg_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -518,6 +537,7 @@ pub(crate) fn parse_railroad_json_and_editor_facts(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -527,6 +547,7 @@ pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -536,6 +557,7 @@ pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -547,13 +569,14 @@ pub(crate) fn parse_railroad_peg_json_and_editor_facts(
 pub(crate) fn parse_railroad_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Ir,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )
@@ -562,13 +585,14 @@ pub(crate) fn parse_railroad_semantic_model_controlled(
 pub(crate) fn parse_railroad_ebnf_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Ebnf,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )
@@ -577,13 +601,14 @@ pub(crate) fn parse_railroad_ebnf_semantic_model_controlled(
 pub(crate) fn parse_railroad_abnf_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Abnf,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )
@@ -592,13 +617,14 @@ pub(crate) fn parse_railroad_abnf_semantic_model_controlled(
 pub(crate) fn parse_railroad_peg_semantic_model_controlled(
     code: &str,
     metadata: &SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     parse_railroad_semantic_model_for_dialect_controlled(
         code,
         metadata,
         RailroadDialect::Peg,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )
@@ -608,13 +634,14 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
     code: &str,
     metadata: &SemanticMetadata,
     dialect: RailroadDialect,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<RailroadDiagramModel>> {
     let construction = construct_railroad_semantic_source(
         code,
         &metadata.diagram_type,
         dialect,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
@@ -625,11 +652,13 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
                 .sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(source.model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: source.editor_facts,
             }
         }
         Err(failure) => crate::family::SemanticConstruction {
             model: Err(*failure.error),
+            #[cfg(feature = "editor-facts")]
             editor_facts: failure.editor_facts.map(|facts| *facts),
         },
     })
@@ -637,6 +666,7 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
 
 struct RailroadSemanticSource {
     model: RailroadDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -658,6 +688,7 @@ impl RailroadSemanticSource {
 
 struct RailroadParseFailure {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
@@ -668,15 +699,18 @@ struct RailroadLexerOutcome {
 
 struct RailroadParserOutcome {
     model: RailroadDiagramModel,
+    #[cfg(feature = "editor-facts")]
     trace: RailroadParserTrace,
     first_error: Option<Error>,
 }
 
 #[derive(Default)]
+#[cfg(feature = "editor-facts")]
 struct RailroadParserTrace {
     peg_predicates: Vec<RailroadPegPredicateTrace>,
 }
 
+#[cfg(feature = "editor-facts")]
 struct RailroadPegPredicateTrace {
     span: SourceSpan,
     inner: RailroadAstNode,
@@ -702,6 +736,7 @@ fn parse_railroad_model_for_render_dialect_controlled(
         code,
         &meta.diagram_type,
         dialect,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -712,6 +747,7 @@ fn parse_railroad_model_for_render_dialect_controlled(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
     meta: &ParseMetadata,
@@ -766,6 +802,7 @@ fn parse_railroad_semantic_source(
         code,
         &meta.diagram_type,
         dialect,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
@@ -777,7 +814,7 @@ fn construct_railroad_semantic_source(
     code: &str,
     diagram_type: &str,
     dialect: RailroadDialect,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<RailroadSemanticSource, RailroadParseFailure>> {
     #[cfg(test)]
@@ -790,9 +827,11 @@ fn construct_railroad_semantic_source(
         code.len(),
         diagram_type,
         dialect,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
     )
     .parse_recovering(control)?;
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => Some(editor_facts_from_model(
@@ -804,7 +843,9 @@ fn construct_railroad_semantic_source(
     control.checkpoint()?;
 
     if let Some(error) = earliest_railroad_error(lexer.first_error, parser.first_error) {
+        #[cfg(feature = "editor-facts")]
         let span = railroad_error_span(&error, SourceSpan::new(0, code.len()));
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
             facts.mark_recovered_from_parse_error(
                 format!(
@@ -816,6 +857,7 @@ fn construct_railroad_semantic_source(
         }
         return Ok(Err(RailroadParseFailure {
             error: Box::new(error),
+            #[cfg(feature = "editor-facts")]
             editor_facts: editor_facts.map(Box::new),
         }));
     }
@@ -823,6 +865,7 @@ fn construct_railroad_semantic_source(
     control.checkpoint()?;
     Ok(Ok(RailroadSemanticSource {
         model: parser.model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -920,7 +963,9 @@ struct RailroadParser<'a> {
     input_len: usize,
     diagram_type: &'a str,
     dialect: RailroadDialect,
+    #[cfg(feature = "editor-facts")]
     editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")]
     trace: RailroadParserTrace,
 }
 
@@ -1091,7 +1136,7 @@ impl<'a> RailroadParser<'a> {
         input_len: usize,
         diagram_type: &'a str,
         dialect: RailroadDialect,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     ) -> Self {
         Self {
             tokens,
@@ -1099,7 +1144,9 @@ impl<'a> RailroadParser<'a> {
             input_len,
             diagram_type,
             dialect,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
+            #[cfg(feature = "editor-facts")]
             trace: RailroadParserTrace::default(),
         }
     }
@@ -1114,6 +1161,7 @@ impl<'a> RailroadParser<'a> {
         if let Err(error) = self.expect_header() {
             return Ok(RailroadParserOutcome {
                 model,
+                #[cfg(feature = "editor-facts")]
                 trace: self.trace,
                 first_error: Some(error),
             });
@@ -1124,15 +1172,24 @@ impl<'a> RailroadParser<'a> {
             match field.kind {
                 CommonFieldKind::Title => {
                     model.title = Some(field.value);
-                    model.title_span = Some(field.span);
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        model.title_span = Some(field.span);
+                    }
                 }
                 CommonFieldKind::AccTitle => {
                     model.acc_title = Some(field.value);
-                    model.acc_title_span = Some(field.span);
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        model.acc_title_span = Some(field.span);
+                    }
                 }
                 CommonFieldKind::AccDescr => {
                     model.acc_descr = Some(field.value);
-                    model.acc_descr_span = Some(field.span);
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        model.acc_descr_span = Some(field.span);
+                    }
                 }
             }
         }
@@ -1152,6 +1209,7 @@ impl<'a> RailroadParser<'a> {
         control.checkpoint()?;
         Ok(RailroadParserOutcome {
             model,
+            #[cfg(feature = "editor-facts")]
             trace: self.trace,
             first_error,
         })
@@ -1250,6 +1308,7 @@ impl<'a> RailroadParser<'a> {
         Ok(RailroadRuleModel {
             name: name.text,
             definition: definition.node,
+            #[cfg(feature = "editor-facts")]
             name_span: name.selection,
         })
     }
@@ -2081,6 +2140,7 @@ impl<'a> RailroadParser<'a> {
         };
         let label = format!("{operator}{}", node_to_label(&suffix.node));
         let predicate_span = SourceSpan::new(span.start, suffix.span().end);
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Capture {
             self.trace.peg_predicates.push(RailroadPegPredicateTrace {
                 span: predicate_span,
@@ -3351,6 +3411,7 @@ fn node_to_label(node: &RailroadAstNode) -> String {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn editor_facts_from_model(
     model: &RailroadDiagramModel,
     dialect: RailroadDialect,
@@ -3417,6 +3478,7 @@ fn editor_facts_from_model(
     facts
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_ast_facts(
     facts: &mut EditorSemanticFacts,
     node: &RailroadAstNode,
@@ -3499,6 +3561,7 @@ fn push_ast_facts(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_payload_fact(
     facts: &mut EditorSemanticFacts,
     value: String,
@@ -3534,10 +3597,10 @@ mod semantic_tests {
     #[test]
     fn canonical_entries_preserve_each_dialect_without_editor_work() {
         type Parser = fn(
-            &str,
-            &SemanticMetadata,
-            EditorFactsDemand,
-            &OperationControl,
+            code: &str,
+            metadata: &SemanticMetadata,
+            #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+            control: &OperationControl,
         ) -> OperationControlResult<
             crate::family::SemanticConstruction<RailroadDiagramModel>,
         >;
@@ -3566,10 +3629,12 @@ mod semantic_tests {
 
         for (dialect, source, parse) in cases {
             reset_railroad_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let model = parse(
                 source,
                 &metadata(dialect),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
@@ -3584,6 +3649,7 @@ mod semantic_tests {
                 RailroadAstNode::Terminal { value, .. } if value == "value"
             ));
             assert_eq!(railroad_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
         }
     }
@@ -3593,7 +3659,7 @@ mod semantic_tests {
         let source = "railroad-peg-beta\nentry <- &target \"value\" ;\ntarget <- \"ok\" ;\n";
         let control = OperationControl::new();
         let mut models = Vec::new();
-        for demand in [EditorFactsDemand::Omit, EditorFactsDemand::Capture] {
+        let mut parse = |#[cfg(feature = "editor-facts")] demand: EditorFactsDemand| {
             let lexer = Lexer::new(source, RailroadDialect::Peg, "railroadPeg")
                 .tokenize_recovering(&control)
                 .unwrap();
@@ -3603,17 +3669,26 @@ mod semantic_tests {
                 source.len(),
                 "railroadPeg",
                 RailroadDialect::Peg,
+                #[cfg(feature = "editor-facts")]
                 demand,
             )
             .parse_recovering(&control)
             .unwrap();
             assert!(parsed.first_error.is_none());
+            #[cfg(feature = "editor-facts")]
             assert_eq!(
                 parsed.trace.peg_predicates.len(),
                 usize::from(demand == EditorFactsDemand::Capture)
             );
             models.push(parsed.model);
+        };
+        #[cfg(feature = "editor-facts")]
+        for demand in [EditorFactsDemand::Omit, EditorFactsDemand::Capture] {
+            parse(demand);
         }
+        #[cfg(not(feature = "editor-facts"))]
+        parse();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(models[0], models[1]);
     }
 
@@ -3621,21 +3696,25 @@ mod semantic_tests {
     fn semantic_and_editor_construction_share_exact_errors_and_cancellation() {
         let source = "railroad-ebnf-beta\nbroken = ( \"value\" ;\nafter = \"later\" ;\n";
         let meta = metadata(RailroadDialect::Ebnf);
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let semantic = parse_railroad_ebnf_semantic_model_controlled(
             source,
             &meta,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
         .unwrap()
         .model
         .unwrap_err();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let failure = match construct_railroad_semantic_source(
             source,
             &meta.diagram_type,
             RailroadDialect::Ebnf,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             &OperationControl::new(),
         )
@@ -3649,6 +3728,7 @@ mod semantic_tests {
             railroad_error_span(&semantic, zero_span()),
             railroad_error_span(&failure.error, zero_span())
         );
+        #[cfg(feature = "editor-facts")]
         assert!(
             failure
                 .editor_facts
@@ -3664,6 +3744,7 @@ mod semantic_tests {
             parse_railroad_ebnf_semantic_model_controlled(
                 source,
                 &meta,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control,
             )
@@ -3680,6 +3761,7 @@ mod semantic_tests {
         let model = parse_railroad_semantic_model_controlled(
             source,
             &meta,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -3700,7 +3782,9 @@ mod semantic_tests {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticCompleteness, EditorSemanticRole, MermaidConfig, ParseMetadata};
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+    use crate::{MermaidConfig, ParseMetadata};
 
     fn meta(dialect: RailroadDialect) -> ParseMetadata {
         ParseMetadata {
@@ -3711,6 +3795,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn combined_editor_facts(source: &str, dialect: RailroadDialect) -> EditorSemanticFacts {
         let parser: crate::family::CombinedSemanticParser = match dialect {
             RailroadDialect::Ir => parse_railroad_json_and_editor_facts,
@@ -3940,9 +4025,12 @@ mod tests {
                 "{error}"
             );
 
-            let facts = combined_editor_facts(&source, RailroadDialect::Ir);
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = combined_editor_facts(&source, RailroadDialect::Ir);
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+            }
         }
     }
 
@@ -4064,13 +4152,16 @@ mod tests {
                 dialect.diagram_type()
             );
 
-            let facts = combined_editor_facts(&excessive_depth, dialect);
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(
-                facts.symbols.iter().any(|symbol| symbol.name == "after"),
-                "{} did not retain the rule after the bounded parse failure",
-                dialect.diagram_type()
-            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = combined_editor_facts(&excessive_depth, dialect);
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    facts.symbols.iter().any(|symbol| symbol.name == "after"),
+                    "{} did not retain the rule after the bounded parse failure",
+                    dialect.diagram_type()
+                );
+            }
         }
     }
 
@@ -4097,6 +4188,7 @@ mod tests {
                     &source,
                     &meta(dialect).diagram_type,
                     dialect,
+                    #[cfg(feature = "editor-facts")]
                     EditorFactsDemand::Omit,
                     &control,
                 )
@@ -4126,6 +4218,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn railroad_editor_facts_use_dialect_specific_rename_policies() {
         let cases = [
             (
@@ -4167,6 +4260,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn railroad_rule_definitions_and_forward_references_have_distinct_roles() {
         let cases = [
             (
@@ -4284,13 +4378,16 @@ mod tests {
         for (dialect, source) in cases {
             assert!(parse_railroad_semantic_source(source, &meta(dialect), dialect).is_err());
 
-            reset_railroad_syntax_construction_count();
-            let facts = combined_editor_facts(source, dialect);
-            assert_eq!(railroad_syntax_construction_count(), 1);
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
-            assert_eq!(facts.diagnostics.len(), 1);
+            #[cfg(feature = "editor-facts")]
+            {
+                reset_railroad_syntax_construction_count();
+                let facts = combined_editor_facts(source, dialect);
+                assert_eq!(railroad_syntax_construction_count(), 1);
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+                assert_eq!(facts.diagnostics.len(), 1);
+            }
         }
     }
 }

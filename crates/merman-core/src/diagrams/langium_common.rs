@@ -1,6 +1,8 @@
+use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, SourceSpan,
+    EditorSemanticSymbol,
 };
 #[cfg(test)]
 use std::{cell::RefCell, collections::BTreeMap};
@@ -176,6 +178,7 @@ impl LangiumCommonFacts {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn push_langium_common_editor_fact(
     facts: &mut EditorSemanticFacts,
     fact: &LangiumCommonFact,
@@ -204,6 +207,7 @@ pub(crate) fn push_langium_common_editor_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn push_langium_common_recovery(
     facts: &mut EditorSemanticFacts,
     diagnostic: &LangiumCommonDiagnostic,

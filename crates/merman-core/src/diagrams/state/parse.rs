@@ -1,13 +1,20 @@
-use crate::family::{EditorFactsDemand, SemanticConstruction};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
 use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
+#[cfg(feature = "editor-facts")]
+use crate::source_span::{
+    has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, SourceSpan,
-    parse_diagnostic::lalrpop_parse_diagnostic,
-    source_span::{
-        has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
-    },
+    EditorSemanticSymbol,
+};
+use crate::{
+    Error, OperationControl, OperationControlResult, ParseDiagnostic, ParseDiagnosticSpanKind,
+    SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
@@ -15,6 +22,7 @@ use crate::{ParseMetadata, Result};
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
+#[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
 #[cfg(feature = "presentation")]
@@ -40,6 +48,12 @@ pub(crate) fn state_syntax_construction_count() -> usize {
 type StateLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
 type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
+struct StateSyntaxOutcome {
+    document: std::result::Result<StateDocument, StateGrammarError>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
 struct StateSyntax {
     events: Vec<StateLexicalEvent>,
 }
@@ -53,20 +67,20 @@ impl StateSyntax {
         Ok(Self { events })
     }
 
-    fn into_editor_facts_and_document(
+    fn into_document(
         self,
-        code: &str,
-        facts_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] code: &str,
+        #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<(
-        EditorSemanticFacts,
-        std::result::Result<StateDocument, StateGrammarError>,
-    )> {
+    ) -> OperationControlResult<StateSyntaxOutcome> {
+        #[cfg(feature = "editor-facts")]
         let editor_facts = match facts_demand {
-            EditorFactsDemand::Omit => EditorSemanticFacts::new(),
-            EditorFactsDemand::Capture => {
-                collect_state_editor_facts_from_events(&self.events, code, control)?
-            }
+            EditorFactsDemand::Omit => None,
+            EditorFactsDemand::Capture => Some(collect_state_editor_facts_from_events(
+                &self.events,
+                code,
+                control,
+            )?),
         };
         control.checkpoint()?;
         let mut emitted = 0usize;
@@ -83,17 +97,23 @@ impl StateSyntax {
             document
         });
         control.checkpoint()?;
-        Ok((editor_facts, document))
+        Ok(StateSyntaxOutcome {
+            document,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
     }
 }
 
 struct StateSemanticSource {
     db: StateDb,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct StateSemanticFailure {
     error: Box<StateGrammarError>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
@@ -111,6 +131,7 @@ impl StateSemanticFailure {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
         meta: &ParseMetadata,
@@ -119,6 +140,7 @@ impl StateSemanticFailure {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
@@ -173,7 +195,12 @@ pub(crate) fn parse_state_model_for_render_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
-    let construction = construct_state_semantic_source(code, EditorFactsDemand::Omit, control)?;
+    let construction = construct_state_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     match construction {
         Ok(source) => source.db.into_model_controlled(meta, control),
         Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
@@ -184,12 +211,21 @@ pub(crate) fn parse_state_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<SemanticConstruction<StateDiagramModel>> {
-    let construction = construct_state_semantic_source(code, editor_demand, control)?;
+    let construction = construct_state_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     match construction {
-        Ok(StateSemanticSource { db, editor_facts }) => {
+        Ok(StateSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
             let model = match db.into_semantic_model_controlled(diagram_type, config, control)? {
                 Ok(mut model) => {
                     model.sanitize_common_db_fields(config);
@@ -200,25 +236,30 @@ pub(crate) fn parse_state_semantic_model_controlled(
             };
             Ok(SemanticConstruction {
                 model,
-                editor_facts: (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
             })
         }
+        #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand == EditorFactsDemand::Capture => {
             let (error, editor_facts) =
                 failure.into_error_and_editor_facts_for_type(diagram_type, code.len());
             Ok(SemanticConstruction {
                 model: Err(error),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: Some(editor_facts),
             })
         }
         Err(failure) => Ok(SemanticConstruction {
             model: Err(failure.into_parse_error_for_type(diagram_type, code.len())),
+            #[cfg(feature = "editor-facts")]
             editor_facts: None,
         }),
     }
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_state_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -226,14 +267,21 @@ pub(crate) fn parse_state_json_and_editor_facts(
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_state_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let construction = match construction {
-        Ok(StateSemanticSource { db, editor_facts }) => {
+        Ok(StateSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
             let model = match db.into_model_controlled(meta, control)? {
                 Ok(model) => super::render_model::render_model_to_compat_json_controlled(
                     &model, meta, control,
                 )?,
                 Err(error) => Err(error),
             };
-            Ok((model, editor_facts))
+            Ok((
+                model,
+                editor_facts.expect("State combined parse requests editor facts"),
+            ))
         }
         Err(failure) => Err(failure),
     };
@@ -243,6 +291,7 @@ pub(crate) fn parse_state_json_and_editor_facts(
         |(model, editor_facts)| {
             (
                 model.map(crate::ManagedSemanticJson::into_unmanaged_value),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             )
         },
@@ -253,26 +302,40 @@ pub(crate) fn parse_state_json_and_editor_facts(
 
 #[cfg(feature = "compat-json")]
 fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {
-    construct_state_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| failure.into_parse_error(meta, code.len()))
+    construct_state_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| failure.into_parse_error(meta, code.len()))
 }
 
 fn construct_state_semantic_source(
     code: &str,
-    facts_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<StateSemanticSource, StateSemanticFailure>> {
     let syntax = StateSyntax::lex(code, control)?;
-    let (_editor_facts, document) =
-        syntax.into_editor_facts_and_document(code, facts_demand, control)?;
+    let StateSyntaxOutcome {
+        document,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = syntax.into_document(
+        #[cfg(feature = "editor-facts")]
+        code,
+        #[cfg(feature = "editor-facts")]
+        facts_demand,
+        control,
+    )?;
     let mut doc = match document {
         Ok(doc) => doc,
         Err(error) => {
             return Ok(Err(StateSemanticFailure {
                 error: Box::new(error),
-                editor_facts: (facts_demand == EditorFactsDemand::Capture)
-                    .then(|| Box::new(_editor_facts)),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: editor_facts.map(Box::new),
             }));
         }
     };
@@ -285,7 +348,8 @@ fn construct_state_semantic_source(
     control.checkpoint()?;
     Ok(Ok(StateSemanticSource {
         db,
-        editor_facts: _editor_facts,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
     }))
 }
 
@@ -336,6 +400,7 @@ pub(super) fn assign_divider_ids(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum StateTokenContext {
     Default,
     ClickTarget,
@@ -345,6 +410,7 @@ enum StateTokenContext {
 }
 
 #[derive(Debug)]
+#[cfg(feature = "editor-facts")]
 struct StatePendingEntity {
     name: String,
     selection: SourceSpan,
@@ -352,6 +418,7 @@ struct StatePendingEntity {
     kind: EditorSemanticKind,
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_state_editor_facts_from_events(
     lexical_events: &[StateLexicalEvent],
     code: &str,
@@ -397,6 +464,7 @@ fn collect_state_editor_facts_from_events(
     Ok(facts)
 }
 
+#[cfg(feature = "editor-facts")]
 struct StateTokenFactCollector<'a> {
     code: &'a str,
     context: StateTokenContext,
@@ -413,11 +481,13 @@ struct StateTokenFactCollector<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 struct PendingDirectiveSlot {
     kind: EditorExpectedSyntaxKind,
     anchor_end: usize,
 }
 
+#[cfg(feature = "editor-facts")]
 impl StateTokenFactCollector<'_> {
     fn collect_token(
         &mut self,
@@ -933,6 +1003,7 @@ impl StateTokenFactCollector<'_> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn state_pending_entity(
     id: String,
     start: usize,
@@ -953,6 +1024,7 @@ fn state_pending_entity(
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_reference_fact(
     facts: &mut EditorSemanticFacts,
     id: String,
@@ -977,6 +1049,7 @@ fn push_state_reference_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_reference_fact_with_selection(
     facts: &mut EditorSemanticFacts,
     id: String,
@@ -997,6 +1070,7 @@ fn push_state_reference_fact_with_selection(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_class_definition_fact(
     facts: &mut EditorSemanticFacts,
     name: String,
@@ -1019,6 +1093,7 @@ fn push_state_class_definition_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_expected_syntax(
     facts: &mut EditorSemanticFacts,
     kind: EditorExpectedSyntaxKind,
@@ -1031,6 +1106,7 @@ fn push_state_expected_syntax(
     facts.push_expected_syntax(EditorExpectedSyntax::new(kind, span));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_reference_id_list_facts(
     facts: &mut EditorSemanticFacts,
     code: &str,
@@ -1088,6 +1164,7 @@ fn push_state_reference_id_list_facts(
     control.checkpoint()
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_payload_fact_from_token(
     facts: &mut EditorSemanticFacts,
     code: &str,
@@ -1108,6 +1185,7 @@ fn push_state_payload_fact_from_token(
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_payload_fact_from_token_as(
     facts: &mut EditorSemanticFacts,
     code: &str,
@@ -1133,6 +1211,7 @@ fn push_state_payload_fact_from_token_as(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_state_string_payload_fact(
     facts: &mut EditorSemanticFacts,
     value: &str,
@@ -1161,15 +1240,17 @@ fn push_state_string_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_editor_visible_state_name(id: &str) -> bool {
     !id.trim().is_empty() && id.trim() != "[*]"
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "editor-facts"))]
 mod semantic_capture_tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn canonical_state_capture_preserves_grammar_recovery_and_database_validation_facts() {
         for (source, valid, recovered) in [
             ("stateDiagram-v2\nA --> B\n", true, false),
@@ -1186,6 +1267,7 @@ mod semantic_capture_tests {
             ),
         ] {
             reset_state_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let parsed = parse_state_semantic_model_controlled(
                 source,
@@ -1208,6 +1290,7 @@ mod semantic_capture_tests {
             let facts = parsed.editor_facts.expect("same-pass State facts");
             assert!(!facts.symbols.is_empty());
             assert_eq!(state_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             assert_eq!(
                 facts.completeness,

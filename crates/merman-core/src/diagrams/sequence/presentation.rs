@@ -1,3 +1,4 @@
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::{OperationControl, OperationControlResult, ParseMetadata, Result};
 
@@ -12,6 +13,7 @@ pub(crate) fn parse_sequence_model_for_render_controlled(
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(meta.effective_config.as_config()),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;

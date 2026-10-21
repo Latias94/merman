@@ -8,6 +8,10 @@ mod utils;
 mod tests;
 
 pub use db::{MindmapDiagramModel, MindmapNodeModel};
+#[cfg(feature = "compat-json")]
+pub(crate) use parse::parse_mindmap;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub(crate) use parse::parse_mindmap_json_and_editor_facts;
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use parse::parse_mindmap_model_for_render;
 #[cfg(feature = "presentation")]
@@ -17,8 +21,6 @@ pub(crate) use parse::parse_mindmap_semantic_model_controlled;
 pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };
-#[cfg(feature = "compat-json")]
-pub(crate) use parse::{parse_mindmap, parse_mindmap_json_and_editor_facts};
 #[cfg(feature = "presentation")]
 pub use render_model::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,

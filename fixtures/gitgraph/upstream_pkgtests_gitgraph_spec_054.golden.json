@@ -174,7 +174,11 @@
     "warningFacts": [
       {
         "message": "Commit ID working on MDR already exists",
-        "ruleId": "merman.git_graph.duplicate_commit_id"
+        "ruleId": "merman.git_graph.duplicate_commit_id",
+        "span": {
+          "end": 553,
+          "start": 527
+        }
       }
     ],
     "warnings": [

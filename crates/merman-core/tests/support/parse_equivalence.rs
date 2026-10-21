@@ -1,10 +1,11 @@
 //! Shared assertions for stable parser contracts and the in-process parse fuzzer.
 
+#[cfg(feature = "editor-facts")]
+use super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts, SourceSpan};
 use super::parse_api::{
-    DiagramParseOutcome, DiagramParseSnapshot, Engine, Error, ManagedSemanticJson, MermaidConfig,
-    OperationControl, ParseMetadata, ParseOptions, ParsedDiagram, ParsedDiagramRender,
-    ParsedEditorFacts, Result, SourceSpan, diagram_family_capabilities, runtime::RuntimePolicy,
-    time::CivilDate,
+    Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl, ParseMetadata,
+    ParseOptions, ParsedDiagram, ParsedDiagramRender, Result, diagram_family_capabilities,
+    runtime::RuntimePolicy, time::CivilDate,
 };
 
 pub fn deterministic_engine() -> Engine {
@@ -127,6 +128,7 @@ pub fn assert_parse_paths(engine: &Engine, source: &str) {
     let lenient_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::lenient());
     assert_pair(&lenient, &lenient_typed, source);
 
+    #[cfg(feature = "editor-facts")]
     assert_snapshot(&strict, engine.parse_diagram_snapshot_sync(source), source);
     assert_modes(&strict, &lenient, source);
 }
@@ -147,6 +149,7 @@ pub fn assert_known_type_parse_paths(engine: &Engine, diagram_type: &str, source
         ParseOptions::lenient(),
     );
     assert_pair(&lenient, &lenient_typed, source);
+    #[cfg(feature = "editor-facts")]
     assert_snapshot(
         &strict,
         engine.parse_diagram_snapshot_with_type_sync(diagram_type, source),
@@ -155,6 +158,7 @@ pub fn assert_known_type_parse_paths(engine: &Engine, diagram_type: &str, source
     assert_modes(&strict, &lenient, source);
 }
 
+#[cfg(feature = "editor-facts")]
 fn assert_span(span: SourceSpan, source: &str) {
     assert!(
         span.start <= span.end && span.end <= source.len(),
@@ -166,6 +170,7 @@ fn assert_span(span: SourceSpan, source: &str) {
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn assert_snapshot(
     semantic: &Result<Option<ParsedDiagram>>,
     snapshot: Result<Option<DiagramParseSnapshot>>,

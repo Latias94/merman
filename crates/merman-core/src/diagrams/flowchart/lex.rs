@@ -1,6 +1,8 @@
+#[cfg(feature = "editor-facts")]
+use super::ast::FlowchartClickEditorEvidence;
 use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
-    LinkStyleStmt, StyleStmt, TitleKind, ast::FlowchartClickEditorEvidence,
+    LinkStyleStmt, StyleStmt, TitleKind,
 };
 use crate::{SourceSpan, diagrams::scan::is_ecmascript_whitespace};
 
@@ -211,8 +213,11 @@ pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, Lex
         target: target.trim().to_string(),
         target_span: None,
         styles,
+        #[cfg(feature = "editor-facts")]
         styles_text: None,
+        #[cfg(feature = "editor-facts")]
         styles_span: None,
+        #[cfg(feature = "editor-facts")]
         editor_evidence: Default::default(),
     })
 }
@@ -229,10 +234,14 @@ pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStm
     let styles = parse_styles_list(styles_raw);
     Ok(ClassDefStmt {
         ids,
+        #[cfg(feature = "editor-facts")]
         id_spans: Vec::new(),
         styles,
+        #[cfg(feature = "editor-facts")]
         styles_text: None,
+        #[cfg(feature = "editor-facts")]
         styles_span: None,
+        #[cfg(feature = "editor-facts")]
         editor_evidence: Default::default(),
     })
 }
@@ -254,24 +263,29 @@ pub(super) fn parse_class_assign_stmt(
     }
     Ok(ClassAssignStmt {
         targets,
+        #[cfg(feature = "editor-facts")]
         target_spans: Vec::new(),
         class_name,
+        #[cfg(feature = "editor-facts")]
         class_name_span: None,
+        #[cfg(feature = "editor-facts")]
         editor_evidence: Default::default(),
     })
 }
 
 pub(super) fn attach_style_stmt_spans(stmt: &mut StyleStmt, rest: &str, rest_start: usize) {
-    let Some((target, styles)) = split_first_word_with_span(rest, rest_start) else {
+    let Some((target, _styles)) = split_first_word_with_span(rest, rest_start) else {
         return;
     };
     stmt.target_span = Some(target.span);
-    if let Some(styles) = trim_spanned_slice(styles) {
+    #[cfg(feature = "editor-facts")]
+    if let Some(styles) = trim_spanned_slice(_styles) {
         stmt.styles_text = Some(styles.text.to_string());
         stmt.styles_span = Some(styles.span);
     }
 }
 
+#[cfg(feature = "editor-facts")]
 pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, rest_start: usize) {
     let Some((ids, styles)) = split_first_word_with_span(rest, rest_start) else {
         return;
@@ -283,6 +297,7 @@ pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, re
     }
 }
 
+#[cfg(feature = "editor-facts")]
 pub(super) fn attach_class_assign_stmt_spans(
     stmt: &mut ClassAssignStmt,
     rest: &str,
@@ -330,6 +345,7 @@ fn split_first_word_with_span(
     ))
 }
 
+#[cfg(feature = "editor-facts")]
 fn trim_spanned_slice(slice: SpannedSlice<'_>) -> Option<SpannedSlice<'_>> {
     let leading = slice
         .text
@@ -347,6 +363,7 @@ fn trim_spanned_slice(slice: SpannedSlice<'_>) -> Option<SpannedSlice<'_>> {
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
     let mut out = Vec::new();
     let mut value_start = 0usize;
@@ -441,6 +458,7 @@ impl<'a> ClickParse<'a> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<SourceSpan> {
     (parser.i > boundary_end).then(|| {
         // Keep the completion slot after the first separator, including any
@@ -453,10 +471,12 @@ fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn click_action_prefix(word: &str) -> bool {
     !word.is_empty() && ("href".starts_with(word) || "call".starts_with(word))
 }
 
+#[cfg(feature = "editor-facts")]
 fn click_statement_error(
     message: impl Into<String>,
     evidence: FlowchartClickEditorEvidence,
@@ -474,15 +494,19 @@ pub(super) fn parse_click_stmt(
 ) -> std::result::Result<ClickStmt, LexError> {
     let mut p = ClickParse::new(rest, rest_start);
     p.skip_ws();
+    #[cfg(feature = "editor-facts")]
     let id_start = p.i;
     let Some(id) = p.take_word() else {
         return Err(LexError::new("Invalid click statement".to_string()));
     };
     let ids = vec![id];
+    #[cfg(feature = "editor-facts")]
     let id_spans = vec![p.source_span(id_start, p.i)];
 
+    #[cfg(feature = "editor-facts")]
     let target_end = p.i;
     p.skip_ws();
+    #[cfg(feature = "editor-facts")]
     let after_target = click_following_span(&p, target_end);
     let tooltip: Option<String>;
     let action: ClickAction;
@@ -493,20 +517,34 @@ pub(super) fn parse_click_stmt(
             .and_then(|rest| rest.chars().next())
             .is_none_or(is_ecmascript_whitespace)
     {
+        #[cfg(feature = "editor-facts")]
         let action_start = p.i;
         let _ = p.take_word();
+        #[cfg(feature = "editor-facts")]
         let action_end = p.i;
+        #[cfg(feature = "editor-facts")]
         let action_span = p.source_span(action_start, action_end);
         p.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(
             Some(action_span),
             click_following_span(&p, action_end),
         );
         let Some(link) = p.take_quoted() else {
-            return Err(click_statement_error(
-                "Invalid click statement",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click statement")
+                }
+            });
         };
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word();
@@ -514,10 +552,20 @@ pub(super) fn parse_click_stmt(
             .as_deref()
             .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
         {
-            return Err(click_statement_error(
-                "Invalid click target",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click target",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click target")
+                }
+            });
         }
         tooltip = maybe_tt;
         action = ClickAction::Link {
@@ -526,17 +574,30 @@ pub(super) fn parse_click_stmt(
         };
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(click_statement_error(
-                "Unexpected content after click statement",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
         }
         return Ok(ClickStmt {
             ids,
+            #[cfg(feature = "editor-facts")]
             id_spans,
             tooltip,
             action,
+            #[cfg(feature = "editor-facts")]
             editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
             interaction_evidence,
             recovery_error: None,
         });
@@ -548,10 +609,13 @@ pub(super) fn parse_click_stmt(
             .and_then(|rest| rest.chars().next())
             .is_none_or(is_ecmascript_whitespace)
     {
+        #[cfg(feature = "editor-facts")]
         let action_start = p.i;
         let _ = p.take_word();
+        #[cfg(feature = "editor-facts")]
         let action_end = p.i;
         p.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(
             Some(p.source_span(action_start, action_end)),
             click_following_span(&p, action_end),
@@ -567,10 +631,20 @@ pub(super) fn parse_click_stmt(
             p.i += ch.len_utf8();
         }
         if p.i == start {
-            return Err(click_statement_error(
-                "Invalid click statement",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click statement")
+                }
+            });
         }
         p.skip_ws();
         if p.peek() == Some(b'(') {
@@ -579,10 +653,20 @@ pub(super) fn parse_click_stmt(
                 p.i += 1;
             }
             if p.peek() != Some(b')') {
-                return Err(click_statement_error(
-                    "Unterminated click callback arguments",
-                    interaction_evidence,
-                ));
+                return Err({
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        click_statement_error(
+                            "Unterminated click callback arguments",
+                            #[cfg(feature = "editor-facts")]
+                            interaction_evidence,
+                        )
+                    }
+                    #[cfg(not(feature = "editor-facts"))]
+                    {
+                        LexError::new("Unterminated click callback arguments")
+                    }
+                });
             }
             p.i += 1;
         }
@@ -591,23 +675,37 @@ pub(super) fn parse_click_stmt(
         action = ClickAction::Callback;
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(click_statement_error(
-                "Unexpected content after click statement",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
         }
         return Ok(ClickStmt {
             ids,
+            #[cfg(feature = "editor-facts")]
             id_spans,
             tooltip,
             action,
+            #[cfg(feature = "editor-facts")]
             editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
             interaction_evidence,
             recovery_error: None,
         });
     }
 
     if let Some(link) = p.take_quoted() {
+        #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(None, after_target);
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word();
@@ -615,10 +713,20 @@ pub(super) fn parse_click_stmt(
             .as_deref()
             .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
         {
-            return Err(click_statement_error(
-                "Invalid click target",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click target",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click target")
+                }
+            });
         }
         tooltip = maybe_tt;
         action = ClickAction::Link {
@@ -627,31 +735,56 @@ pub(super) fn parse_click_stmt(
         };
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(click_statement_error(
-                "Unexpected content after click statement",
-                interaction_evidence,
-            ));
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
         }
         return Ok(ClickStmt {
             ids,
+            #[cfg(feature = "editor-facts")]
             id_spans,
             tooltip,
             action,
+            #[cfg(feature = "editor-facts")]
             editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
             interaction_evidence,
             recovery_error: None,
         });
     }
 
+    #[cfg(feature = "editor-facts")]
     let function_start = p.i;
-    let Some(function_name) = p.take_word() else {
-        return Err(click_statement_error(
-            "Invalid click statement",
-            FlowchartClickEditorEvidence::new(after_target, None),
-        ));
+    let Some(_function_name) = p.take_word() else {
+        return Err({
+            #[cfg(feature = "editor-facts")]
+            {
+                click_statement_error(
+                    "Invalid click statement",
+                    FlowchartClickEditorEvidence::new(after_target, None),
+                )
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                LexError::new("Invalid click statement")
+            }
+        });
     };
+    #[cfg(feature = "editor-facts")]
     let function_span = p.source_span(function_start, p.i);
-    let interaction_evidence = if click_action_prefix(&function_name) {
+    #[cfg(feature = "editor-facts")]
+    let interaction_evidence = if click_action_prefix(&_function_name) {
         FlowchartClickEditorEvidence::new(Some(function_span), None)
     } else {
         FlowchartClickEditorEvidence::new(None, after_target)
@@ -660,17 +793,30 @@ pub(super) fn parse_click_stmt(
     action = ClickAction::Callback;
     p.skip_ws();
     if p.i != p.s.len() {
-        return Err(click_statement_error(
-            "Unexpected content after click statement",
-            interaction_evidence,
-        ));
+        return Err({
+            #[cfg(feature = "editor-facts")]
+            {
+                click_statement_error(
+                    "Unexpected content after click statement",
+                    #[cfg(feature = "editor-facts")]
+                    interaction_evidence,
+                )
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                LexError::new("Unexpected content after click statement")
+            }
+        });
     }
     Ok(ClickStmt {
         ids,
+        #[cfg(feature = "editor-facts")]
         id_spans,
         tooltip,
         action,
+        #[cfg(feature = "editor-facts")]
         editor_evidence: Default::default(),
+        #[cfg(feature = "editor-facts")]
         interaction_evidence,
         recovery_error: None,
     })
@@ -787,8 +933,11 @@ mod tests {
             let stmt = parse_click_stmt(&source, 11).unwrap();
             assert_eq!(stmt.ids, vec!["A"]);
             assert_eq!(stmt.tooltip.as_deref(), Some("tip"));
+            #[cfg(feature = "editor-facts")]
             assert_eq!(stmt.id_spans[0], SourceSpan::new(11, 12));
+            #[cfg(feature = "editor-facts")]
             let expected_payload = format!("\"url\"{separator}\"tip\"{separator}_blank");
+            #[cfg(feature = "editor-facts")]
             for expected in stmt.interaction_evidence.iter() {
                 let span = expected.span;
                 let actual = source
@@ -796,6 +945,7 @@ mod tests {
                     .expect("interaction spans must stay on UTF-8 character boundaries");
                 match expected.kind {
                     crate::EditorExpectedSyntaxKind::InteractionAction => {
+                        #[cfg(feature = "editor-facts")]
                         assert_eq!(actual, "href")
                     }
                     crate::EditorExpectedSyntaxKind::Payload => {

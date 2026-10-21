@@ -1,4 +1,5 @@
 #![cfg(feature = "diagram-flowchart")]
+#![cfg(feature = "compat-json")]
 
 use merman_core::presentation::PresentationConfig;
 use merman_core::{Engine, ParseOptions};

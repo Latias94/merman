@@ -1,7 +1,6 @@
-use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, OperationControl, OperationControlResult,
-    SourceSpan,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorExpectedSyntax, EditorExpectedSyntaxKind};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
 use std::ops::Range;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -47,8 +46,11 @@ impl SourceEdit {
 pub struct PreprocessedSource {
     text: String,
     edit_map: SourceEditMap,
+    #[cfg(feature = "editor-facts")]
     global_expected_syntax: Vec<EditorExpectedSyntax>,
+    #[cfg(feature = "editor-facts")]
     global_directive_prefixes: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     recovered_incomplete_directive: bool,
     frontmatter_line_offset: usize,
     first_line_column_offset: usize,
@@ -81,8 +83,11 @@ impl PreprocessedSource {
         Ok(Self {
             text,
             edit_map: SourceEditMap::identity(source.len()),
+            #[cfg(feature = "editor-facts")]
             global_expected_syntax: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             global_directive_prefixes: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             recovered_incomplete_directive: false,
             frontmatter_line_offset: 0,
             first_line_column_offset: 0,
@@ -93,6 +98,7 @@ impl PreprocessedSource {
         &self.text
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(super) fn copy_global_editor_evidence_from(&mut self, source: &Self) {
         self.global_expected_syntax
             .clone_from(&source.global_expected_syntax);
@@ -160,6 +166,7 @@ impl PreprocessedSource {
         };
     }
 
+    #[cfg(any(test, feature = "editor-facts"))]
     pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
         if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
             return None;
@@ -167,28 +174,34 @@ impl PreprocessedSource {
         self.edit_map.try_map_enclosing_span(span)
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn global_expected_syntax(&self) -> &[EditorExpectedSyntax] {
         &self.global_expected_syntax
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn global_directive_prefixes(&self) -> &[String] {
         &self.global_directive_prefixes
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(crate) const fn recovered_incomplete_directive(&self) -> bool {
         self.recovered_incomplete_directive
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(super) fn mark_recovered_incomplete_directive(&mut self) {
         self.recovered_incomplete_directive = true;
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(super) fn record_global_directive_prefix(&mut self, prefix: String) {
         if !self.global_directive_prefixes.contains(&prefix) {
             self.global_directive_prefixes.push(prefix);
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     pub(super) fn record_global_expected_syntax(
         &mut self,
         kind: EditorExpectedSyntaxKind,
@@ -405,6 +418,7 @@ impl SourceEditMap {
     /// This is provenance-only: callers must not treat the returned range as an exact rewrite
     /// target. It is used for parser facts such as multiline keys that cross dedented indentation
     /// or normalized line endings.
+    #[cfg(any(test, feature = "editor-facts"))]
     fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
         if span.start > span.end
             || span.end > self.output_len
@@ -1620,14 +1634,17 @@ mod tests {
             expected.edit_map.unmapped_output_ranges
         );
         assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             actual.global_expected_syntax,
             expected.global_expected_syntax
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             actual.global_directive_prefixes,
             expected.global_directive_prefixes
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             actual.recovered_incomplete_directive,
             expected.recovered_incomplete_directive

@@ -27,7 +27,7 @@ mod tests;
 pub use crate::models::class_diagram::ClassDiagramModel;
 #[cfg(feature = "compat-json")]
 pub(crate) use parse::parse_class;
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::parse_class_json_and_editor_facts;
 pub(crate) use parse::parse_class_semantic_model_controlled;
 #[cfg(feature = "presentation")]

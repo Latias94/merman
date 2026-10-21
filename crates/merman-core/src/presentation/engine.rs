@@ -6,11 +6,13 @@ use crate::{
     OperationControlResult, ParsedDiagramRender, RenderDiagramRegistry, Result, generated, runtime,
     theme, time,
 };
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::{
-    DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry, DiagramSnapshotCapture,
-    EditorSemanticFacts, ParsedDiagram, ParsedEditorFacts, family,
+    DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture, EditorSemanticFacts,
+    ParsedEditorFacts, family,
 };
+#[cfg(feature = "compat-json")]
+use crate::{DiagramRegistry, ParsedDiagram};
 
 #[path = "parse_pipeline.rs"]
 pub(crate) mod parse_pipeline;
@@ -799,6 +801,7 @@ impl MermaidEngine {
     ///
     /// Returned spans are byte offsets in the `text` supplied to this method.
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub fn parse_editor_semantic_facts_with_type_sync(
         &self,
         diagram_type: &str,
@@ -867,6 +870,7 @@ impl MermaidEngine {
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
         let control = OperationControl::new();
         self.parse_diagram_snapshot_controlled_sync(text, &control)
@@ -878,6 +882,7 @@ impl MermaidEngine {
     /// Cancellation is returned through the outer [`OperationControlResult`] and is never converted
     /// into a Mermaid parse error, failed snapshot, or recovery diagnostic.
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub fn parse_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
@@ -892,6 +897,7 @@ impl MermaidEngine {
     /// Cooperative cancellation remains the outer error channel and never yields a partial
     /// capture.
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub fn capture_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
@@ -907,6 +913,7 @@ impl MermaidEngine {
     /// [`MermaidEngine::parse_diagram_snapshot_sync`], but skips automatic detection. Family parse
     /// failures and panics remain inside the returned snapshot.
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub fn parse_diagram_snapshot_with_type_sync(
         &self,
         diagram_type: &str,

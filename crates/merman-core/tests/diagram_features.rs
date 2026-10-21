@@ -1,3 +1,5 @@
+#![cfg(feature = "compat-json")]
+
 //! Consumer-level contracts for selected parser implementations.
 use merman_core::{Engine, Error, ParseOptions, RenderSemanticModel};
 
@@ -53,14 +55,17 @@ fn disabled_sequence_retains_identity_errors_and_editor_diagnostics() {
         .unwrap()
         .unwrap();
     assert!(matches!(suppressed.model(), RenderSemanticModel::Error(_)));
-    let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
-    assert!(
-        matches!(snapshot.outcome(), merman_core::DiagramParseOutcome::Failed(Error::UnsupportedDiagram { diagram_type }) if diagram_type == "sequence")
-    );
-    assert!(matches!(
-        snapshot.editor_facts(),
-        merman_core::ParsedEditorFacts::Unavailable
-    ));
+    #[cfg(feature = "editor-facts")]
+    {
+        let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+        assert!(
+            matches!(snapshot.outcome(), merman_core::DiagramParseOutcome::Failed(Error::UnsupportedDiagram { diagram_type }) if diagram_type == "sequence")
+        );
+        assert!(matches!(
+            snapshot.editor_facts(),
+            merman_core::ParsedEditorFacts::Unavailable
+        ));
+    }
 }
 
 #[cfg(not(feature = "diagram-sequence"))]
@@ -205,12 +210,15 @@ fn custom_parser_cancellation_keeps_the_outer_channel_instead_of_a_lenient_error
             merman_core::CancelReason::Requested
         );
     }
-    let result = engine
-        .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
-    assert_eq!(
-        result.unwrap_err().reason,
-        merman_core::CancelReason::Requested
-    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let result = engine
+            .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
+        assert_eq!(
+            result.unwrap_err().reason,
+            merman_core::CancelReason::Requested
+        );
+    }
 }
 
 #[cfg(feature = "diagram-gantt")]
@@ -285,7 +293,10 @@ fn mermaid_12_families_preserve_identity_and_select_only_their_implementation() 
         assert!(capability.has_detector && capability.has_header);
         assert_eq!(capability.has_semantic_parser, enabled);
         assert_eq!(capability.has_render_parser, enabled);
-        assert_eq!(capability.has_editor_parser, enabled);
+        assert_eq!(
+            capability.has_editor_parser,
+            enabled && cfg!(feature = "editor-facts")
+        );
         let semantic = engine.parse_diagram_sync(source, ParseOptions::strict());
         let typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
         if enabled {

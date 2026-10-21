@@ -156,6 +156,7 @@ fn rejects_invalid_grammar_and_semantics_without_silent_fallbacks() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn editor_facts_have_exact_declarations_references_and_failure_spans() {
     let source = "usecase-beta\nactor User\nUser --> Login\nnote for Login \"Try again\"";
     let construction = construct(source, &meta(), &OperationControl::new())
@@ -210,6 +211,7 @@ fn generated_names_follow_javascript_utf16_and_are_not_renameable() {
         .unwrap()
         .unwrap_or_else(|failure| panic!("{}", failure.into_error()));
     assert_eq!(parsed.model.nodes[0].id, "___login");
+    #[cfg(feature = "editor-facts")]
     assert_eq!(
         parsed.editor_facts.symbols[0].rename_policy,
         crate::EditorRenamePolicy::None

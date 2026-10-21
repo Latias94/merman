@@ -1,30 +1,45 @@
 use super::ast::*;
 use super::model::*;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
+    EditorSemanticRole, EditorSemanticSymbol,
 };
+use crate::{OperationControl, OperationControlResult, SourceSpan};
 use indexmap::IndexMap;
 
 pub(super) struct SemanticBuild {
     pub(super) model: ZenumlDiagramModel,
+    #[cfg(feature = "editor-facts")]
     pub(super) editor_facts: EditorSemanticFacts,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
 }
 
 #[cfg(test)]
 pub(super) fn build(parsed: ParsedSyntax) -> SemanticBuild {
-    build_controlled(parsed, EditorFactsDemand::Capture, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    build_controlled(
+        parsed,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Capture,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn build_controlled(
     parsed: ParsedSyntax,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<SemanticBuild> {
-    SemanticBuilder::new(parsed, editor_demand, control).build()
+    SemanticBuilder::new(
+        parsed,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )
+    .build()
 }
 
 struct ParticipantAccumulator {
@@ -36,6 +51,7 @@ struct SemanticBuilder {
     diagnostics: Vec<SyntaxDiagnostic>,
     participants: IndexMap<String, ParticipantAccumulator>,
     groups: Vec<ZenumlGroup>,
+    #[cfg(feature = "editor-facts")]
     facts: Option<EditorSemanticFacts>,
     generated_statement_id: usize,
     ownable_statement_count: usize,
@@ -53,7 +69,7 @@ struct ResolveContext {
 impl SemanticBuilder {
     fn new(
         parsed: ParsedSyntax,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> Self {
         Self {
@@ -61,6 +77,7 @@ impl SemanticBuilder {
             diagnostics: parsed.diagnostics,
             participants: IndexMap::new(),
             groups: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             facts: match editor_demand {
                 EditorFactsDemand::Omit => None,
                 EditorFactsDemand::Capture => {
@@ -78,12 +95,15 @@ impl SemanticBuilder {
 
     fn build(mut self) -> OperationControlResult<SemanticBuild> {
         self.control.checkpoint()?;
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut self.facts {
             facts.push_directive_prefix("title");
         }
+        #[cfg(feature = "editor-facts")]
         if self.facts.is_some()
             && let Some(title) = self.syntax.title.clone()
         {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(&title, "zenuml title", EditorSemanticKind::String);
         }
 
@@ -97,7 +117,9 @@ impl SemanticBuilder {
                 }
                 HeadItemSyntax::Group(group) => {
                     let group_id = group.name.as_ref().map(|name| name.value.clone());
+                    #[cfg(feature = "editor-facts")]
                     if let Some(name) = &group.name {
+                        #[cfg(feature = "editor-facts")]
                         self.push_outline(
                             name,
                             "zenuml participant group",
@@ -164,21 +186,22 @@ impl SemanticBuilder {
                 .shift_insert(0, "_STARTER_".to_string(), starter);
         }
 
-        for (index, diagnostic) in self.diagnostics.iter().enumerate() {
+        for (index, _diagnostic) in self.diagnostics.iter().enumerate() {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut self.facts {
                 facts.mark_recovered_from_parse_error(
                     format!(
                         "zenuml parser recovered after parse error: {}",
-                        diagnostic.message
+                        _diagnostic.message
                     ),
-                    Some(diagnostic.span),
+                    Some(_diagnostic.span),
                 );
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::Payload,
-                    diagnostic.span,
+                    _diagnostic.span,
                 ));
             }
         }
@@ -197,6 +220,7 @@ impl SemanticBuilder {
         self.control.checkpoint()?;
         Ok(SemanticBuild {
             model,
+            #[cfg(feature = "editor-facts")]
             editor_facts: self.facts.unwrap_or_default(),
             diagnostics: self.diagnostics,
         })
@@ -260,36 +284,47 @@ impl SemanticBuilder {
             .or_else(|| syntax.comment.as_ref().map(|value| value.value.clone()));
         participant.group_id = participant.group_id.take().or(group_id);
 
+        #[cfg(feature = "editor-facts")]
         self.push_entity(&syntax.name, "zenuml participant");
+        #[cfg(feature = "editor-facts")]
         if let Some(label) = &syntax.label {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 label,
                 "zenuml participant label",
                 EditorSemanticKind::String,
             );
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(stereotype) = &syntax.stereotype {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 stereotype,
                 "zenuml participant stereotype",
                 EditorSemanticKind::Class,
             );
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(participant_type) = &syntax.participant_type {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 participant_type,
                 "zenuml participant type",
                 EditorSemanticKind::Class,
             );
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(emoji) = &syntax.emoji {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 emoji,
                 "zenuml participant emoji",
                 EditorSemanticKind::String,
             );
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(color) = &syntax.color {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 color,
                 "zenuml participant color",
@@ -371,7 +406,9 @@ impl SemanticBuilder {
                 }
                 Task::Section(section, context) => {
                     self.control.checkpoint()?;
+                    #[cfg(feature = "editor-facts")]
                     if let Some(label) = &section.label {
+                        #[cfg(feature = "editor-facts")]
                         self.push_payload(
                             label,
                             "zenuml fragment section",
@@ -473,8 +510,11 @@ impl SemanticBuilder {
                         "zenuml participant reference",
                     );
                 }
+                #[cfg(feature = "editor-facts")]
                 self.push_message_signature(&message.signature);
+                #[cfg(feature = "editor-facts")]
                 if let Some(assignment) = &message.assignment {
+                    #[cfg(feature = "editor-facts")]
                     self.push_payload(
                         assignment,
                         "zenuml assignment target",
@@ -527,12 +567,15 @@ impl SemanticBuilder {
                     None,
                     "zenuml participant reference",
                 );
+                #[cfg(feature = "editor-facts")]
                 self.push_payload(
                     &creation.constructor,
                     "zenuml constructor",
                     EditorSemanticKind::Class,
                 );
+                #[cfg(feature = "editor-facts")]
                 if let Some(assignment) = &creation.assignment {
+                    #[cfg(feature = "editor-facts")]
                     self.push_payload(
                         assignment,
                         "zenuml assignment target",
@@ -594,7 +637,9 @@ impl SemanticBuilder {
                         "zenuml participant reference",
                     );
                 }
+                #[cfg(feature = "editor-facts")]
                 if let Some(value) = &ret.value {
+                    #[cfg(feature = "editor-facts")]
                     self.push_payload(value, "zenuml return value", EditorSemanticKind::String);
                 }
                 ZenumlStatementKind::Return {
@@ -618,7 +663,9 @@ impl SemanticBuilder {
                     FragmentKindSyntax::Section => ZenumlFragmentKind::Section,
                     FragmentKindSyntax::TryCatchFinally => ZenumlFragmentKind::TryCatchFinally,
                 };
+                #[cfg(feature = "editor-facts")]
                 if let Some(label) = &fragment.label {
+                    #[cfg(feature = "editor-facts")]
                     self.push_payload(
                         label,
                         "zenuml fragment condition",
@@ -652,6 +699,7 @@ impl SemanticBuilder {
                 }
             }
             StatementKindSyntax::Divider(label) => {
+                #[cfg(feature = "editor-facts")]
                 self.push_payload(label, "zenuml divider", EditorSemanticKind::String);
                 ZenumlStatementKind::Divider {
                     label: label.value.clone(),
@@ -682,9 +730,9 @@ impl SemanticBuilder {
         span: Option<SourceSpan>,
         starter: bool,
         emoji: Option<&SpannedText>,
-        detail: &str,
+        _detail: &str,
     ) {
-        let (entry, is_implicit_definition) = match self.participants.entry(name.to_string()) {
+        let (entry, _is_implicit_definition) = match self.participants.entry(name.to_string()) {
             indexmap::map::Entry::Vacant(entry) => (
                 entry.insert(ParticipantAccumulator {
                     participant: ZenumlParticipant {
@@ -713,8 +761,9 @@ impl SemanticBuilder {
         }
         if let Some(span) = span {
             entry.participant.occurrences.push(span);
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut self.facts {
-                let symbol = if is_implicit_definition {
+                let symbol = if _is_implicit_definition {
                     EditorSemanticSymbol::new(
                         name,
                         Some("zenuml implicit participant".to_string()),
@@ -725,7 +774,7 @@ impl SemanticBuilder {
                 } else {
                     EditorSemanticSymbol::reference(
                         name,
-                        Some(detail.to_string()),
+                        Some(_detail.to_string()),
                         EditorSemanticKind::Event,
                         span,
                         span,
@@ -734,7 +783,9 @@ impl SemanticBuilder {
                 facts.push_symbol(symbol);
             }
         }
+        #[cfg(feature = "editor-facts")]
         if let Some(emoji) = emoji {
+            #[cfg(feature = "editor-facts")]
             self.push_payload(
                 emoji,
                 "zenuml participant emoji",
@@ -748,6 +799,7 @@ impl SemanticBuilder {
         self.some_statement_misses_from |= from.is_none();
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_message_signature(&mut self, signature: &SpannedText) {
         let Some(facts) = &mut self.facts else {
             return;
@@ -763,6 +815,7 @@ impl SemanticBuilder {
         ));
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_entity(&mut self, value: &SpannedText, detail: &str) {
         let Some(facts) = &mut self.facts else {
             return;
@@ -776,6 +829,7 @@ impl SemanticBuilder {
         ));
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_outline(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
         let Some(facts) = &mut self.facts else {
             return;
@@ -789,6 +843,7 @@ impl SemanticBuilder {
         ));
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_payload(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
         let Some(facts) = &mut self.facts else {
             return;
@@ -803,6 +858,7 @@ impl SemanticBuilder {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn signature_method(signature: &SpannedText) -> (String, SourceSpan) {
     let text = signature.value.as_str();
     let end = text
@@ -1000,6 +1056,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn explicit_and_implicit_participants_have_one_entity_then_references() {
         let source = concat!(
             "zenuml\n",
@@ -1040,6 +1097,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn reference_statement_participants_establish_then_reuse_implicit_entities() {
         let source = "zenuml\nref(Order, A, A)";
         let tokens = super::super::lexer::lex(source);

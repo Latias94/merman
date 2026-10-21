@@ -1,14 +1,19 @@
 use crate::common_db::LangiumCommonDbFields;
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, strip_langium_inline_comment,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
 };
 use crate::diagrams::scan::physical_line_at;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl, OperationControlResult,
-    SourceSpan, family::CombinedSemanticFailure,
+    EditorSemanticKind, EditorSemanticSymbol,
+};
+use crate::{
+    Error, OperationControl, OperationControlResult, SourceSpan, family::CombinedSemanticFailure,
 };
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
@@ -251,6 +256,7 @@ pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -294,6 +300,7 @@ pub(crate) fn parse_wardley_model_for_render_controlled(
     let construction = construct_wardley_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -424,44 +431,61 @@ fn strings_to_json_controlled(
 pub(crate) fn parse_wardley_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<WardleyDiagramModel>> {
     let construction = construct_wardley_semantic_source_controlled(
         code,
         &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
-        Ok(mut source) => {
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let mut source = source;
+            #[cfg(feature = "editor-facts")]
             let editor_facts = (editor_demand == EditorFactsDemand::Capture)
                 .then(|| std::mem::take(&mut source.editor_facts));
             let model = source.into_model_controlled(&metadata.semantic_config, control)?;
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
 #[derive(Debug)]
 struct WardleySemanticSource {
     model: WardleyDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
 }
 
@@ -511,6 +535,7 @@ impl WardleySemanticSource {
     }
 
     #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,
@@ -531,6 +556,7 @@ impl WardleySemanticSource {
 #[derive(Debug)]
 struct WardleyParseOutcome {
     ast: WardleyAst,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
     first_problem: Option<WardleyParseProblem>,
 }
@@ -835,6 +861,7 @@ fn construct_wardley_semantic_source(
     construct_wardley_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -844,7 +871,7 @@ fn construct_wardley_semantic_source(
 fn construct_wardley_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<WardleySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
@@ -853,14 +880,22 @@ fn construct_wardley_semantic_source_controlled(
 
     let WardleyParseOutcome {
         ast,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_problem,
-    } = parse_wardley_ast(code, editor_demand, control)?;
+    } = parse_wardley_ast(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     if let Some(problem) = first_problem {
         return Ok(Err(wardley_failure(
             diagram_type,
             problem,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         )));
     }
@@ -871,7 +906,9 @@ fn construct_wardley_semantic_source_controlled(
             return Ok(Err(wardley_failure(
                 diagram_type,
                 problem,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
             )));
         }
@@ -880,6 +917,7 @@ fn construct_wardley_semantic_source_controlled(
     control.checkpoint()?;
     Ok(Ok(WardleySemanticSource {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -887,26 +925,29 @@ fn construct_wardley_semantic_source_controlled(
 fn wardley_failure(
     diagram_type: &str,
     problem: WardleyParseProblem,
-    editor_facts: EditorSemanticFacts,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> CombinedSemanticFailure {
     let error = Error::diagram_parse_exact(diagram_type.to_string(), problem.message, problem.span);
-    match editor_demand {
-        EditorFactsDemand::Capture => {
-            CombinedSemanticFailure::parser_recovery("wardley", error, editor_facts)
-        }
-        EditorFactsDemand::Omit => CombinedSemanticFailure::new(error, editor_facts),
-    }
+    CombinedSemanticFailure::parser_recovery(
+        #[cfg(feature = "editor-facts")]
+        "wardley",
+        error,
+        #[cfg(feature = "editor-facts")]
+        (editor_demand == EditorFactsDemand::Capture).then_some(editor_facts),
+    )
 }
 
 fn parse_wardley_ast(
     code: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<WardleyParseOutcome> {
     control.checkpoint()?;
     let mut ast = WardleyAst::default();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
     if editor_demand == EditorFactsDemand::Capture {
         #[cfg(test)]
         crate::editor::test_work::record_collection();
@@ -956,6 +997,7 @@ fn parse_wardley_ast(
                 continue;
             }
             saw_header = true;
+            #[cfg(feature = "editor-facts")]
             if editor_demand == EditorFactsDemand::Capture {
                 editor_facts.push_directive_prefix(HEADER);
             }
@@ -974,6 +1016,7 @@ fn parse_wardley_ast(
         let statement_start = statement_start + leading;
         let statement = &statement[leading..];
         if let Some(parsed) = parse_langium_common(code, statement_start) {
+            #[cfg(feature = "editor-facts")]
             if editor_demand == EditorFactsDemand::Capture {
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "wardley");
             }
@@ -990,6 +1033,7 @@ fn parse_wardley_ast(
         }
 
         if keyword_body(statement, "pipeline").is_some() {
+            #[cfg(feature = "editor-facts")]
             if editor_demand == EditorFactsDemand::Capture {
                 editor_facts.push_directive_prefix("pipeline");
             }
@@ -998,7 +1042,9 @@ fn parse_wardley_ast(
                 statement,
                 statement_start,
                 offset,
+                #[cfg(feature = "editor-facts")]
                 &mut editor_facts,
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
             );
             offset = pipeline.next_offset;
@@ -1014,7 +1060,9 @@ fn parse_wardley_ast(
             statement,
             statement_start,
             &mut ast,
+            #[cfg(feature = "editor-facts")]
             &mut editor_facts,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         ) {
             remember_wardley_problem(&mut first_problem, problem);
@@ -1031,6 +1079,7 @@ fn parse_wardley_ast(
     control.checkpoint()?;
     Ok(WardleyParseOutcome {
         ast,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_problem,
     })
@@ -1049,14 +1098,16 @@ fn parse_wardley_statement(
     statement: &str,
     statement_start: usize,
     ast: &mut WardleyAst,
-    editor_facts: &mut EditorSemanticFacts,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_facts: &mut EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> std::result::Result<(), WardleyParseProblem> {
     if let Some(body) = keyword_body(statement, "size") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("size");
         }
         let size = parse_size(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_number_fact(editor_facts, size.width, "wardley canvas width");
             push_number_fact(editor_facts, size.height, "wardley canvas height");
@@ -1065,10 +1116,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "evolution") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("evolution");
         }
         let evolution = parse_evolution(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             for stage in &evolution.stages {
                 push_payload_fact(editor_facts, &stage.name, "wardley evolution stage");
@@ -1088,10 +1141,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "anchor") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("anchor");
         }
         let anchor = parse_positioned_node(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_entity_fact(editor_facts, &anchor.name, "wardley anchor");
             push_number_fact(editor_facts, anchor.visibility, "wardley anchor visibility");
@@ -1101,10 +1156,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "component") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("component");
         }
         let component = parse_component(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_component_facts(editor_facts, &component, "wardley component");
         }
@@ -1112,10 +1169,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "evolve") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("evolve");
         }
         let evolve = parse_evolve(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_reference_fact(editor_facts, &evolve.component, "wardley evolved component");
             push_number_fact(editor_facts, evolve.target, "wardley evolution target");
@@ -1124,10 +1183,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "note") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("note");
         }
         let note = parse_note(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_payload_fact(editor_facts, &note.text, "wardley note");
             push_number_fact(editor_facts, note.visibility, "wardley note visibility");
@@ -1137,11 +1198,13 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "annotations") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("annotations");
         }
         let annotations =
             parse_annotations_box(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_number_fact(
                 editor_facts,
@@ -1154,10 +1217,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "annotation") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("annotation");
         }
         let annotation = parse_annotation(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_integer_fact(
                 editor_facts,
@@ -1173,10 +1238,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "accelerator") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("accelerator");
         }
         let force = parse_force(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_outline_fact(editor_facts, &force.name, "wardley accelerator");
             push_number_fact(editor_facts, force.x, "wardley accelerator visibility");
@@ -1186,10 +1253,12 @@ fn parse_wardley_statement(
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "deaccelerator") {
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("deaccelerator");
         }
         let force = parse_force(body, body_start(statement, statement_start, body))?;
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             push_outline_fact(editor_facts, &force.name, "wardley deaccelerator");
             push_number_fact(editor_facts, force.x, "wardley deaccelerator visibility");
@@ -1200,10 +1269,12 @@ fn parse_wardley_statement(
     }
 
     let link = parse_link(statement, statement_start)?;
+    #[cfg(feature = "editor-facts")]
     if editor_demand == EditorFactsDemand::Capture {
         push_reference_fact(editor_facts, &link.from, "wardley link source");
         push_reference_fact(editor_facts, &link.to, "wardley link target");
     }
+    #[cfg(feature = "editor-facts")]
     if let Some(label) = &link.label
         && editor_demand == EditorFactsDemand::Capture
     {
@@ -1224,8 +1295,8 @@ fn parse_pipeline(
     statement: &str,
     statement_start: usize,
     offset: usize,
-    editor_facts: &mut EditorSemanticFacts,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_facts: &mut EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> WardleyPipelineOutcome {
     let mut offset = offset;
     let mut first_problem = None;
@@ -1256,6 +1327,7 @@ fn parse_pipeline(
     let parent_raw = &trimmed[..open_brace];
     let parent = match parse_name(parent_raw, pipeline_body_start + leading) {
         Ok(parent) => {
+            #[cfg(feature = "editor-facts")]
             if editor_demand == EditorFactsDemand::Capture {
                 push_reference_fact(editor_facts, &parent, "wardley pipeline parent");
             }
@@ -1333,12 +1405,14 @@ fn parse_pipeline(
             );
             continue;
         };
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             editor_facts.push_directive_prefix("component");
         }
         let component_start = body_start(trimmed_line, absolute, component_body);
         match parse_pipeline_component(component_body, component_start) {
             Ok(component) => {
+                #[cfg(feature = "editor-facts")]
                 if editor_demand == EditorFactsDemand::Capture {
                     push_pipeline_component_facts(editor_facts, &component);
                 }
@@ -2705,6 +2779,7 @@ fn flow_from_arrow(arrow: &str) -> (Option<WardleyFlowDirection>, Option<String>
     (flow, label)
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::NodeIdentifier,
@@ -2722,6 +2797,7 @@ fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_reference_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::NodeIdentifier,
@@ -2739,6 +2815,7 @@ fn push_reference_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, det
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn wardley_rename_policy(value: &SpannedText) -> EditorRenamePolicy {
     if !value.quoted
         && value
@@ -2752,6 +2829,7 @@ fn wardley_rename_policy(value: &SpannedText) -> EditorRenamePolicy {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_outline_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -2766,6 +2844,7 @@ fn push_outline_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detai
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_payload_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -2780,6 +2859,7 @@ fn push_payload_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detai
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_number_fact(facts: &mut EditorSemanticFacts, value: SpannedNumber, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -2794,6 +2874,7 @@ fn push_number_fact(facts: &mut EditorSemanticFacts, value: SpannedNumber, detai
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_integer_fact(facts: &mut EditorSemanticFacts, value: u64, span: SourceSpan, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -2808,6 +2889,7 @@ fn push_integer_fact(facts: &mut EditorSemanticFacts, value: u64, span: SourceSp
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_signed_integer_fact(
     facts: &mut EditorSemanticFacts,
     value: i64,
@@ -2827,6 +2909,7 @@ fn push_signed_integer_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_component_facts(
     facts: &mut EditorSemanticFacts,
     component: &WardleyComponentAst,
@@ -2879,6 +2962,7 @@ fn push_component_facts(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_pipeline_component_facts(
     facts: &mut EditorSemanticFacts,
     component: &WardleyPipelineComponentAst,
@@ -2906,6 +2990,7 @@ fn push_pipeline_component_facts(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_payload_text(facts: &mut EditorSemanticFacts, text: &str, span: SourceSpan, detail: &str) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -2923,10 +3008,9 @@ fn push_payload_text(facts: &mut EditorSemanticFacts, text: &str, span: SourceSp
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, Engine, MermaidConfig,
-        ParseOptions, RenderSemanticModel,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
+    use crate::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -3319,50 +3403,58 @@ pipeline Platform {
         let start = source.find("Missing").unwrap();
         assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 7)));
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_wardley_json_and_editor_facts,
-            source,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Missing"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Child"));
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(SourceSpan::new(start, start + 7))
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_wardley_json_and_editor_facts,
+                source,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Missing"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Child"));
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(SourceSpan::new(start, start + 7))
+            }));
+        }
     }
 
     #[test]
     fn combined_engine_projection_constructs_once_and_exposes_typed_editor_contracts() {
         let source = "wardley-beta\ncomponent API [0.6, 0.7]\ncomponent DB [0.4, 0.5]\nAPI -> DB\n";
+        #[cfg(feature = "editor-facts")]
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
         let engine = Engine::new();
+        #[cfg(feature = "editor-facts")]
         let combined = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
             1
         );
-        let crate::ParsedEditorFacts::Available(facts) = combined.editor_facts() else {
-            panic!("expected wardley editor facts");
-        };
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(
-            facts
+        #[cfg(feature = "editor-facts")]
+        {
+            let crate::ParsedEditorFacts::Available(facts) = combined.editor_facts() else {
+                panic!("expected wardley editor facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_eq!(
+                facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.name == "API")
+                    .count(),
+                2
+            );
+            let api: Vec<_> = facts
                 .symbols
                 .iter()
                 .filter(|symbol| symbol.name == "API")
-                .count(),
-            2
-        );
-        let api: Vec<_> = facts
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == "API")
-            .collect();
-        assert_eq!(api[0].role, crate::EditorSemanticRole::Entity);
-        assert_eq!(api[1].role, crate::EditorSemanticRole::Reference);
-
+                .collect();
+            assert_eq!(api[0].role, crate::EditorSemanticRole::Entity);
+            assert_eq!(api[1].role, crate::EditorSemanticRole::Reference);
+        }
         let typed = engine
             .parse_diagram_for_render_model_with_type_sync(
                 "wardley",
@@ -3375,6 +3467,7 @@ pipeline Platform {
             panic!("expected typed wardley model");
         };
         assert_eq!(model.nodes.len(), 2);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             &render_model_to_compat_json(model, typed.metadata()).unwrap(),
             combined
@@ -3385,6 +3478,7 @@ pipeline Platform {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn wardley_reference_roles_cover_links_evolve_and_pipeline_parents() {
         let source = concat!(
             "wardley-beta\n",
@@ -3455,28 +3549,31 @@ pipeline Platform {
             Some(SourceSpan::new(invalid_number, invalid_number + 1))
         );
 
-        crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
-        let facts = crate::family::test_support::editor_facts(
-            parse_wardley_json_and_editor_facts,
-            source,
-            &meta(),
-        );
-        assert_eq!(
-            crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
-            1
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        for later in ["后续 子项", "后来 🤓"] {
-            assert!(
-                facts.symbols.iter().any(|symbol| symbol.name == later),
-                "missing recovered symbol {later:?}: {:?}",
-                facts.symbols
+        #[cfg(feature = "editor-facts")]
+        {
+            crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
+            let facts = crate::family::test_support::editor_facts(
+                parse_wardley_json_and_editor_facts,
+                source,
+                &meta(),
             );
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
+                1
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            for later in ["后续 子项", "后来 🤓"] {
+                assert!(
+                    facts.symbols.iter().any(|symbol| symbol.name == later),
+                    "missing recovered symbol {later:?}: {:?}",
+                    facts.symbols
+                );
+            }
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(SourceSpan::new(invalid_number, invalid_number + 1))
+            }));
         }
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(SourceSpan::new(invalid_number, invalid_number + 1))
-        }));
     }
 }
 
@@ -3508,10 +3605,12 @@ mod semantic_tests {
             "annotation 1,[0.6, 0.4] \"Important\"\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_wardley_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -3538,6 +3637,7 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
             1,
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
@@ -3556,11 +3656,13 @@ mod semantic_tests {
             )
             .unwrap()
             .unwrap();
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
 
             #[cfg(feature = "compat-json")]
             {
                 parse_wardley(source, &full_metadata).unwrap();
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(crate::editor::test_work::read(), Default::default());
             }
         }
@@ -3570,10 +3672,12 @@ mod semantic_tests {
     fn semantic_errors_keep_exact_spans_and_observe_cancellation() {
         let source = "wardley-beta\ncomponent API [0.5, 101.0]\n";
         let metadata = metadata();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_wardley_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -3588,6 +3692,7 @@ mod semantic_tests {
             diagnostic.span(),
             Some(SourceSpan::new(start, start + "101.0".len())),
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
@@ -3595,6 +3700,7 @@ mod semantic_tests {
             parse_wardley_semantic_model_controlled(
                 source,
                 &metadata,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )

@@ -1,3 +1,5 @@
+#![cfg(feature = "compat-json")]
+
 use merman_core as parse_api;
 use merman_core::{Error, ParseOptions, diagram_family_capabilities};
 use std::path::PathBuf;
@@ -266,27 +268,31 @@ fn malformed_family_headers_are_failures_instead_of_successful_error_json() {
                 .unwrap()
                 .unwrap();
             assert_eq!(lenient.meta.diagram_type, "error");
-            let snapshot = engine
-                .parse_diagram_snapshot_with_type_sync(diagram_type, source)
-                .unwrap()
-                .unwrap();
-            assert!(matches!(
-                snapshot.outcome(),
-                merman_core::DiagramParseOutcome::Failed(_)
-            ));
-            let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
-                panic!("failed {diagram_type} parse lost editor facts");
-            };
-            assert_eq!(
-                facts.completeness,
-                merman_core::EditorSemanticCompleteness::Recovered
-            );
-            assert!(!facts.diagnostics.is_empty());
+            #[cfg(feature = "editor-facts")]
+            {
+                let snapshot = engine
+                    .parse_diagram_snapshot_with_type_sync(diagram_type, source)
+                    .unwrap()
+                    .unwrap();
+                assert!(matches!(
+                    snapshot.outcome(),
+                    merman_core::DiagramParseOutcome::Failed(_)
+                ));
+                let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts()
+                else {
+                    panic!("failed {diagram_type} parse lost editor facts");
+                };
+                assert_eq!(
+                    facts.completeness,
+                    merman_core::EditorSemanticCompleteness::Recovered
+                );
+                assert!(!facts.diagnostics.is_empty());
+            }
         }
     }
 }
 
-#[cfg(feature = "diagram-packet")]
+#[cfg(all(feature = "diagram-packet", feature = "editor-facts"))]
 #[test]
 fn failed_snapshot_retains_parser_symbols_and_original_source_spans() {
     let source = "packet\r\n0-7: \"valid\"\r\n  9-15: \"not contiguous\"  \r\n";

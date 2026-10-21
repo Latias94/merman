@@ -1,3 +1,5 @@
+#![cfg(feature = "presentation")]
+
 use merman_core::Engine;
 use merman_core::presentation::PresentationConfig;
 use serde_json::json;

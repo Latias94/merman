@@ -1,13 +1,17 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::strip_line_ending;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 use crate::family::{CombinedSemanticFailure, CombinedSemanticParse};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
+    EditorSemanticSymbol,
 };
+use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
@@ -115,6 +119,7 @@ pub(crate) fn architecture_syntax_construction_count() -> usize {
 }
 
 impl ArchitectureDb {
+    #[cfg(feature = "editor-facts")]
     fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
         if self.groups.contains_key(id) {
             return Some(EditorSemanticKind::Namespace);
@@ -696,6 +701,7 @@ fn is_architecture_reserved_id(id: &str) -> bool {
             .is_some_and(|first| matches!(first, b'L' | b'R' | b'T' | b'B'))
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
     let mut last_was_word = false;
     for (index, ch) in candidate.chars().enumerate() {
@@ -718,12 +724,13 @@ fn architecture_reserved_id_message(id: &str) -> String {
 pub(crate) fn parse_architecture_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
     Ok(parse::parse_semantic_model_controlled(
         code,
         &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?
@@ -741,6 +748,7 @@ pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Val
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1028,10 +1036,9 @@ pub(crate) fn parse_architecture_model_for_render_controlled(
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions,
-        ParsedEditorFacts,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, ParsedEditorFacts};
+    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
@@ -1059,6 +1066,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn payload_selection(facts: &EditorSemanticFacts, detail: &str, name: &str) -> SourceSpan {
         facts
             .symbols
@@ -1208,6 +1216,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_facts_report_reserved_entity_ids() {
         for (entity, suffix) in [
             ("service", "(server)[X]"),
@@ -1254,6 +1263,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_facts_report_reserved_id_references() {
         for (text, reserved) in [
             (
@@ -1290,6 +1300,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_entity_facts_use_the_architecture_rename_policy() {
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
@@ -1396,6 +1407,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
+        #[cfg(feature = "editor-facts")]
         let facts = source.editor_facts();
 
         assert_eq!(
@@ -1406,6 +1418,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 
         assert_eq!(json["services"][0]["iconText"], expected);
         assert_eq!(render.nodes[0].icon_text.as_deref(), Some(expected));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service icon text")
                 && symbol.name == expected
@@ -1422,16 +1435,19 @@ service captioned(server)[\"third\nfourth\"]\n";
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
+        #[cfg(feature = "editor-facts")]
         let facts = source.editor_facts();
 
         assert_eq!(json["services"][0]["iconText"], "first\nsecond");
         assert_eq!(json["services"][1]["title"], "third\nfourth");
         assert_eq!(render.nodes[0].icon_text.as_deref(), Some("first\nsecond"));
         assert_eq!(render.nodes[1].title.as_deref(), Some("third\nfourth"));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service icon text")
                 && symbol.name == "first\nsecond"
         }));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service title")
                 && symbol.name == "third\nfourth"
@@ -1467,6 +1483,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_payload_spans_point_to_values_when_values_match_keywords() {
         let text = "architecture-beta\n  title title\n  accTitle: accTitle\n  accDescr: accDescr\n";
         let facts = crate::family::test_support::editor_facts(
@@ -1518,6 +1535,7 @@ service caption(server)[\"title %% kept\"]\n",
             "accDescr: \"Description %% ignored\n",
         );
         let model = parse(text);
+        #[cfg(feature = "editor-facts")]
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
             text,
@@ -1527,6 +1545,7 @@ service caption(server)[\"title %% kept\"]\n",
         assert_eq!(model["title"], "\"Title");
         assert_eq!(model["accTitle"], "\"Accessible");
         assert_eq!(model["accDescr"], "\"Description");
+        #[cfg(feature = "editor-facts")]
         assert!(
             facts
                 .symbols
@@ -1622,6 +1641,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_align_editor_facts_preserve_spans() {
         let text = "architecture-beta\n  service rowspan(server)[Rowspan]\n  service columnar(server)[Columnar]\n  align row rowspan columnar\n";
         let facts = crate::family::test_support::editor_facts(
@@ -1772,6 +1792,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_recovered_facts_preserve_declared_junction_kind() {
         let text = "architecture-beta\n\
 junction hub\n\
@@ -1835,6 +1856,7 @@ missing:R -- L:api\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_semantic_source_projects_json_render_and_editor_facts() {
         let text = "architecture-beta\n\
 title Platform\n\
@@ -1918,6 +1940,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_parse_pipeline_returns_combined_json_and_editor_projection() {
         let text = "architecture-beta\nservice api(server)[API]\n";
         let parsed = Engine::new()
@@ -1941,6 +1964,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_honors_custom_registry_replacement() {
         fn detect_architecture(
             code: &str,
@@ -2000,6 +2024,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_preprocessed_spans() {
         let text = concat!(
             "---\n",
@@ -2030,6 +2055,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_crlf_and_unicode_payload_spans() {
         let text = concat!(
             "---\r\n",
@@ -2069,6 +2095,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_spans_across_removed_body_segments() {
         let text = concat!(
             "architecture-beta\n",
@@ -2100,6 +2127,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_trace_keeps_lexical_editor_order_while_db_uses_category_order() {
         let text = "architecture-beta\n\
 api:R -- L:join\n\
@@ -2200,6 +2228,7 @@ group root(cloud)[Root]\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_roles_keep_declarations_and_references_in_separate_projections() {
         let text = "architecture-beta\n\
 group platform\n\
@@ -2272,6 +2301,7 @@ api:R -- L:hub\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_multiline_acc_descr_projects_complete_payload_span() {
         let text = "architecture-beta\naccDescr {\n  First   line\n\n  Second line\n}\n";
         let facts = crate::family::test_support::editor_facts(
@@ -2297,6 +2327,7 @@ api:R -- L:hub\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_recovering_parser_keeps_partial_statement_facts_out_of_db() {
         let cases = [
             (
@@ -2359,14 +2390,19 @@ api:R -- L:hub\n";
         };
 
         assert_eq!(json_diagnostic, typed_diagnostic);
+        #[cfg(feature = "editor-facts")]
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
             text,
             &test_meta(),
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.diagnostics[0].message, json_diagnostic.message());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.diagnostics[0].span, json_diagnostic.span());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             facts
                 .symbols
@@ -2395,10 +2431,12 @@ mod semantic_tests {
     fn architecture_canonical_model_preserves_authored_hints_without_editor_work() {
         let source = "architecture-beta\napi:R -- L:join\nalign row api join\njunction join in root\nservice api(server)[API] in root\ngroup root(cloud)[Root]\n";
         reset_architecture_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_architecture_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -2422,16 +2460,19 @@ mod semantic_tests {
         );
         assert_eq!(model.layout_hints[0].members, ["api", "join"]);
         assert_eq!(architecture_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
     fn architecture_canonical_validation_keeps_exact_spans_without_editor_work() {
         let source = "architecture-beta\nservice api\nservice api\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_architecture_semantic_model_controlled(
             source,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -2447,10 +2488,12 @@ mod semantic_tests {
             diagnostic.span_kind(),
             crate::ParseDiagnosticSpanKind::Exact
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_canonical_capture_keeps_one_construction_and_later_recovery_facts() {
         for source in [
             "architecture-beta\nservice api\n",
@@ -2460,21 +2503,25 @@ mod semantic_tests {
             let omitted = parse_architecture_semantic_model_controlled(
                 source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )
             .unwrap();
             assert!(omitted.editor_facts.is_none());
             reset_architecture_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
             crate::editor::test_work::reset();
             let captured = parse_architecture_semantic_model_controlled(
                 source,
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Capture,
                 &OperationControl::new(),
             )
             .unwrap();
             assert_eq!(architecture_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);
             let facts = captured.editor_facts.unwrap();
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "api"));
@@ -2517,6 +2564,7 @@ mod semantic_tests {
             parse_architecture_semantic_model_controlled(
                 "architecture-beta\nservice api\n",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )
@@ -2555,6 +2603,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_architecture_model_for_render_controlled(
             "architecture-beta\nservice api\n",
@@ -2564,6 +2613,7 @@ mod semantic_tests {
         .unwrap()
         .unwrap();
         assert!(!model.nodes.is_empty());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

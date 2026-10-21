@@ -2,15 +2,22 @@
 use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
 };
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::{
+    push_langium_common_editor_fact, push_langium_common_recovery,
+};
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
+use crate::source_span::recovery_fallback_span;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, Result, SourceSpan,
-    editor::ensure_editor_recovery_from_error, family, source_span::recovery_fallback_span,
+    EditorSemanticSymbol, editor::ensure_editor_recovery_from_error,
 };
+use crate::{Error, MermaidConfig, Result, SourceSpan, family};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
@@ -175,6 +182,7 @@ impl PacketParseOutput {
 
 struct PacketSemanticSource {
     output: PacketParseOutput,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -186,6 +194,7 @@ pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -242,6 +251,7 @@ pub(crate) fn parse_packet_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -259,6 +269,7 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -269,39 +280,53 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
 pub(crate) fn parse_packet_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<PacketDiagramModel>> {
     let construction = construct_packet_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.output.into_semantic_model();
             model.sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -309,7 +334,7 @@ fn construct_packet_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure>,
@@ -323,6 +348,7 @@ fn construct_packet_semantic_source_controlled(
         Ok(None) => {
             return Ok(Ok(PacketSemanticSource {
                 output: PacketParseOutput::Empty,
+                #[cfg(feature = "editor-facts")]
                 editor_facts: (editor_demand == EditorFactsDemand::Capture)
                     .then(EditorSemanticFacts::new),
             }));
@@ -330,15 +356,17 @@ fn construct_packet_semantic_source_controlled(
         Err(error) => {
             return Ok(Err(packet_parse_failure(
                 error,
-                EditorSemanticFacts::new(),
+                #[cfg(feature = "editor-facts")]
+                (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new),
+                #[cfg(feature = "editor-facts")]
                 code,
-                editor_demand,
             )));
         }
     };
     let mut offset = body.offset;
     let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<PacketBlock> = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -353,6 +381,7 @@ fn construct_packet_semantic_source_controlled(
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             if let Some(diagnostic) = &parsed.diagnostic {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_langium_common_recovery(facts, diagnostic);
                 }
@@ -364,6 +393,7 @@ fn construct_packet_semantic_source_controlled(
                     )
                 });
             }
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 push_langium_common_editor_fact(facts, &parsed.fact, "packet");
             }
@@ -382,6 +412,7 @@ fn construct_packet_semantic_source_controlled(
         }
 
         if let Some(block) = parse_packet_block_spanned(line, line_start) {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut editor_facts {
                 push_packet_block_editor_fact(facts, &block);
             }
@@ -394,7 +425,9 @@ fn construct_packet_semantic_source_controlled(
         } else {
             format!("unexpected packet statement: {t}")
         };
+        #[cfg(feature = "editor-facts")]
         let start = line_start + visible.find(t).unwrap_or_default();
+        #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
             facts.mark_recovered_from_parse_error(
                 diagnostic.clone(),
@@ -415,6 +448,7 @@ fn construct_packet_semantic_source_controlled(
     let packet = match packet_result {
         Ok(packet) => packet,
         Err(error) => {
+            #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts.take() {
                 editor_facts = Some(ensure_editor_recovery_from_error(
                     facts,
@@ -433,7 +467,8 @@ fn construct_packet_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
         )));
     }
 
@@ -445,25 +480,28 @@ fn construct_packet_semantic_source_controlled(
             acc_descr: common.acc_descr,
             packet,
         }),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
 fn packet_parse_failure(
     error: Error,
-    editor_facts: EditorSemanticFacts,
-    code: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")] code: &str,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts = match editor_demand {
-        EditorFactsDemand::Omit => editor_facts,
-        EditorFactsDemand::Capture => {
-            ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code))
-        }
-    };
-    family::CombinedSemanticFailure::new(error, editor_facts)
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = editor_facts.map(|facts| {
+        ensure_editor_recovery_from_error(facts, &error, recovery_fallback_span(code))
+    });
+    family::CombinedSemanticFailure::new(
+        error,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    )
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketBlockSpanned) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -927,6 +965,7 @@ mod semantic_tests {
     #[test]
     fn packet_semantics_preserve_split_ranges_without_editor_work() {
         crate::diagrams::langium_common::reset_family_syntax_construction_count("packet");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let metadata = crate::SemanticMetadata {
             diagram_type: "packet".to_string(),
@@ -940,6 +979,7 @@ mod semantic_tests {
         let model = parse_packet_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -956,6 +996,7 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("packet"),
             1
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let parsed = crate::SemanticParser::new()
             .parse_diagram_sync(source)
@@ -1050,6 +1091,7 @@ mod tests {
                 &text,
                 &meta.diagram_type,
                 meta.effective_config.as_config(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Capture,
                 &control,
             ),
@@ -1249,16 +1291,20 @@ accDescr: Packet accDescription
         assert_eq!(model["packet"][0][0]["label"], "An100%% complete");
         assert_eq!(model["packet"][0][1]["label"], "Btlabel");
 
-        let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("packet", source)
-            .unwrap()
-            .unwrap();
-        let escaped = "A\\n100%% complete";
-        let escaped_start = source.find(escaped).unwrap();
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "An100%% complete"
-                && symbol.selection == SourceSpan::new(escaped_start, escaped_start + escaped.len())
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = Engine::new()
+                .parse_editor_semantic_facts_with_type_sync("packet", source)
+                .unwrap()
+                .unwrap();
+            let escaped = "A\\n100%% complete";
+            let escaped_start = source.find(escaped).unwrap();
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "An100%% complete"
+                    && symbol.selection
+                        == SourceSpan::new(escaped_start, escaped_start + escaped.len())
+            }));
+        }
     }
 
     #[test]
@@ -1291,6 +1337,7 @@ accDescr: Packet accDescription
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn packet_editor_facts_expose_parser_backed_spans() {
         let engine = crate::Engine::new();
         let text = r#"packet
@@ -1334,6 +1381,7 @@ accDescr: Packet accDescription
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn packet_editor_recovery_reports_invalid_statement_with_exact_span() {
         let engine = crate::Engine::new();
         let text = concat!(
@@ -1383,26 +1431,29 @@ accDescr: Packet accDescription
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
 
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("packet", text)
-            .unwrap()
-            .expect("packet editor recovery facts");
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
-        assert!(
-            facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "not contiguous")
-        );
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(expected_span)
-                && diagnostic.message.contains("is not contiguous")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("packet", text)
+                .unwrap()
+                .expect("packet editor recovery facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == "not contiguous")
+            );
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(expected_span)
+                    && diagnostic.message.contains("is not contiguous")
+            }));
+        }
     }
 
     #[test]

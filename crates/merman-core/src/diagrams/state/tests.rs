@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "presentation")]
 use crate::{Engine, ParseMetadata, ParseOptions, RenderSemanticModel};
@@ -58,6 +59,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
         "click Done href \"https://example.com\"\n",
     );
     parse::reset_state_syntax_construction_count();
+    #[cfg(feature = "editor-facts")]
     crate::editor::test_work::reset();
     render_model::reset_projected_document_count();
     db::reset_dom_id_count();
@@ -65,6 +67,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
         source,
         "stateDiagram-v2",
         &MermaidConfig::default(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
@@ -72,6 +75,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
     .model
     .unwrap();
     assert_eq!(parse::state_syntax_construction_count(), 1);
+    #[cfg(feature = "editor-facts")]
     assert_eq!(crate::editor::test_work::read(), Default::default());
     assert_eq!(render_model::projected_document_count(), 0);
     assert_eq!(db::dom_id_count(), 0);
@@ -130,6 +134,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
             .iter()
             .any(|style| style == "fill:red")
     }));
+    #[cfg(feature = "editor-facts")]
     crate::editor::test_work::reset();
 }
 
@@ -143,6 +148,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -169,6 +175,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             &source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &control,
         )
@@ -179,6 +186,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             &source,
             "stateDiagram-v2",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -431,6 +439,7 @@ fn state_divider_assignment_cancellation_releases_completed_grammar_documents() 
         "stateDiagram-v2\nA\n",
         "stateDiagram-v2",
         &MermaidConfig::default(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
     )
@@ -486,6 +495,7 @@ fn state_semantic_deep_documents_clone_count_and_drop_without_recursion() {
                 &source,
                 "stateDiagram-v2",
                 &MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &OperationControl::new(),
             )

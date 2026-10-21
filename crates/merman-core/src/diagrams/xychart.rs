@@ -1,13 +1,15 @@
 #[cfg(feature = "presentation")]
 use crate::ParseMetadata;
 use crate::diagrams::scan::leading_whitespace_len;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, Result, SourceSpan,
-    family::CombinedSemanticFailure,
+    EditorSemanticSymbol,
 };
+use crate::{Error, MermaidConfig, Result, SourceSpan, family::CombinedSemanticFailure};
 use serde::{Deserialize, Serialize, Serializer};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Number, Value};
@@ -390,6 +392,7 @@ struct ParsedDataPoint {
 
 struct XyChartSemanticSource {
     model: XyChartDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -403,10 +406,13 @@ impl XyChartParseOutcome {
         self,
     ) -> std::result::Result<XyChartSemanticSource, CombinedSemanticFailure> {
         match self.first_error {
-            Some(error) => Err(match self.source.editor_facts {
-                Some(facts) => CombinedSemanticFailure::parser_recovery("xychart", error, facts),
-                None => CombinedSemanticFailure::new(error, EditorSemanticFacts::new()),
-            }),
+            Some(error) => Err(CombinedSemanticFailure::parser_recovery(
+                #[cfg(feature = "editor-facts")]
+                "xychart",
+                error,
+                #[cfg(feature = "editor-facts")]
+                self.source.editor_facts,
+            )),
             None => Ok(self.source),
         }
     }
@@ -690,6 +696,7 @@ fn record_xychart_error(first_error: &mut Option<Error>, error: Error) {
     first_error.get_or_insert(error);
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_axis_facts(
     facts: &mut EditorSemanticFacts,
     axis: &ParsedAxisStatement,
@@ -740,6 +747,7 @@ fn apply_y_axis_statement(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_plot_statement_facts(
     facts: &mut EditorSemanticFacts,
     plot: &ParsedPlotStatement,
@@ -816,7 +824,7 @@ fn construct_xychart_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     config: &MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<XyChartParseOutcome> {
     control.checkpoint()?;
@@ -832,6 +840,7 @@ fn construct_xychart_semantic_source_controlled(
         return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
                 model: XyChartState::new(config).into_semantic_model(None, None, None),
+                #[cfg(feature = "editor-facts")]
                 editor_facts: (editor_demand == EditorFactsDemand::Capture)
                     .then(EditorSemanticFacts::new),
             },
@@ -839,6 +848,7 @@ fn construct_xychart_semantic_source_controlled(
         });
     };
 
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -856,6 +866,7 @@ fn construct_xychart_semantic_source_controlled(
         let error = normalize_xychart_error(error, diagram_type, header_span);
         first_error = Some(error);
     }
+    #[cfg(feature = "editor-facts")]
     if let Some((prefix_len, _)) = header_token_len_and_rest(header_trimmed)
         && let Some(editor_facts) = &mut editor_facts
     {
@@ -893,9 +904,11 @@ fn construct_xychart_semantic_source_controlled(
 
         match parsed {
             ParsedXyChartStatement::Title(value) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(editor_facts) = &mut editor_facts {
                     editor_facts.push_directive_prefix("title");
                 }
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_xychart_payload_fact(
                         facts,
@@ -908,9 +921,11 @@ fn construct_xychart_semantic_source_controlled(
                 title = Some(value.text.trim().to_string());
             }
             ParsedXyChartStatement::AccessibilityTitle(value) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(editor_facts) = &mut editor_facts {
                     editor_facts.push_directive_prefix("accTitle");
                 }
+                #[cfg(feature = "editor-facts")]
                 if !value.text.is_empty()
                     && let Some(facts) = &mut editor_facts
                 {
@@ -925,9 +940,11 @@ fn construct_xychart_semantic_source_controlled(
                 acc_title = Some(value.text);
             }
             ParsedXyChartStatement::AccessibilityDescription(value) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(editor_facts) = &mut editor_facts {
                     editor_facts.push_directive_prefix("accDescr");
                 }
+                #[cfg(feature = "editor-facts")]
                 if !value.text.is_empty()
                     && let Some(facts) = &mut editor_facts
                 {
@@ -942,18 +959,21 @@ fn construct_xychart_semantic_source_controlled(
                 acc_descr = Some(value.text);
             }
             ParsedXyChartStatement::XAxis(axis) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_xychart_axis_facts(facts, &axis, "xychart x-axis");
                 }
                 apply_x_axis_statement(axis, &mut state, config);
             }
             ParsedXyChartStatement::YAxis(axis) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_xychart_axis_facts(facts, &axis, "xychart y-axis");
                 }
                 apply_y_axis_statement(axis, &mut state, config);
             }
             ParsedXyChartStatement::Line(plot) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_xychart_plot_statement_facts(
                         facts,
@@ -971,6 +991,7 @@ fn construct_xychart_semantic_source_controlled(
                 );
             }
             ParsedXyChartStatement::Bar(plot) => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_xychart_plot_statement_facts(
                         facts,
@@ -993,6 +1014,7 @@ fn construct_xychart_semantic_source_controlled(
     Ok(XyChartParseOutcome {
         source: XyChartSemanticSource {
             model: state.into_semantic_model(title, acc_title, acc_descr),
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         },
         first_error,
@@ -1002,40 +1024,54 @@ fn construct_xychart_semantic_source_controlled(
 pub(crate) fn parse_xychart_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<XyChartDiagramModel>> {
     let construction = construct_xychart_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?
     .into_strict_result();
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
             model.sanitize_common_db_fields(&metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -1048,6 +1084,7 @@ pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1096,6 +1133,7 @@ pub(crate) fn parse_xychart_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -1196,6 +1234,7 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
     Some(&s[kw.len()..])
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_payload_fact(
     facts: &mut EditorSemanticFacts,
     text: &str,
@@ -2139,10 +2178,9 @@ fn is_xychart_accessibility_block_prefix(statement: &str) -> bool {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole, Engine,
-        ParseDiagnosticSpanKind, ParseOptions,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -2188,16 +2226,19 @@ mod tests {
             let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
             assert_eq!(projection, parsed.model);
             assert_eq!(parse_xychart(source, &parsed.meta).unwrap(), projection);
-            let (combined, facts) =
-                crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
-                    source,
-                    &parsed.meta,
-                    &crate::OperationControl::new(),
-                ))
-                .unwrap();
-            assert_eq!(combined, projection);
-            assert!(facts.symbols.is_empty());
-            assert!(facts.diagnostics.is_empty());
+            #[cfg(feature = "editor-facts")]
+            {
+                let (combined, facts) =
+                    crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
+                        source,
+                        &parsed.meta,
+                        &crate::OperationControl::new(),
+                    ))
+                    .unwrap();
+                assert_eq!(combined, projection);
+                assert!(facts.symbols.is_empty());
+                assert!(facts.diagnostics.is_empty());
+            }
         }
     }
 
@@ -2463,6 +2504,7 @@ bar [1, 2]
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let (combined_json, combined_editor) =
             crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
                 text,
@@ -2470,6 +2512,8 @@ bar [1, 2]
                 &crate::OperationControl::new(),
             ))
             .expect("XYChart combined projection succeeds");
+        #[cfg(not(feature = "editor-facts"))]
+        let combined_json = parse_xychart(text, &parsed.meta).unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
         for field in [
             "orientation",
@@ -2487,6 +2531,7 @@ bar [1, 2]
                 "XYChart combined {field} drift"
             );
         }
+        #[cfg(feature = "editor-facts")]
         assert!(!combined_editor.symbols.is_empty());
 
         let typed = serde_json::to_value(typed).expect("XYChart typed model serializes");
@@ -2555,6 +2600,7 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_editor_projection_preserves_multiline_and_nested_payload_spans() {
         let engine = Engine::new();
         let text = concat!(
@@ -2657,6 +2703,7 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_malformed_plot_recovers_prior_parser_facts() {
         let engine = Engine::new();
         let text = concat!(
@@ -2713,21 +2760,25 @@ bar [1, 2]
             ))
         );
 
-        reset_xychart_syntax_construction_count();
-        let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text)
-            .expect("XYChart editor recovery")
-            .expect("XYChart recovered facts");
-        assert_eq!(xychart_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "After 后来"
-                && symbol.detail.as_deref() == Some("xychart line")
-                && symbol.role == EditorSemanticRole::Payload
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            reset_xychart_syntax_construction_count();
+            let facts = Engine::new()
+                .parse_editor_semantic_facts_with_type_sync("xychart", text)
+                .expect("XYChart editor recovery")
+                .expect("XYChart recovered facts");
+            assert_eq!(xychart_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "After 后来"
+                    && symbol.detail.as_deref() == Some("xychart line")
+                    && symbol.role == EditorSemanticRole::Payload
+            }));
+        }
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_unterminated_eof_string_reports_insertion_point() {
         let text = "xychart\ntitle \"未完成 🤓";
         let facts = Engine::new()
@@ -2743,6 +2794,7 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_missing_bracket_recovers_at_the_next_statement_boundary() {
         let text = "xychart\nbar [1, 2\nline [3]\n";
         let facts = Engine::new()
@@ -2769,21 +2821,25 @@ mod semantic_tests {
         let parsed = parse_xychart_semantic_model_controlled(
             "",
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             &crate::OperationControl::new(),
         )
         .unwrap();
         assert!(parsed.model.is_ok());
         assert_eq!(xychart_syntax_construction_count(), 1);
-        let facts = parsed
-            .editor_facts
-            .expect("empty input still provides requested facts");
-        assert!(facts.symbols.is_empty());
-        assert!(facts.diagnostics.is_empty());
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Complete
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = parsed
+                .editor_facts
+                .expect("empty input still provides requested facts");
+            assert!(facts.symbols.is_empty());
+            assert!(facts.diagnostics.is_empty());
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Complete
+            );
+        }
     }
 
     fn metadata() -> crate::SemanticMetadata {
@@ -2798,10 +2854,12 @@ mod semantic_tests {
     #[test]
     fn semantic_axes_and_series_construct_once_without_display_or_editor_work() {
         reset_xychart_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_xychart_semantic_model_controlled(
             "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Revenue 0 --> 100\nline Forecast [23 \"Low\", 45 \"High\"]\n",
-            &metadata(), EditorFactsDemand::Omit, &crate::OperationControl::new(),
+            &metadata(), #[cfg(feature = "editor-facts")]
+EditorFactsDemand::Omit, &crate::OperationControl::new(),
         ).unwrap().model.unwrap();
         assert_eq!(model.orientation, "horizontal");
         assert_eq!(model.title.as_deref(), Some("Revenue"));
@@ -2831,6 +2889,7 @@ mod semantic_tests {
         );
         assert_eq!(model.plots[0].point_labels, vec!["Low", "High"]);
         assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         assert!(
             serde_json::to_value(model)
@@ -2850,6 +2909,7 @@ mod semantic_tests {
         let model = parse_xychart_semantic_model_controlled(
             "xychart\ntitle \"<script>bad()</script>Revenue\"\nbar [1, 2]",
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2864,10 +2924,12 @@ mod semantic_tests {
     #[test]
     fn semantic_invalid_number_retains_exact_error_and_omits_editor_recovery() {
         let input = "xychart\nbar [1.]\n";
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_xychart_semantic_model_controlled(
             input,
             &metadata(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -2880,6 +2942,7 @@ mod semantic_tests {
         let offset = input.find("1.").unwrap();
         assert_eq!(diagnostic.message(), "invalid number: 1.");
         assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 2)));
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
@@ -2909,6 +2972,7 @@ mod semantic_tests {
             parse_xychart_semantic_model_controlled(
                 "xychart\nbar [1]",
                 &metadata(),
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )
@@ -2925,6 +2989,7 @@ mod semantic_tests {
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         reset_xychart_syntax_construction_count();
         parse_xychart_model_for_render_controlled(
@@ -2935,10 +3000,12 @@ mod semantic_tests {
         .unwrap()
         .unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         reset_xychart_syntax_construction_count();
         parse_xychart("xychart\nbar [1, 2]", &full).unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

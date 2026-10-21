@@ -1,14 +1,24 @@
-#![cfg(feature = "all-diagrams")]
+#![cfg(all(feature = "all-diagrams", feature = "compat-json"))]
 
+#[cfg(feature = "editor-facts")]
 use merman_core::presentation::PresentationConfig;
+#[cfg(feature = "editor-facts")]
 use merman_core::time::CivilDate;
-use merman_core::{EditorSemanticFacts, Engine, Error, SourceSpan, diagram_family_capabilities};
+#[cfg(feature = "editor-facts")]
+use merman_core::{EditorSemanticFacts, diagram_family_capabilities};
+use merman_core::{Engine, Error, SourceSpan};
+#[cfg(feature = "editor-facts")]
 use merman_fixture_render_context::RenderContextCatalog;
+#[cfg(feature = "editor-facts")]
 use std::collections::BTreeMap;
+#[cfg(feature = "editor-facts")]
 use std::fs;
+#[cfg(feature = "editor-facts")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "editor-facts")]
 use std::sync::OnceLock;
 
+#[cfg(feature = "editor-facts")]
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -16,10 +26,12 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root")
 }
 
+#[cfg(feature = "editor-facts")]
 fn fixtures_root() -> PathBuf {
     workspace_root().join("fixtures")
 }
 
+#[cfg(feature = "editor-facts")]
 fn fixture_render_contexts() -> &'static RenderContextCatalog {
     static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
@@ -27,6 +39,7 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
     fixture_render_contexts()
         .context_for_fixture(path)
@@ -39,6 +52,7 @@ fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
         .map(|context| PresentationConfig::from_value(context.site_config_value()))
 }
 
+#[cfg(feature = "editor-facts")]
 fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
     match fixture_site_config_for_path(path) {
         Some(site_config) => base.clone().with_site_config(site_config),
@@ -46,6 +60,7 @@ fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn list_formal_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
     // Generated reference SVGs and temporary/private trees are not authored source fixtures.
     let mut out = Vec::new();
@@ -87,6 +102,7 @@ fn list_formal_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Default)]
 struct FormalFixtureEditorFactsAudit {
     total: usize,
@@ -98,12 +114,14 @@ struct FormalFixtureEditorFactsAudit {
     localized_drop_documents: usize,
 }
 
+#[cfg(feature = "editor-facts")]
 impl FormalFixtureEditorFactsAudit {
     fn accounted(&self) -> usize {
         self.malformed_metadata + self.unsupported + self.available + self.malformed_editor
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[test]
 fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
     let root = fixtures_root();
@@ -292,6 +310,7 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_malformed_fixture_error(error: &Error) -> bool {
     matches!(
         error,
@@ -302,6 +321,7 @@ fn is_malformed_fixture_error(error: &Error) -> bool {
     )
 }
 
+#[cfg(feature = "editor-facts")]
 fn record_sample(samples: &mut Vec<String>, sample: String) {
     const SAMPLE_LIMIT: usize = 8;
     if samples.len() < SAMPLE_LIMIT {
@@ -309,6 +329,7 @@ fn record_sample(samples: &mut Vec<String>, sample: String) {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn assert_editor_fact_spans_belong_to_source(
     fixture: &Path,
     source: &str,
@@ -329,6 +350,7 @@ fn assert_editor_fact_spans_belong_to_source(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn assert_source_span(fixture: &str, source: &str, owner: &str, span: SourceSpan) {
     assert!(
         span.start <= span.end,
@@ -346,9 +368,9 @@ fn assert_source_span(fixture: &str, source: &str, owner: &str, span: SourceSpan
 
 #[test]
 fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_crlf() {
-    use merman_core::{
-        DiagramParseOutcome, EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts,
-    };
+    use merman_core::ParseOptions;
+    #[cfg(feature = "editor-facts")]
+    use merman_core::{DiagramParseOutcome, EditorSemanticCompleteness, ParsedEditorFacts};
 
     let prefix = concat!(
         "---\r\n",
@@ -367,6 +389,7 @@ fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_c
     ] {
         let source = format!("{prefix}{body}\r\n");
         for known_type in [false, true] {
+            #[cfg(feature = "editor-facts")]
             let snapshot = if known_type {
                 engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
             } else {
@@ -374,20 +397,24 @@ fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_c
             }
             .unwrap()
             .expect("Flowchart snapshot");
+            #[cfg(feature = "editor-facts")]
             let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
                 panic!("percent sources must retain their editor facts");
             };
+            #[cfg(feature = "editor-facts")]
             assert_editor_fact_spans_belong_to_source(
                 Path::new("flowchart-percent-original-source.mmd"),
                 &source,
                 facts,
             );
+            #[cfg(feature = "editor-facts")]
             assert!(
                 facts
                     .directive_prefixes
                     .iter()
                     .any(|prefix| prefix == "init")
             );
+            #[cfg(feature = "editor-facts")]
             for name in names {
                 let symbol = facts
                     .symbols
@@ -407,25 +434,31 @@ fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_c
                 engine.parse_diagram_sync(&source, ParseOptions::strict())
             };
             if should_parse {
+                #[cfg(feature = "editor-facts")]
                 assert!(snapshot.outcome().parsed_model().is_some());
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
                 let parsed = parsed.unwrap().unwrap();
-                assert_eq!(parsed.model["nodes"][0]["id"], "雪%");
+                assert_eq!(parsed.model["nodes"][0]["id"], names[0]);
                 assert_eq!(parsed.model["edges"][0]["to"], "B%%tail");
             } else {
                 let marker_start = source.rfind("%% comment").unwrap();
                 let expected = SourceSpan::new(marker_start, marker_start + "%%".len());
+                #[cfg(feature = "editor-facts")]
                 let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
                     snapshot.outcome()
                 else {
                     panic!("inline percent source must retain its structured parse failure");
                 };
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(diagnostic.span(), Some(expected));
                 let Error::DiagramParse { diagnostic, .. } = parsed.unwrap_err() else {
                     panic!("strict JSON parsing must retain its original diagnostic");
                 };
                 assert_eq!(diagnostic.span(), Some(expected));
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                #[cfg(feature = "editor-facts")]
                 assert!(
                     facts
                         .diagnostics
@@ -437,6 +470,7 @@ fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_c
     }
 }
 
+#[cfg(feature = "editor-facts")]
 #[test]
 fn flowchart_invalid_header_direction_recovers_complete_value_and_following_nodes() {
     use merman_core::{

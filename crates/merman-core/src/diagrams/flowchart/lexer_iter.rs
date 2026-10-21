@@ -42,14 +42,15 @@ impl<'input> Iterator for Lexer<'input> {
             self.pos += rest.find(['\n', ';']).unwrap_or(rest.len());
             self.allow_header_direction = false;
             let span = crate::SourceSpan::new(start, start + value_len);
-            return Some(Err(LexError::with_span(
-                "invalid flowchart direction",
-                span,
-            )
-            .expecting(
-                crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-                span,
-            )));
+            return Some(Err({
+                let error = LexError::with_span("invalid flowchart direction", span);
+                #[cfg(feature = "editor-facts")]
+                let error = error.expecting(
+                    crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+                    span,
+                );
+                error
+            }));
         }
         let start = self.pos;
         if let Some(error) = self.lex_reserved_token_error() {

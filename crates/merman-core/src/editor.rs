@@ -9,7 +9,6 @@ pub use crate::source_span::SourceSpan;
 
 /// Parser-backed facts retained by one requested editor capture.
 #[derive(Debug)]
-#[cfg(any(feature = "editor-facts", feature = "compat-json"))]
 pub enum ParsedEditorFacts {
     Available(EditorSemanticFacts),
     Unavailable,

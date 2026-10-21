@@ -1,13 +1,20 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
+    strip_langium_inline_comment,
 };
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::{
+    push_langium_common_editor_fact, push_langium_common_recovery,
+};
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, SourceSpan, family,
+    EditorSemanticSymbol,
 };
+use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
 #[cfg(feature = "compat-json")]
@@ -82,6 +89,7 @@ struct PieSemanticSource {
     model: PieDiagramModel,
     #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
+    #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
@@ -107,6 +115,7 @@ pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -168,6 +177,7 @@ pub(crate) fn parse_pie_model_for_render_controlled(
     let construction = construct_pie_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
@@ -182,34 +192,52 @@ pub(crate) fn parse_pie_semantic_model_controlled(
     code: &str,
     diagram_type: &str,
     config: &crate::MermaidConfig,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<PieDiagramModel>> {
-    let construction =
-        construct_pie_semantic_source_controlled(code, diagram_type, editor_demand, control)?;
+    let construction = construct_pie_semantic_source_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     Ok(match construction {
         Ok(source) => {
+            #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
             model.sanitize_common_db_fields(config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             }
         }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                crate::family::SemanticConstruction {
-                    model: Err(error),
-                    editor_facts: Some(facts),
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
                 }
             }
-            EditorFactsDemand::Omit => crate::family::SemanticConstruction {
-                model: Err(failure.into_error()),
-                editor_facts: None,
-            },
-        },
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
     })
 }
 
@@ -218,6 +246,7 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
     construct_pie_semantic_source_controlled(
         code,
         &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &crate::OperationControl::new(),
     )
@@ -228,7 +257,7 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
 fn construct_pie_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<PieSemanticSource, family::CombinedSemanticFailure>,
@@ -243,15 +272,18 @@ fn construct_pie_semantic_source_controlled(
                 model: PieDiagramModel::default(),
                 #[cfg(feature = "compat-json")]
                 compatibility_output: CompatibilityOutputState::Empty,
+                #[cfg(feature = "editor-facts")]
                 editor_facts: (editor_demand == EditorFactsDemand::Capture)
                     .then(EditorSemanticFacts::new),
             }));
         }
         PieHeader::ExpectedPie(span) => {
             return Ok(Err(family::CombinedSemanticFailure::parser_recovery(
+                #[cfg(feature = "editor-facts")]
                 "pie",
                 Error::diagram_parse_exact(diagram_type.to_string(), "expected pie", span),
-                EditorSemanticFacts::new(),
+                #[cfg(feature = "editor-facts")]
+                (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new),
             )));
         }
         PieHeader::Body(body) => body,
@@ -259,6 +291,7 @@ fn construct_pie_semantic_source_controlled(
     let mut offset = body.offset;
     let mut common = LangiumCommonFacts::default();
     let mut parsed_sections = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
         EditorFactsDemand::Capture => {
@@ -267,6 +300,7 @@ fn construct_pie_semantic_source_controlled(
             Some(EditorSemanticFacts::new())
         }
     };
+    #[cfg(feature = "editor-facts")]
     if let (Some(facts), Some(span)) = (&mut editor_facts, body.show_data_span) {
         push_show_data_editor_fact(facts, span);
     }
@@ -277,6 +311,7 @@ fn construct_pie_semantic_source_controlled(
         match parse_pie_statement(code, offset) {
             PieStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
+                    #[cfg(feature = "editor-facts")]
                     if let Some(facts) = &mut editor_facts {
                         push_langium_common_recovery(facts, diagnostic);
                     }
@@ -288,6 +323,7 @@ fn construct_pie_semantic_source_controlled(
                         )
                     });
                 }
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_langium_common_editor_fact(facts, &parsed.fact, "pie");
                 }
@@ -298,6 +334,7 @@ fn construct_pie_semantic_source_controlled(
                 section,
                 next_offset,
             } => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     push_pie_section_editor_fact(facts, &section);
                 }
@@ -307,9 +344,11 @@ fn construct_pie_semantic_source_controlled(
             PieStatement::Empty { next_offset } => offset = next_offset,
             PieStatement::Unexpected {
                 text,
+                #[cfg(feature = "editor-facts")]
                 span,
                 next_offset,
             } => {
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     facts.mark_recovered_from_parse_error("unexpected pie statement", Some(span));
                 }
@@ -331,11 +370,22 @@ fn construct_pie_semantic_source_controlled(
             control.checkpoint()?;
         }
         if section.value < 0.0 {
-            if editor_facts.is_some() || first_error.is_none() {
+            if {
+                #[cfg(feature = "editor-facts")]
+                {
+                    editor_facts.is_some()
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    false
+                }
+            } || first_error.is_none()
+            {
                 let message = format!(
                     "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
                     section.label, section.value
                 );
+                #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
                     facts
                         .mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
@@ -362,7 +412,8 @@ fn construct_pie_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts.unwrap_or_default(),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
         )));
     }
 
@@ -377,6 +428,7 @@ fn construct_pie_semantic_source_controlled(
         },
         #[cfg(feature = "compat-json")]
         compatibility_output: CompatibilityOutputState::Model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -392,6 +444,7 @@ enum PieStatement {
     },
     Unexpected {
         text: String,
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan,
         next_offset: usize,
     },
@@ -426,6 +479,7 @@ fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
 
     PieStatement::Unexpected {
         text: trimmed.to_string(),
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan::new(
             offset + visible.find(trimmed).unwrap_or_default(),
             offset + visible.find(trimmed).unwrap_or_default() + trimmed.len(),
@@ -499,6 +553,7 @@ fn trim_start_with_offset(input: &str, input_start: usize) -> (&str, usize) {
     (trimmed, input_start + input.len() - trimmed.len())
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_show_data_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
     facts.push_directive_prefix("showData");
     facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -507,6 +562,7 @@ fn push_show_data_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan)
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_pie_section_editor_fact(facts: &mut EditorSemanticFacts, section: &PieParsedSection) {
     facts.push_symbol(EditorSemanticSymbol::outline(
         section.label.clone(),
@@ -616,6 +672,7 @@ mod tests {
             "",
             "pie",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Capture,
             &crate::OperationControl::new(),
         )
@@ -625,21 +682,27 @@ mod tests {
             crate::diagrams::langium_common::family_syntax_construction_count("pie"),
             1
         );
-        let facts = parsed
-            .editor_facts
-            .expect("empty input still provides requested facts");
-        assert!(facts.symbols.is_empty());
-        assert!(facts.diagnostics.is_empty());
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Complete
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = parsed
+                .editor_facts
+                .expect("empty input still provides requested facts");
+            assert!(facts.symbols.is_empty());
+            assert!(facts.diagnostics.is_empty());
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Complete
+            );
+        }
     }
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticCompleteness;
     use crate::MermaidConfig;
     #[cfg(feature = "presentation")]
     use crate::ParseMetadata;
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    use crate::{EditorSemanticCompleteness, Engine, Error, ParseOptions, SourceSpan};
+    use crate::{Engine, Error, ParseOptions, SourceSpan};
     use serde_json::json;
 
     #[cfg(feature = "presentation")]
@@ -661,6 +724,7 @@ mod tests {
             construct_pie_semantic_source_controlled(
                 "pie\n\"A\": 1\n\"B\": 2\n",
                 "pie",
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Capture,
                 &control,
             ),
@@ -671,11 +735,13 @@ mod tests {
     #[test]
     fn pie_semantic_model_reuses_one_construction_without_editor_or_compat_state() {
         crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_pie_semantic_model_controlled(
             "pie showData\ntitle Revenue\n\"A\": 1\n\"A\": 2\n\"B\": 3\n",
             "pie",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -697,6 +763,7 @@ mod tests {
             crate::diagrams::langium_common::family_syntax_construction_count("pie"),
             1
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -711,6 +778,7 @@ mod tests {
             source,
             "pie",
             &config,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -742,6 +810,7 @@ mod tests {
             "",
             "pie",
             &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )

@@ -3,10 +3,11 @@
 //! Grammar, declaration merging, and deferred resolution follow the pinned upstream
 //! `usecase.parser.ts`, `usecase.visitor.ts`, and `usecaseModelBuilder.ts`.
 
+#[cfg(feature = "editor-facts")]
+use crate::EditorSemanticFacts;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::{
-    EditorSemanticFacts, Error, OperationControl, OperationControlResult, SourceSpan, family,
-};
+use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,7 @@ mod parse;
 mod resolve;
 
 /// Whether an unquoted spelling is one complete identifier in the pinned grammar.
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
     if candidate.is_empty()
         || is_forbidden_statement_identifier(candidate)
@@ -376,35 +378,46 @@ impl ParseIssue {
 pub(crate) fn parse_usecase_semantic_model_controlled(
     code: &str,
     metadata: &crate::SemanticMetadata,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<family::SemanticConstruction<UsecaseDiagramModel>> {
     let construction = construct_usecase_semantic_source_controlled(
         code,
         &metadata.diagram_type,
         metadata.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
-    let (model, editor_facts) = match construction {
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = None;
+    let model = match construction {
         Ok(source) => {
             let mut model = source.model;
             model.sanitize_common_db_fields(&metadata.semantic_config);
-            (
-                Ok(model),
-                matches!(editor_demand, EditorFactsDemand::Capture).then_some(source.editor_facts),
-            )
-        }
-        Err(failure) => match editor_demand {
-            EditorFactsDemand::Omit => (Err(failure.into_error()), None),
-            EditorFactsDemand::Capture => {
-                let (error, facts) = failure.into_parts();
-                (Err(error), Some(facts))
+            #[cfg(feature = "editor-facts")]
+            {
+                editor_facts = matches!(editor_demand, EditorFactsDemand::Capture)
+                    .then_some(source.editor_facts);
             }
-        },
+            Ok(model)
+        }
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            if editor_demand == EditorFactsDemand::Capture {
+                let (error, facts) = failure.into_parts();
+                editor_facts = Some(facts);
+                return Ok(family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts,
+                });
+            }
+            Err(failure.into_error())
+        }
     };
     Ok(family::SemanticConstruction {
         model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     })
 }
@@ -419,6 +432,7 @@ fn construct(
         code,
         &meta.diagram_type,
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         control,
     )
@@ -426,6 +440,7 @@ fn construct(
 
 struct Construction {
     model: UsecaseDiagramModel,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
 }
 
@@ -436,6 +451,7 @@ pub(crate) fn parse_usecase(code: &str, meta: &ParseMetadata) -> Result<Value> {
         code,
         &meta.diagram_type,
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &control,
     )
@@ -454,6 +470,7 @@ pub(crate) fn parse_usecase_model_for_render_controlled(
         code,
         &meta.diagram_type,
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?
@@ -462,6 +479,7 @@ pub(crate) fn parse_usecase_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_usecase_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -471,6 +489,7 @@ pub(crate) fn parse_usecase_json_and_editor_facts(
         code,
         &meta.diagram_type,
         meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Capture,
         control,
     )?;
@@ -517,7 +536,7 @@ fn construct_usecase_semantic_source_controlled(
     code: &str,
     diagram_type: &str,
     title: Option<&str>,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     control.checkpoint()?;
@@ -529,19 +548,30 @@ fn construct_usecase_semantic_source_controlled(
             return Ok(Err(failure(
                 diagram_type,
                 issue,
+                #[cfg(feature = "editor-facts")]
                 EditorSemanticFacts::new(),
+                #[cfg(feature = "editor-facts")]
                 editor_demand,
             )));
         }
     };
-    let mut parser = parse::Parser::new(code, tokens, editor_demand, control);
+    let mut parser = parse::Parser::new(
+        code,
+        tokens,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    );
     let parsed = parser.parse()?;
+    #[cfg(feature = "editor-facts")]
     parser.finalize_editor_facts()?;
     if let Err(issue) = parsed {
         return Ok(Err(failure(
             diagram_type,
             issue,
+            #[cfg(feature = "editor-facts")]
             parser.facts,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         )));
     }
@@ -549,12 +579,15 @@ fn construct_usecase_semantic_source_controlled(
     match model {
         Ok(model) => Ok(Ok(Construction {
             model,
+            #[cfg(feature = "editor-facts")]
             editor_facts: parser.facts,
         })),
         Err(issue) => Ok(Err(failure(
             diagram_type,
             issue,
+            #[cfg(feature = "editor-facts")]
             parser.facts,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
         ))),
     }
@@ -563,15 +596,17 @@ fn construct_usecase_semantic_source_controlled(
 fn failure(
     diagram_type: &str,
     issue: ParseIssue,
-    mut facts: EditorSemanticFacts,
-    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "editor-facts")] mut facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
 ) -> family::CombinedSemanticFailure {
+    #[cfg(feature = "editor-facts")]
     if editor_demand == EditorFactsDemand::Capture {
         facts.mark_recovered_from_parse_error(issue.message.clone(), Some(issue.span));
     }
     family::CombinedSemanticFailure::new(
         Error::diagram_parse_exact(diagram_type.to_string(), issue.message, issue.span),
-        facts,
+        #[cfg(feature = "editor-facts")]
+        matches!(editor_demand, EditorFactsDemand::Capture).then_some(facts),
     )
 }
 
@@ -606,10 +641,12 @@ mod semantic_tests {
             "note for Login \"Try again\"\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("usecase");
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_usecase_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &OperationControl::new(),
         )
@@ -628,6 +665,7 @@ mod semantic_tests {
             crate::diagrams::langium_common::family_syntax_construction_count("usecase"),
             1,
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
@@ -646,11 +684,13 @@ mod semantic_tests {
             )
             .unwrap()
             .unwrap();
+            #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read(), Default::default());
 
             #[cfg(feature = "compat-json")]
             {
                 parse_usecase(source, &full_metadata).unwrap();
+                #[cfg(feature = "editor-facts")]
                 assert_eq!(crate::editor::test_work::read(), Default::default());
             }
         }
@@ -660,10 +700,12 @@ mod semantic_tests {
     fn semantic_errors_keep_exact_spans_and_observe_cancellation() {
         let source = "usecase-beta\nactor User\nA -->";
         let metadata = metadata();
+        #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let error = parse_usecase_semantic_model_controlled(
             source,
             &metadata,
+            #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,
             &crate::OperationControl::new(),
         )
@@ -675,6 +717,7 @@ mod semantic_tests {
         };
         let start = source.len();
         assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start)),);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
         let control = crate::OperationControl::new();
         control.cancel();
@@ -682,6 +725,7 @@ mod semantic_tests {
             parse_usecase_semantic_model_controlled(
                 source,
                 &metadata,
+                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Omit,
                 &control
             )

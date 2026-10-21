@@ -1,9 +1,8 @@
 use super::lexer::{Token, TokenKind as K};
 use super::*;
-use crate::{
-    EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
-    diagrams::scan::is_ecmascript_whitespace,
-};
+use crate::diagrams::scan::is_ecmascript_whitespace;
+#[cfg(feature = "editor-facts")]
+use crate::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
 
 #[derive(Debug, Clone)]
 pub(super) struct Label {
@@ -95,8 +94,10 @@ pub(super) struct Parser<'a> {
     tokens: Vec<Token>,
     at: usize,
     control: &'a OperationControl,
+    #[cfg(feature = "editor-facts")]
     editor_demand: EditorFactsDemand,
     pub draft: Draft,
+    #[cfg(feature = "editor-facts")]
     pub facts: EditorSemanticFacts,
     anonymous: usize,
 }
@@ -105,10 +106,12 @@ impl<'a> Parser<'a> {
     pub fn new(
         source: &'a str,
         tokens: Vec<Token>,
-        editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &'a OperationControl,
     ) -> Self {
+        #[cfg(feature = "editor-facts")]
         let mut facts = EditorSemanticFacts::new();
+        #[cfg(feature = "editor-facts")]
         if editor_demand == EditorFactsDemand::Capture {
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -132,8 +135,10 @@ impl<'a> Parser<'a> {
             tokens,
             at: 0,
             control,
+            #[cfg(feature = "editor-facts")]
             editor_demand,
             draft: Draft::default(),
+            #[cfg(feature = "editor-facts")]
             facts,
             anonymous: 0,
         }
@@ -273,6 +278,7 @@ impl<'a> Parser<'a> {
                 let token = self.take();
                 let (id, _, generated) = self.name(&token);
                 let metadata = self.metadata()?;
+                #[cfg(feature = "editor-facts")]
                 self.reference(&id, self.content_span(&token), generated);
                 self.draft.metadata.push(Assignment {
                     target: id,
@@ -294,6 +300,7 @@ impl<'a> Parser<'a> {
                 if matches!(self.kind(), K::Eof | K::NewLine) {
                     source.declaration = true;
                     source.shape.get_or_insert(UsecaseNodeKind::UseCaseEllipse);
+                    #[cfg(feature = "editor-facts")]
                     self.record_entity(&source);
                     self.draft.entities.push(source);
                     self.line_end()
@@ -310,10 +317,12 @@ impl<'a> Parser<'a> {
         if allow_relation && !matches!(self.kind(), K::Comma | K::Eof | K::NewLine) {
             self.relation(source)?;
         } else {
+            #[cfg(feature = "editor-facts")]
             self.record_entity(&source);
             self.draft.entities.push(source);
             while self.eat(K::Comma) {
                 let entity = self.entity(true, parent)?;
+                #[cfg(feature = "editor-facts")]
                 self.record_entity(&entity);
                 self.draft.entities.push(entity);
             }
@@ -490,6 +499,7 @@ impl<'a> Parser<'a> {
                 value: decoded,
                 span: self.content_span(&key),
             };
+            #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 self.facts.push_symbol(EditorSemanticSymbol::payload(
                     property.key.clone(),
@@ -532,6 +542,7 @@ impl<'a> Parser<'a> {
         loop {
             let token = self.expect(K::Identifier)?;
             classes.push(self.text(&token).to_string());
+            #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 self.facts.push_symbol(EditorSemanticSymbol::payload(
                     self.text(&token),
@@ -552,6 +563,7 @@ impl<'a> Parser<'a> {
         // Boundary names have the entity name forms but no stereotype suffix.
         let mut entity = self.entity_name(false, None, false)?;
         entity.declaration = true;
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(
                 EditorSemanticSymbol::new(
@@ -593,6 +605,7 @@ impl<'a> Parser<'a> {
                     let mut child = self.entity(false, Some(&parent))?;
                     child.declaration = true;
                     child.shape.get_or_insert(UsecaseNodeKind::UseCaseEllipse);
+                    #[cfg(feature = "editor-facts")]
                     self.record_entity(&child);
                     self.draft.entities.push(child);
                     self.line_end()?;
@@ -723,6 +736,7 @@ impl<'a> Parser<'a> {
                 self.anonymous += 1;
                 id
             });
+        #[cfg(feature = "editor-facts")]
         if let Some(token) = &explicit
             && self.editor_demand == EditorFactsDemand::Capture
         {
@@ -738,6 +752,7 @@ impl<'a> Parser<'a> {
             );
         }
         for entity in [&source, &target] {
+            #[cfg(feature = "editor-facts")]
             self.record_entity(entity);
             if entity.declaration {
                 self.draft.entities.push(entity.clone());
@@ -777,6 +792,7 @@ impl<'a> Parser<'a> {
         self.expect(K::For)?;
         let target = self.expect(K::Identifier)?;
         let label = self.label()?;
+        #[cfg(feature = "editor-facts")]
         self.reference(self.text(&target), target.span, false);
         self.draft.notes.push(Note {
             target: self.text(&target).to_string(),
@@ -802,6 +818,7 @@ impl<'a> Parser<'a> {
         let literal = self.expect(K::JsonObjectLiteral)?;
         let parsed_json = super::ordered_json::parse(self.text(&literal), literal.span.start)?;
         let classes = self.class_suffix()?;
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(
                 EditorSemanticSymbol::new(
@@ -840,6 +857,7 @@ impl<'a> Parser<'a> {
         let names = self.identifier_list()?;
         let styles = self.styles()?;
         for token in names {
+            #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 self.facts
                     .push_symbol(EditorSemanticSymbol::class_definition(
@@ -863,6 +881,7 @@ impl<'a> Parser<'a> {
         let names = self.identifier_list()?;
         let mut targets = Vec::new();
         for token in tokens {
+            #[cfg(feature = "editor-facts")]
             self.reference(self.text(&token), token.span, false);
             targets.push((self.text(&token).to_string(), token.span));
         }
@@ -879,6 +898,7 @@ impl<'a> Parser<'a> {
         self.take();
         let target = self.expect(K::Identifier)?;
         let styles = self.styles()?;
+        #[cfg(feature = "editor-facts")]
         self.reference(self.text(&target), target.span, false);
         self.draft.styles.push(StyleAssignment {
             target: self.text(&target).to_string(),
@@ -921,7 +941,9 @@ impl<'a> Parser<'a> {
         }
         Ok(styles)
     }
+    #[cfg(feature = "editor-facts")]
     fn reference(&mut self, id: &str, span: SourceSpan, generated: bool) {
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(
                 EditorSemanticSymbol::reference(id, None, EditorSemanticKind::Object, span, span)
@@ -933,12 +955,14 @@ impl<'a> Parser<'a> {
             );
         }
     }
+    #[cfg(feature = "editor-facts")]
     fn record_entity(&mut self, entity: &Entity) {
         let role = if entity.declaration {
             EditorSemanticRole::Entity
         } else {
             EditorSemanticRole::Reference
         };
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(
                 EditorSemanticSymbol::with_role(
@@ -960,6 +984,7 @@ impl<'a> Parser<'a> {
                 }),
             );
         }
+        #[cfg(feature = "editor-facts")]
         if entity.label.span != entity.span && self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(EditorSemanticSymbol::payload(
                 entity.label.text.clone(),
@@ -970,7 +995,9 @@ impl<'a> Parser<'a> {
             ));
         }
     }
+    #[cfg(feature = "editor-facts")]
     pub fn finalize_editor_facts(&mut self) -> OperationControlResult<()> {
+        #[cfg(feature = "editor-facts")]
         if self.editor_demand == EditorFactsDemand::Omit {
             return Ok(());
         }
