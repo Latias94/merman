@@ -3,11 +3,16 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::{self, Debug, Formatter};
 
+#[cfg(feature = "presentation")]
 pub use crate::presentation::diagram::*;
+#[cfg(feature = "compat-json")]
 pub(crate) use crate::presentation::diagram::{
-    BuiltInDiagramSemanticParser, BuiltInRenderSemanticParser, RegistryOwner,
-    RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
+    BuiltInDiagramSemanticParser, RegistryOwner, ResolvedSemanticParser,
     parse_or_unsupported_controlled,
+};
+#[cfg(feature = "presentation")]
+pub(crate) use crate::presentation::diagram::{
+    BuiltInRenderSemanticParser, RenderSemanticParseOutput, ResolvedRenderParser,
 };
 
 pub const AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID: &str = "merman.semantic.agentflow.shape_removed";

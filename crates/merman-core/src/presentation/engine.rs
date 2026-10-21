@@ -2,10 +2,14 @@ use super::PresentationConfig;
 #[cfg(test)]
 use crate::config::presentation::ThemeParseBinding;
 use crate::{
-    DetectorRegistry, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
-    DiagramSnapshotCapture, EditorSemanticFacts, Error, MermaidConfig, MermaidThemeId,
-    OperationControl, OperationControlResult, ParsedDiagram, ParsedDiagramRender,
-    ParsedEditorFacts, RenderDiagramRegistry, Result, family, generated, runtime, theme, time,
+    DetectorRegistry, Error, MermaidConfig, MermaidThemeId, OperationControl,
+    OperationControlResult, ParsedDiagramRender, RenderDiagramRegistry, Result, generated, runtime,
+    theme, time,
+};
+#[cfg(feature = "compat-json")]
+use crate::{
+    DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry, DiagramSnapshotCapture,
+    EditorSemanticFacts, ParsedDiagram, ParsedEditorFacts, family,
 };
 
 #[path = "parse_pipeline.rs"]
@@ -555,6 +559,7 @@ impl PresentationMetadata {
 #[derive(Debug, Clone)]
 pub struct MermaidEngine {
     registry: DetectorRegistry,
+    #[cfg(feature = "compat-json")]
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: PresentationConfig,
@@ -572,6 +577,7 @@ impl Default for MermaidEngine {
 
         Self {
             registry: DetectorRegistry::pinned_mermaid_baseline(),
+            #[cfg(feature = "compat-json")]
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
@@ -712,11 +718,13 @@ impl MermaidEngine {
     }
 
     /// Returns the semantic JSON parser registry.
+    #[cfg(feature = "compat-json")]
     pub fn diagram_registry(&self) -> &DiagramRegistry {
         &self.diagram_registry
     }
 
     /// Returns a mutable semantic JSON parser registry for custom diagram adapters.
+    #[cfg(feature = "compat-json")]
     pub fn diagram_registry_mut(&mut self) -> &mut DiagramRegistry {
         &mut self.diagram_registry
     }
@@ -782,6 +790,7 @@ impl MermaidEngine {
     /// Parses editor-facing semantic facts when a family has a parser-backed implementation.
     ///
     /// Returned spans are byte offsets in the `text` supplied to this method.
+    #[cfg(feature = "compat-json")]
     pub fn parse_editor_semantic_facts_with_type_sync(
         &self,
         diagram_type: &str,
@@ -827,6 +836,7 @@ impl MermaidEngine {
     ///
     /// Note: callers that want “always returns a diagram” behavior can set
     /// [`ParseOptions::suppress_errors`] to `true` to get an `error` diagram on parse failures.
+    #[cfg(feature = "compat-json")]
     pub fn parse_diagram_sync(
         &self,
         text: &str,
@@ -848,6 +858,7 @@ impl MermaidEngine {
     /// parsing the source again.
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
+    #[cfg(feature = "compat-json")]
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
         let control = OperationControl::new();
         self.parse_diagram_snapshot_controlled_sync(text, &control)
@@ -858,6 +869,7 @@ impl MermaidEngine {
     ///
     /// Cancellation is returned through the outer [`OperationControlResult`] and is never converted
     /// into a Mermaid parse error, failed snapshot, or recovery diagnostic.
+    #[cfg(feature = "compat-json")]
     pub fn parse_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
@@ -871,6 +883,7 @@ impl MermaidEngine {
     /// evidence on non-cancellation failures and on panics after preprocessing completes.
     /// Cooperative cancellation remains the outer error channel and never yields a partial
     /// capture.
+    #[cfg(feature = "compat-json")]
     pub fn capture_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
@@ -885,6 +898,7 @@ impl MermaidEngine {
     /// This has the same closed snapshot contract, including parser-owned typed warning facts, as
     /// [`MermaidEngine::parse_diagram_snapshot_sync`], but skips automatic detection. Family parse
     /// failures and panics remain inside the returned snapshot.
+    #[cfg(feature = "compat-json")]
     pub fn parse_diagram_snapshot_with_type_sync(
         &self,
         diagram_type: &str,
@@ -897,6 +911,7 @@ impl MermaidEngine {
     /// Async facade for [`MermaidEngine::parse_diagram_sync`].
     ///
     /// The work is CPU-bound and executes synchronously.
+    #[cfg(feature = "compat-json")]
     pub async fn parse_diagram(
         &self,
         text: &str,
@@ -907,12 +922,8 @@ impl MermaidEngine {
 
     /// Parses a diagram into a typed semantic model optimized for headless layout + SVG rendering.
     ///
-    /// Unlike [`MermaidEngine::parse_diagram_sync`], this avoids constructing large
-    /// `serde_json::Value` object trees for high-impact typed-first diagrams and instead returns
-    /// typed semantic structs that the renderer can consume directly.
-    ///
-    /// Callers that need the semantic JSON model should continue using
-    /// [`MermaidEngine::parse_diagram_sync`].
+    /// Returns family-owned typed structs that the renderer can consume directly, avoiding a
+    /// compatibility JSON projection. Explicit custom render adapters retain their named payload.
     pub fn parse_diagram_for_render_model_sync(
         &self,
         text: &str,
@@ -1040,6 +1051,7 @@ impl MermaidEngine {
     /// assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
     /// # Ok::<(), merman_core::Error>(())
     /// ```
+    #[cfg(feature = "compat-json")]
     pub fn parse_diagram_with_type_sync(
         &self,
         diagram_type: &str,
@@ -1053,6 +1065,7 @@ impl MermaidEngine {
     /// Async facade for [`MermaidEngine::parse_diagram_with_type_sync`].
     ///
     /// The work is CPU-bound and executes synchronously.
+    #[cfg(feature = "compat-json")]
     pub async fn parse_diagram_with_type(
         &self,
         diagram_type: &str,

@@ -159,7 +159,10 @@ fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
 #[test]
 fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
     let model = GanttDiagramRenderModel {
-        tasks: vec![GanttRenderTask::default(); 512],
+        model: GanttDiagramModel {
+            tasks: vec![GanttRenderTask::default(); 512],
+            ..GanttDiagramModel::default()
+        },
         ..GanttDiagramRenderModel::default()
     };
     let control = OperationControl::new();
@@ -279,11 +282,14 @@ fn gantt_typed_constraints_preserve_roles_dependencies_and_source_precision() {
 #[test]
 fn gantt_direct_task_constraints_have_explicit_json_and_reject_ambiguous_legacy_data() {
     let task = GanttRenderTask {
-        start_constraint: GanttTaskStartConstraint::After {
-            dependency_ids: vec!["design".to_string(), "review".to_string()],
-        },
-        end_constraint: GanttTaskEndConstraint::Until {
-            dependency_ids: vec!["release".to_string()],
+        semantic: GanttTask {
+            start_constraint: GanttTaskStartConstraint::After {
+                dependency_ids: vec!["design".to_string(), "review".to_string()],
+            },
+            end_constraint: GanttTaskEndConstraint::Until {
+                dependency_ids: vec!["release".to_string()],
+            },
+            ..GanttTask::default()
         },
         ..GanttRenderTask::default()
     };

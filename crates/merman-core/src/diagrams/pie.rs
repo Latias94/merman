@@ -1,3 +1,5 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
@@ -6,8 +8,9 @@ use crate::diagrams::langium_common::{
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, Result, SourceSpan, family,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
@@ -32,6 +35,7 @@ impl PieDiagramModel {
     }
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PieDiagramRenderModel {
     #[serde(rename = "showData")]
@@ -42,10 +46,12 @@ pub struct PieDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub sections: Vec<PieRenderSection>,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum CompatibilityOutputState {
     Empty,
@@ -53,6 +59,7 @@ enum CompatibilityOutputState {
     Model,
 }
 
+#[cfg(feature = "presentation")]
 impl PieDiagramRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -68,14 +75,18 @@ pub struct PieSection {
 }
 
 /// Backwards-compatible name for a semantic Pie section.
+#[cfg(feature = "presentation")]
 pub type PieRenderSection = PieSection;
 
 struct PieSemanticSource {
     model: PieDiagramModel,
+    #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
+    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
+#[cfg(feature = "presentation")]
 impl PieSemanticSource {
     fn into_render_model(self) -> PieDiagramRenderModel {
         PieDiagramRenderModel {
@@ -84,16 +95,19 @@ impl PieSemanticSource {
             acc_title: self.model.acc_title,
             acc_descr: self.model.acc_descr,
             sections: self.model.sections,
+            #[cfg(feature = "compat-json")]
             compatibility_output: self.compatibility_output,
         }
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = parse_pie_semantic_source(code, meta)?;
     render_model_to_compat_json(&source.into_render_model(), meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -120,6 +134,7 @@ pub(crate) fn parse_pie_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &PieDiagramRenderModel,
     meta: &ParseMetadata,
@@ -137,7 +152,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -145,6 +160,7 @@ pub(crate) fn parse_pie_model_for_render(
     Ok(parse_pie_semantic_source(code, meta)?.into_render_model())
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_pie_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -184,6 +200,7 @@ pub(crate) fn parse_pie_semantic_model_controlled(
     }
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
     construct_pie_semantic_source_controlled(
         code,
@@ -211,7 +228,9 @@ fn construct_pie_semantic_source_controlled(
         PieHeader::Empty => {
             return Ok(Ok(PieSemanticSource {
                 model: PieDiagramModel::default(),
+                #[cfg(feature = "compat-json")]
                 compatibility_output: CompatibilityOutputState::Empty,
+                #[cfg(feature = "compat-json")]
                 editor_facts: None,
             }));
         }
@@ -343,7 +362,9 @@ fn construct_pie_semantic_source_controlled(
             acc_descr: common.acc_descr,
             sections,
         },
+        #[cfg(feature = "compat-json")]
         compatibility_output: CompatibilityOutputState::Model,
+        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -575,11 +596,14 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions,
-        SourceSpan,
-    };
+    use crate::MermaidConfig;
+    #[cfg(feature = "presentation")]
+    use crate::ParseMetadata;
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    use crate::{EditorSemanticCompleteness, Engine, Error, ParseOptions, SourceSpan};
+    use serde_json::json;
 
+    #[cfg(feature = "presentation")]
     fn metadata() -> ParseMetadata {
         ParseMetadata {
             diagram_type: "pie".to_string(),
@@ -650,13 +674,23 @@ mod tests {
         )
         .unwrap()
         .expect("semantic parse does not evaluate theme colors");
-        let mut expected = parse_pie_model_for_render(source, &metadata()).unwrap();
-        expected.sanitize_common_db_fields(&config);
-
         assert_eq!(
-            serde_json::to_value(model).unwrap(),
-            serde_json::to_value(expected).unwrap()
+            (
+                model.title.as_deref(),
+                model.acc_title.as_deref(),
+                model.acc_descr.as_deref()
+            ),
+            (Some("Revenue"), Some("Accessible"), Some("Description"))
         );
+        #[cfg(feature = "presentation")]
+        {
+            let mut expected = parse_pie_model_for_render(source, &metadata()).unwrap();
+            expected.sanitize_common_db_fields(&config);
+            assert_eq!(
+                serde_json::to_value(model).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
     }
 
     #[test]
@@ -669,7 +703,6 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        let compatibility = parse_pie("", &metadata()).unwrap();
 
         assert_eq!(
             serde_json::to_value(semantic).unwrap(),
@@ -681,9 +714,11 @@ mod tests {
                 "sections": [],
             })
         );
-        assert_eq!(compatibility, json!({}));
+        #[cfg(feature = "compat-json")]
+        assert_eq!(parse_pie("", &metadata()).unwrap(), json!({}));
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn pie_typed_projection_matches_complete_compatibility_json() {
         let text = "pie showData\n\"A\": 1\n\"B\": 2\n";
@@ -696,6 +731,7 @@ mod tests {
         assert!(compat["title"].is_null());
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn pie_typed_projection_preserves_empty_and_header_only_output_states() {
         let meta = metadata();
@@ -711,6 +747,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_invalid_header_is_a_failure_with_recovered_editor_facts() {
         let meta = metadata();
@@ -740,6 +777,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_title_statement_after_header() {
         let engine = Engine::new();
@@ -766,6 +804,7 @@ pie showData
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_uses_langium_string_escapes_and_quote_aware_inline_comments() {
         let engine = Engine::new();
@@ -784,6 +823,7 @@ pie showData
         assert_eq!(parsed.model["sections"][1]["label"], "Btlabel");
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_number_terminal_matches_number_pie_exactly() {
         let engine = Engine::new();
@@ -806,6 +846,7 @@ pie showData
         assert!(parsed.to_string().contains("invalid value: -1"));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_editor_recovery_reports_negative_value_validation_errors() {
         let source = "pie\r\n  \"negative\": -1  \r\n\"valid\": 2\r\n";
@@ -891,6 +932,7 @@ pie showData
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_reports_later_syntax_errors_before_populate_errors() {
         let engine = Engine::new();
@@ -906,6 +948,7 @@ pie showData
         assert!(!message.contains("invalid value: -1"), "{message}");
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_rejects_show_data_after_the_header_line() {
         let source = "pie\nshowData\n\"A\": 1\n";
@@ -940,6 +983,7 @@ pie showData
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_header_acc_title_inline() {
         let engine = Engine::new();
@@ -960,6 +1004,7 @@ pie accTitle: sample wow
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_header_acc_descr_block() {
         let engine = Engine::new();

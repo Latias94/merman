@@ -32,6 +32,7 @@ impl InternalFailure {
 /// hostile or accidental values cannot turn configuration materialization into unbounded work.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("Mermaid theme evaluation limit `{limit}` exceeded: requested={requested}, max={max}")]
+#[cfg(feature = "presentation")]
 pub struct ThemeEvaluationLimitExceeded {
     pub limit: &'static str,
     pub requested: String,
@@ -195,9 +196,11 @@ pub enum Error {
     Internal(#[from] InternalFailure),
 
     #[error(transparent)]
+    #[cfg(feature = "presentation")]
     ThemeColor(#[from] crate::theme_color::ColorError),
 
     #[error(transparent)]
+    #[cfg(feature = "presentation")]
     ThemeEvaluationLimit(#[from] ThemeEvaluationLimitExceeded),
 
     #[error(transparent)]

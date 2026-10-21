@@ -20,9 +20,9 @@ pub(crate) struct BlockNodeSource<'a> {
 }
 
 impl<'a> BlockNodeSource<'a> {
-    fn new(node: &'a BlockNode) -> Self {
+    fn new(node: &'a BlockNode, color_index: Option<usize>) -> Self {
         Self {
-            color_index: node.color_index,
+            color_index,
             label: &node.label,
             block_type: &node.block_type,
             classes: &node.classes,
@@ -32,9 +32,9 @@ impl<'a> BlockNodeSource<'a> {
         }
     }
 
-    fn merge(&mut self, node: &'a BlockNode) {
-        if node.color_index.is_some() {
-            self.color_index = node.color_index;
+    fn merge(&mut self, node: &'a BlockNode, color_index: Option<usize>) {
+        if color_index.is_some() {
+            self.color_index = color_index;
         }
         if !node.label.is_empty() {
             self.label = &node.label;
@@ -61,11 +61,12 @@ pub(crate) fn resolve_block_node_sources(
     model: &BlockDiagramRenderModel,
 ) -> HashMap<&str, BlockNodeSource<'_>> {
     let mut sources = HashMap::new();
-    for node in &model.blocks_flat {
+    for (index, node) in model.blocks_flat.iter().enumerate() {
+        let color_index = model.visuals.color_indices.get(index).copied().flatten();
         sources
             .entry(node.id.as_str())
-            .and_modify(|source: &mut BlockNodeSource<'_>| source.merge(node))
-            .or_insert_with(|| BlockNodeSource::new(node));
+            .and_modify(|source: &mut BlockNodeSource<'_>| source.merge(node, color_index))
+            .or_insert_with(|| BlockNodeSource::new(node, color_index));
     }
     sources
 }
@@ -108,6 +109,7 @@ mod tests {
         let mut empty = BlockNode::default();
         empty.id = "A".to_string();
         model.blocks_flat = vec![root, first, branch, nested, last, empty];
+        model.visuals.color_indices = vec![None, Some(0), None, Some(1), None, None];
         let sources = resolve_block_node_sources(&model);
         let node = &sources["A"];
         assert_eq!(node.label, "Last");
@@ -116,6 +118,7 @@ mod tests {
         assert_eq!(node.styles, ["color:blue"]);
         assert_eq!(node.directions, ["right"]);
         assert_eq!(node.width_in_columns, 1);
+        assert_eq!(node.color_index, Some(1));
         assert_eq!(sources.len(), 3);
     }
 }

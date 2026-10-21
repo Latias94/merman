@@ -105,25 +105,6 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
     Ok(source.db.into_model().to_compat_json(&meta.diagram_type))
 }
 
-pub(crate) fn parse_sequence_model_for_render_controlled(
-    code: &str,
-    meta: &ParseMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<SequenceDiagramModel>> {
-    let construction = construct_sequence_semantic_source(
-        code,
-        sequence_wrap_enabled_from_config(meta.effective_config.as_config()),
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    match construction {
-        Ok(source) => Ok(Ok(source.db.into_model())),
-        Err(failure) => Ok(Err(
-            failure.into_parse_error_for_type(&meta.diagram_type, code.len())
-        )),
-    }
-}
-
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,

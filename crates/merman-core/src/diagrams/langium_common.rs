@@ -490,9 +490,17 @@ fn collapse_horizontal_runs(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "all-diagrams")]
-    use crate::{EditorSemanticCompleteness, Error, MermaidConfig, ParseMetadata, Result};
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(
+        feature = "all-diagrams",
+        feature = "compat-json",
+        feature = "editor-facts"
+    ))]
+    use crate::EditorSemanticCompleteness;
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
+    use crate::{Error, Result};
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
+    use crate::{MermaidConfig, ParseMetadata};
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     use serde_json::Value;
 
     #[test]
@@ -728,81 +736,105 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     type JsonParser = fn(&str, &ParseMetadata) -> Result<Value>;
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     struct FamilyCase {
         id: &'static str,
         header: &'static str,
         tail: &'static str,
+        #[cfg(feature = "compat-json")]
         parser: JsonParser,
+        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
         combined: crate::family::CombinedSemanticParser,
+        #[cfg(feature = "compat-json")]
         retains_title: bool,
     }
 
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     fn family_cases() -> [FamilyCase; 7] {
         [
             FamilyCase {
                 id: "architecture",
                 header: "architecture-beta",
                 tail: "service api\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::architecture::parse_architecture,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::architecture::parse_architecture_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
             FamilyCase {
                 id: "cynefin",
                 header: "cynefin-beta",
                 tail: "clear\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::cynefin::parse_cynefin,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
             FamilyCase {
                 id: "gitGraph",
                 header: "gitGraph",
                 tail: "commit id: \"c1\"\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::git_graph::parse_git_graph,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
             FamilyCase {
                 id: "info",
                 header: "info showInfo",
                 tail: "",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::info::parse_info,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::info::parse_info_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: false,
             },
             FamilyCase {
                 id: "packet",
                 header: "packet",
                 tail: "0-7: \"byte\"\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::packet::parse_packet,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::packet::parse_packet_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
             FamilyCase {
                 id: "pie",
                 header: "pie showData",
                 tail: "\"A\": 1\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::pie::parse_pie,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::pie::parse_pie_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
             FamilyCase {
                 id: "radar",
                 header: "radar-beta",
                 tail: "axis a\r\ncurve c { 1 }\r\n",
+                #[cfg(feature = "compat-json")]
                 parser: crate::diagrams::radar::parse_radar,
+                #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                 combined: crate::diagrams::radar::parse_radar_json_and_editor_facts,
+                #[cfg(feature = "compat-json")]
                 retains_title: true,
             },
         ]
     }
 
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     fn metadata(id: &str) -> ParseMetadata {
         ParseMetadata {
             diagram_type: id.to_string(),
@@ -812,7 +844,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     fn common_family_source(case: &FamilyCase) -> String {
         format!(
             "{}\r\n  title First\r\n  title Final   title %% hidden\r\n  accTitle:  Accessible   map\r\n  accDescr {{\r\n    First   line\r\n\r\n    \tSecond\t\tline  \r\n  }}\r\n{}",
@@ -821,7 +853,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     fn importing_families_share_common_values_spans_and_db_capabilities() {
         for case in family_cases() {
             let source = common_family_source(&case);
@@ -846,31 +878,35 @@ mod tests {
                 );
             }
 
-            let editor = crate::family::test_support::editor_facts(case.combined, &source, &meta);
-            assert_eq!(
-                editor.completeness,
-                EditorSemanticCompleteness::Complete,
-                "family: {}",
-                case.id
-            );
-            let detail = format!("{} accessibility description", case.id);
-            let descr = editor
-                .symbols
-                .iter()
-                .find(|symbol| symbol.detail.as_deref() == Some(detail.as_str()))
-                .unwrap_or_else(|| panic!("{} missing common editor payload", case.id));
-            assert_eq!(descr.name, "First line\nSecond line");
-            let raw = &source[descr.span.start..descr.span.end];
-            assert!(raw.starts_with("  accDescr {"), "family: {}", case.id);
-            assert!(raw.ends_with("  }"), "family: {}", case.id);
-            let selected = &source[descr.selection.start..descr.selection.end];
-            assert!(selected.starts_with("First"), "family: {}", case.id);
-            assert!(selected.contains("Second\t\tline"), "family: {}", case.id);
+            #[cfg(feature = "editor-facts")]
+            {
+                let editor =
+                    crate::family::test_support::editor_facts(case.combined, &source, &meta);
+                assert_eq!(
+                    editor.completeness,
+                    EditorSemanticCompleteness::Complete,
+                    "family: {}",
+                    case.id
+                );
+                let detail = format!("{} accessibility description", case.id);
+                let descr = editor
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.detail.as_deref() == Some(detail.as_str()))
+                    .unwrap_or_else(|| panic!("{} missing common editor payload", case.id));
+                assert_eq!(descr.name, "First line\nSecond line");
+                let raw = &source[descr.span.start..descr.span.end];
+                assert!(raw.starts_with("  accDescr {"), "family: {}", case.id);
+                assert!(raw.ends_with("  }"), "family: {}", case.id);
+                let selected = &source[descr.selection.start..descr.selection.end];
+                assert!(selected.starts_with("First"), "family: {}", case.id);
+                assert!(selected.contains("Second\t\tline"), "family: {}", case.id);
+            }
         }
     }
 
     #[test]
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     fn importing_family_typed_models_receive_the_same_common_values() {
         let cases = family_cases();
         let source = |id: &str| {
@@ -942,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     fn importing_families_reject_unterminated_blocks_and_recover_editor_payloads() {
         for case in family_cases() {
             let source = format!("{}\naccDescr {{\n  partial", case.header);
@@ -959,23 +995,27 @@ mod tests {
                 Some(SourceSpan::new(source.len(), source.len()))
             );
 
-            let editor = crate::family::test_support::editor_facts(case.combined, &source, &meta);
-            assert_eq!(editor.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(
-                editor
-                    .directive_prefixes
-                    .iter()
-                    .any(|prefix| prefix == "accDescr")
-            );
-            assert!(editor.symbols.iter().any(|symbol| {
-                symbol.name == "partial"
-                    && symbol.selection
-                        == SourceSpan::new(source.find("partial").unwrap(), source.len())
-            }));
-            assert!(editor.diagnostics.iter().any(|entry| {
-                entry.message.contains("unterminated accDescr block")
-                    && entry.span == Some(SourceSpan::new(source.len(), source.len()))
-            }));
+            #[cfg(feature = "editor-facts")]
+            {
+                let editor =
+                    crate::family::test_support::editor_facts(case.combined, &source, &meta);
+                assert_eq!(editor.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    editor
+                        .directive_prefixes
+                        .iter()
+                        .any(|prefix| prefix == "accDescr")
+                );
+                assert!(editor.symbols.iter().any(|symbol| {
+                    symbol.name == "partial"
+                        && symbol.selection
+                            == SourceSpan::new(source.find("partial").unwrap(), source.len())
+                }));
+                assert!(editor.diagnostics.iter().any(|entry| {
+                    entry.message.contains("unterminated accDescr block")
+                        && entry.span == Some(SourceSpan::new(source.len(), source.len()))
+                }));
+            }
         }
     }
 }

@@ -1,9 +1,13 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::strip_line_ending;
+use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, Result, SourceSpan,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -24,23 +28,28 @@ pub(crate) fn ishikawa_syntax_construction_count() -> usize {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct IshikawaNodeRenderModel {
+pub struct IshikawaNode {
     pub text: String,
     #[serde(default)]
     pub children: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct IshikawaDiagramRenderModel {
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct IshikawaDiagramModel {
     pub acc_title: Option<String>,
     pub acc_descr: Option<String>,
     pub title: Option<String>,
     pub root: Option<usize>,
     /// Flat records; root and child IDs are indices into this vector.
-    pub nodes: Vec<IshikawaNodeRenderModel>,
+    pub nodes: Vec<IshikawaNode>,
 }
 
-impl IshikawaDiagramRenderModel {
+#[cfg(feature = "presentation")]
+pub type IshikawaDiagramRenderModel = IshikawaDiagramModel;
+#[cfg(feature = "presentation")]
+pub type IshikawaNodeRenderModel = IshikawaNode;
+
+impl IshikawaDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -70,37 +79,48 @@ impl IshikawaSemanticSource {
         self.editor_facts.clone()
     }
 
-    fn into_render_model_controlled(
+    fn into_semantic_model_controlled(
         mut self,
-        meta: &ParseMetadata,
+        config: &crate::MermaidConfig,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<IshikawaDiagramRenderModel> {
+    ) -> crate::OperationControlResult<IshikawaDiagramModel> {
         for node in &mut self.nodes {
             control.checkpoint()?;
-            node.text = sanitize_text(&node.text, meta.effective_config.as_config());
+            node.text = sanitize_text(&node.text, config);
         }
-        nodes_to_render_model_controlled(self.nodes, control)
+        nodes_to_semantic_model_controlled(self.nodes, control)
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
-        .into_render_model_controlled(meta, &crate::OperationControl::new())
+        .into_semantic_model_controlled(
+            meta.effective_config.as_config(),
+            &crate::OperationControl::new(),
+        )
         .expect("a private parse control cannot be cancelled");
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_ishikawa_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let construction = match construction {
         Ok(source) => {
             let editor_facts = source.editor_facts();
-            let model = source.into_render_model_controlled(meta, control)?;
+            let model = source
+                .into_semantic_model_controlled(meta.effective_config.as_config(), control)?;
             let projected = render_model_to_compat_json_controlled(&model, meta, control)?;
             Ok((projected, editor_facts))
         }
@@ -115,16 +135,18 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &IshikawaDiagramRenderModel,
+    model: &IshikawaDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
-    model: &IshikawaDiagramRenderModel,
+    model: &IshikawaDiagramModel,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Value>> {
@@ -163,7 +185,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(out.into_unmanaged_value()))
 }
 
-impl IshikawaDiagramRenderModel {
+#[cfg(feature = "compat-json")]
+impl IshikawaDiagramModel {
     fn project_root_controlled(
         &self,
         control: &crate::OperationControl,
@@ -223,29 +246,39 @@ impl IshikawaDiagramRenderModel {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<IshikawaDiagramRenderModel> {
+) -> Result<IshikawaDiagramModel> {
     Ok(construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
-        .into_render_model_controlled(meta, &crate::OperationControl::new())
+        .into_semantic_model_controlled(
+            meta.effective_config.as_config(),
+            &crate::OperationControl::new(),
+        )
         .expect("a private parse control cannot be cancelled"))
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_ishikawa_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<IshikawaDiagramRenderModel>> {
-    let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
+) -> crate::OperationControlResult<Result<IshikawaDiagramModel>> {
+    let construction = construct_ishikawa_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(*failure.error)),
     };
     control.checkpoint()?;
-    let model = source.into_render_model_controlled(meta, control)?;
+    let model =
+        source.into_semantic_model_controlled(meta.effective_config.as_config(), control)?;
     control.checkpoint()?;
     Ok(Ok(model))
 }
@@ -256,21 +289,47 @@ impl IshikawaParseFailure {
     }
 }
 
+pub(crate) fn parse_ishikawa_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<IshikawaDiagramModel>> {
+    let source = match construct_ishikawa_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )? {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    let model = source.into_semantic_model_controlled(&meta.semantic_config, control)?;
+    control.checkpoint()?;
+    Ok(Ok(model))
+}
+
 struct IshikawaHeader {
     root: Option<FlatNode>,
 }
 
+#[cfg(feature = "presentation")]
 fn construct_ishikawa_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
-    construct_ishikawa_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_ishikawa_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_ishikawa_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>>
 {
@@ -293,7 +352,7 @@ fn construct_ishikawa_semantic_source_controlled(
         }
 
         if !header_seen {
-            match parse_ishikawa_header_line(line, line_start, meta) {
+            match parse_ishikawa_header_line(line, line_start, diagram_type) {
                 Ok(header) => {
                     header_seen = true;
                     if let Some(root) = header.root {
@@ -308,7 +367,7 @@ fn construct_ishikawa_semantic_source_controlled(
             continue;
         }
 
-        match parse_ishikawa_node_line(line, line_start, meta) {
+        match parse_ishikawa_node_line(line, line_start, diagram_type) {
             Ok(node) => nodes.push(node),
             Err(error) => {
                 let span = SourceSpan::new(line_start, line_start + line.len());
@@ -319,23 +378,27 @@ fn construct_ishikawa_semantic_source_controlled(
 
     if !header_seen {
         first_error.get_or_insert((
-            Error::diagram_parse_insertion_point(meta.diagram_type.clone(), "expected ishikawa", 0),
+            Error::diagram_parse_insertion_point(diagram_type.to_string(), "expected ishikawa", 0),
             SourceSpan::new(0, 0),
         ));
     }
 
     let mut editor_facts = EditorSemanticFacts::new();
-    for (index, node) in nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
+    if editor_demand == EditorFactsDemand::Capture {
+        for (index, node) in nodes.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            push_ishikawa_node_fact(&mut editor_facts, node, index == 0);
         }
-        push_ishikawa_node_fact(&mut editor_facts, node, index == 0);
     }
     if let Some((error, span)) = first_error {
-        editor_facts.mark_recovered_from_parse_error(
-            format!("ishikawa parser recovered after parse error: {error}"),
-            Some(span),
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            editor_facts.mark_recovered_from_parse_error(
+                format!("ishikawa parser recovered after parse error: {error}"),
+                Some(span),
+            );
+        }
         return Ok(Err(IshikawaParseFailure {
             error: Box::new(error),
             editor_facts: Box::new(editor_facts),
@@ -351,7 +414,7 @@ fn construct_ishikawa_semantic_source_controlled(
 fn parse_ishikawa_header_line(
     line: &str,
     line_start: usize,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<IshikawaHeader> {
     let trimmed_start = line.len().saturating_sub(line.trim_start().len());
     let trimmed = &line[trimmed_start..];
@@ -385,17 +448,13 @@ fn parse_ishikawa_header_line(
     }
 
     Err(Error::diagram_parse_exact(
-        meta.diagram_type.clone(),
+        diagram_type.to_string(),
         "expected ishikawa",
         SourceSpan::new(line_start, line_start + line.len()),
     ))
 }
 
-fn parse_ishikawa_node_line(
-    line: &str,
-    line_start: usize,
-    meta: &ParseMetadata,
-) -> Result<FlatNode> {
+fn parse_ishikawa_node_line(line: &str, line_start: usize, diagram_type: &str) -> Result<FlatNode> {
     let indent = line
         .chars()
         .take_while(|ch| matches!(ch, ' ' | '\t'))
@@ -404,7 +463,7 @@ fn parse_ishikawa_node_line(
     let text = body.trim();
     if text.is_empty() {
         return Err(Error::diagram_parse_exact(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected ishikawa node",
             SourceSpan::new(line_start, line_start + line.len()),
         ));
@@ -440,15 +499,15 @@ fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: &FlatNode, is_
     ));
 }
 
-fn nodes_to_render_model_controlled(
+fn nodes_to_semantic_model_controlled(
     nodes: Vec<FlatNode>,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<IshikawaDiagramRenderModel> {
+) -> crate::OperationControlResult<IshikawaDiagramModel> {
     let mut iter = nodes.into_iter();
     let Some(root) = iter.next() else {
-        return Ok(IshikawaDiagramRenderModel::default());
+        return Ok(IshikawaDiagramModel::default());
     };
-    let mut arena = vec![IshikawaNodeRenderModel {
+    let mut arena = vec![IshikawaNode {
         text: root.text,
         children: Vec::new(),
     }];
@@ -468,7 +527,7 @@ fn nodes_to_render_model_controlled(
         }
         let parent = stack.last().map(|(id, _)| *id).unwrap_or(0);
         let id = arena.len();
-        arena.push(IshikawaNodeRenderModel {
+        arena.push(IshikawaNode {
             text: flat.text,
             children: Vec::new(),
         });
@@ -476,7 +535,7 @@ fn nodes_to_render_model_controlled(
         stack.push((id, level));
     }
     control.checkpoint()?;
-    Ok(IshikawaDiagramRenderModel {
+    Ok(IshikawaDiagramModel {
         title: Some(arena[0].text.clone()),
         root: Some(0),
         nodes: arena,
@@ -495,7 +554,7 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
         .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{
@@ -525,6 +584,28 @@ mod tests {
     }
 
     #[cfg(feature = "all-diagrams")]
+    #[test]
+    fn ishikawa_ordinary_projections_do_not_collect_editor_facts() {
+        let source = "ishikawa Problem\n  Cause\n";
+        reset_ishikawa_syntax_construction_count();
+        crate::editor::test_work::reset();
+        parse_ishikawa_model_for_render_controlled(
+            source,
+            &meta(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ishikawa_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_ishikawa_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let projected = crate::ManagedSemanticJson::from(parse_ishikawa(source, &meta()).unwrap());
+        assert!(projected.as_value().is_object());
+        assert_eq!(ishikawa_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
     #[test]
     fn ishikawa_deep_clone_drop_export_child() {
         crate::diagrams::treemap::tests::run_lifecycle_child(
@@ -598,18 +679,18 @@ mod tests {
         let mut output = Vec::new();
         json.write_json(&mut output).unwrap();
         assert!(!output.is_empty());
-        let empty = IshikawaDiagramRenderModel::default();
+        let empty = IshikawaDiagramModel::default();
         assert!(render_model_to_compat_json(&empty, &meta()).is_ok());
     }
 
     #[test]
     fn ishikawa_projection_rejects_invalid_ids_and_cycles() {
-        let mut model = IshikawaDiagramRenderModel {
+        let mut model = IshikawaDiagramModel {
             root: Some(0),
             ..Default::default()
         };
         assert!(render_model_to_compat_json(&model, &meta()).is_err());
-        model.nodes.push(IshikawaNodeRenderModel {
+        model.nodes.push(IshikawaNode {
             text: "cycle".to_string(),
             children: vec![0],
         });
@@ -624,7 +705,8 @@ mod tests {
         assert!(matches!(
             construct_ishikawa_semantic_source_controlled(
                 "ishikawa-beta Problem\n  Cause A\n  Cause B\n",
-                &meta(),
+                "ishikawa",
+                EditorFactsDemand::Omit,
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
@@ -859,6 +941,94 @@ Cause A
         assert_eq!(
             effect.selection,
             SourceSpan::new(effect_start, effect_start + "Problem".len())
+        );
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "ishikawa".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn ishikawa_semantics_construct_once_without_editor_work() {
+        reset_ishikawa_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model = parse_ishikawa_semantic_model_controlled(
+            "ishikawa Problem
+  Cause A
+    Detail
+  Cause B
+",
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.title.as_deref(), Some("Problem"));
+        assert_eq!(model.root, Some(0));
+        assert_eq!(model.nodes.len(), 4);
+        assert_eq!(model.nodes[0].children, [1, 3]);
+        assert_eq!(model.nodes[1].children, [2]);
+        assert_eq!(model.nodes[2].text, "Detail");
+        assert_eq!(ishikawa_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn ishikawa_semantics_share_config_errors_and_cancellation() {
+        let mut metadata = metadata();
+        metadata.semantic_config = crate::MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict", "htmlLabels": true
+        }));
+        let model = parse_ishikawa_semantic_model_controlled(
+            "ishikawa <b a=1>ok</b>
+ Cause
+",
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.nodes[0].text, "<b>ok</b>");
+        assert_eq!(model.title.as_deref(), Some("<b>ok</b>"));
+        crate::editor::test_work::reset();
+        let error = parse_ishikawa_semantic_model_controlled(
+            "wrong
+",
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("structured error");
+        };
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(0, 5)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(
+            parse_ishikawa_semantic_model_controlled(
+                "ishikawa Problem
+  Cause
+",
+                &metadata,
+                &control,
+            )
+            .is_err()
         );
     }
 }

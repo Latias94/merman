@@ -1,4 +1,5 @@
 use crate::MermaidConfig;
+#[cfg(feature = "presentation")]
 use crate::config::presentation::PresentationConfig;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
@@ -9,6 +10,7 @@ pub mod mermaid_reference;
 
 static UPSTREAM_DEFAULT_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();
 static DEFAULT_SITE_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();
+#[cfg(feature = "presentation")]
 static DEFAULT_PRESENTATION_CONFIG: OnceLock<PresentationConfig> = OnceLock::new();
 static DEFAULT_CONFIG_SHAPE: OnceLock<DefaultConfigShape> = OnceLock::new();
 
@@ -55,6 +57,7 @@ pub fn default_site_config() -> MermaidConfig {
 }
 
 /// Returns hardened full configuration with its initialization mutation history.
+#[cfg(feature = "presentation")]
 pub fn default_presentation_config() -> PresentationConfig {
     DEFAULT_PRESENTATION_CONFIG
         .get_or_init(|| {

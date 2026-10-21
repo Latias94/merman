@@ -17,6 +17,9 @@ categories = ["parser-implementations", "visualization"]
 artifact-profile-required = true
 
 [features]
+presentation = ["dep:ryu-js"]
+editor-facts = []
+compat-json = ["presentation"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -125,7 +128,7 @@ html5ever.workspace = true
 url.workspace = true
 jiff = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
-ryu-js.workspace = true
+ryu-js = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }

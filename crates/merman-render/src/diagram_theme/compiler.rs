@@ -544,6 +544,12 @@ mod tests {
         .expect("valid shadow graph")
     }
 
+    #[cfg(any(
+        feature = "diagram-block",
+        feature = "diagram-flowchart",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
     #[test]
     fn parsing_a_compiled_theme_does_not_prepare_legacy_family_programs() {
         use crate::diagram_theme::{CanvasPaint, ThemeRule, ThemeRuleSet, ThemeStylePatch};
@@ -560,9 +566,13 @@ mod tests {
             .unwrap();
         let engine = theme.install_parse_compatibility(merman_core::Engine::new());
         for source in [
+            #[cfg(feature = "diagram-block")]
             "block\nA --> B",
+            #[cfg(feature = "diagram-flowchart")]
             "flowchart TD\nA --> B",
+            #[cfg(feature = "diagram-sequence")]
             "sequenceDiagram\nA->>B: Message",
+            #[cfg(feature = "diagram-state")]
             "stateDiagram-v2\nA --> B",
         ] {
             let parsed = engine

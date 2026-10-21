@@ -36,6 +36,50 @@ pub enum SemanticDiagramModel {
     Journey(crate::diagrams::journey::JourneyDiagramModel),
     #[cfg(feature = "diagram-pie")]
     Pie(crate::diagrams::pie::PieDiagramModel),
+    #[cfg(feature = "diagram-packet")]
+    Packet(crate::diagrams::packet::PacketDiagramModel),
+    #[cfg(feature = "diagram-tree-view")]
+    TreeView(crate::diagrams::tree_view::TreeViewDiagramModel),
+    #[cfg(feature = "diagram-quadrant-chart")]
+    QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartDiagramModel),
+    #[cfg(feature = "diagram-radar")]
+    Radar(crate::diagrams::radar::RadarDiagramModel),
+    #[cfg(feature = "diagram-sankey")]
+    Sankey(crate::diagrams::sankey::SankeyDiagramModel),
+    #[cfg(feature = "diagram-venn")]
+    Venn(crate::diagrams::venn::VennDiagramModel),
+    #[cfg(feature = "diagram-requirement")]
+    Requirement(crate::diagrams::requirement::RequirementDiagramModel),
+    #[cfg(feature = "diagram-usecase")]
+    Usecase(crate::diagrams::usecase::UsecaseDiagramModel),
+    #[cfg(feature = "diagram-event-modeling")]
+    EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramModel),
+    #[cfg(feature = "diagram-wardley")]
+    Wardley(crate::diagrams::wardley::WardleyDiagramModel),
+    #[cfg(feature = "diagram-railroad")]
+    Railroad(crate::diagrams::railroad::RailroadDiagramModel),
+    #[cfg(feature = "diagram-zenuml")]
+    Zenuml(crate::diagrams::zenuml::ZenumlDiagramModel),
+    #[cfg(feature = "diagram-er")]
+    Er(crate::diagrams::er::ErDiagramModel),
+    #[cfg(feature = "diagram-architecture")]
+    Architecture(crate::diagrams::architecture::ArchitectureDiagramModel),
+    #[cfg(feature = "diagram-gantt")]
+    Gantt(crate::diagrams::gantt::GanttDiagramModel),
+    #[cfg(feature = "diagram-c4")]
+    C4(crate::diagrams::c4::C4DiagramModel),
+    #[cfg(feature = "diagram-ishikawa")]
+    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramModel),
+    #[cfg(feature = "diagram-treemap")]
+    Treemap(crate::diagrams::treemap::TreemapDiagramModel),
+    #[cfg(feature = "diagram-block")]
+    Block(crate::diagrams::block::BlockDiagramModel),
+    #[cfg(feature = "diagram-kanban")]
+    Kanban(crate::diagrams::kanban::KanbanDiagramModel),
+    #[cfg(feature = "diagram-mindmap")]
+    Mindmap(crate::diagrams::mindmap::MindmapDiagramModel),
+    #[cfg(feature = "diagram-xychart")]
+    XyChart(crate::diagrams::xychart::XyChartDiagramModel),
 }
 
 /// Metadata and canonical family model returned by [`SemanticParser`].
@@ -47,8 +91,7 @@ pub struct ParsedSemanticDiagram {
 
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
-/// The semantic facade currently handles Flowchart, Swimlane, Sequence, State, Cynefin, Info,
-/// Journey, Pie, and Timeline.
+/// Enabled families publish their canonical parser through the family catalog.
 /// Other enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
@@ -186,154 +229,19 @@ impl SemanticParser {
             title,
         };
 
-        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        {
-            let supports_flowchart = cfg!(feature = "diagram-flowchart")
-                && matches!(diagram_type, "flowchart" | "flowchart-v2" | "flowchart-elk");
-            let supports_swimlane = cfg!(feature = "diagram-swimlane")
-                && matches!(diagram_type, "swimlane" | "swimlane-beta");
-            if supports_flowchart || supports_swimlane {
-                let model = match crate::diagrams::flowchart::parse_semantic_model_controlled(
-                    parser_input,
-                    &_metadata,
-                    control,
-                )? {
-                    Ok(model) => model,
-                    Err(error) => return Ok(Err(error)),
-                };
-                control.checkpoint()?;
-                return Ok(Ok(ParsedSemanticDiagram {
-                    metadata: _metadata,
-                    model: SemanticDiagramModel::Flowchart(model),
-                }));
-            }
-        }
-
-        #[cfg(feature = "diagram-sequence")]
-        if diagram_type == "sequence" {
-            let model = match crate::diagrams::sequence::parse_sequence_semantic_model_controlled(
-                parser_input,
-                &_metadata,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Sequence(model),
+        let Some(parser) = crate::family::canonical_parser(diagram_type) else {
+            return Ok(Err(Error::UnsupportedDiagram {
+                diagram_type: diagram_type.to_string(),
             }));
-        }
-
-        #[cfg(feature = "diagram-cynefin")]
-        if diagram_type == "cynefin" {
-            let model = match crate::diagrams::cynefin::parse_cynefin_semantic_model_controlled(
-                parser_input,
-                &_metadata,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Cynefin(model),
-            }));
-        }
-
-        #[cfg(feature = "diagram-info")]
-        if diagram_type == "info" {
-            let model = match crate::diagrams::info::parse_info_semantic_model_controlled(
-                parser_input,
-                diagram_type,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Info(model),
-            }));
-        }
-
-        #[cfg(feature = "diagram-pie")]
-        if diagram_type == "pie" {
-            let model = match crate::diagrams::pie::parse_pie_semantic_model_controlled(
-                parser_input,
-                diagram_type,
-                &_metadata.semantic_config,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Pie(model),
-            }));
-        }
-
-        #[cfg(feature = "diagram-journey")]
-        if diagram_type == "journey" {
-            let model = match crate::diagrams::journey::parse_journey_semantic_model_controlled(
-                parser_input,
-                diagram_type,
-                &_metadata.semantic_config,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Journey(model),
-            }));
-        }
-
-        #[cfg(feature = "diagram-state")]
-        if matches!(diagram_type, "stateDiagram" | "stateDiagram-v2") {
-            let model = match crate::diagrams::state::parse_state_semantic_model_controlled(
-                parser_input,
-                diagram_type,
-                &_metadata.semantic_config,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::State(model),
-            }));
-        }
-
-        #[cfg(feature = "diagram-timeline")]
-        if diagram_type == "timeline" {
-            let model = match crate::diagrams::timeline::parse_timeline_semantic_model_controlled(
-                parser_input,
-                diagram_type,
-                &_metadata.semantic_config,
-                control,
-            )? {
-                Ok(model) => model,
-                Err(error) => return Ok(Err(error)),
-            };
-            control.checkpoint()?;
-            return Ok(Ok(ParsedSemanticDiagram {
-                metadata: _metadata,
-                model: SemanticDiagramModel::Timeline(model),
-            }));
-        }
-
-        Ok(Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
+        };
+        let model = match parser(parser_input, &_metadata, control)? {
+            Ok(model) => model,
+            Err(error) => return Ok(Err(error)),
+        };
+        control.checkpoint()?;
+        Ok(Ok(ParsedSemanticDiagram {
+            metadata: _metadata,
+            model,
         }))
     }
 
@@ -389,11 +297,11 @@ mod tests {
         crate::editor::test_work::reset();
         let parsed = SemanticParser::new()
             .parse_diagram_with_type_sync(
-                "stateDiagram-v2",
+                "stateDiagram",
                 "stateDiagram-v2\nstate Outer {\n[*] --> A: ready\n}\nOuter --> Done\n",
             )
             .expect("State semantics are available without presentation");
-        assert_eq!(parsed.metadata.diagram_type, "stateDiagram-v2");
+        assert_eq!(parsed.metadata.diagram_type, "stateDiagram");
         assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
@@ -404,7 +312,7 @@ mod tests {
         feature = "diagram-pie"
     ))]
     use serde_json::json;
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(feature = "diagram-flowchart", feature = "presentation"))]
     use serde_json::to_value;
 
     #[cfg(all(feature = "diagram-cynefin", feature = "diagram-flowchart"))]
@@ -419,21 +327,25 @@ mod tests {
         let SemanticDiagramModel::Cynefin(semantic_model) = parsed.model else {
             panic!("expected Cynefin model");
         };
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "cynefin",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("Cynefin result");
-        let crate::diagram::RenderSemanticModel::Cynefin(full_model) = full.model() else {
-            panic!("expected full Cynefin model");
-        };
-        assert_eq!(
-            serde_json::to_value(semantic_model).unwrap(),
-            serde_json::to_value(full_model).unwrap()
-        );
+        assert_eq!(semantic_model.domains.len(), 2);
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "cynefin",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("Cynefin result");
+            let crate::diagram::RenderSemanticModel::Cynefin(full_model) = full.model() else {
+                panic!("expected full Cynefin model");
+            };
+            assert_eq!(
+                serde_json::to_value(semantic_model).unwrap(),
+                serde_json::to_value(full_model).unwrap()
+            );
+        }
     }
 
     #[cfg(all(
@@ -462,15 +374,18 @@ mod tests {
             parsed.metadata.semantic_config.as_value()["themeVariables"]["primaryColor"],
             json!("not-a-color")
         );
-        let full = crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
-            "cynefin",
-            input,
-            crate::ParseOptions::strict(),
-        );
-        assert!(
-            full.is_ok(),
-            "Cynefin typed-model construction should not resolve theme variables: {full:?}"
-        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+                "cynefin",
+                input,
+                crate::ParseOptions::strict(),
+            );
+            assert!(
+                full.is_ok(),
+                "Cynefin typed-model construction should not resolve theme variables: {full:?}"
+            );
+        }
     }
 
     #[cfg(feature = "diagram-info")]
@@ -484,16 +399,7 @@ mod tests {
         assert_eq!(parsed.metadata.diagram_type, "info");
         let semantic_model = match parsed.model {
             SemanticDiagramModel::Info(model) => model,
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-sequence",
-                feature = "diagram-cynefin",
-                feature = "diagram-journey",
-                feature = "diagram-pie",
-                feature = "diagram-state",
-                feature = "diagram-timeline"
-            ))]
+            #[allow(unreachable_patterns)]
             _ => panic!("expected semantic Info model"),
         };
         assert!(semantic_model.show_info);
@@ -503,18 +409,21 @@ mod tests {
         );
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "info",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("Info result");
-        let crate::diagram::RenderSemanticModel::Info(full_model) = full.model() else {
-            panic!("expected full Info model");
-        };
-        assert_eq!(semantic_model.show_info, full_model.show_info);
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "info",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("Info result");
+            let crate::diagram::RenderSemanticModel::Info(full_model) = full.model() else {
+                panic!("expected full Info model");
+            };
+            assert_eq!(semantic_model.show_info, full_model.show_info);
+        }
         crate::editor::test_work::reset();
     }
 
@@ -543,16 +452,7 @@ mod tests {
             .expect("semantic Pie parse");
         let semantic_model = match parsed.model {
             SemanticDiagramModel::Pie(model) => model,
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-sequence",
-                feature = "diagram-cynefin",
-                feature = "diagram-info",
-                feature = "diagram-journey",
-                feature = "diagram-state",
-                feature = "diagram-timeline"
-            ))]
+            #[allow(unreachable_patterns)]
             _ => panic!("expected semantic Pie model"),
         };
         assert_eq!(
@@ -570,27 +470,30 @@ mod tests {
         );
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "pie",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("Pie result");
-        let crate::diagram::RenderSemanticModel::Pie(full_model) = full.model() else {
-            panic!("expected full Pie model");
-        };
-        assert_eq!(
-            serde_json::to_value(&semantic_model).unwrap(),
-            json!({
-                "showData": full_model.show_data,
-                "title": full_model.title,
-                "accTitle": full_model.acc_title,
-                "accDescr": full_model.acc_descr,
-                "sections": full_model.sections,
-            })
-        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "pie",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("Pie result");
+            let crate::diagram::RenderSemanticModel::Pie(full_model) = full.model() else {
+                panic!("expected full Pie model");
+            };
+            assert_eq!(
+                serde_json::to_value(&semantic_model).unwrap(),
+                json!({
+                    "showData": full_model.show_data,
+                    "title": full_model.title,
+                    "accTitle": full_model.acc_title,
+                    "accDescr": full_model.acc_descr,
+                    "sections": full_model.sections,
+                })
+            );
+        }
         crate::editor::test_work::reset();
     }
 
@@ -625,35 +528,30 @@ mod tests {
             .expect("semantic Journey parse");
         let semantic_model = match parsed.model {
             SemanticDiagramModel::Journey(model) => model,
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-sequence",
-                feature = "diagram-cynefin",
-                feature = "diagram-info",
-                feature = "diagram-pie",
-                feature = "diagram-state",
-                feature = "diagram-timeline"
-            ))]
+            #[allow(unreachable_patterns)]
             _ => panic!("expected semantic Journey model"),
         };
+        assert_eq!(semantic_model.tasks.len(), 1);
         assert_eq!(crate::editor::test_work::read(), Default::default());
 
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "journey",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("Journey result");
-        let crate::diagram::RenderSemanticModel::Journey(full_model) = full.model() else {
-            panic!("expected full Journey model");
-        };
-        assert_eq!(
-            serde_json::to_value(&semantic_model).unwrap(),
-            serde_json::to_value(full_model).unwrap()
-        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "journey",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("Journey result");
+            let crate::diagram::RenderSemanticModel::Journey(full_model) = full.model() else {
+                panic!("expected full Journey model");
+            };
+            assert_eq!(
+                serde_json::to_value(&semantic_model).unwrap(),
+                serde_json::to_value(full_model).unwrap()
+            );
+        }
         crate::editor::test_work::reset();
     }
 
@@ -696,21 +594,24 @@ mod tests {
             serde_json::to_value(&known_type_model).unwrap()
         );
 
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "sequence",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("sequence result");
-        let crate::diagram::RenderSemanticModel::Sequence(full_model) = full.model() else {
-            panic!("expected full Sequence model");
-        };
-        assert_eq!(
-            serde_json::to_value(&semantic_model).unwrap(),
-            serde_json::to_value(full_model).unwrap()
-        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "sequence",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("sequence result");
+            let crate::diagram::RenderSemanticModel::Sequence(full_model) = full.model() else {
+                panic!("expected full Sequence model");
+            };
+            assert_eq!(
+                serde_json::to_value(&semantic_model).unwrap(),
+                serde_json::to_value(full_model).unwrap()
+            );
+        }
         assert!(!semantic_model.actors["Alice"].wrap);
         assert!(semantic_model.messages[0].wrap);
     }
@@ -738,6 +639,7 @@ mod tests {
     fn semantic_sequence_parse_skips_visual_theme_evaluation() {
         let source = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\nsequenceDiagram\nAlice->>Bob: Hi";
         assert!(SemanticParser::new().parse_diagram_sync(source).is_ok());
+        #[cfg(feature = "presentation")]
         assert!(matches!(
             crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
                 "sequence",
@@ -757,16 +659,7 @@ mod tests {
             .expect("semantic parse");
         match parsed.model {
             SemanticDiagramModel::Sequence(model) => assert!(model.actors["Alice"].wrap),
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-cynefin",
-                feature = "diagram-info",
-                feature = "diagram-state",
-                feature = "diagram-timeline",
-                feature = "diagram-journey",
-                feature = "diagram-pie"
-            ))]
+            #[allow(unreachable_patterns)]
             _ => panic!("expected Sequence model"),
         }
     }
@@ -797,6 +690,7 @@ mod tests {
                 .parse_diagram_with_type_sync("flowchart-v2", "flowchart TD\nA-->B")
                 .is_ok()
         );
+        #[cfg(feature = "presentation")]
         assert!(matches!(
             crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
                 "flowchart-v2",
@@ -862,38 +756,30 @@ mod tests {
         let semantic = SemanticParser::new()
             .parse_diagram_with_type_sync("flowchart-v2", source)
             .expect("semantic parse");
-        let full = crate::Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "flowchart-v2",
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .expect("full parser")
-            .expect("flowchart result");
         let semantic_model = match semantic.model {
             SemanticDiagramModel::Flowchart(model) => model,
-            #[cfg(feature = "diagram-sequence")]
-            SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-cynefin")]
-            SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-info")]
-            SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-pie")]
-            SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-journey")]
-            SemanticDiagramModel::Journey(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-state")]
-            SemanticDiagramModel::State(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-timeline")]
-            SemanticDiagramModel::Timeline(_) => panic!("expected semantic Flowchart model"),
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected semantic Flowchart model"),
         };
-        let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
-            panic!("expected full Flowchart model");
-        };
-        assert_eq!(
-            to_value(semantic_model).unwrap(),
-            to_value(full_model).unwrap()
-        );
+        assert_eq!(semantic_model.nodes.len(), 3);
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "flowchart-v2",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .expect("full parser")
+                .expect("flowchart result");
+            let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
+                panic!("expected full Flowchart model");
+            };
+            assert_eq!(
+                to_value(semantic_model).unwrap(),
+                to_value(full_model).unwrap()
+            );
+        }
     }
 
     #[cfg(feature = "diagram-flowchart")]
@@ -907,20 +793,8 @@ mod tests {
             .expect("semantic parse");
         let model = match parsed.model {
             SemanticDiagramModel::Flowchart(model) => model,
-            #[cfg(feature = "diagram-sequence")]
-            SemanticDiagramModel::Sequence(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-cynefin")]
-            SemanticDiagramModel::Cynefin(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-info")]
-            SemanticDiagramModel::Info(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-pie")]
-            SemanticDiagramModel::Pie(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-journey")]
-            SemanticDiagramModel::Journey(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-state")]
-            SemanticDiagramModel::State(_) => panic!("expected semantic Flowchart model"),
-            #[cfg(feature = "diagram-timeline")]
-            SemanticDiagramModel::Timeline(_) => panic!("expected semantic Flowchart model"),
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected semantic Flowchart model"),
         };
         let inner = model
             .subgraphs

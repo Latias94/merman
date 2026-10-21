@@ -1,7 +1,10 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::strip_line_ending;
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, Result, SourceSpan,
 };
 use crate::{
     common_db::LangiumCommonDbFields,
@@ -11,6 +14,7 @@ use crate::{
         strip_langium_inline_comment,
     },
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 const HEADER: &str = "cynefin-beta";
@@ -50,6 +54,7 @@ pub struct CynefinDiagramModel {
     pub transitions: Vec<CynefinTransitionModel>,
 }
 
+#[cfg(feature = "presentation")]
 pub type CynefinDiagramRenderModel = CynefinDiagramModel;
 
 impl CynefinDiagramModel {
@@ -88,7 +93,8 @@ struct CynefinParsedLine {
 
 struct CynefinSemanticSource {
     model: CynefinDiagramModel,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "compat-json")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct CynefinParseOutcome {
@@ -105,6 +111,7 @@ impl CynefinParseOutcome {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
@@ -112,6 +119,7 @@ pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -123,12 +131,17 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
             editor_facts,
         },
         first_error,
-    } = construct_cynefin_parse_outcome_controlled(code, &meta.diagram_type, control)?;
+    } = construct_cynefin_parse_outcome_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            editor_facts.unwrap_or_default(),
         )),
         None => Ok(CynefinSemanticSource {
             model,
@@ -140,7 +153,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         |source| {
             (
                 render_model_to_compat_json(&source.model, meta),
-                source.editor_facts,
+                source.editor_facts.unwrap_or_default(),
             )
         },
         crate::family::CombinedSemanticFailure::into_parts,
@@ -149,6 +162,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &CynefinDiagramRenderModel,
     meta: &ParseMetadata,
@@ -163,7 +177,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-#[cfg(all(test, feature = "all-diagrams"))]
+#[cfg(all(test, feature = "all-diagrams", feature = "presentation"))]
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -173,6 +187,7 @@ pub(crate) fn parse_cynefin_model_for_render(
     Ok(model)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_cynefin_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -200,7 +215,12 @@ fn parse_cynefin_model_controlled(
     config: &crate::MermaidConfig,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
-    let outcome = construct_cynefin_parse_outcome_controlled(code, diagram_type, control)?;
+    let outcome = construct_cynefin_parse_outcome_controlled(
+        code,
+        diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match outcome.into_strict_source() {
         Ok(source) => source,
         Err(error) => return Ok(Err(error)),
@@ -216,6 +236,10 @@ fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
     SourceSpan::new(start, start + trimmed.len())
 }
 
+#[cfg(any(
+    feature = "compat-json",
+    all(test, feature = "all-diagrams", feature = "presentation")
+))]
 fn parse_cynefin_semantic_source(
     code: &str,
     meta: &ParseMetadata,
@@ -223,14 +247,24 @@ fn parse_cynefin_semantic_source(
     construct_cynefin_parse_outcome(code, &meta.diagram_type).into_strict_source()
 }
 
+#[cfg(any(
+    feature = "compat-json",
+    all(test, feature = "all-diagrams", feature = "presentation")
+))]
 fn construct_cynefin_parse_outcome(code: &str, diagram_type: &str) -> CynefinParseOutcome {
-    construct_cynefin_parse_outcome_controlled(code, diagram_type, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_cynefin_parse_outcome_controlled(
+        code,
+        diagram_type,
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_cynefin_parse_outcome_controlled(
     code: &str,
     diagram_type: &str,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CynefinParseOutcome> {
     control.checkpoint()?;
@@ -238,7 +272,8 @@ fn construct_cynefin_parse_outcome_controlled(
     crate::diagrams::langium_common::record_family_syntax_construction("cynefin");
 
     let mut model = CynefinDiagramModel::default();
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts =
+        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
     let mut header_decided = false;
     let mut current_domain: Option<usize> = None;
     let mut offset = 0usize;
@@ -288,7 +323,9 @@ fn construct_cynefin_parse_outcome_controlled(
         if let Some(parsed) = parse_langium_common(code, body_start) {
             offset = body_start + parsed.consumed;
             current_domain = None;
-            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "cynefin");
+            if let Some(facts) = &mut editor_facts {
+                push_langium_common_editor_fact(facts, &parsed.fact, "cynefin");
+            }
             if let Some(diagnostic) = parsed.diagnostic {
                 let error = Error::diagram_parse_insertion_point(
                     diagram_type.to_string(),
@@ -296,7 +333,9 @@ fn construct_cynefin_parse_outcome_controlled(
                     diagnostic.span.start,
                 );
                 first_error.get_or_insert(error);
-                push_langium_common_recovery(&mut editor_facts, &diagnostic);
+                if let Some(facts) = &mut editor_facts {
+                    push_langium_common_recovery(facts, &diagnostic);
+                }
             } else {
                 common.push(parsed.fact);
             }
@@ -324,8 +363,10 @@ fn construct_cynefin_parse_outcome_controlled(
             }
             match part {
                 CynefinLinePart::Domain(domain) => {
-                    current_domain = Some(start_domain(&mut model.domains, domain.text.clone()));
-                    push_domain_fact(&mut editor_facts, domain, "cynefin domain");
+                    if let Some(facts) = &mut editor_facts {
+                        push_domain_fact(facts, domain.clone(), "cynefin domain");
+                    }
+                    current_domain = Some(start_domain(&mut model.domains, domain.text));
                 }
                 CynefinLinePart::Item(item) => {
                     let Some(domain_idx) = current_domain else {
@@ -344,44 +385,46 @@ fn construct_cynefin_parse_outcome_controlled(
                         current_domain = None;
                         continue;
                     };
-                    model.domains[domain_idx].items.push(CynefinItemModel {
-                        label: item.text.clone(),
-                    });
-                    push_payload_fact(
-                        &mut editor_facts,
-                        item,
-                        "cynefin domain item",
-                        EditorSemanticKind::String,
-                    );
-                }
-                CynefinLinePart::Transition(transition) => {
-                    current_domain = None;
-                    push_domain_fact(
-                        &mut editor_facts,
-                        transition.from.clone(),
-                        "cynefin transition source",
-                    );
-                    push_domain_fact(
-                        &mut editor_facts,
-                        transition.to.clone(),
-                        "cynefin transition target",
-                    );
-                    if let Some(label) = transition.label.clone() {
+                    if let Some(facts) = &mut editor_facts {
                         push_payload_fact(
-                            &mut editor_facts,
-                            label,
-                            "cynefin transition label",
+                            facts,
+                            item.clone(),
+                            "cynefin domain item",
                             EditorSemanticKind::String,
                         );
                     }
-                    if transition.from.text == transition.to.text {
-                        editor_facts.push_diagnostic(
-                            format!(
-                                "cynefin self-loop transition on domain \"{}\" is skipped",
-                                transition.from.text
-                            ),
-                            Some(transition.from.span),
+                    model.domains[domain_idx]
+                        .items
+                        .push(CynefinItemModel { label: item.text });
+                }
+                CynefinLinePart::Transition(transition) => {
+                    current_domain = None;
+                    if let Some(facts) = &mut editor_facts {
+                        push_domain_fact(
+                            facts,
+                            transition.from.clone(),
+                            "cynefin transition source",
                         );
+                        push_domain_fact(facts, transition.to.clone(), "cynefin transition target");
+                        if let Some(label) = transition.label.clone() {
+                            push_payload_fact(
+                                facts,
+                                label,
+                                "cynefin transition label",
+                                EditorSemanticKind::String,
+                            );
+                        }
+                    }
+                    if transition.from.text == transition.to.text {
+                        if let Some(facts) = &mut editor_facts {
+                            facts.push_diagnostic(
+                                format!(
+                                    "cynefin self-loop transition on domain \"{}\" is skipped",
+                                    transition.from.text
+                                ),
+                                Some(transition.from.span),
+                            );
+                        }
                     } else {
                         model.transitions.push(CynefinTransitionModel {
                             from: transition.from.text,
@@ -421,6 +464,7 @@ fn construct_cynefin_parse_outcome_controlled(
     Ok(CynefinParseOutcome {
         source: CynefinSemanticSource {
             model,
+            #[cfg(feature = "compat-json")]
             editor_facts,
         },
         first_error,
@@ -429,7 +473,7 @@ fn construct_cynefin_parse_outcome_controlled(
 
 fn remember_cynefin_error(
     first_error: &mut Option<Error>,
-    editor_facts: &mut EditorSemanticFacts,
+    editor_facts: &mut Option<EditorSemanticFacts>,
     error: Error,
     message: impl Into<String>,
     span: Option<SourceSpan>,
@@ -437,7 +481,9 @@ fn remember_cynefin_error(
     if first_error.is_none() {
         *first_error = Some(error);
     }
-    editor_facts.mark_recovered_from_parse_error(message, span);
+    if let Some(facts) = editor_facts {
+        facts.mark_recovered_from_parse_error(message, span);
+    }
 }
 
 fn cynefin_error_message(error: &Error) -> String {
@@ -723,6 +769,7 @@ mod tests {
             construct_cynefin_parse_outcome_controlled(
                 "cynefin-beta\ncomplex\n\"Probe\"\n",
                 "cynefin",
+                EditorFactsDemand::Omit,
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
@@ -752,6 +799,7 @@ mod tests {
         assert_eq!(value.selection, SourceSpan::new(13, 35));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn cynefin_recovery_uses_exact_trimmed_crlf_spans() {
         for (source, invalid) in [
@@ -774,6 +822,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn cynefin_recovery_preserves_cursor_prefix_for_crlf_input() {
         let source = concat!(
@@ -806,6 +855,7 @@ mod tests {
         }));
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn typed_render_model_projects_exact_compatibility_json() {
         let source = concat!(
@@ -833,5 +883,30 @@ mod tests {
             render_model_to_compat_json(model, typed.metadata()).unwrap(),
             compat.model
         );
+    }
+
+    #[test]
+    fn semantic_model_constructs_without_editor_facts() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("cynefin");
+        crate::editor::test_work::reset();
+        let outcome = construct_cynefin_parse_outcome_controlled(
+            "cynefin-beta\ncomplex\n\"Probe\"\ncomplex --> clear : \"Sense\"\n",
+            "cynefin",
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        let source = outcome.into_strict_source().unwrap();
+        #[cfg(feature = "compat-json")]
+        assert!(source.editor_facts.is_none());
+        assert_eq!(source.model.domains[0].items[0].label, "Probe");
+        assert_eq!(source.model.transitions[0].from, "complex");
+        assert_eq!(source.model.transitions[0].to, "clear");
+        assert_eq!(source.model.transitions[0].label.as_deref(), Some("Sense"));
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("cynefin"),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

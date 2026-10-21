@@ -1,13 +1,21 @@
-use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
+#[cfg(feature = "compat-json")]
+use crate::ManagedSemanticJson;
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
+#[cfg(feature = "compat-json")]
+use crate::diagram::legacy_warning_messages;
+use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "presentation")]
 use crate::resources::ModelComplexity;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
-    OperationControlResult, ParseMetadata, Result, SourceSpan,
-    source_span::trailing_ascii_whitespace_slot,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
+    SourceSpan, source_span::trailing_ascii_whitespace_slot,
 };
 use indexmap::IndexMap;
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 
@@ -38,15 +46,16 @@ pub(crate) fn block_syntax_construction_count() -> usize {
 /// Flat Block records in Mermaid database insertion order.
 ///
 /// Child indices address `blocks_flat`; compatibility serialization expands the nested wire shape.
-#[derive(Debug, Clone, Default)]
-pub struct BlockDiagramRenderModel {
-    pub blocks_flat: Vec<BlockNodeRenderModel>,
-    pub edges: Vec<BlockEdgeRenderModel>,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockDiagramModel {
+    pub blocks_flat: Vec<BlockNode>,
+    pub edges: Vec<BlockEdge>,
     pub warning_facts: Vec<DiagramWarningFact>,
-    pub class_defs: IndexMap<String, BlockClassDefRenderModel>,
-    compat_root_id: String,
+    pub class_defs: IndexMap<String, BlockClassDef>,
+    pub root: Option<usize>,
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Clone, Copy, Default)]
 struct BlockRecordMetrics {
     items: usize,
@@ -54,22 +63,18 @@ struct BlockRecordMetrics {
     container_depth: usize,
 }
 
-impl BlockDiagramRenderModel {
+impl BlockDiagramModel {
     /// Returns the canonical root composite, when present.
-    pub fn root(&self) -> Option<&BlockNodeRenderModel> {
-        let root_id = if self.compat_root_id.is_empty() {
-            "root"
-        } else {
-            &self.compat_root_id
-        };
-        self.blocks_flat.iter().find(|block| block.id == root_id)
+    pub fn root(&self) -> Option<&BlockNode> {
+        self.root.and_then(|index| self.blocks_flat.get(index))
     }
 
     /// Resolves a direct child index without constructing a subtree.
-    pub fn block(&self, index: usize) -> Option<&BlockNodeRenderModel> {
+    pub fn block(&self, index: usize) -> Option<&BlockNode> {
         self.blocks_flat.get(index)
     }
 
+    #[cfg(feature = "presentation")]
     fn record_metrics(&self) -> std::result::Result<Vec<BlockRecordMetrics>, String> {
         let mut metrics = vec![BlockRecordMetrics::default(); self.blocks_flat.len()];
         let mut state = vec![0u8; self.blocks_flat.len()];
@@ -126,7 +131,8 @@ impl BlockDiagramRenderModel {
     }
 
     /// Counts the previous typed wire shape without allocating repeated descendant output.
-    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+    #[cfg(feature = "presentation")]
+    fn wire_model_complexity(&self) -> ModelComplexity {
         let Ok(metrics) = self.record_metrics() else {
             return ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX);
         };
@@ -167,7 +173,7 @@ impl BlockDiagramRenderModel {
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct BlockClassDefRenderModel {
+pub struct BlockClassDef {
     pub id: String,
     #[serde(default)]
     pub styles: Vec<String>,
@@ -175,10 +181,9 @@ pub struct BlockClassDefRenderModel {
     pub text_styles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct BlockNodeRenderModel {
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockNode {
     pub id: String,
-    pub color_index: Option<usize>,
     pub label: String,
     pub block_type: String,
     /// Indices of direct children in the owning model's `blocks_flat` records.
@@ -189,11 +194,10 @@ pub struct BlockNodeRenderModel {
     pub classes: Vec<String>,
     pub styles: Vec<String>,
     pub directions: Vec<String>,
-    compatibility: BlockNodeCompatibility,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BlockEdgeRenderModel {
+pub struct BlockEdge {
     pub id: String,
     pub start: String,
     pub end: String,
@@ -203,10 +207,9 @@ pub struct BlockEdgeRenderModel {
     pub arrow_type_start: Option<String>,
     #[serde(default)]
     pub label: String,
-    #[serde(skip)]
-    compat_directions: Option<Vec<String>>,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, Default)]
 enum CompatibilityFieldPresence {
     #[default]
@@ -214,6 +217,7 @@ enum CompatibilityFieldPresence {
     Present,
 }
 
+#[cfg(feature = "compat-json")]
 impl CompatibilityFieldPresence {
     fn from_option<T>(value: &Option<T>) -> Self {
         if value.is_some() {
@@ -228,15 +232,85 @@ impl CompatibilityFieldPresence {
     }
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, Default)]
 struct BlockNodeCompatibility {
     styles: CompatibilityFieldPresence,
     directions: CompatibilityFieldPresence,
 }
 
+#[cfg(feature = "presentation")]
+pub type BlockNodeRenderModel = BlockNode;
+#[cfg(feature = "presentation")]
+pub type BlockEdgeRenderModel = BlockEdge;
+#[cfg(feature = "presentation")]
+pub type BlockClassDefRenderModel = BlockClassDef;
+
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, Default)]
+pub struct BlockVisuals {
+    /// Palette slots in canonical insertion order; the root has no slot.
+    pub color_indices: Vec<Option<usize>>,
+}
+
+#[cfg(feature = "compat-json")]
+#[derive(Debug, Clone, Default)]
+struct BlockCompatibility {
+    nodes: Vec<BlockNodeCompatibility>,
+    edge_directions: Vec<Option<Vec<String>>>,
+}
+
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, Default)]
+pub struct BlockDiagramRenderModel {
+    pub semantic: BlockDiagramModel,
+    pub visuals: BlockVisuals,
+    #[cfg(feature = "compat-json")]
+    compatibility: BlockCompatibility,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for BlockDiagramRenderModel {
+    type Target = BlockDiagramModel;
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for BlockDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl BlockDiagramRenderModel {
+    pub fn root(&self) -> Option<&BlockNode> {
+        self.semantic.root().or_else(|| {
+            self.semantic
+                .blocks_flat
+                .iter()
+                .find(|block| block.id == "root")
+        })
+    }
+
+    pub fn from_semantic_model(semantic: BlockDiagramModel) -> Self {
+        Self {
+            semantic,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+        self.semantic.wire_model_complexity()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct Block {
     id: String,
+    #[cfg(feature = "presentation")]
     color_index: Option<usize>,
     block_type: String,
     label: Option<String>,
@@ -273,12 +347,13 @@ impl Block {
 #[derive(Debug, Default)]
 struct BlockDb {
     root_id: String,
+    #[cfg(feature = "presentation")]
     next_color_index: usize,
     block_ids: HashMap<String, usize>,
     blocks: Vec<Block>,
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
-    classes: IndexMap<String, BlockClassDefRenderModel>,
+    classes: IndexMap<String, BlockClassDef>,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -317,14 +392,14 @@ impl BlockDb {
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
-        let entry =
-            self.classes
-                .entry(id.to_string())
-                .or_insert_with(|| BlockClassDefRenderModel {
-                    id: id.to_string(),
-                    styles: Vec::new(),
-                    text_styles: Vec::new(),
-                });
+        let entry = self
+            .classes
+            .entry(id.to_string())
+            .or_insert_with(|| BlockClassDef {
+                id: id.to_string(),
+                styles: Vec::new(),
+                text_styles: Vec::new(),
+            });
 
         for raw in style_attributes.split(',') {
             let fixed = raw.split(';').next().unwrap_or("").trim().to_string();
@@ -375,6 +450,7 @@ impl BlockDb {
         &mut self,
         document: BlockDocument,
         config: &MermaidConfig,
+        _presentation_requested: bool,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         let mut records = document.records.into_iter().map(Some).collect::<Vec<_>>();
@@ -473,7 +549,8 @@ impl BlockDb {
                 }
                 index
             } else {
-                if block.block_type == "composite" {
+                #[cfg(feature = "presentation")]
+                if _presentation_requested && block.block_type == "composite" {
                     block.color_index = Some(self.next_color_index);
                     self.next_color_index += 1;
                 }
@@ -534,13 +611,19 @@ impl PopulateFrame {
     }
 }
 
-fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Vec<Value>) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_render_node_to_value_shallow(
+    block: &BlockNode,
+    color_index: Option<usize>,
+    compatibility: BlockNodeCompatibility,
+    children: Vec<Value>,
+) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), json!(&block.id));
     obj.insert("type".to_string(), json!(&block.block_type));
     obj.insert("label".to_string(), json!(&block.label));
     obj.insert("children".to_string(), Value::Array(children));
-    if let Some(index) = block.color_index {
+    if let Some(index) = color_index {
         obj.insert("colorIndex".to_string(), json!(index));
     }
 
@@ -553,19 +636,20 @@ fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Ve
     if let Some(v) = block.width_in_columns {
         obj.insert("widthInColumns".to_string(), json!(v));
     }
-    if block.compatibility.directions.is_present() {
+    if compatibility.directions.is_present() {
         obj.insert("directions".to_string(), json!(&block.directions));
     }
     if !block.classes.is_empty() {
         obj.insert("classes".to_string(), json!(&block.classes));
     }
-    if block.compatibility.styles.is_present() {
+    if compatibility.styles.is_present() {
         obj.insert("styles".to_string(), json!(&block.styles));
     }
 
     Value::Object(obj)
 }
 
+#[cfg(feature = "compat-json")]
 fn block_render_node_to_value_controlled(
     model: &BlockDiagramRenderModel,
     index: usize,
@@ -609,7 +693,19 @@ fn block_render_node_to_value_controlled(
             .into_iter()
             .map(ManagedSemanticJson::into_unmanaged_value)
             .collect();
-        let value = block_render_node_to_value_shallow(block, children);
+        let color_index = model
+            .visuals
+            .color_indices
+            .get(frame.index)
+            .copied()
+            .flatten();
+        let compatibility = model
+            .compatibility
+            .nodes
+            .get(frame.index)
+            .copied()
+            .unwrap_or_default();
+        let value = block_render_node_to_value_shallow(block, color_index, compatibility, children);
         let value = ManagedSemanticJson::from(value);
         if let Some(parent) = stack.last_mut() {
             parent.children.push(value);
@@ -619,7 +715,8 @@ fn block_render_node_to_value_controlled(
     }
 }
 
-fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_render_edge_to_value(edge: &BlockEdge, directions: Option<&[String]>) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), json!(&edge.id));
     obj.insert("type".to_string(), json!("edge"));
@@ -633,13 +730,14 @@ fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
     if let Some(value) = &edge.arrow_type_start {
         obj.insert("arrowTypeStart".to_string(), json!(value));
     }
-    if let Some(directions) = &edge.compat_directions {
+    if let Some(directions) = directions {
         obj.insert("directions".to_string(), json!(directions));
     }
     Value::Object(obj)
 }
 
-fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderModel>) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDef>) -> Value {
     let mut obj = Map::new();
     for (k, v) in classes {
         obj.insert(
@@ -654,14 +752,9 @@ fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderM
     Value::Object(obj)
 }
 
-fn block_to_render_node(b: Block) -> BlockNodeRenderModel {
-    let compatibility = BlockNodeCompatibility {
-        styles: CompatibilityFieldPresence::from_option(&b.styles),
-        directions: CompatibilityFieldPresence::from_option(&b.directions),
-    };
-    BlockNodeRenderModel {
+fn block_to_semantic_node(b: Block) -> BlockNode {
+    BlockNode {
         id: b.id,
-        color_index: b.color_index,
         label: b.label.unwrap_or_default(),
         block_type: b.block_type,
         children: b.children,
@@ -671,47 +764,94 @@ fn block_to_render_node(b: Block) -> BlockNodeRenderModel {
         classes: b.classes,
         styles: b.styles.unwrap_or_default(),
         directions: b.directions.unwrap_or_default(),
-        compatibility,
     }
 }
 
-fn block_to_render_edge(b: Block) -> BlockEdgeRenderModel {
-    BlockEdgeRenderModel {
+fn block_to_semantic_edge(b: Block) -> BlockEdge {
+    BlockEdge {
         id: b.id,
         start: b.start.unwrap_or_default(),
         end: b.end.unwrap_or_default(),
         arrow_type_end: b.arrow_type_end,
         arrow_type_start: b.arrow_type_start,
         label: b.label.unwrap_or_default(),
-        compat_directions: b.directions,
     }
 }
 
-fn block_db_to_render_model(
+struct BlockModelOutput {
+    semantic: BlockDiagramModel,
+    #[cfg(feature = "presentation")]
+    visuals: BlockVisuals,
+    #[cfg(feature = "compat-json")]
+    compatibility: BlockCompatibility,
+}
+
+fn block_db_to_model(
     db: BlockDb,
+    _presentation_requested: bool,
     control: &OperationControl,
-) -> OperationControlResult<BlockDiagramRenderModel> {
+) -> OperationControlResult<BlockModelOutput> {
+    let root = db.block_ids.get(&db.root_id).copied();
     let mut blocks_flat = Vec::with_capacity(db.blocks.len());
+    #[cfg(feature = "presentation")]
+    let mut visuals = BlockVisuals::default();
+    #[cfg(feature = "compat-json")]
+    let mut compatibility = BlockCompatibility::default();
     for (index, block) in db.blocks.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        blocks_flat.push(block_to_render_node(block));
+        #[cfg(feature = "presentation")]
+        if _presentation_requested {
+            visuals.color_indices.push(block.color_index);
+        }
+        #[cfg(feature = "compat-json")]
+        if _presentation_requested {
+            compatibility.nodes.push(BlockNodeCompatibility {
+                styles: CompatibilityFieldPresence::from_option(&block.styles),
+                directions: CompatibilityFieldPresence::from_option(&block.directions),
+            });
+        }
+        blocks_flat.push(block_to_semantic_node(block));
     }
     let mut edges = Vec::with_capacity(db.edges.len());
-    for (index, edge) in db.edges.into_iter().enumerate() {
+    for (index, mut edge) in db.edges.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        edges.push(block_to_render_edge(edge));
+        #[cfg(feature = "compat-json")]
+        if _presentation_requested {
+            compatibility.edge_directions.push(edge.directions.take());
+        }
+        edges.push(block_to_semantic_edge(edge));
     }
     control.checkpoint()?;
+    Ok(BlockModelOutput {
+        semantic: BlockDiagramModel {
+            blocks_flat,
+            edges,
+            warning_facts: db.warning_facts,
+            class_defs: db.classes,
+            root,
+        },
+        #[cfg(feature = "presentation")]
+        visuals,
+        #[cfg(feature = "compat-json")]
+        compatibility,
+    })
+}
+
+#[cfg(feature = "presentation")]
+fn block_db_to_render_model(
+    db: BlockDb,
+    control: &OperationControl,
+) -> OperationControlResult<BlockDiagramRenderModel> {
+    let output = block_db_to_model(db, true, control)?;
     Ok(BlockDiagramRenderModel {
-        blocks_flat,
-        edges,
-        warning_facts: db.warning_facts,
-        class_defs: db.classes,
-        compat_root_id: db.root_id,
+        semantic: output.semantic,
+        visuals: output.visuals,
+        #[cfg(feature = "compat-json")]
+        compatibility: output.compatibility,
     })
 }
 
@@ -739,14 +879,16 @@ impl BlockParseFailure {
 
 fn construct_block_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    config: &MermaidConfig,
+    editor_demand: EditorFactsDemand,
+    presentation_requested: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<BlockSemanticSource, BlockParseFailure>> {
     #[cfg(test)]
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.set(BLOCK_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     control.checkpoint()?;
-    let mut parser = Parser::new(code, control);
+    let mut parser = Parser::new(code, editor_demand, presentation_requested, control);
     if let Err(error) = parser.parse_header() {
         let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
         return Ok(Err(BlockParseFailure {
@@ -780,38 +922,71 @@ fn construct_block_semantic_source(
     control.checkpoint()?;
     let mut db = BlockDb::default();
     db.clear();
-    db.set_hierarchy(document, meta.effective_config.as_config(), control)?;
+    db.set_hierarchy(document, config, presentation_requested, control)?;
 
     control.checkpoint()?;
     Ok(Ok(BlockSemanticSource { db, editor_facts }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_block_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<BlockDiagramRenderModel> {
-    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| *failure.error)?;
     Ok(
         block_db_to_render_model(source.db, &OperationControl::new())
             .expect("a private conversion control cannot be cancelled"),
     )
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_block_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<BlockDiagramRenderModel>> {
-    let construction = construct_block_semantic_source(code, meta, control)?;
+    let construction = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        true,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(*failure.error)),
     };
     control.checkpoint()?;
     Ok(Ok(block_db_to_render_model(source.db, control)?))
+}
+
+pub(crate) fn parse_block_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<BlockDiagramModel>> {
+    let source = match construct_block_semantic_source(
+        code,
+        &meta.semantic_config,
+        EditorFactsDemand::Omit,
+        false,
+        control,
+    )? {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    let output = block_db_to_model(source.db, false, control)?;
+    control.checkpoint()?;
+    Ok(Ok(output.semantic))
 }
 
 fn type_str_to_type(type_str: &str) -> String {
@@ -1110,17 +1285,28 @@ fn push_block_id_list(
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_block_semantic_source(code, meta, control)?;
+    let construction = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        true,
+        control,
+    )?;
     let construction = match construction {
         Ok(source) => {
             let model = block_db_to_render_model(source.db, control)?;
             let compatibility = render_model_to_compat_json_controlled(&model, meta, control)?;
-            Ok((compatibility, source.editor_facts, model.warning_facts))
+            Ok((
+                compatibility,
+                source.editor_facts,
+                model.semantic.warning_facts,
+            ))
         }
         Err(failure) => Err(failure),
     };
@@ -1325,10 +1511,18 @@ struct Parser<'input, 'control> {
     records: Vec<Block>,
     declared_entities: HashSet<String>,
     editor_facts: EditorSemanticFacts,
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "compat-json")]
+    compatibility_requested: bool,
 }
 
 impl<'input, 'control> Parser<'input, 'control> {
-    fn new(input: &'input str, control: &'control OperationControl) -> Self {
+    fn new(
+        input: &'input str,
+        editor_demand: EditorFactsDemand,
+        _compatibility_requested: bool,
+        control: &'control OperationControl,
+    ) -> Self {
         Self {
             input,
             control,
@@ -1336,6 +1530,9 @@ impl<'input, 'control> Parser<'input, 'control> {
             gen_counter: 0,
             records: Vec::new(),
             declared_entities: HashSet::new(),
+            editor_demand,
+            #[cfg(feature = "compat-json")]
+            compatibility_requested: _compatibility_requested,
             editor_facts: EditorSemanticFacts::new(),
         }
     }
@@ -1693,12 +1890,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             -1
         } else {
             let (value, value_fact) = self.parse_int()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                value_fact,
-                "block columns",
-                EditorSemanticKind::Property,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    value_fact,
+                    "block columns",
+                    EditorSemanticKind::Property,
+                );
+            }
             value
         };
 
@@ -1724,12 +1923,14 @@ impl<'input, 'control> Parser<'input, 'control> {
         if self.consume_exact(":") {
             let (value, value_fact) = self.parse_int()?;
             validate_block_space_width(value, value_fact.span)?;
-            push_block_payload(
-                &mut self.editor_facts,
-                value_fact,
-                "block space width",
-                EditorSemanticKind::Property,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    value_fact,
+                    "block space width",
+                    EditorSemanticKind::Property,
+                );
+            }
             width = value;
         }
         let mut b = Block::new(self.generate_id());
@@ -1748,35 +1949,43 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected classDef".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("classDef");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("classDef");
+            let line_end = self.statement_line_end(directive_start);
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
+                ));
+        }
         let id = self.parse_classdef_id()?;
         let rest_start = self.pos;
         let css = self.take_rest_of_line_trimmed();
-        push_block_class_definition(
-            &mut self.editor_facts,
-            id.clone(),
-            "block class definition",
-            EditorSemanticKind::Class,
-        );
-        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_class_definition(
+                &mut self.editor_facts,
+                id.clone(),
+                "block class definition",
+                EditorSemanticKind::Class,
+            );
+        }
+        if self.editor_demand == EditorFactsDemand::Capture
+            && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
+        {
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::StyleValue,
                     span,
                 ));
         }
-        push_block_payload(
-            &mut self.editor_facts,
-            css.clone(),
-            "block class style",
-            EditorSemanticKind::String,
-        );
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload(
+                &mut self.editor_facts,
+                css.clone(),
+                "block class style",
+                EditorSemanticKind::String,
+            );
+        }
         let mut b = Block::new(id.text);
         b.block_type = "classDef".to_string();
         b.css = Some(css.text);
@@ -1792,29 +2001,37 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected class".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("class");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
-        let ids = self.parse_identifier_list().inspect_err(|_| {
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("class");
+            let line_end = self.statement_line_end(directive_start);
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::IdList,
-                    SourceSpan::new(line_end, line_end),
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
                 ));
+        }
+        let ids = self.parse_identifier_list().inspect_err(|_| {
+            if self.editor_demand == EditorFactsDemand::Capture {
+                let line_end = self.statement_line_end(directive_start);
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            }
         })?;
         let rest_start = self.pos;
         let style_class = self.take_rest_of_line_trimmed();
-        push_block_id_list(
-            &mut self.editor_facts,
-            ids.clone(),
-            "block class target",
-            EditorSemanticKind::Object,
-        );
-        if style_class.text.is_empty()
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_id_list(
+                &mut self.editor_facts,
+                ids.clone(),
+                "block class target",
+                EditorSemanticKind::Object,
+            );
+        }
+        if self.editor_demand == EditorFactsDemand::Capture
+            && style_class.text.is_empty()
             && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
         {
             self.editor_facts
@@ -1823,13 +2040,15 @@ impl<'input, 'control> Parser<'input, 'control> {
                     span,
                 ));
         }
-        push_block_payload_as(
-            &mut self.editor_facts,
-            style_class.clone(),
-            "block class name",
-            EditorSemanticKind::Class,
-            EditorExpectedSyntaxKind::ClassName,
-        );
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload_as(
+                &mut self.editor_facts,
+                style_class.clone(),
+                "block class name",
+                EditorSemanticKind::Class,
+                EditorExpectedSyntaxKind::ClassName,
+            );
+        }
         let mut b = Block::new(ids.text);
         b.block_type = "applyClass".to_string();
         b.style_class = Some(style_class.text);
@@ -1845,41 +2064,52 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected style".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("style");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
-        let ids = self.parse_identifier_list().inspect_err(|_| {
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("style");
+            let line_end = self.statement_line_end(directive_start);
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::IdList,
-                    SourceSpan::new(line_end, line_end),
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
                 ));
+        }
+        let ids = self.parse_identifier_list().inspect_err(|_| {
+            if self.editor_demand == EditorFactsDemand::Capture {
+                let line_end = self.statement_line_end(directive_start);
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            }
         })?;
         let rest_start = self.pos;
         let styles_str = self.take_rest_of_line_trimmed();
-        push_block_id_list(
-            &mut self.editor_facts,
-            ids.clone(),
-            "block style target",
-            EditorSemanticKind::Object,
-        );
-        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_id_list(
+                &mut self.editor_facts,
+                ids.clone(),
+                "block style target",
+                EditorSemanticKind::Object,
+            );
+        }
+        if self.editor_demand == EditorFactsDemand::Capture
+            && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
+        {
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::StyleValue,
                     span,
                 ));
         }
-        push_block_payload(
-            &mut self.editor_facts,
-            styles_str.clone(),
-            "block style",
-            EditorSemanticKind::String,
-        );
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload(
+                &mut self.editor_facts,
+                styles_str.clone(),
+                "block style",
+                EditorSemanticKind::String,
+            );
+        }
         let mut b = Block::new(ids.text);
         b.block_type = "applyStyles".to_string();
         b.styles_str = Some(styles_str.text);
@@ -1934,15 +2164,17 @@ impl<'input, 'control> Parser<'input, 'control> {
                     )
                 })?;
                 validate_block_space_width(width, SourceSpan::new(start, self.pos))?;
-                push_block_payload(
-                    &mut self.editor_facts,
-                    BlockSpannedText {
-                        text,
-                        span: SourceSpan::new(start, self.pos),
-                    },
-                    "block space width",
-                    EditorSemanticKind::Property,
-                );
+                if self.editor_demand == EditorFactsDemand::Capture {
+                    push_block_payload(
+                        &mut self.editor_facts,
+                        BlockSpannedText {
+                            text,
+                            span: SourceSpan::new(start, self.pos),
+                        },
+                        "block space width",
+                        EditorSemanticKind::Property,
+                    );
+                }
             }
             let mut space = Block::new(self.generate_id());
             space.block_type = "space".to_string();
@@ -2008,7 +2240,9 @@ impl<'input, 'control> Parser<'input, 'control> {
                     BlockNodeOccurrence::RelationEndpoint,
                 );
             }
-            if let Some(label) = label.as_ref() {
+            if let Some(label) = label.as_ref()
+                && self.editor_demand == EditorFactsDemand::Capture
+            {
                 push_block_payload(
                     &mut self.editor_facts,
                     label.clone(),
@@ -2028,7 +2262,11 @@ impl<'input, 'control> Parser<'input, 'control> {
                 end: Some(right.block.id.clone()),
                 arrow_type_end: Some(arrow_type_end),
                 arrow_type_start: Some("arrow_open".to_string()),
-                directions: right.block.directions.clone(),
+                #[cfg(feature = "compat-json")]
+                directions: self
+                    .compatibility_requested
+                    .then(|| right.block.directions.clone())
+                    .flatten(),
                 ..Default::default()
             };
 
@@ -2048,12 +2286,14 @@ impl<'input, 'control> Parser<'input, 'control> {
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
             let (w, width_fact) = self.parse_int()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                width_fact,
-                "block width",
-                EditorSemanticKind::Property,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    width_fact,
+                    "block width",
+                    EditorSemanticKind::Property,
+                );
+            }
             left.block.width_in_columns = Some(w);
         } else {
             left.block.width_in_columns.get_or_insert(1);
@@ -2177,12 +2417,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             self.pos += 2;
             self.skip_ws_and_comments();
             let label = self.parse_string_literal()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                label.clone(),
-                "block arrow label",
-                EditorSemanticKind::String,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    label.clone(),
+                    "block arrow label",
+                    EditorSemanticKind::String,
+                );
+            }
             self.skip_ws_and_comments();
             if !self.consume_exact("]>") {
                 return Err(Error::diagram_parse_fallback(
@@ -2222,12 +2464,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             self.pos += start_delim.len();
             self.skip_ws_and_comments();
             let label = self.parse_string_literal_or_md()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                label.clone(),
-                "block label",
-                EditorSemanticKind::String,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    label.clone(),
+                    "block label",
+                    EditorSemanticKind::String,
+                );
+            }
             self.skip_ws_and_comments();
             let mut matched_end: Option<&'static str> = None;
             for end in delims.ends {
@@ -2277,6 +2521,9 @@ impl<'input, 'control> Parser<'input, 'control> {
         kind: EditorSemanticKind,
         occurrence: BlockNodeOccurrence,
     ) {
+        if self.editor_demand == EditorFactsDemand::Omit {
+            return;
+        }
         let is_entity = match occurrence {
             BlockNodeOccurrence::Definition => {
                 self.declared_entities.insert(id.text.clone());
@@ -2296,12 +2543,14 @@ impl<'input, 'control> Parser<'input, 'control> {
         loop {
             self.skip_ws_and_comments();
             let direction = self.parse_direction()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                direction.clone(),
-                "block arrow direction",
-                EditorSemanticKind::Property,
-            );
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    direction.clone(),
+                    "block arrow direction",
+                    EditorSemanticKind::Property,
+                );
+            }
             out.push(direction.text);
             self.skip_ws_and_comments();
             if self.consume_exact(",") {
@@ -2321,11 +2570,13 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
             self.bump();
         }
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::BlockDirectionValue,
-                SourceSpan::new(start, self.pos),
-            ));
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::BlockDirectionValue,
+                    SourceSpan::new(start, self.pos),
+                ));
+        }
         if self.pos == start {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -2506,6 +2757,7 @@ impl<'input, 'control> Parser<'input, 'control> {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &BlockDiagramRenderModel,
     meta: &ParseMetadata,
@@ -2514,6 +2766,7 @@ pub(crate) fn render_model_to_compat_json(
         .expect("a private projection control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &BlockDiagramRenderModel,
     meta: &ParseMetadata,
@@ -2540,7 +2793,17 @@ pub(crate) fn render_model_to_compat_json_controlled(
     let edges = model
         .edges
         .iter()
-        .map(block_render_edge_to_value)
+        .enumerate()
+        .map(|(index, edge)| {
+            block_render_edge_to_value(
+                edge,
+                model
+                    .compatibility
+                    .edge_directions
+                    .get(index)
+                    .and_then(Option::as_deref),
+            )
+        })
         .collect::<Vec<_>>();
     let config =
         ManagedSemanticJson::from(crate::json_value::clone_value_nonrecursive_with_control(
@@ -2583,26 +2846,34 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_block_with_warning_facts(code, meta).map(crate::family::WarningSemanticParse::into_model)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_block_with_warning_facts(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<crate::family::WarningSemanticParse> {
-    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(source.db, &OperationControl::new())
         .expect("a private conversion control cannot be cancelled");
     let compatibility = render_model_to_compat_json(&model, meta)?;
     Ok(crate::family::WarningSemanticParse::new(
         compatibility,
-        model.warning_facts,
+        model.semantic.warning_facts,
     ))
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{
@@ -2617,6 +2888,24 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    #[test]
+    fn block_ordinary_projections_do_not_collect_editor_facts() {
+        let source = "block\nA\n";
+        reset_block_syntax_construction_count();
+        crate::editor::test_work::reset();
+        parse_block_model_for_render_controlled(source, &meta(), &crate::OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(block_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_block_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let projected = crate::ManagedSemanticJson::from(parse_block(source, &meta()).unwrap());
+        assert!(projected.as_value().is_object());
+        assert_eq!(block_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
@@ -2664,6 +2953,7 @@ mod tests {
                     failure: None
                 },
                 &MermaidConfig::default(),
+                false,
                 &control
             ),
             Err(crate::OperationCancelled { .. })
@@ -2714,7 +3004,7 @@ mod tests {
         let input = deep_block_chain(DEPTH);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2 * (DEPTH + 3));
-        let mut parser = Parser::new(&input, &control);
+        let mut parser = Parser::new(&input, EditorFactsDemand::Omit, false, &control);
         parser.parse_header().unwrap();
         assert!(parser.parse_document(false).is_err());
         assert!(
@@ -2731,9 +3021,15 @@ mod tests {
     #[test]
     fn block_conversion_observes_control_after_partial_record_transfer() {
         let input = deep_block_chain(500);
-        let source = construct_block_semantic_source(&input, &meta(), &OperationControl::new())
-            .unwrap()
-            .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
+        let source = construct_block_semantic_source(
+            &input,
+            meta().effective_config.as_config(),
+            EditorFactsDemand::Omit,
+            true,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
         let control = OperationControl::new().for_phase(crate::OperationPhase::Semantic);
         control.cancel_after_checkpoints(1);
         let cancelled = block_db_to_render_model(source.db, &control).unwrap_err();
@@ -3609,5 +3905,118 @@ C<["Route"]>(left,down)
                 format!("block\nA; classDef {prop} color:#ffffff,fill:#000000; class A {prop}");
             let _ = parse(&text);
         }
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "block".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn block_semantics_preserve_records_and_warnings_without_editor_or_palette_work() {
+        reset_block_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let source = r#"block
+columns 1
+A["Alpha"]:2
+block:outer
+turn<["Turn"]>(right,down)
+end
+classDef hot fill:red
+class A hot
+A --> turn
+"#;
+        let metadata = metadata();
+        let construction = construct_block_semantic_source(
+            source,
+            &metadata.semantic_config,
+            EditorFactsDemand::Omit,
+            false,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
+        let output = block_db_to_model(construction.db, false, &OperationControl::new()).unwrap();
+        #[cfg(feature = "presentation")]
+        assert!(output.visuals.color_indices.is_empty());
+        let model = output.semantic;
+        let root = model.root().unwrap();
+        assert_eq!(root.columns, Some(1));
+        let alpha = model
+            .blocks_flat
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap();
+        assert_eq!(alpha.label, "Alpha");
+        assert_eq!(alpha.width_in_columns, Some(2));
+        assert_eq!(alpha.classes, ["hot"]);
+        let turn = model
+            .blocks_flat
+            .iter()
+            .find(|node| node.id == "turn")
+            .unwrap();
+        assert_eq!(turn.directions, ["right", "down"]);
+        assert_eq!(model.edges.len(), 1);
+        assert_eq!(model.edges[0].start, "A");
+        assert_eq!(model.edges[0].end, "turn");
+        assert_eq!(model.warning_facts.len(), 1);
+        assert!(model.class_defs.contains_key("hot"));
+        assert_eq!(block_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let direct =
+            parse_block_semantic_model_controlled(source, &metadata, &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(direct.blocks_flat.len(), model.blocks_flat.len());
+    }
+
+    #[test]
+    fn block_semantics_preserve_width_admission_spans_and_cancellation() {
+        let width = MAX_BLOCK_SPACE_EXPANSION_ITEMS + 1;
+        let source = format!(
+            "block
+space:{width}
+"
+        );
+        crate::editor::test_work::reset();
+        let error =
+            parse_block_semantic_model_controlled(&source, &metadata(), &OperationControl::new())
+                .unwrap()
+                .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("structured error");
+        };
+        let start = source.find(&width.to_string()).unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + width.to_string().len()))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(
+            parse_block_semantic_model_controlled(
+                "block
+A
+B
+",
+                &metadata(),
+                &control,
+            )
+            .is_err()
+        );
     }
 }

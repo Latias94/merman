@@ -13,7 +13,6 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
-mod compatibility_json;
 pub mod config;
 pub mod detect;
 pub mod diagram;
@@ -37,93 +36,85 @@ pub mod models;
 pub mod operation;
 mod parse_diagnostic;
 pub mod preprocess;
+#[cfg(feature = "presentation")]
 pub mod presentation;
 pub mod resources;
 pub mod runtime;
 pub mod sanitize;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state",
-    feature = "diagram-timeline",
-    feature = "diagram-cynefin",
-    feature = "diagram-info",
-    feature = "diagram-journey",
-    feature = "diagram-pie"
-))]
 pub mod semantic;
 mod source_span;
 pub mod style;
 pub mod svg_security;
 #[doc(hidden)]
 pub mod terminal_text;
+#[cfg(feature = "presentation")]
 mod theme;
+#[cfg(feature = "presentation")]
 pub mod theme_color;
 mod theme_id;
 pub mod time;
 pub mod utils;
 mod yaml_config;
 
-pub use compatibility_json::ManagedSemanticJson;
 pub use config::MermaidConfig;
+#[cfg(feature = "presentation")]
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
-    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID,
-    BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance, CustomJsonRenderModel,
-    CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
-    DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
-    ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
+    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID, CapturedPanic,
+    DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorFamilySemantics, EditorRenamePolicy,
     EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
 };
-pub use error::{
-    Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind, Result,
-    ThemeEvaluationLimitExceeded,
-};
+#[cfg(feature = "presentation")]
+pub use error::ThemeEvaluationLimitExceeded;
+pub use error::{Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
     BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
     DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
     diagram_type_render_model_kind,
 };
+#[cfg(feature = "compat-json")]
+pub use json_value::ManagedJson as ManagedSemanticJson;
+pub use json_value::ManagedJson;
 pub use operation::{
     CancelReason, OperationCancelled, OperationControl, OperationControlResult,
     OperationLedgerError, OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
     OperationResourceOverride, OperationResourceProvenance,
 };
-pub use preprocess::{
-    PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
-};
-#[cfg(test)]
+pub use preprocess::{PreprocessResult, PreprocessedSource};
+#[cfg(feature = "presentation")]
+pub use preprocess::{preprocess_diagram, preprocess_diagram_with_known_type};
+#[cfg(all(test, feature = "presentation"))]
 use presentation::PresentationConfig;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state",
-    feature = "diagram-timeline",
-    feature = "diagram-cynefin",
-    feature = "diagram-info",
-    feature = "diagram-journey",
-    feature = "diagram-pie"
-))]
+#[cfg(feature = "compat-json")]
+pub use presentation::diagram::{
+    BuiltinRenderSemantic, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
+    DiagramSemanticParser, DiagramSnapshotCapture, ParsedDiagram, ParsedEditorFacts,
+};
+#[cfg(feature = "presentation")]
+pub use presentation::diagram::{
+    CustomJsonProvenance, CustomJsonRenderModel, CustomJsonRenderParser, ParsedDiagramRender,
+    RenderDiagramRegistry, RenderSemanticModel,
+};
 pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
 pub use source_span::SourceSpan;
 pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
+#[cfg(feature = "presentation")]
 pub use presentation::{MermaidEngine, ParseOptions, PresentationMetadata};
 // Transitional source names; removed when full consumers migrate.
 #[doc(hidden)]
+#[cfg(feature = "presentation")]
 pub use presentation::engine::__private;
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) use presentation::engine::parse_pipeline;
 #[doc(hidden)]
+#[cfg(feature = "presentation")]
 pub use presentation::{MermaidEngine as Engine, PresentationMetadata as ParseMetadata};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
@@ -179,5 +170,5 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
     family::diagram_header_facts()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 mod tests;

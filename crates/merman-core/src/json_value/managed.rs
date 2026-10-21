@@ -8,18 +8,18 @@ use std::fmt;
 use std::io::Write;
 use std::ops::Deref;
 
-/// Mermaid-compatible JSON with iterative ownership and export.
+/// JSON with iterative ownership and export, independent of a wire format.
 ///
 /// Ordinary clone, equality, debug formatting, and disposal do not recurse through containers.
 /// Generic serde serialization supports at most 128 nested JSON containers; use
 /// [`Self::write_json`] for deeper output. Borrowed raw values and explicitly extracted unmanaged
 /// values retain serde_json's own lifecycle and serialization behavior.
 #[derive(Default)]
-pub struct ManagedSemanticJson {
+pub struct ManagedJson {
     value: Value,
 }
 
-impl ManagedSemanticJson {
+impl ManagedJson {
     /// Takes ownership of an existing JSON value without changing its shape or object order.
     pub fn from_value(value: Value) -> Self {
         Self { value }
@@ -178,19 +178,19 @@ impl ManagedSemanticJson {
     }
 }
 
-impl From<Value> for ManagedSemanticJson {
+impl From<Value> for ManagedJson {
     fn from(value: Value) -> Self {
         Self::from_value(value)
     }
 }
 
-impl From<&Value> for ManagedSemanticJson {
+impl From<&Value> for ManagedJson {
     fn from(value: &Value) -> Self {
         Self::from_value(clone_value_nonrecursive(value))
     }
 }
 
-impl Deref for ManagedSemanticJson {
+impl Deref for ManagedJson {
     type Target = Value;
 
     fn deref(&self) -> &Self::Target {
@@ -198,19 +198,19 @@ impl Deref for ManagedSemanticJson {
     }
 }
 
-impl AsRef<Value> for ManagedSemanticJson {
+impl AsRef<Value> for ManagedJson {
     fn as_ref(&self) -> &Value {
         self.as_value()
     }
 }
 
-impl Clone for ManagedSemanticJson {
+impl Clone for ManagedJson {
     fn clone(&self) -> Self {
         Self::from(&self.value)
     }
 }
 
-impl Drop for ManagedSemanticJson {
+impl Drop for ManagedJson {
     fn drop(&mut self) {
         drop_value_nonrecursive(std::mem::take(&mut self.value));
     }
@@ -241,27 +241,27 @@ fn equal_values(left: &Value, right: &Value) -> bool {
     true
 }
 
-impl PartialEq for ManagedSemanticJson {
+impl PartialEq for ManagedJson {
     fn eq(&self, other: &Self) -> bool {
         equal_values(&self.value, &other.value)
     }
 }
 
-impl Eq for ManagedSemanticJson {}
+impl Eq for ManagedJson {}
 
-impl PartialEq<Value> for ManagedSemanticJson {
+impl PartialEq<Value> for ManagedJson {
     fn eq(&self, other: &Value) -> bool {
         equal_values(&self.value, other)
     }
 }
 
-impl PartialEq<ManagedSemanticJson> for Value {
-    fn eq(&self, other: &ManagedSemanticJson) -> bool {
+impl PartialEq<ManagedJson> for Value {
+    fn eq(&self, other: &ManagedJson) -> bool {
         equal_values(self, &other.value)
     }
 }
 
-impl fmt::Debug for ManagedSemanticJson {
+impl fmt::Debug for ManagedJson {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut bytes = Vec::new();
         self.write_json(&mut bytes).map_err(|_| fmt::Error)?;
@@ -269,7 +269,7 @@ impl fmt::Debug for ManagedSemanticJson {
     }
 }
 
-impl Serialize for ManagedSemanticJson {
+impl Serialize for ManagedJson {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut stack = vec![(&self.value, 0usize)];
         while let Some((value, depth)) = stack.pop() {
@@ -306,8 +306,51 @@ impl Serialize for ManagedSemanticJson {
     }
 }
 
-impl<'de> Deserialize<'de> for ManagedSemanticJson {
+impl<'de> Deserialize<'de> for ManagedJson {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Value::deserialize(deserializer).map(Self::from_value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deep_json_lifecycle_does_not_require_a_presentation_capability() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut value = Value::Null;
+                for _ in 0..2048 {
+                    value = Value::Array(vec![value]);
+                }
+                let managed = ManagedJson::from_value(value);
+                let cloned = managed.clone();
+                assert_eq!(managed, cloned);
+                assert!(serde_json::to_vec(&managed).is_err());
+
+                let mut bytes = Vec::new();
+                managed.write_json(&mut bytes).unwrap();
+                assert_eq!(bytes.len(), 4100);
+                assert_eq!(&bytes[..3], b"[[[");
+                assert_eq!(&bytes[bytes.len() - 3..], b"]]]");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn controlled_export_observes_cancellation_before_writing() {
+        let managed = ManagedJson::from_value(serde_json::json!({"items": [1, 2, 3]}));
+        let control = OperationControl::new();
+        control.cancel();
+        let mut bytes = Vec::new();
+        let error = managed
+            .write_json_controlled(&mut bytes, &control)
+            .unwrap_err();
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert!(bytes.is_empty());
     }
 }

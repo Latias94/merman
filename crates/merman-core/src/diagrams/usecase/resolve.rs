@@ -27,11 +27,11 @@ struct State {
 
 pub(super) fn resolve(
     draft: &Draft,
-    meta: &ParseMetadata,
+    title: Option<&str>,
     control: &OperationControl,
-) -> OperationControlResult<PResult<UsecaseDiagramRenderModel>> {
+) -> OperationControlResult<PResult<UsecaseDiagramModel>> {
     control.checkpoint()?;
-    let result = build(draft, meta, control);
+    let result = build(draft, title, control);
     control.checkpoint()?;
     Ok(result)
 }
@@ -226,9 +226,9 @@ fn collect(state: &mut State, entity: &Entity) -> PResult<()> {
 
 fn build(
     draft: &Draft,
-    meta: &ParseMetadata,
+    title: Option<&str>,
     control: &OperationControl,
-) -> PResult<UsecaseDiagramRenderModel> {
+) -> PResult<UsecaseDiagramModel> {
     let mut symbols = HashMap::<String, Origin>::new();
     let mut elements = HashMap::<String, State>::new();
     let mut boundaries = Vec::<UsecaseBoundary>::new();
@@ -664,7 +664,7 @@ fn build(
             class_defs.push(definition.clone());
         }
     }
-    let mut model = UsecaseDiagramRenderModel {
+    let mut model = UsecaseDiagramModel {
         direction: draft.direction.clone().unwrap_or_else(|| "LR".to_string()),
         nodes,
         boundaries,
@@ -672,7 +672,7 @@ fn build(
         notes,
         json_nodes,
         class_defs,
-        title: meta.title.clone(),
+        title: title.map(str::to_string),
         acc_title: draft.acc_title.clone(),
         acc_description: draft.acc_description.clone(),
     };
@@ -692,7 +692,7 @@ fn build(
     }
     Ok(model)
 }
-fn target_index(model: &UsecaseDiagramRenderModel) -> HashMap<String, (Kind, usize)> {
+fn target_index(model: &UsecaseDiagramModel) -> HashMap<String, (Kind, usize)> {
     let mut targets: HashMap<_, _> = model
         .nodes
         .iter()
@@ -724,7 +724,7 @@ fn target_index(model: &UsecaseDiagramRenderModel) -> HashMap<String, (Kind, usi
     targets
 }
 fn stylable<'a>(
-    model: &'a mut UsecaseDiagramRenderModel,
+    model: &'a mut UsecaseDiagramModel,
     targets: &HashMap<String, (Kind, usize)>,
     id: &str,
     span: SourceSpan,

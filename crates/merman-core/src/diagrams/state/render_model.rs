@@ -1,30 +1,37 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize, Serializer};
-use serde_json::{Map, Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 use std::collections::HashMap;
 
 use super::CSS_EDGE_NOTE_EDGE;
-use super::model::{StateDiagramModel, StateNode};
+use super::StateDocument;
+use super::complexity::StateRecords;
+use super::model::{StateDiagramModel, StateModelConstruction, StateNode};
 pub use super::model::{
     StateLink as StateDiagramRenderLink, StateLinks as StateDiagramRenderLinks,
     StateNote as StateDiagramRenderNote, StateRecord as StateDiagramRenderState,
     StateRelation as StateDiagramRenderRelation, StateStyleClass as StateDiagramRenderStyleClass,
 };
-use super::{StateDocument, StateDocumentId, StateStatement};
+#[cfg(feature = "compat-json")]
+use super::{StateDocumentId, StateStatement};
 use crate::resources::ModelComplexity;
-use crate::{ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result};
+#[cfg(feature = "compat-json")]
+use crate::{ManagedSemanticJson, ParseMetadata, Result};
+use crate::{OperationControl, OperationControlResult};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 thread_local! {
     static STATE_PROJECTED_DOCUMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(super) fn reset_projected_document_count() {
     STATE_PROJECTED_DOCUMENT_COUNT.set(0);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(super) fn projected_document_count() -> usize {
     STATE_PROJECTED_DOCUMENT_COUNT.get()
 }
@@ -52,11 +59,6 @@ pub(super) struct StateNodePresentation {
     pub color_index: Option<usize>,
     pub wrapping_width: Option<f64>,
     pub min_width: Option<f64>,
-}
-
-pub(super) struct StateModelConstruction {
-    pub model: StateDiagramModel,
-    pub presentation: Vec<StateNodePresentation>,
 }
 
 impl StateModelConstruction {
@@ -156,7 +158,10 @@ impl StateDiagramRenderModel {
             edges: &self.edges,
             relations: &self.relations,
             links: &self.links,
-            states: StateRecords(&self.states),
+            states: StateRecords {
+                states: &self.states,
+                include_documents: false,
+            },
             style_classes: &self.style_classes,
         }
     }
@@ -176,87 +181,7 @@ impl StateDiagramRenderModel {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StateRecordFields<'a> {
-    id: &'a str,
-    #[serde(rename = "type")]
-    state_type: &'a str,
-    descriptions: &'a [String],
-    doc: Option<()>,
-    note: &'a Option<StateDiagramRenderNote>,
-    classes: &'a [String],
-    styles: &'a [String],
-    text_styles: &'a [String],
-    start: Option<bool>,
-}
-
-impl StateDiagramRenderState {
-    fn fields(&self) -> StateRecordFields<'_> {
-        StateRecordFields {
-            id: &self.id,
-            state_type: &self.state_type,
-            descriptions: &self.descriptions,
-            doc: None,
-            note: &self.note,
-            classes: &self.classes,
-            styles: &self.styles,
-            text_styles: &self.text_styles,
-            start: self.start,
-        }
-    }
-}
-
-struct StateRecords<'a>(&'a HashMap<String, StateDiagramRenderState>);
-
-impl Serialize for StateRecords<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let states = self.0;
-        let mut map = serializer.serialize_map(Some(states.len()))?;
-        for (id, state) in states {
-            map.serialize_entry(id, &state.fields())?;
-        }
-        map.end()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct DocumentComplexity {
-    items: usize,
-    text_bytes: usize,
-    depth: usize,
-}
-
-fn json_complexity(value: &Value) -> DocumentComplexity {
-    let mut result = DocumentComplexity::default();
-    let mut stack = vec![(value, 0usize)];
-    while let Some((value, parent_depth)) = stack.pop() {
-        match value {
-            Value::Array(values) => {
-                let depth = parent_depth.saturating_add(1);
-                result.depth = result.depth.max(depth);
-                result.items = result.items.saturating_add(values.len());
-                stack.extend(values.iter().map(|value| (value, depth)));
-            }
-            Value::Object(values) => {
-                let depth = parent_depth.saturating_add(1);
-                result.depth = result.depth.max(depth);
-                result.items = result.items.saturating_add(values.len());
-                for (key, value) in values {
-                    result.text_bytes = result.text_bytes.saturating_add(key.len());
-                    stack.push((value, depth));
-                }
-            }
-            Value::String(value) => {
-                result.text_bytes = result.text_bytes.saturating_add(value.len())
-            }
-            _ => {}
-        }
-    }
-    result
-}
-
+#[cfg(feature = "compat-json")]
 impl StateDocument {
     fn project(
         &self,
@@ -326,58 +251,6 @@ impl StateDocument {
                 return Ok(doc);
             }
         }
-    }
-
-    fn complexities(&self) -> Vec<DocumentComplexity> {
-        let mut completed = vec![None; self.documents.len()];
-        for root in 0..self.documents.len() {
-            if completed[root].is_some() {
-                continue;
-            }
-            let mut stack = vec![(StateDocumentId(root), false)];
-            while let Some((id, visited)) = stack.pop() {
-                if completed[id.0].is_some() {
-                    continue;
-                }
-                if !visited {
-                    stack.push((id, true));
-                    for stmt in &self.documents[id.0] {
-                        if let StateStatement::State(state) = stmt
-                            && let Some(child) = state.doc
-                        {
-                            stack.push((child, false));
-                        }
-                    }
-                    continue;
-                }
-                let mut result = DocumentComplexity {
-                    items: self.documents[id.0].len(),
-                    text_bytes: 0,
-                    depth: 1,
-                };
-                for stmt in &self.documents[id.0] {
-                    let shallow = super::db::stmt_to_json_shallow(stmt, None);
-                    let own = json_complexity(shallow.as_value());
-                    result.items = result.items.saturating_add(own.items);
-                    result.text_bytes = result.text_bytes.saturating_add(own.text_bytes);
-                    result.depth = result.depth.max(1usize.saturating_add(own.depth));
-                    if let StateStatement::State(state) = stmt
-                        && let Some(child) = state.doc
-                    {
-                        let child: DocumentComplexity =
-                            completed[child.0].expect("child document completed first");
-                        result.items = result.items.saturating_add(child.items);
-                        result.text_bytes = result.text_bytes.saturating_add(child.text_bytes);
-                        result.depth = result.depth.max(2usize.saturating_add(child.depth));
-                    }
-                }
-                completed[id.0] = Some(result);
-            }
-        }
-        completed
-            .into_iter()
-            .map(|value| value.expect("all documents completed"))
-            .collect()
     }
 }
 
@@ -473,6 +346,7 @@ pub struct StateDiagramRenderEdge {
     pub label: String,
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &StateDiagramRenderModel,
     meta: &ParseMetadata,
@@ -484,6 +358,7 @@ pub(crate) fn render_model_to_compat_json(
     )
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &StateDiagramRenderModel,
     meta: &ParseMetadata,
@@ -537,6 +412,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(root).into()))
 }
 
+#[cfg(feature = "compat-json")]
 fn state_records_to_compat_json(
     model: &StateDiagramRenderModel,
     control: &OperationControl,
@@ -579,6 +455,7 @@ fn state_records_to_compat_json(
     .into()))
 }
 
+#[cfg(feature = "compat-json")]
 fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Value {
     if node.shape == "noteGroup" {
         return json!({
@@ -662,6 +539,7 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
     Value::Object(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Value {
     let note_edge = edge.classes == CSS_EDGE_NOTE_EDGE;
     let mut out = Map::with_capacity(13);
@@ -693,6 +571,7 @@ fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Val
     Value::Object(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn option_number_value(value: Option<f64>) -> Value {
     value
         .map(crate::json_value::number_value)

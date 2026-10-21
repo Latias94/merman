@@ -20,6 +20,12 @@ pub struct StateDiagramModel {
     pub style_classes: IndexMap<String, StateStyleClass>,
 }
 
+pub(super) struct StateModelConstruction {
+    pub model: StateDiagramModel,
+    #[cfg(feature = "presentation")]
+    pub presentation: Vec<super::render_model::StateNodePresentation>,
+}
+
 impl StateDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);

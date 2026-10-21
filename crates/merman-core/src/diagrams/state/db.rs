@@ -1,18 +1,25 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{
-    Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
-    ParseMetadata, Result,
+    Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
 };
 use indexmap::IndexMap;
-use serde_json::{Map, Value, json};
+#[cfg(feature = "compat-json")]
+use serde_json::Map;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
-use super::render_model::{StateModelConstruction, StateNodePresentation};
+#[cfg(feature = "presentation")]
+use super::StateDiagramRenderModel;
+use super::model::StateModelConstruction;
+#[cfg(feature = "presentation")]
+use super::render_model::StateNodePresentation;
 use super::{
-    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDiagramRenderModel, StateDocument, StateDocumentId,
-    StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation,
-    StateStatement, StateStatementNote, StateStatementState, StateStyleClass,
+    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocument, StateDocumentId, StateEdge, StateLink,
+    StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
+    StateStatementNote, StateStatementState, StateStyleClass,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -407,6 +414,7 @@ impl StateDb {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     pub(super) fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
         let model = self
             .into_model_controlled(meta, &OperationControl::new())
@@ -414,6 +422,7 @@ impl StateDb {
         super::render_model_to_compat_json(&model, meta)
     }
 
+    #[cfg(feature = "presentation")]
     pub(super) fn into_model_controlled(
         self,
         meta: &ParseMetadata,
@@ -439,7 +448,13 @@ impl StateDb {
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateDiagramModel>> {
         Ok(self
-            .into_canonical_model_controlled(diagram_type, config, false, control)?
+            .into_canonical_model_controlled(
+                diagram_type,
+                config,
+                #[cfg(feature = "presentation")]
+                false,
+                control,
+            )?
             .map(|construction| construction.model))
     }
 
@@ -447,18 +462,20 @@ impl StateDb {
         self,
         diagram_type: &str,
         config: &MermaidConfig,
-        collect_presentation: bool,
+        #[cfg(feature = "presentation")] collect_presentation: bool,
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateModelConstruction>> {
         let StateGraphConstruction {
             nodes,
             edges,
+            #[cfg(feature = "presentation")]
             presentation,
         } = match build_state_graph(
             &self.document,
             &self.states,
             &self.style_classes,
             config,
+            #[cfg(feature = "presentation")]
             collect_presentation,
             control,
         ) {
@@ -590,6 +607,7 @@ impl StateDb {
                 states,
                 style_classes,
             },
+            #[cfg(feature = "presentation")]
             presentation,
         }))
     }
@@ -603,10 +621,14 @@ struct Link {
 
 const DEFAULT_NESTED_DOC_DIR: &str = "TB";
 
+#[cfg(feature = "presentation")]
 const DOMID_STATE: &str = "state";
+#[cfg(feature = "presentation")]
 const DOMID_TYPE_SPACER: &str = "----";
 
+#[cfg(feature = "presentation")]
 const NOTE: &str = "note";
+#[cfg(feature = "presentation")]
 const PARENT: &str = "parent";
 const NOTE_ID: &str = "----note";
 const PARENT_ID: &str = "----parent";
@@ -626,21 +648,22 @@ const CSS_DIAGRAM_NOTE: &str = "statediagram-note";
 const CSS_DIAGRAM_CLUSTER: &str = "statediagram-cluster";
 const CSS_DIAGRAM_CLUSTER_ALT: &str = "statediagram-cluster-alt";
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 thread_local! {
     static STATE_DOM_ID_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(super) fn reset_dom_id_count() {
     STATE_DOM_ID_COUNT.set(0);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(super) fn dom_id_count() -> usize {
     STATE_DOM_ID_COUNT.get()
 }
 
+#[cfg(feature = "presentation")]
 fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
     #[cfg(test)]
     STATE_DOM_ID_COUNT.set(STATE_DOM_ID_COUNT.get() + 1);
@@ -651,10 +674,12 @@ fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
     format!("{DOMID_STATE}-{item_id}{type_str}-{counter}")
 }
 
+#[cfg(feature = "compat-json")]
 fn string_array_value(values: &[String]) -> Value {
     Value::Array(values.iter().cloned().map(Value::String).collect())
 }
 
+#[cfg(feature = "compat-json")]
 fn option_string_value(value: &Option<String>) -> Value {
     value
         .as_ref()
@@ -674,6 +699,7 @@ struct NodeScratch {
     explicit_dir: Option<bool>,
     is_group: bool,
     parent_id: Option<String>,
+    #[cfg(feature = "presentation")]
     color_index: Option<usize>,
 }
 
@@ -756,18 +782,20 @@ fn compiled_styles(css_classes: &str, classes: &IndexMap<String, StyleClass>) ->
 
 struct ConstructedStateNode {
     model: StateNode,
+    #[cfg(feature = "presentation")]
     presentation: Option<StateNodePresentation>,
 }
 
 struct StateGraphConstruction {
     nodes: Vec<StateNode>,
     edges: Vec<StateEdge>,
+    #[cfg(feature = "presentation")]
     presentation: Vec<StateNodePresentation>,
 }
 
 fn upsert_node_typed(
     nodes: &mut Vec<StateNode>,
-    presentation: &mut Vec<StateNodePresentation>,
+    #[cfg(feature = "presentation")] presentation: &mut Vec<StateNodePresentation>,
     index: &mut HashMap<String, usize>,
     node: ConstructedStateNode,
 ) {
@@ -775,6 +803,7 @@ fn upsert_node_typed(
         Entry::Occupied(o) => {
             if let Some(dst) = nodes.get_mut(*o.get()) {
                 *dst = node.model;
+                #[cfg(feature = "presentation")]
                 if let Some(fields) = node.presentation {
                     presentation[*o.get()] = fields;
                 }
@@ -783,6 +812,7 @@ fn upsert_node_typed(
         Entry::Vacant(v) => {
             v.insert(nodes.len());
             nodes.push(node.model);
+            #[cfg(feature = "presentation")]
             if let Some(fields) = node.presentation {
                 presentation.push(fields);
             }
@@ -792,7 +822,7 @@ fn upsert_node_typed(
 
 fn insert_generated_node_typed(
     nodes: &mut Vec<StateNode>,
-    presentation: &mut Vec<StateNodePresentation>,
+    #[cfg(feature = "presentation")] presentation: &mut Vec<StateNodePresentation>,
     index: &mut HashMap<String, usize>,
     authored_states: &HashMap<String, StateDbRecord>,
     node: ConstructedStateNode,
@@ -814,6 +844,7 @@ fn insert_generated_node_typed(
         Entry::Vacant(entry) => {
             entry.insert(nodes.len());
             nodes.push(node.model);
+            #[cfg(feature = "presentation")]
             if let Some(fields) = node.presentation {
                 presentation.push(fields);
             }
@@ -822,6 +853,7 @@ fn insert_generated_node_typed(
     }
 }
 
+#[cfg(feature = "presentation")]
 fn value_as_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
@@ -851,11 +883,12 @@ fn build_state_graph(
     states: &HashMap<String, StateDbRecord>,
     classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
-    collect_presentation: bool,
+    #[cfg(feature = "presentation")] collect_presentation: bool,
     control: &OperationControl,
 ) -> std::result::Result<StateGraphConstruction, StateBuildError> {
     let mut nodes: Vec<StateNode> = Vec::new();
     let mut edges: Vec<StateEdge> = Vec::new();
+    #[cfg(feature = "presentation")]
     let mut presentation = Vec::new();
     let mut node_index: HashMap<String, usize> = HashMap::new();
 
@@ -868,14 +901,18 @@ fn build_state_graph(
         states: &'a HashMap<String, StateDbRecord>,
         classes: &'a IndexMap<String, StyleClass>,
         config: &'a MermaidConfig,
+        #[cfg(feature = "presentation")]
         collect_presentation: bool,
         nodes: &'a mut Vec<StateNode>,
+        #[cfg(feature = "presentation")]
         presentation: &'a mut Vec<StateNodePresentation>,
         node_index: &'a mut HashMap<String, usize>,
         edges: &'a mut Vec<StateEdge>,
         node_db: &'a mut HashMap<String, NodeScratch>,
         graph_item_count: &'a mut usize,
+        #[cfg(feature = "presentation")]
         next_color_index: usize,
+        #[cfg(feature = "presentation")]
         container_color_index: HashMap<String, Option<usize>>,
     }
 
@@ -947,6 +984,7 @@ fn build_state_graph(
         Ok(())
     }
 
+    #[cfg(feature = "presentation")]
     fn config_state_number(config: &MermaidConfig, key: &str) -> Option<f64> {
         config
             .as_value()
@@ -956,6 +994,7 @@ fn build_state_graph(
             .and_then(value_as_f64)
     }
 
+    #[cfg(feature = "presentation")]
     fn color_slot_for(
         next_color_index: &mut usize,
         container_color_index: &mut HashMap<String, Option<usize>>,
@@ -997,7 +1036,9 @@ fn build_state_graph(
         let db_state = states.get(&item_id);
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
+        #[cfg(feature = "presentation")]
         let user_styled = !class_str.trim().is_empty() || !styles.is_empty();
+        #[cfg(feature = "presentation")]
         let (wrapping_width, min_width) = if ctx.collect_presentation {
             (
                 config_state_number(config, "wrappingWidth"),
@@ -1006,11 +1047,12 @@ fn build_state_graph(
         } else {
             (None, None)
         };
+        #[cfg(feature = "presentation")]
         let needs_color_slot = ctx.collect_presentation
             && parsed_item.doc.is_some()
             && !ctx.container_color_index.contains_key(&item_id);
 
-        let mut entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
+        let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
             if !class_str.trim().is_empty() {
                 css_classes.push_str(class_str.trim());
@@ -1039,6 +1081,7 @@ fn build_state_graph(
                 explicit_dir: None,
                 is_group: false,
                 parent_id: None,
+                #[cfg(feature = "presentation")]
                 color_index: None,
             }
         });
@@ -1085,7 +1128,8 @@ fn build_state_graph(
             entry.parent_id = Some(p.id.clone());
         }
 
-        if needs_color_slot {
+        #[cfg(feature = "presentation")]
+        let entry = if needs_color_slot {
             let shape = entry.shape.clone();
             let _ = entry;
             let color_index = color_slot_for(
@@ -1096,12 +1140,15 @@ fn build_state_graph(
                 parent,
                 user_styled,
             );
-            entry = ctx
+            let entry = ctx
                 .node_db
                 .get_mut(&item_id)
                 .expect("state node inserted before color assignment");
             entry.color_index = color_index;
-        }
+            entry
+        } else {
+            entry
+        };
 
         let mut label = Some(entry.label.clone());
         if entry.shape == SHAPE_DIVIDER {
@@ -1126,6 +1173,7 @@ fn build_state_graph(
         model.css_compiled_styles = compiled_styles(&model.css_classes, classes);
         let node = ConstructedStateNode {
             model,
+            #[cfg(feature = "presentation")]
             presentation: ctx.collect_presentation.then(|| StateNodePresentation {
                 dom_id: state_dom_id(&item_id, *ctx.graph_item_count, None),
                 padding: Some(8.0),
@@ -1139,6 +1187,7 @@ fn build_state_graph(
 
         // Notes create a note node + note group + note edge
         if let Some(mut n) = parsed_item.note.clone() {
+            #[cfg(feature = "presentation")]
             let flowchart_padding = ctx
                 .collect_presentation
                 .then(|| {
@@ -1181,6 +1230,7 @@ fn build_state_graph(
             group_model.css_compiled_styles = compiled_styles(&group_model.css_classes, classes);
             let group_node = ConstructedStateNode {
                 model: group_model,
+                #[cfg(feature = "presentation")]
                 presentation: ctx.collect_presentation.then(|| StateNodePresentation {
                     dom_id: state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT)),
                     padding: Some(16.0),
@@ -1212,6 +1262,7 @@ fn build_state_graph(
             note_model.css_compiled_styles = compiled_styles(&note_model.css_classes, classes);
             let note_node = ConstructedStateNode {
                 model: note_model,
+                #[cfg(feature = "presentation")]
                 presentation: ctx.collect_presentation.then(|| StateNodePresentation {
                     dom_id: state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE)),
                     padding: flowchart_padding,
@@ -1225,6 +1276,7 @@ fn build_state_graph(
 
             insert_generated_node_typed(
                 ctx.nodes,
+                #[cfg(feature = "presentation")]
                 ctx.presentation,
                 ctx.node_index,
                 ctx.states,
@@ -1234,6 +1286,7 @@ fn build_state_graph(
             )?;
             insert_generated_node_typed(
                 ctx.nodes,
+                #[cfg(feature = "presentation")]
                 ctx.presentation,
                 ctx.node_index,
                 ctx.states,
@@ -1241,7 +1294,13 @@ fn build_state_graph(
                 "note",
                 &item_id,
             )?;
-            upsert_node_typed(ctx.nodes, ctx.presentation, ctx.node_index, node);
+            upsert_node_typed(
+                ctx.nodes,
+                #[cfg(feature = "presentation")]
+                ctx.presentation,
+                ctx.node_index,
+                node,
+            );
 
             let (mut from, mut to) = (item_id.clone(), note_id);
             if n.position.as_deref() == Some("left of") {
@@ -1257,7 +1316,13 @@ fn build_state_graph(
             });
             *ctx.graph_item_count += 1;
         } else {
-            upsert_node_typed(ctx.nodes, ctx.presentation, ctx.node_index, node);
+            upsert_node_typed(
+                ctx.nodes,
+                #[cfg(feature = "presentation")]
+                ctx.presentation,
+                ctx.node_index,
+                node,
+            );
         }
 
         Ok(())
@@ -1270,14 +1335,18 @@ fn build_state_graph(
             states,
             classes,
             config,
+            #[cfg(feature = "presentation")]
             collect_presentation,
             nodes: &mut nodes,
+            #[cfg(feature = "presentation")]
             presentation: &mut presentation,
             node_index: &mut node_index,
             edges: &mut edges,
             node_db: &mut node_db,
             graph_item_count: &mut graph_item_count,
+            #[cfg(feature = "presentation")]
             next_color_index: 0,
+            #[cfg(feature = "presentation")]
             container_color_index: HashMap::new(),
         };
         if let Some(root) = document.root {
@@ -1315,10 +1384,12 @@ fn build_state_graph(
     Ok(StateGraphConstruction {
         nodes,
         edges,
+        #[cfg(feature = "presentation")]
         presentation,
     })
 }
 
+#[cfg(feature = "compat-json")]
 fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), Value::String(state.id.clone()));
@@ -1327,6 +1398,7 @@ fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
     Value::Object(obj)
 }
 
+#[cfg(feature = "compat-json")]
 pub(super) fn stmt_to_json_shallow(
     stmt: &StateStatement,
     doc: Option<crate::ManagedSemanticJson>,
@@ -1404,7 +1476,7 @@ fn normalize_multiline_ws(input: &str) -> String {
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use crate::diagrams::state::parse_state_model_for_render_controlled;
     use crate::{Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions};

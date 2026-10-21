@@ -1,17 +1,19 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
+use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    parse_diagnostic::{
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
-    },
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
+    parse_diagnostic::lalrpop_parse_diagnostic,
     source_span::{
         has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use indexmap::IndexMap;
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -38,24 +40,45 @@ include_checked_in_lalrpop_parser!(
     "er_grammar.rs"
 );
 
+#[cfg(feature = "presentation")]
+pub type ErDiagramRenderModel = ErDiagramModel;
+
+#[cfg(feature = "presentation")]
+pub type ErAttributeRenderModel = ErAttribute;
+
+#[cfg(feature = "presentation")]
+pub type ErRelSpecRenderModel = ErRelSpec;
+
+#[cfg(feature = "presentation")]
+pub type ErRelationshipRenderModel = ErRelationship;
+
+#[cfg(feature = "presentation")]
+pub type ErClassDefRenderModel = ErClassDef;
+
+#[cfg(feature = "presentation")]
+pub type ErSubgraphRenderModel = ErSubgraph;
+
+#[cfg(feature = "presentation")]
+pub type ErEntityRenderModel = ErEntity;
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErDiagramRenderModel {
+pub struct ErDiagramModel {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub direction: String,
     #[serde(default)]
-    pub classes: IndexMap<String, ErClassDefRenderModel>,
+    pub classes: IndexMap<String, ErClassDef>,
     #[serde(default)]
-    pub entities: IndexMap<String, ErEntityRenderModel>,
+    pub entities: IndexMap<String, ErEntity>,
     #[serde(default)]
-    pub relationships: Vec<ErRelationshipRenderModel>,
+    pub relationships: Vec<ErRelationship>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub subgraphs: Vec<ErSubgraphRenderModel>,
+    pub subgraphs: Vec<ErSubgraph>,
 }
 
-impl ErDiagramRenderModel {
+impl ErDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -66,7 +89,7 @@ impl ErDiagramRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErAttributeRenderModel {
+pub struct ErAttribute {
     #[serde(rename = "type")]
     pub ty: String,
     pub name: String,
@@ -77,7 +100,7 @@ pub struct ErAttributeRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErRelSpecRenderModel {
+pub struct ErRelSpec {
     #[serde(rename = "cardA")]
     pub card_a: String,
     #[serde(rename = "cardB")]
@@ -87,7 +110,7 @@ pub struct ErRelSpecRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErRelationshipRenderModel {
+pub struct ErRelationship {
     #[serde(rename = "entityA")]
     pub entity_a: String,
     #[serde(default, rename = "roleA")]
@@ -95,11 +118,11 @@ pub struct ErRelationshipRenderModel {
     #[serde(rename = "entityB")]
     pub entity_b: String,
     #[serde(default, rename = "relSpec")]
-    pub rel_spec: ErRelSpecRenderModel,
+    pub rel_spec: ErRelSpec,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErClassDefRenderModel {
+pub struct ErClassDef {
     pub id: String,
     #[serde(default)]
     pub styles: Vec<String>,
@@ -108,7 +131,7 @@ pub struct ErClassDefRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErSubgraphRenderModel {
+pub struct ErSubgraph {
     #[serde(default)]
     pub classes: Vec<String>,
     #[serde(default, rename = "cssStyles")]
@@ -124,11 +147,11 @@ pub struct ErSubgraphRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErEntityRenderModel {
+pub struct ErEntity {
     pub id: String,
     pub label: String,
     #[serde(default)]
-    pub attributes: Vec<ErAttributeRenderModel>,
+    pub attributes: Vec<ErAttribute>,
     #[serde(default)]
     pub alias: String,
     #[serde(default)]
@@ -139,8 +162,9 @@ pub struct ErEntityRenderModel {
     pub css_styles: Vec<String>,
 }
 
-impl ErEntityRenderModel {
+impl ErEntity {
     /// Returns the visible entity label source selected by Mermaid's ER renderer.
+    #[cfg(feature = "presentation")]
     pub fn label_source_for_render(&self) -> &str {
         if self.alias.is_empty() {
             self.label.as_str()
@@ -150,11 +174,11 @@ impl ErEntityRenderModel {
     }
 }
 
-pub(crate) type Attribute = ErAttributeRenderModel;
-pub(crate) type RelSpec = ErRelSpecRenderModel;
-type Relationship = ErRelationshipRenderModel;
-type EntityClass = ErClassDefRenderModel;
-type EntityNode = ErEntityRenderModel;
+pub(crate) type Attribute = ErAttribute;
+pub(crate) type RelSpec = ErRelSpec;
+type Relationship = ErRelationship;
+type EntityClass = ErClassDef;
+type EntityNode = ErEntity;
 
 #[derive(Debug, Clone)]
 enum Action {
@@ -292,7 +316,7 @@ struct ErDb {
     entity_counter: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    subgraphs: Vec<ErSubgraphRenderModel>,
+    subgraphs: Vec<ErSubgraph>,
     subgraph_lookup: IndexMap<String, usize>,
     subgraph_counter: usize,
     completed_members: HashSet<String>,
@@ -460,7 +484,7 @@ impl ErDb {
             raw_id.trim().to_string()
         };
         self.subgraph_counter = self.subgraph_counter.saturating_add(1);
-        let subgraph = ErSubgraphRenderModel {
+        let subgraph = ErSubgraph {
             classes: Vec::new(),
             css_styles: Vec::new(),
             dir: direction,
@@ -584,8 +608,8 @@ impl ErDb {
         Ok(())
     }
 
-    fn into_render_model(self) -> ErDiagramRenderModel {
-        ErDiagramRenderModel {
+    fn into_semantic_model(self) -> ErDiagramModel {
+        ErDiagramModel {
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,
             direction: self.direction,
@@ -596,14 +620,16 @@ impl ErDb {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
-        let model = self.into_render_model();
+        let model = self.into_semantic_model();
         render_model_to_compat_json(&model, meta)
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ErDiagramRenderModel,
+    model: &ErDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     let mut value = serde_json::to_value(model)
@@ -716,6 +742,7 @@ struct ErSemanticFailure {
 }
 
 impl ErSemanticFailure {
+    #[cfg(feature = "compat-json")]
     fn recovery_span(&self, fallback_offset: usize) -> SourceSpan {
         match &self.error {
             lalrpop_util::ParseError::User { error } => error.span,
@@ -723,8 +750,8 @@ impl ErSemanticFailure {
         }
     }
 
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.parse_error(&meta.diagram_type, fallback_offset)
+    fn into_parse_error(self, diagram_type: &str, fallback_offset: usize) -> Error {
+        self.parse_error(diagram_type, fallback_offset)
     }
 
     fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
@@ -734,6 +761,7 @@ impl ErSemanticFailure {
         )
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(
         self,
         meta: &ParseMetadata,
@@ -742,6 +770,7 @@ impl ErSemanticFailure {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts_for_type(
         mut self,
         diagram_type: &str,
@@ -783,38 +812,64 @@ fn construct_er_semantic_source(
     Ok(Ok(ErSemanticSource { db, editor_facts }))
 }
 
+pub(crate) fn parse_er_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ErDiagramModel>> {
+    Ok(
+        construct_er_semantic_source(code, EditorFactsDemand::Omit, control)?
+            .map(|source| {
+                let mut model = source.db.into_semantic_model();
+                model.sanitize_common_db_fields(&metadata.semantic_config);
+                model
+            })
+            .map_err(|failure| (*failure).into_parse_error(&metadata.diagram_type, code.len())),
+    )
+}
+
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
     construct_er_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+        .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_er_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<ErDiagramRenderModel> {
-    Ok(parse_er_semantic_source(code, meta)?.db.into_render_model())
+) -> Result<ErDiagramModel> {
+    Ok(parse_er_semantic_source(code, meta)?
+        .db
+        .into_semantic_model())
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_er_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<ErDiagramRenderModel>> {
+) -> OperationControlResult<Result<ErDiagramModel>> {
     let construction = construct_er_semantic_source(code, EditorFactsDemand::Omit, control)?;
     let source = match construction {
         Ok(source) => source,
-        Err(failure) => return Ok(Err((*failure).into_parse_error(meta, code.len()))),
+        Err(failure) => {
+            return Ok(Err(
+                (*failure).into_parse_error(&meta.diagram_type, code.len())
+            ));
+        }
     };
     control.checkpoint()?;
-    Ok(Ok(source.db.into_render_model()))
+    Ok(Ok(source.db.into_semantic_model()))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_er_semantic_source(code, meta)?.db.into_model(meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -2285,7 +2340,7 @@ impl Iterator for Lexer<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{EditorSemanticRole, MermaidConfig};
@@ -2373,7 +2428,7 @@ mod tests {
 
     #[test]
     fn er_entity_render_label_uses_javascript_string_truthiness() {
-        let mut entity = ErEntityRenderModel {
+        let mut entity = ErEntity {
             label: "CUSTOMER".to_string(),
             alias: "Buyer".to_string(),
             ..Default::default()
@@ -2435,7 +2490,7 @@ mod tests {
                 .eq(["zeta", "alpha", "middle"])
         );
 
-        let round_trip: ErDiagramRenderModel = serde_json::from_value(
+        let round_trip: ErDiagramModel = serde_json::from_value(
             serde_json::to_value(&typed).expect("ER typed model should serialize"),
         )
         .expect("ER typed model should deserialize");
@@ -2637,5 +2692,106 @@ mod tests {
             panic!("token delivery observes cancellation");
         };
         assert_eq!(control.checkpoint(), Err(cancelled));
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "er".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn er_canonical_model_constructs_once_without_editor_work() {
+        let source = "erDiagram\ndirection LR\nsubgraph Orders [Order Domain]\nCUSTOMER ||--o{ ORDER : places\nend\n";
+        reset_er_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model =
+            parse_er_semantic_model_controlled(source, &metadata(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(model.direction, "LR");
+        assert_eq!(
+            model
+                .entities
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["CUSTOMER", "ORDER"]
+        );
+        assert_eq!(model.relationships[0].role_a, "places");
+        assert_eq!(model.subgraphs[0].nodes, ["CUSTOMER", "ORDER"]);
+        assert_eq!(er_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn er_canonical_errors_keep_spans_without_editor_work() {
+        let source = "erDiagram\nA {\n string\n}\n";
+        crate::editor::test_work::reset();
+        let error =
+            parse_er_semantic_model_controlled(source, &metadata(), &OperationControl::new())
+                .unwrap()
+                .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic")
+        };
+        assert!(diagnostic.span().is_some());
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "compat-json")]
+        {
+            let Error::DiagramParse {
+                diagnostic: full, ..
+            } = parse_er(
+                source,
+                &ParseMetadata {
+                    diagram_type: "er".to_string(),
+                    config: crate::MermaidConfig::empty_object(),
+                    effective_config: crate::presentation::PresentationConfig::empty_object(),
+                    title: None,
+                },
+            )
+            .unwrap_err()
+            else {
+                panic!("expected parse diagnostic")
+            };
+            assert_eq!(diagnostic, full);
+        }
+    }
+
+    #[test]
+    fn er_canonical_construction_observes_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_er_semantic_model_controlled("erDiagram\nA\n", &metadata(), &control).is_err()
+        );
+    }
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn er_typed_projection_omits_editor_observers() {
+        let metadata = ParseMetadata {
+            diagram_type: "er".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        crate::editor::test_work::reset();
+        let model = parse_er_model_for_render_controlled(
+            "erDiagram\nA\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!model.entities.is_empty());
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

@@ -1,5 +1,13 @@
+#[cfg(all(
+    feature = "presentation",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+use crate::ParseMetadata;
 use crate::SourceSpan;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(all(
+    feature = "compat-json",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
 use crate::diagram::legacy_warning_messages;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::sanitize::sanitize_text;
@@ -8,7 +16,7 @@ use crate::{
     DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, OperationControl,
-    OperationControlResult, ParseMetadata, Result,
+    OperationControlResult, Result,
     parse_diagnostic::{
         format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
     },
@@ -16,7 +24,12 @@ use crate::{
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use indexmap::IndexMap;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(all(
+    any(test, feature = "compat-json"),
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+use serde_json::json;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::cell::Cell;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -69,6 +82,8 @@ mod lexer;
 mod lexer_iter;
 mod link;
 mod model;
+#[cfg(feature = "presentation")]
+mod presentation;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod semantic;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -82,6 +97,7 @@ use text::{is_ecmascript_trim_char, parse_edge_label_text, parse_label_text};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use text::{strip_wrapping_backticks, title_kind_str, trim_flowdb_label_text, unquote};
 
+#[cfg(feature = "presentation")]
 #[doc(hidden)]
 pub use model::FlowchartRenderContext;
 pub use model::{
@@ -99,17 +115,26 @@ use ast::{
     FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use model::{
-    Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, FlowchartRenderLabelSources,
-    FlowchartRenderStyleSources, Node,
+use model::{Edge, EdgeDefaults, FlowNodeSyntax, Node};
+#[cfg(all(
+    feature = "presentation",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+use presentation::{
+    FlowSubgraphVertexStyle, FlowchartRenderLabelSources, FlowchartRenderStyleSources,
 };
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
 use super::shapes::{pinned_shape_names, public_pinned_shape_names};
+#[cfg(all(
+    any(test, feature = "compat-json"),
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+use accessibility::scan_flowchart_accessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use accessibility::{
-    FlowchartAccessibilityScan, FlowchartAccessibilityStatement, scan_flowchart_accessibility,
+    FlowchartAccessibilityScan, FlowchartAccessibilityStatement,
     scan_flowchart_accessibility_controlled,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -173,16 +198,23 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    #[cfg(feature = "presentation")]
     subgraph_vertex_styles: Option<FlowchartRenderStyleSources>,
+    #[cfg(feature = "presentation")]
     collapsed_subgraphs: Option<rustc_hash::FxHashSet<String>>,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
-trait FlowchartMetadata {
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) trait FlowchartMetadata {
     fn diagram_type(&self) -> &str;
     fn diagram_config(&self) -> &MermaidConfig;
 }
 
+#[cfg(all(
+    feature = "presentation",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
 impl FlowchartMetadata for ParseMetadata {
     fn diagram_type(&self) -> &str {
         &self.diagram_type
@@ -193,6 +225,7 @@ impl FlowchartMetadata for ParseMetadata {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartMetadata for crate::SemanticMetadata {
     fn diagram_type(&self) -> &str {
         &self.diagram_type
@@ -204,12 +237,14 @@ impl FlowchartMetadata for crate::SemanticMetadata {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_flowchart_with_warning_facts(code, meta)
         .map(crate::family::WarningSemanticParse::into_model)
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_flowchart_with_warning_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -223,6 +258,7 @@ pub(crate) fn parse_flowchart_with_warning_facts(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -287,14 +323,15 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
-pub(crate) fn parse_flowchart_model_for_render(
+pub(crate) fn parse_flowchart_model_for_render<M: FlowchartMetadata>(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &M,
 ) -> Result<FlowchartModel> {
     parse_flowchart_semantic_source(code, meta)?.into_model(meta)
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
     meta: &ParseMetadata,
@@ -303,6 +340,7 @@ pub(crate) fn parse_flowchart_model_with_render_context(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_flowchart_model_with_render_context_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -329,6 +367,7 @@ pub(crate) fn parse_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &FlowchartModel,
     meta: &ParseMetadata,
@@ -384,7 +423,10 @@ pub fn flowchart_pinned_shape_names() -> impl Iterator<Item = &'static str> {
     pinned_shape_names()
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(all(
+    any(test, feature = "compat-json"),
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
 fn parse_flowchart_semantic_source<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
@@ -404,6 +446,7 @@ fn parse_flowchart_semantic_source<M: FlowchartMetadata>(
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+#[cfg(feature = "presentation")]
 fn parse_flowchart_semantic_source_with_context<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
@@ -432,6 +475,7 @@ fn parse_flowchart_semantic_source_controlled<M: FlowchartMetadata>(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "presentation")]
 fn parse_flowchart_semantic_source_with_context_controlled<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
@@ -444,7 +488,7 @@ fn parse_flowchart_semantic_source_with_context_controlled<M: FlowchartMetadata>
 fn parse_flowchart_semantic_source_controlled_with_render_context<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
-    collect_render_context: bool,
+    _collect_render_context: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     control.checkpoint()?;
@@ -463,7 +507,7 @@ fn parse_flowchart_semantic_source_controlled_with_render_context<M: FlowchartMe
         acc_title,
         acc_descr,
         meta,
-        collect_render_context,
+        _collect_render_context,
         control,
     )
 }
@@ -505,7 +549,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
     acc_title: Option<String>,
     acc_descr: Option<String>,
     meta: &M,
-    collect_render_context: bool,
+    _collect_render_context: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     let shape_data_documents = prepare_flowchart_shape_data(&ast, control)?;
@@ -533,9 +577,11 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
     let mut edges = edges;
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
+    #[cfg(feature = "presentation")]
     let mut subgraph_vertex_styles =
-        collect_render_context.then(FlowchartRenderStyleSources::default);
-    let mut collapsed_subgraphs = collect_render_context.then(rustc_hash::FxHashSet::default);
+        _collect_render_context.then(FlowchartRenderStyleSources::default);
+    #[cfg(feature = "presentation")]
+    let mut collapsed_subgraphs = _collect_render_context.then(rustc_hash::FxHashSet::default);
     let mut vertex_calls = Vec::new();
     let mut warning_facts = Vec::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
@@ -559,7 +605,9 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
             subgraph_declaration_owners: &builder.declaration_owners,
+            #[cfg(feature = "presentation")]
             subgraph_vertex_styles: subgraph_vertex_styles.as_mut(),
+            #[cfg(feature = "presentation")]
             collapsed_subgraphs: collapsed_subgraphs.as_mut(),
             vertex_calls: &mut vertex_calls,
             warning_facts: &mut warning_facts,
@@ -592,7 +640,9 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        #[cfg(feature = "presentation")]
         subgraph_vertex_styles,
+        #[cfg(feature = "presentation")]
         collapsed_subgraphs,
         warning_facts,
     }))
@@ -685,6 +735,7 @@ fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpa
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(test, feature = "compat-json"))]
 fn parse_flowchart_ast<M: FlowchartMetadata>(code: &str, meta: &M) -> Result<FlowchartAst> {
     parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?
 }
@@ -1750,13 +1801,21 @@ fn push_flowchart_token_symbol(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+struct FlowchartModelProjection {
+    model: FlowchartModel,
+    #[cfg(feature = "presentation")]
+    render_context: Option<FlowchartRenderContext>,
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartSemanticSource {
+    #[cfg(any(test, feature = "compat-json"))]
     fn into_model<M: FlowchartMetadata>(self, meta: &M) -> Result<FlowchartModel> {
         self.into_model_controlled(meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "presentation"))]
     fn into_model_with_render_context<M: FlowchartMetadata>(
         self,
         meta: &M,
@@ -1773,9 +1832,10 @@ impl FlowchartSemanticSource {
     ) -> OperationControlResult<Result<FlowchartModel>> {
         Ok(self
             .into_model_parts_controlled(meta, false, control)?
-            .map(|(model, _)| model))
+            .map(|projection| projection.model))
     }
 
+    #[cfg(feature = "presentation")]
     fn into_model_with_render_context_controlled<M: FlowchartMetadata>(
         self,
         meta: &M,
@@ -1783,10 +1843,12 @@ impl FlowchartSemanticSource {
     ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
         Ok(self
             .into_model_parts_controlled(meta, true, control)?
-            .map(|(model, context)| {
+            .map(|projection| {
                 (
-                    model,
-                    context.expect("render context is collected for render-model consumers"),
+                    projection.model,
+                    projection
+                        .render_context
+                        .expect("render context is collected for render-model consumers"),
                 )
             }))
     }
@@ -1794,9 +1856,9 @@ impl FlowchartSemanticSource {
     fn into_model_parts_controlled<M: FlowchartMetadata>(
         self,
         meta: &M,
-        collect_render_context: bool,
+        _collect_render_context: bool,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(FlowchartModel, Option<FlowchartRenderContext>)>> {
+    ) -> OperationControlResult<Result<FlowchartModelProjection>> {
         control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
@@ -1807,7 +1869,9 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
+            #[cfg(feature = "presentation")]
             subgraph_vertex_styles,
+            #[cfg(feature = "presentation")]
             collapsed_subgraphs,
             warning_facts,
             tooltips,
@@ -1820,18 +1884,19 @@ impl FlowchartSemanticSource {
         }
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
+        #[cfg(feature = "presentation")]
         let mut render_label_sources =
-            collect_render_context.then(FlowchartRenderLabelSources::default);
+            _collect_render_context.then(FlowchartRenderLabelSources::default);
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let (node, render_label_source) =
-                flow_node_to_model(node, meta.diagram_config(), collect_render_context);
-            if let (Some(sources), Some(source)) = (&mut render_label_sources, render_label_source)
-            {
-                sources.insert_node(node.id.clone(), source);
-            }
+            let node = flow_node_to_model(
+                node,
+                meta.diagram_config(),
+                #[cfg(feature = "presentation")]
+                render_label_sources.as_mut(),
+            );
             render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
@@ -1839,13 +1904,15 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            match flow_edge_to_model(edge, meta, collect_render_context) {
-                Ok((edge, render_label_source)) => {
-                    if let (Some(sources), Some(source)) =
-                        (&mut render_label_sources, render_label_source)
-                    {
-                        sources.insert_edge(index, source);
-                    }
+            match flow_edge_to_model(
+                edge,
+                meta,
+                #[cfg(feature = "presentation")]
+                render_label_sources
+                    .as_mut()
+                    .map(|sources| (index, sources)),
+            ) {
+                Ok(edge) => {
                     render_edges.push(edge);
                 }
                 Err(error) => return Ok(Err(error)),
@@ -1856,11 +1923,14 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let (subgraph, render_title_source) =
-                flow_subgraph_to_model(subgraph, meta.diagram_config(), collect_render_context);
-            if let Some(sources) = &mut render_label_sources {
-                sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
-            }
+            let subgraph = flow_subgraph_to_model(
+                subgraph,
+                meta.diagram_config(),
+                #[cfg(feature = "presentation")]
+                render_label_sources
+                    .as_mut()
+                    .map(|sources| (index, sources)),
+            );
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -1890,7 +1960,8 @@ impl FlowchartSemanticSource {
             tooltips: render_tooltips,
             warning_facts,
         };
-        let render_context = if collect_render_context {
+        #[cfg(feature = "presentation")]
+        let render_context = if _collect_render_context {
             Some(FlowchartRenderContext::new(
                 render_label_sources.expect("render labels are collected for render consumers"),
                 subgraph_vertex_styles.expect("subgraph styles are collected for render consumers"),
@@ -1901,7 +1972,11 @@ impl FlowchartSemanticSource {
         } else {
             None
         };
-        Ok(Ok((model, render_context)))
+        Ok(Ok(FlowchartModelProjection {
+            model,
+            #[cfg(feature = "presentation")]
+            render_context,
+        }))
     }
 }
 
@@ -1956,17 +2031,22 @@ fn append_missing_subgraph_nodes(
 fn flow_node_to_model(
     n: Node,
     config: &MermaidConfig,
-    collect_render_context: bool,
-) -> (FlowNode, Option<String>) {
+    #[cfg(feature = "presentation")] render_label_sources: Option<&mut FlowchartRenderLabelSources>,
+) -> FlowNode {
     let layout_shape = layout_shape_for_node(&n);
     let label = sanitized_node_label(&n, config);
-    let label_raw = n.label.as_deref().unwrap_or(&n.id);
-    let render_label_source = (collect_render_context
-        && render_label_source_needs_provenance(label_raw))
-    .then(|| sanitized_node_render_label_source(&n, config))
-    .filter(|source| *source != label);
+    #[cfg(feature = "presentation")]
+    if let Some(sources) = render_label_sources {
+        let label_raw = n.label.as_deref().unwrap_or(&n.id);
+        if let Some(source) = render_label_source_needs_provenance(label_raw)
+            .then(|| sanitized_node_render_label_source(&n, config))
+            .filter(|source| *source != label)
+        {
+            sources.insert_node(n.id.clone(), source);
+        }
+    }
 
-    let node = FlowNode {
+    FlowNode {
         id: n.id,
         provenance: n.provenance,
         label: Some(label),
@@ -1985,26 +2065,32 @@ fn flow_node_to_model(
         link: n.link,
         link_target: n.link_target,
         have_callback: n.have_callback,
-    };
-    (node, render_label_source)
+    }
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn flow_edge_to_model<M: FlowchartMetadata>(
     e: Edge,
     meta: &M,
-    collect_render_context: bool,
-) -> Result<(FlowEdge, Option<String>)> {
+    #[cfg(feature = "presentation")] render_label_sources: Option<(
+        usize,
+        &mut FlowchartRenderLabelSources,
+    )>,
+) -> Result<FlowEdge> {
     let label = sanitized_optional_label(e.label.as_deref(), meta.diagram_config());
-    let render_label_source = e
-        .label
-        .as_deref()
-        .filter(|raw| collect_render_context && render_label_source_needs_provenance(raw))
-        .map(|raw| sanitized_render_label_source(raw, meta.diagram_config()));
-    let render_label_source = match (&label, render_label_source) {
-        (Some(label), Some(source)) if *label != source => Some(source),
-        _ => None,
-    };
+    #[cfg(feature = "presentation")]
+    if let Some((index, sources)) = render_label_sources {
+        let render_label_source = e
+            .label
+            .as_deref()
+            .filter(|raw| render_label_source_needs_provenance(raw))
+            .map(|raw| sanitized_render_label_source(raw, meta.diagram_config()));
+        if let (Some(label), Some(source)) = (&label, render_label_source)
+            && *label != source
+        {
+            sources.insert_edge(index, source);
+        }
+    }
     let id = e.id.ok_or_else(|| {
         Error::diagram_parse_fallback(
             meta.diagram_type().to_string(),
@@ -2014,30 +2100,27 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
     let edge_type = e.link.compatibility_edge_type().to_string();
     let stroke = e.link.compatibility_stroke().to_string();
 
-    Ok((
-        FlowEdge {
-            id,
-            from: e.from,
-            to: e.to,
-            label,
-            label_type: Some(title_kind_str(&e.label_type).to_string()),
-            edge_type: Some(edge_type),
-            arrow: e.link.end,
-            start_marker: e.link.start_marker,
-            end_marker: e.link.end_marker,
-            is_user_defined_id: e.is_user_defined_id,
-            stroke: Some(stroke),
-            stroke_kind: e.link.stroke_kind,
-            visibility: e.link.visibility,
-            length: e.link.length,
-            style: e.style,
-            classes: e.classes,
-            interpolate: e.interpolate,
-            animate: e.animate,
-            animation: e.animation,
-        },
-        render_label_source,
-    ))
+    Ok(FlowEdge {
+        id,
+        from: e.from,
+        to: e.to,
+        label,
+        label_type: Some(title_kind_str(&e.label_type).to_string()),
+        edge_type: Some(edge_type),
+        arrow: e.link.end,
+        start_marker: e.link.start_marker,
+        end_marker: e.link.end_marker,
+        is_user_defined_id: e.is_user_defined_id,
+        stroke: Some(stroke),
+        stroke_kind: e.link.stroke_kind,
+        visibility: e.link.visibility,
+        length: e.link.length,
+        style: e.style,
+        classes: e.classes,
+        interpolate: e.interpolate,
+        animate: e.animate,
+        animation: e.animation,
+    })
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -2073,6 +2156,7 @@ fn sanitized_node_label(n: &Node, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "presentation")]
 fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> String {
     let label_raw = n.label.as_ref().unwrap_or(&n.id);
     let mut label = sanitized_render_label_source(label_raw, config);
@@ -2094,6 +2178,7 @@ fn sanitized_label(raw: &str, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "presentation")]
 fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
     let flow_db_label = sanitize_text(raw, config);
     let decoded = crate::entities::restore_mermaid_entity_spelling(&flow_db_label);
@@ -2101,6 +2186,7 @@ fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(feature = "presentation")]
 fn render_label_source_needs_provenance(raw: &str) -> bool {
     raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
 }
@@ -2117,15 +2203,21 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
 fn flow_subgraph_to_model(
     sg: FlowSubGraph,
     config: &MermaidConfig,
-    collect_render_context: bool,
-) -> (FlowSubgraph, Option<String>) {
+    #[cfg(feature = "presentation")] render_label_sources: Option<(
+        usize,
+        &mut FlowchartRenderLabelSources,
+    )>,
+) -> FlowSubgraph {
     let sanitized_title = sanitize_text(&sg.title, config);
     let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
-    let render_title_source = (collect_render_context
-        && render_label_source_needs_provenance(&sg.title))
-    .then(|| sanitized_render_label_source(&sg.title, config))
-    .filter(|source| *source != title);
-    let subgraph = FlowSubgraph {
+    #[cfg(feature = "presentation")]
+    if let Some((index, sources)) = render_label_sources {
+        let render_title_source = render_label_source_needs_provenance(&sg.title)
+            .then(|| sanitized_render_label_source(&sg.title, config))
+            .filter(|source| *source != title);
+        sources.insert_subgraph(sg.id.clone(), index, render_title_source);
+    }
+    FlowSubgraph {
         id: sg.id,
         nodes: sg.nodes,
         title,
@@ -2135,19 +2227,28 @@ fn flow_subgraph_to_model(
         has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
         metadata: sg.metadata,
-    };
-    (subgraph, render_title_source)
+    }
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "presentation")]
     fn flowchart_test_meta(diagram_type: &str) -> ParseMetadata {
         ParseMetadata {
             diagram_type: diagram_type.to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    fn semantic_test_meta(diagram_type: &str) -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: diagram_type.to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
             title: None,
         }
     }
@@ -2167,8 +2268,11 @@ mod tests {
         )
         .expect("semantic source");
 
-        assert!(source.subgraph_vertex_styles.is_none());
-        assert!(source.collapsed_subgraphs.is_none());
+        #[cfg(feature = "presentation")]
+        {
+            assert!(source.subgraph_vertex_styles.is_none());
+            assert!(source.collapsed_subgraphs.is_none());
+        }
         let model = source
             .into_model_controlled(&meta, &OperationControl::new())
             .expect("private control cannot be cancelled")
@@ -2178,19 +2282,25 @@ mod tests {
 
     #[test]
     fn flowchart_subgraph_endpoint_provenance_preserves_authored_nodes() {
-        let meta = flowchart_test_meta("flowchart-v2");
-        let (endpoint_only, endpoint_context) = parse_flowchart_model_with_render_context(
-            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
-            &meta,
-        )
-        .expect("subgraph endpoint model");
+        let meta = semantic_test_meta("flowchart-v2");
+        let endpoint_source = "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n";
+        let endpoint_only = parse_flowchart_model_for_render(endpoint_source, &meta)
+            .expect("subgraph endpoint model");
         let endpoint = endpoint_only
             .nodes
             .iter()
             .find(|node| node.id == "G")
             .expect("subgraph endpoint node");
         assert_eq!(endpoint.provenance, FlowNodeProvenance::SubgraphAnchor);
-        assert!(endpoint_context.contains_subgraph_vertex("G"));
+        #[cfg(feature = "presentation")]
+        {
+            let (_, endpoint_context) = parse_flowchart_model_with_render_context(
+                endpoint_source,
+                &flowchart_test_meta("flowchart-v2"),
+            )
+            .expect("subgraph endpoint context");
+            assert!(endpoint_context.contains_subgraph_vertex("G"));
+        }
 
         for source in [
             "flowchart TD\nG\nsubgraph G\n  A\nend\nG --> A\n",
@@ -2203,7 +2313,7 @@ mod tests {
                 "G --> A\n",
             ),
         ] {
-            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+            let model = parse_flowchart_model_for_render(source, &meta)
                 .expect("authored node and subgraph model");
             let node = model
                 .nodes
@@ -2211,13 +2321,21 @@ mod tests {
                 .find(|node| node.id == "G")
                 .expect("authored G node");
             assert_eq!(node.provenance, FlowNodeProvenance::Authored, "{source}");
-            assert!(context.contains_subgraph_vertex("G"), "{source}");
+            #[cfg(feature = "presentation")]
+            {
+                let (_, context) = parse_flowchart_model_with_render_context(
+                    source,
+                    &flowchart_test_meta("flowchart-v2"),
+                )
+                .expect("authored node and subgraph context");
+                assert!(context.contains_subgraph_vertex("G"), "{source}");
+            }
         }
     }
 
     #[test]
     fn same_id_shape_data_routes_to_subgraph_metadata_without_mutating_node() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         let source = parse_flowchart_semantic_source(
             concat!(
                 "flowchart TD\n",
@@ -2256,6 +2374,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn flowchart_subgraph_metadata_survives_render_model_projection() {
         // Mermaid 12 FlowDB forwards the shallow-merged metadata unchanged to group nodes.
         let meta = flowchart_test_meta("flowchart-v2");
@@ -2313,7 +2432,7 @@ mod tests {
 
     #[test]
     fn flowchart_subgraph_metadata_updates_the_canonical_group() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         let model = parse_flowchart_model_for_render(
             concat!(
                 "flowchart TD\n",
@@ -2333,6 +2452,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn duplicate_subgraph_metadata_and_classes_follow_the_canonical_owner() {
         let meta = flowchart_test_meta("flowchart-v2");
         for metadata_between in [false, true] {
@@ -2363,7 +2483,7 @@ mod tests {
 
     #[test]
     fn duplicate_subgraph_membership_excludes_self_and_preserves_nested_groups() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         let cases = [
             (
                 "flowchart TB\nsubgraph S[Outer]\nx\nsubgraph S[Inner]\ny\nend\nend\n",
@@ -2395,6 +2515,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn duplicate_subgraph_editor_facts_keep_each_declaration_span() {
         let source = "flowchart TB\nsubgraph S[First]\nx\nend\nsubgraph S[Second]\ny\nend\nclass S hot\nS --> z\n";
         let control = OperationControl::new();
@@ -2431,7 +2552,7 @@ mod tests {
 
     #[test]
     fn flowchart_subgraph_metadata_preserves_algorithm_values_for_layout_resolution() {
-        let meta = flowchart_test_meta("flowchart-v2");
+        let meta = semantic_test_meta("flowchart-v2");
         for (authored, expected) in [
             ("null", json!(null)),
             ("42", json!(42)),
@@ -2451,21 +2572,26 @@ mod tests {
 
     #[test]
     fn subgraph_shape_data_preserves_only_the_bare_vertex_call() {
-        let meta = flowchart_test_meta("flowchart-v2");
-        let (model, context) = parse_flowchart_model_with_render_context(
-            "flowchart TD\nsubgraph G\n  A\nend\nG@{ view: collapsed }\nB\n",
-            &meta,
-        )
-        .expect("subgraph shapeData should parse");
+        let source = "flowchart TD\nsubgraph G\n  A\nend\nG@{ view: collapsed }\nB\n";
+        let model = parse_flowchart_model_for_render(source, &semantic_test_meta("flowchart-v2"))
+            .expect("subgraph shapeData should parse");
 
         assert_eq!(model.vertex_calls, ["A", "G", "B"]);
-        assert!(context.is_subgraph_collapsed("G"));
+        #[cfg(feature = "presentation")]
+        {
+            let (_, context) = parse_flowchart_model_with_render_context(
+                source,
+                &flowchart_test_meta("flowchart-v2"),
+            )
+            .expect("subgraph shapeData context");
+            assert!(context.is_subgraph_collapsed("G"));
+        }
     }
 
     #[test]
     fn standalone_shape_data_preserves_upstream_vertex_call_sequence() {
-        let meta = flowchart_test_meta("flowchart-v2");
-        let (model, _) = parse_flowchart_model_with_render_context(
+        let meta = semantic_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
             "flowchart TD\nA@{ shape: rect }\nB@{ shape: stadium }\n",
             &meta,
         )
@@ -2475,6 +2601,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn collapsed_subgraph_shape_data_is_retained_in_render_context() {
         let meta = flowchart_test_meta("flowchart-v2");
         let (model, context) = parse_flowchart_model_with_render_context(
@@ -2490,6 +2617,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn collapsed_subgraph_shape_data_in_chains_uses_subgraph_dispatch() {
         let meta = flowchart_test_meta("flowchart-v2");
         for source in [
@@ -2504,8 +2632,8 @@ mod tests {
 
     #[test]
     fn subgraph_shape_data_precedes_same_id_edge_metadata() {
-        let meta = flowchart_test_meta("flowchart-v2");
-        let (model, _) = parse_flowchart_model_with_render_context(
+        let meta = semantic_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
             concat!(
                 "flowchart TD\n",
                 "subgraph e1\n  A\nend\n",
@@ -2525,6 +2653,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn same_id_subgraph_vertex_style_preserves_statement_order() {
         let meta = flowchart_test_meta("flowchart-v2");
         let cases = [
@@ -2569,6 +2698,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn same_id_subgraph_vertex_style_stays_out_of_the_public_model() {
         let meta = flowchart_test_meta("flowchart-v2");
         let (model, context) = parse_flowchart_model_with_render_context(
@@ -2600,6 +2730,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn duplicate_subgraph_vertex_css_is_owned_by_the_canonical_group() {
         let meta = flowchart_test_meta("flowchart-v2");
         let cases = [
@@ -2642,7 +2773,7 @@ mod tests {
 
     #[test]
     fn flowchart_elk_missing_subgraph_node_is_an_explicit_anchor_fact() {
-        let meta = flowchart_test_meta("flowchart-elk");
+        let meta = semantic_test_meta("flowchart-elk");
         let model =
             parse_flowchart_model_for_render("flowchart-elk TD\nsubgraph Empty\nend\n", &meta)
                 .expect("empty ELK subgraph model");
@@ -2656,6 +2787,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn legacy_flowchart_json_omits_typed_node_provenance() {
         let meta = flowchart_test_meta("flowchart-v2");
         let model = parse_flowchart_model_for_render(
@@ -2680,6 +2812,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "presentation")]
     fn flowchart_model_trims_parser_labels_before_entity_decode() {
         let nbsp = '\u{00a0}';
         let source = format!(
@@ -2877,6 +3010,7 @@ A -->|second &lt; owner| B
 
     #[cfg(feature = "diagram-flowchart")]
     #[test]
+    #[cfg(feature = "presentation")]
     fn flowchart_render_label_context_stays_out_of_the_public_model_contract() {
         let parsed = crate::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -2904,6 +3038,7 @@ A -->|second &lt; owner| B
 
     #[cfg(feature = "diagram-flowchart")]
     #[test]
+    #[cfg(feature = "presentation")]
     fn flowchart_render_label_context_applies_shape_sanitization_to_angle_text() {
         let parsed = crate::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -2955,6 +3090,7 @@ A -->|second &lt; owner| B
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn combined_flowchart_parse_propagates_preexisting_cancellation() {
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
@@ -2973,12 +3109,7 @@ A -->|second &lt; owner| B
 
     #[test]
     fn flowchart_parse_error_cannot_mask_post_parser_cancellation() {
-        let meta = ParseMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
-            title: None,
-        };
+        let meta = semantic_test_meta("flowchart-v2");
         let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
         control.cancel_after_checkpoints(1);
 
@@ -3015,12 +3146,7 @@ A -->|second &lt; owner| B
             .collect::<Vec<_>>()
             .join(" & ");
         let source = format!("flowchart TD\n{nodes}\n");
-        let meta = ParseMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
-            title: None,
-        };
+        let meta = semantic_test_meta("flowchart-v2");
         let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
         assert!(matches!(
             ast.walk().next(),
@@ -3054,9 +3180,8 @@ A -->|second &lt; owner| B
 
     #[test]
     fn grouped_flowchart_edges_respect_configured_max_edges_before_expansion() {
-        let mut meta = flowchart_test_meta("flowchart-v2");
-        meta.effective_config =
-            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 6}));
+        let mut meta = semantic_test_meta("flowchart-v2");
+        meta.semantic_config = MermaidConfig::from_value(json!({"maxEdges": 6}));
 
         let at_limit = parse_flowchart_ast("flowchart TD\na & b --> c & d & e\n", &meta)
             .expect("an edge group at maxEdges should parse");
@@ -3078,9 +3203,8 @@ A -->|second &lt; owner| B
 
     #[test]
     fn grouped_flowchart_edge_budget_is_shared_across_chains() {
-        let mut meta = flowchart_test_meta("flowchart-v2");
-        meta.effective_config =
-            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 7}));
+        let mut meta = semantic_test_meta("flowchart-v2");
+        meta.semantic_config = MermaidConfig::from_value(json!({"maxEdges": 7}));
 
         let error = parse_flowchart_ast("flowchart TD\na & b --> c & d\ne & f --> g & h\n", &meta)
             .expect_err("the shared maxEdges budget should cover every chain");
@@ -3092,6 +3216,7 @@ A -->|second &lt; owner| B
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn combined_flowchart_parser_enforces_max_edges_in_the_traced_path() {
         let mut meta = flowchart_test_meta("flowchart-v2");
         meta.effective_config =
@@ -3122,12 +3247,7 @@ A -->|second &lt; owner| B
             .collect::<Vec<_>>()
             .join(" & ");
         let source = format!("flowchart TD\nsubgraph group\n{nodes}\nend\n");
-        let meta = ParseMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
-            title: None,
-        };
+        let meta = semantic_test_meta("flowchart-v2");
         let ast =
             parse_flowchart_ast(&source, &meta).expect("large subgraph node group should parse");
         let mut builder = SubgraphBuilder::new(false, ast.direction.clone());

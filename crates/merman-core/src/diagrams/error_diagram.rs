@@ -1,8 +1,11 @@
 use crate::{
-    Error, ParseMetadata, Result, common_db,
-    diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel},
+    Error, ParseMetadata, Result,
+    diagram::{ParsedDiagramRender, RenderSemanticModel},
 };
+#[cfg(feature = "compat-json")]
+use crate::{common_db, diagram::ParsedDiagram};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 /// Typed semantic model for Merman's built-in suppressed-error diagram.
@@ -26,6 +29,7 @@ impl ErrorDiagramRenderModel {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn compatibility_json(&self) -> Value {
         let mut model = json!({ "type": self.diagram_type });
         if let Some(message) = &self.error_message {
@@ -35,6 +39,7 @@ impl ErrorDiagramRenderModel {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ErrorDiagramRenderModel,
     _meta: &ParseMetadata,
@@ -42,6 +47,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(model.compatibility_json())
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_error(_code: &str, meta: &ParseMetadata) -> Result<Value> {
     render_model_to_compat_json(&ErrorDiagramRenderModel::new(meta), meta)
 }
@@ -53,6 +59,7 @@ pub(crate) fn parse_error_model_for_render(
     Ok(ErrorDiagramRenderModel::new(meta))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn suppressed_error_diagram(
     source_meta: &ParseMetadata,
     error: &Error,
@@ -85,7 +92,7 @@ fn suppressed_error_metadata(source_meta: &ParseMetadata) -> ParseMetadata {
     meta
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
 

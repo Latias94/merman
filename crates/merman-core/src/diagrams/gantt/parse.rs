@@ -1,10 +1,12 @@
 use super::*;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
     family::CombinedSemanticFailure,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::Map;
 #[cfg(test)]
 use std::cell::Cell;
@@ -854,6 +856,34 @@ impl<'a> SpannedText<'a> {
     }
 }
 
+pub(crate) fn parse_gantt_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramModel>> {
+    let construction = construct_gantt_semantic_source_controlled(
+        code,
+        &metadata.semantic_config,
+        EditorFactsDemand::Omit,
+        #[cfg(feature = "presentation")]
+        false,
+        control,
+    )?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    let model = match source.db {
+        Some(db) => gantt_db_to_model_controlled(db, raw_task_to_semantic_task, control)?,
+        None => Ok(GanttDiagramModel::default()),
+    };
+    Ok(model.map(|mut model| {
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    }))
+}
+
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
@@ -862,7 +892,7 @@ pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     super::render_model_to_compat_json(&model, meta)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_gantt_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -873,12 +903,19 @@ pub(crate) fn parse_gantt_model_for_render(
     gantt_db_to_render_model(db)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_gantt_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
-    let construction = construct_gantt_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        true,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
@@ -889,12 +926,19 @@ pub(crate) fn parse_gantt_model_for_render_controlled(
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = match construct_gantt_semantic_source_controlled(code, meta, control)? {
+    let construction = match construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        true,
+        control,
+    )? {
         Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
         Err(error) => Err(error),
     };
@@ -910,6 +954,7 @@ struct GanttSemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
+#[cfg(feature = "compat-json")]
 impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
@@ -929,41 +974,68 @@ impl GanttSemanticSource {
     }
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_gantt_semantic_source(code: &str, meta: &ParseMetadata) -> Result<GanttSemanticSource> {
     construct_gantt_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_gantt_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
-    construct_gantt_semantic_source_controlled(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_gantt_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] capture_presentation: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_gantt_semantic_source_once(code, meta, control)
+    parse_gantt_semantic_source_once(
+        code,
+        config,
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        capture_presentation,
+        control,
+    )
 }
 
 fn parse_gantt_semantic_source_once(
     code: &str,
-    meta: &ParseMetadata,
+    config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] capture_presentation: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = GanttDb::default();
     db.clear();
-    db.set_security_level(meta.effective_config.get_str("securityLevel"));
-    if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
-        db.set_display_mode(dm);
+    db.set_security_level(config.get_str("securityLevel"));
+    #[cfg(feature = "presentation")]
+    {
+        db.capture_presentation = capture_presentation;
+        if capture_presentation && let Some(dm) = config.get_str("gantt.displayMode") {
+            db.set_display_mode(dm);
+        }
+    }
+    if editor_demand == EditorFactsDemand::Capture {
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
     }
 
     let mut cursor = LineCursor::new(code);
@@ -992,6 +1064,7 @@ fn parse_gantt_semantic_source_once(
                         &mut db,
                         &mut cursor,
                         &mut editor_facts,
+                        editor_demand,
                         control,
                     )?
                     .unwrap_or_else(|error| {
@@ -1011,6 +1084,7 @@ fn parse_gantt_semantic_source_once(
                 &mut db,
                 &mut cursor,
                 &mut editor_facts,
+                editor_demand,
                 control,
             )?
             .unwrap_or_else(|error| {
@@ -1025,6 +1099,7 @@ fn parse_gantt_semantic_source_once(
             &mut db,
             &mut cursor,
             &mut editor_facts,
+            editor_demand,
             control,
         )?
         .unwrap_or_else(|error| {
@@ -1061,6 +1136,7 @@ fn parse_gantt_semantic_source_once(
     }))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
@@ -1070,6 +1146,7 @@ pub(crate) fn render_model_to_compat_json(
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
@@ -1126,6 +1203,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
+#[cfg(feature = "compat-json")]
 fn strings_to_json_controlled(
     strings: &[String],
     control: &OperationControl,
@@ -1140,6 +1218,7 @@ fn strings_to_json_controlled(
     Ok(values)
 }
 
+#[cfg(feature = "compat-json")]
 fn serialize_gantt_tasks_controlled(
     tasks: &[GanttRenderTask],
     control: &OperationControl,
@@ -1160,6 +1239,7 @@ fn serialize_gantt_tasks_controlled(
     Ok(values)
 }
 
+#[cfg(feature = "compat-json")]
 fn string_map_to_json_controlled(
     values: &HashMap<String, String>,
     control: &OperationControl,
@@ -1174,6 +1254,7 @@ fn string_map_to_json_controlled(
     Ok(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn serialize_map_to_json_controlled<T: serde::Serialize>(
     values: &HashMap<String, T>,
     control: &OperationControl,
@@ -1188,16 +1269,36 @@ fn serialize_map_to_json_controlled<T: serde::Serialize>(
     Ok(out)
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn gantt_db_to_render_model(db: GanttDb) -> Result<GanttDiagramRenderModel> {
     let control = OperationControl::new();
     gantt_db_to_render_model_controlled(db, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(super) fn gantt_db_to_render_model_controlled(
     mut db: GanttDb,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
+    let display_mode = std::mem::take(&mut db.display_mode);
+    Ok(
+        gantt_db_to_model_controlled(db, raw_task_to_render_task, control)?.map(|model| {
+            GanttDiagramRenderModel {
+                model,
+                display_mode,
+                #[cfg(feature = "compat-json")]
+                compatibility_output: CompatibilityOutputState::Model,
+            }
+        }),
+    )
+}
+
+fn gantt_db_to_model_controlled<Task>(
+    mut db: GanttDb,
+    convert_task: fn(RawTask, &str) -> Result<Task>,
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramModel<Task>>> {
     control.checkpoint()?;
     let raw_tasks = db.take_tasks();
     let mut tasks = Vec::with_capacity(raw_tasks.len());
@@ -1205,14 +1306,14 @@ pub(super) fn gantt_db_to_render_model_controlled(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match raw_task_to_render_task(task, &db.date_format) {
+        match convert_task(task, &db.date_format) {
             Ok(task) => tasks.push(task),
             Err(error) => return Ok(Err(error)),
         }
     }
 
     control.checkpoint()?;
-    Ok(Ok(GanttDiagramRenderModel {
+    Ok(Ok(GanttDiagramModel {
         title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
         acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
         acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
@@ -1223,7 +1324,6 @@ pub(super) fn gantt_db_to_render_model_controlled(
         includes: std::mem::take(&mut db.includes),
         excludes: std::mem::take(&mut db.excludes),
         inclusive_end_dates: db.inclusive_end_dates,
-        display_mode: std::mem::take(&mut db.display_mode),
         top_axis: db.top_axis,
         weekday: std::mem::take(&mut db.weekday),
         weekend: std::mem::take(&mut db.weekend),
@@ -1231,7 +1331,6 @@ pub(super) fn gantt_db_to_render_model_controlled(
         tasks,
         links: std::mem::take(&mut db.links),
         click_events: std::mem::take(&mut db.click_events),
-        compatibility_output: CompatibilityOutputState::Model,
     }))
 }
 
@@ -1239,12 +1338,21 @@ fn non_empty_opt(value: String) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
+#[cfg(feature = "presentation")]
 fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderTask> {
+    let render_end_ms = t.render_end_time.map(|date| date.timestamp_millis());
+    Ok(GanttRenderTask {
+        semantic: raw_task_to_semantic_task(t, date_format)?,
+        render_end_ms,
+    })
+}
+
+fn raw_task_to_semantic_task(t: RawTask, date_format: &str) -> Result<GanttTask> {
     let start_ms = task_time_ms(&t, "startTime", t.start_time)?;
     let end_ms = task_time_ms(&t, "endTime", t.end_time)?;
     let (raw_start, start_constraint) = match t.raw.start_time {
         StartTimeRaw::PrevTaskEnd => (
-            GanttRenderTaskStart::PrevTaskEnd {
+            GanttTaskStart::PrevTaskEnd {
                 id: t.prev_task_id.clone(),
             },
             GanttTaskStartConstraint::PreviousTaskEnd {
@@ -1258,15 +1366,12 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
                     value: start_data.clone(),
                 },
             };
-            (
-                GanttRenderTaskStart::GetStartDate { start_data },
-                constraint,
-            )
+            (GanttTaskStart::GetStartDate { start_data }, constraint)
         }
     };
     let end_constraint = gantt_end_constraint(&t.raw.end_data, date_format);
 
-    Ok(GanttRenderTask {
+    Ok(GanttTask {
         id: t.id,
         task: t.task,
         section: t.section,
@@ -1284,16 +1389,15 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
         end_constraint,
         processed: t.processed,
         manual_end_time: t.manual_end_time,
-        raw: GanttRenderTaskRaw {
+        raw: GanttTaskRaw {
             data: t.raw.data,
             start_time: raw_start,
-            end_time: GanttRenderTaskEnd {
+            end_time: GanttTaskEnd {
                 data: t.raw.end_data,
             },
         },
         start_ms,
         end_ms,
-        render_end_ms: t.render_end_time.map(|d| d.timestamp_millis()),
     })
 }
 
@@ -1339,6 +1443,7 @@ fn parse_gantt_statement(
     db: &mut GanttDb,
     cursor: &mut LineCursor<'_>,
     facts: &mut EditorSemanticFacts,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<Result<()>> {
     control.checkpoint()?;
@@ -1349,103 +1454,135 @@ fn parse_gantt_statement(
     }
 
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true) {
-        facts.push_directive_prefix("dateFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt date format",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("dateFormat");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt date format",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_date_format(v.text);
         return Ok(Ok(()));
     }
     if starts_with_case_insensitive(t, "inclusiveEndDates") {
-        facts.push_directive_prefix("inclusiveEndDates");
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("inclusiveEndDates");
+        }
         db.enable_inclusive_end_dates();
         return Ok(Ok(()));
     }
     if starts_with_case_insensitive(t, "topAxis") {
-        facts.push_directive_prefix("topAxis");
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("topAxis");
+        }
         db.enable_top_axis();
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
-        facts.push_directive_prefix("axisFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt axis format",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("axisFormat");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt axis format",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_axis_format(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
-        facts.push_directive_prefix("tickInterval");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt tick interval",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("tickInterval");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt tick interval",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_tick_interval(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
-        facts.push_directive_prefix("includes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt includes",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("includes");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt includes",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_includes(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
-        facts.push_directive_prefix("excludes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt excludes",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("excludes");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt excludes",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_excludes(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
-        facts.push_directive_prefix("todayMarker");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt today marker",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("todayMarker");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt today marker",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_today_marker(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
-        facts.push_directive_prefix("weekday");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt weekday",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("weekday");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt weekday",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1467,15 +1604,19 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
-        facts.push_directive_prefix("weekend");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt weekend",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("weekend");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt weekend",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1494,56 +1635,76 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
-        facts.push_directive_prefix("title");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt title",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("title");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt title",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_diagram_title(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
-        facts.push_directive_prefix("section");
-        collect_gantt_section_symbol(stripped, line_start, v, facts);
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("section");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            collect_gantt_section_symbol(stripped, line_start, v, facts);
+        }
         db.add_section(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accTitle") {
-        facts.push_directive_prefix("accTitle");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt accessibility title",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("accTitle");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt accessibility title",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_acc_title(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accDescr") {
-        facts.push_directive_prefix("accDescr");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt accessibility description",
-            EditorSemanticKind::String,
-            facts,
-        );
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("accDescr");
+        }
+        if editor_demand == EditorFactsDemand::Capture {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt accessibility description",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_acc_descr(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
-        facts.push_directive_prefix("accDescr");
+        if editor_demand == EditorFactsDemand::Capture {
+            facts.push_directive_prefix("accDescr");
+        }
         let block = block.consume_remaining(cursor, control)?;
         block.resume_after_closing_brace(cursor);
         db.set_acc_descr(block.value());
-        block.emit_symbol(facts);
+        if editor_demand == EditorFactsDemand::Capture {
+            block.emit_symbol(facts);
+        }
         if !block.is_complete() {
             return Ok(Err(Error::diagram_parse_insertion_point(
                 "gantt".to_string(),
@@ -1555,8 +1716,12 @@ fn parse_gantt_statement(
     }
     match parse_click_statement(stripped, line_start) {
         Ok(Some(click)) => {
-            facts.push_directive_prefix("click");
-            collect_gantt_click_symbols(stripped, line_start, click, facts);
+            if editor_demand == EditorFactsDemand::Capture {
+                facts.push_directive_prefix("click");
+            }
+            if editor_demand == EditorFactsDemand::Capture {
+                collect_gantt_click_symbols(stripped, line_start, click, facts);
+            }
             if let Some(call) = click.call {
                 db.set_click_event(
                     click.ids.text,
@@ -1571,8 +1736,12 @@ fn parse_gantt_statement(
         }
         Ok(None) => {}
         Err(error) => {
-            facts.push_directive_prefix("click");
-            if let Some(expected_action) = error.expected_action {
+            if editor_demand == EditorFactsDemand::Capture {
+                facts.push_directive_prefix("click");
+            }
+            if let Some(expected_action) = error.expected_action
+                && editor_demand == EditorFactsDemand::Capture
+            {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::InteractionAction,
                     expected_action,
@@ -1607,12 +1776,14 @@ fn parse_gantt_statement(
     let statement_span =
         SourceSpan::new(line_start + leading, line_start + leading + task_stmt.len());
     let fields = split_gantt_fields(task_data, line_start + leading + colon + 1);
-    let editor_fields = fields
-        .iter()
-        .copied()
-        .filter_map(SpannedText::trim)
-        .collect::<Vec<_>>();
-    collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
+    if editor_demand == EditorFactsDemand::Capture {
+        let editor_fields = fields
+            .iter()
+            .copied()
+            .filter_map(SpannedText::trim)
+            .collect::<Vec<_>>();
+        collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
+    }
     let field_text = fields.iter().map(|field| field.text).collect::<Vec<_>>();
     let task_info = db.parse_task_info(&field_text);
     db.add_task(task_txt, &format!(":{task_data}"), task_info);

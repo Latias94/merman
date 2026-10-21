@@ -62,6 +62,7 @@ pub mod class;
 pub mod cynefin;
 #[cfg(feature = "diagram-er")]
 pub mod er;
+#[cfg(feature = "presentation")]
 pub mod error_diagram;
 #[cfg(feature = "diagram-event-modeling")]
 pub mod eventmodeling;

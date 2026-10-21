@@ -1,5 +1,7 @@
+#[cfg(feature = "presentation")]
 mod full;
 
+#[cfg(feature = "presentation")]
 pub use full::{Detector, DetectorFn, DetectorRegistry};
 
 use crate::family::DetectorFact;

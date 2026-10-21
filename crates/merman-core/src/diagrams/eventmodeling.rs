@@ -1,13 +1,17 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
 };
 use crate::diagrams::scan::physical_line_at;
+use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticKind, EditorSemanticSymbol, Error, Result, SourceSpan,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
@@ -22,7 +26,7 @@ pub(crate) fn eventmodeling_syntax_construction_count() -> usize {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EventModelingFrameRenderModel {
+pub struct EventModelingFrame {
     pub name: String,
     #[serde(rename = "frameKind")]
     pub frame_kind: String,
@@ -39,14 +43,15 @@ pub struct EventModelingFrameRenderModel {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EventModelingDataEntityRenderModel {
+pub struct EventModelingDataEntity {
     pub name: String,
     #[serde(rename = "dataBlockValue")]
     pub data_block_value: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct EventModelingDiagramRenderModel {
+/// Domain frames and data entities constructed by the Event Modeling grammar.
+pub struct EventModelingDiagramModel {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(default, rename = "accDescr")]
@@ -54,12 +59,21 @@ pub struct EventModelingDiagramRenderModel {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
-    pub frames: Vec<EventModelingFrameRenderModel>,
+    pub frames: Vec<EventModelingFrame>,
     #[serde(default, rename = "dataEntities")]
-    pub data_entities: Vec<EventModelingDataEntityRenderModel>,
+    pub data_entities: Vec<EventModelingDataEntity>,
 }
 
-impl EventModelingDiagramRenderModel {
+#[cfg(feature = "presentation")]
+pub type EventModelingDiagramRenderModel = EventModelingDiagramModel;
+
+#[cfg(feature = "presentation")]
+pub type EventModelingFrameRenderModel = EventModelingFrame;
+
+#[cfg(feature = "presentation")]
+pub type EventModelingDataEntityRenderModel = EventModelingDataEntity;
+
+impl EventModelingDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -67,27 +81,33 @@ impl EventModelingDiagramRenderModel {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
     construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_compat_json(meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
-    let construction =
-        match construct_eventmodeling_semantic_source_controlled(code, meta, control)? {
-            Ok(source) => {
-                let editor_facts = source.editor_facts();
-                let json = source.into_compat_json_controlled(meta, control)?;
-                Ok((json, editor_facts))
-            }
-            Err(failure) => Err(failure),
-        };
+    let construction = match construct_eventmodeling_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )? {
+        Ok(source) => {
+            let editor_facts = source.editor_facts();
+            let json = source.into_compat_json_controlled(meta, control)?;
+            Ok((json, editor_facts))
+        }
+        Err(failure) => Err(failure),
+    };
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |(json, editor_facts)| (json, editor_facts),
@@ -97,8 +117,9 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &EventModelingDiagramRenderModel,
+    model: &EventModelingDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     Ok(json!({
@@ -111,27 +132,53 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_eventmodeling_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<EventModelingDiagramRenderModel> {
+) -> Result<EventModelingDiagramModel> {
     Ok(construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_render_model(meta))
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_eventmodeling_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<EventModelingDiagramRenderModel>> {
-    let construction = construct_eventmodeling_semantic_source_controlled(code, meta, control)?;
+) -> crate::OperationControlResult<Result<EventModelingDiagramModel>> {
+    let construction = construct_eventmodeling_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(*failure.error)),
     };
     Ok(Ok(source.into_render_model_controlled(meta, control)?))
+}
+
+pub(crate) fn parse_eventmodeling_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<EventModelingDiagramModel>> {
+    let source = match construct_eventmodeling_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )? {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    Ok(Ok(source.into_model_controlled(
+        &metadata.semantic_config,
+        control,
+    )?))
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +267,8 @@ impl EventModelingSyntaxFacts {
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EditorSemanticFacts> {
         control.checkpoint()?;
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
         let mut facts = EditorSemanticFacts::new();
         if let Some(header) = &self.header {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -279,20 +328,22 @@ impl EventModelingSyntaxFacts {
 }
 
 impl EventModelingSemanticSource {
+    #[cfg(feature = "compat-json")]
     fn editor_facts(&self) -> EditorSemanticFacts {
         self.editor_facts.clone()
     }
 
-    fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramRenderModel {
+    #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
+    fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramModel {
         self.into_render_model_controlled(meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
-    fn into_render_model_controlled(
+    fn into_model_controlled(
         self,
-        meta: &ParseMetadata,
+        config: &crate::MermaidConfig,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<EventModelingDiagramRenderModel> {
+    ) -> crate::OperationControlResult<EventModelingDiagramModel> {
         control.checkpoint()?;
         let common = LangiumCommonDbFields::from_facts(&self.syntax.common);
         let mut frames = Vec::with_capacity(self.syntax.frames.len());
@@ -305,20 +356,17 @@ impl EventModelingSemanticSource {
             }
             let data_inline_value = if let Some(data) = frame.data_inline_value {
                 control.checkpoint()?;
-                let value = sanitize_text(&data.text, meta.effective_config.as_config());
+                let value = sanitize_text(&data.text, config);
                 control.checkpoint()?;
                 Some(value)
             } else {
                 None
             };
-            frames.push(EventModelingFrameRenderModel {
+            frames.push(EventModelingFrame {
                 name: frame.name,
                 frame_kind: frame.frame_kind,
                 model_entity_type: frame.model_entity_type,
-                entity_identifier: sanitize_text(
-                    &frame.entity_identifier,
-                    meta.effective_config.as_config(),
-                ),
+                entity_identifier: sanitize_text(&frame.entity_identifier, config),
                 source_frames,
                 data_inline_value,
                 data_reference: frame.data_reference.map(|data| data.text),
@@ -328,35 +376,43 @@ impl EventModelingSemanticSource {
         let mut data_entities = Vec::with_capacity(self.syntax.data_entities.len());
         for data in self.syntax.data_entities {
             control.checkpoint()?;
-            let data_block_value =
-                sanitize_text(&data.block_text, meta.effective_config.as_config());
+            let data_block_value = sanitize_text(&data.block_text, config);
             control.checkpoint()?;
-            data_entities.push(EventModelingDataEntityRenderModel {
+            data_entities.push(EventModelingDataEntity {
                 name: data.name.text,
                 data_block_value,
             });
         }
         control.checkpoint()?;
-        Ok(EventModelingDiagramRenderModel {
-            title: common
-                .title
-                .map(|value| sanitize_text(&value, meta.effective_config.as_config())),
+        Ok(EventModelingDiagramModel {
+            title: common.title.map(|value| sanitize_text(&value, config)),
             acc_title: common
                 .acc_title
-                .map(|value| sanitize_acc_title(&value, meta.effective_config.as_config())),
+                .map(|value| sanitize_acc_title(&value, config)),
             acc_descr: common
                 .acc_descr
-                .map(|value| sanitize_acc_descr(&value, meta.effective_config.as_config())),
+                .map(|value| sanitize_acc_descr(&value, config)),
             frames,
             data_entities,
         })
     }
 
+    #[cfg(feature = "presentation")]
+    fn into_render_model_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<EventModelingDiagramModel> {
+        self.into_model_controlled(meta.effective_config.as_config(), control)
+    }
+
+    #[cfg(feature = "compat-json")]
     fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
         let model = self.into_render_model(meta);
         render_model_to_compat_json(&model, meta)
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_compat_json_controlled(
         self,
         meta: &ParseMetadata,
@@ -369,6 +425,7 @@ impl EventModelingSemanticSource {
 }
 
 impl EventModelingParseFailure {
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = *self.editor_facts;
         facts.mark_recovered_from_parse_error(
@@ -382,17 +439,24 @@ impl EventModelingParseFailure {
     }
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_eventmodeling_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
-    construct_eventmodeling_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_eventmodeling_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_eventmodeling_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<EventModelingSemanticSource, EventModelingParseFailure>,
@@ -403,22 +467,30 @@ fn construct_eventmodeling_semantic_source_controlled(
 
     let mut syntax = EventModelingSyntaxFacts::default();
     let mut cursor = EventModelingCursor::new(code, control);
-    if let Err(error) = cursor.skip_hidden(meta) {
+    if let Err(error) = cursor.skip_hidden(diagram_type) {
         control.checkpoint()?;
         let fallback = cursor.insertion_span();
         return Ok(Err(eventmodeling_failure_controlled(
-            error, syntax, fallback, control,
+            error,
+            syntax,
+            fallback,
+            editor_demand,
+            control,
         )?));
     }
     control.checkpoint()?;
-    let header = parse_eventmodeling_header_cursor(&mut cursor, meta);
+    let header = parse_eventmodeling_header_cursor(&mut cursor, diagram_type);
     control.checkpoint()?;
     match header {
         Ok(header) => syntax.header = Some(header),
         Err(error) => {
             let fallback = cursor.insertion_span();
             return Ok(Err(eventmodeling_failure_controlled(
-                error, syntax, fallback, control,
+                error,
+                syntax,
+                fallback,
+                editor_demand,
+                control,
             )?));
         }
     }
@@ -426,7 +498,7 @@ fn construct_eventmodeling_semantic_source_controlled(
     let mut first_failure = None;
     loop {
         control.checkpoint()?;
-        if let Err(error) = cursor.skip_hidden(meta) {
+        if let Err(error) = cursor.skip_hidden(diagram_type) {
             control.checkpoint()?;
             let span = eventmodeling_error_span(&error, cursor.insertion_span());
             first_failure.get_or_insert((error, span));
@@ -441,7 +513,7 @@ fn construct_eventmodeling_semantic_source_controlled(
             syntax.common.push(parsed.fact);
             if let Some(diagnostic) = parsed.diagnostic {
                 let error = Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
+                    diagram_type.to_string(),
                     diagnostic.message,
                     diagnostic.span.start,
                 );
@@ -452,16 +524,16 @@ fn construct_eventmodeling_semantic_source_controlled(
 
         let statement_start = cursor.offset();
         let result = if cursor.starts_keyword("entity") {
-            parse_eventmodeling_entity_cursor(&mut cursor, meta)
+            parse_eventmodeling_entity_cursor(&mut cursor, diagram_type)
                 .map(|entity| syntax.model_entities.push(entity))
         } else if cursor.starts_keyword("tf") || cursor.starts_keyword("timeframe") {
-            parse_eventmodeling_frame_cursor(&mut cursor, "timeframe", meta)
+            parse_eventmodeling_frame_cursor(&mut cursor, "timeframe", diagram_type)
                 .map(|frame| syntax.frames.push(frame))
         } else if cursor.starts_keyword("rf") || cursor.starts_keyword("resetframe") {
-            parse_eventmodeling_frame_cursor(&mut cursor, "resetframe", meta)
+            parse_eventmodeling_frame_cursor(&mut cursor, "resetframe", diagram_type)
                 .map(|frame| syntax.frames.push(frame))
         } else if cursor.starts_keyword("data") {
-            match parse_eventmodeling_data_cursor(&mut cursor, meta) {
+            match parse_eventmodeling_data_cursor(&mut cursor, diagram_type) {
                 Ok(data) => {
                     syntax.data_entities.push(data);
                     Ok(())
@@ -472,7 +544,7 @@ fn construct_eventmodeling_semantic_source_controlled(
                 }
             }
         } else if cursor.starts_keyword("note") {
-            match parse_eventmodeling_note_cursor(&mut cursor, meta) {
+            match parse_eventmodeling_note_cursor(&mut cursor, diagram_type) {
                 Ok(note) => {
                     syntax.note_entities.push(note);
                     Ok(())
@@ -483,12 +555,12 @@ fn construct_eventmodeling_semantic_source_controlled(
                 }
             }
         } else if cursor.starts_keyword("gwt") {
-            parse_eventmodeling_gwt_cursor(&mut cursor, meta)
+            parse_eventmodeling_gwt_cursor(&mut cursor, diagram_type)
                 .map(|gwt| syntax.gwt_entities.push(gwt))
         } else {
             let span = cursor.unknown_statement_span();
             Err(Error::diagram_parse_exact(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 format!(
                     "unexpected eventmodeling statement: {}",
                     &code[span.start..span.end]
@@ -509,16 +581,23 @@ fn construct_eventmodeling_semantic_source_controlled(
         }
     }
 
-    if let Some(error) = validate_eventmodeling_semantics(&mut syntax, meta, control)? {
+    if let Some(error) = validate_eventmodeling_semantics(&mut syntax, diagram_type, control)? {
         let span = eventmodeling_error_span(&error, cursor.insertion_span());
         first_failure.get_or_insert((error, span));
     }
     if let Some((error, span)) = first_failure {
         return Ok(Err(eventmodeling_failure_controlled(
-            error, syntax, span, control,
+            error,
+            syntax,
+            span,
+            editor_demand,
+            control,
         )?));
     }
-    let editor_facts = syntax.editor_facts_controlled(control)?;
+    let editor_facts = match editor_demand {
+        EditorFactsDemand::Capture => syntax.editor_facts_controlled(control)?,
+        EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+    };
     Ok(Ok(EventModelingSemanticSource {
         syntax,
         editor_facts,
@@ -633,7 +712,7 @@ impl<'a> EventModelingCursor<'a> {
         }
     }
 
-    fn skip_hidden(&mut self, meta: &ParseMetadata) -> Result<()> {
+    fn skip_hidden(&mut self, diagram_type: &str) -> Result<()> {
         loop {
             if self.control.checkpoint().is_err() {
                 return Ok(());
@@ -660,7 +739,7 @@ impl<'a> EventModelingCursor<'a> {
             if rest.starts_with("%%{") {
                 let Some(end) = rest.find("}%%") else {
                     return Err(Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         "expected closing eventmodeling directive",
                         self.source.len(),
                     ));
@@ -679,7 +758,7 @@ impl<'a> EventModelingCursor<'a> {
             if rest.starts_with("/*") {
                 let Some(end) = rest.find("*/") else {
                     return Err(Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         "expected closing eventmodeling block comment",
                         self.source.len(),
                     ));
@@ -697,12 +776,8 @@ impl<'a> EventModelingCursor<'a> {
         }
     }
 
-    fn take_token(
-        &mut self,
-        meta: &ParseMetadata,
-        expected: &str,
-    ) -> Result<EventModelingFieldSpan> {
-        self.skip_hidden(meta)?;
+    fn take_token(&mut self, diagram_type: &str, expected: &str) -> Result<EventModelingFieldSpan> {
+        self.skip_hidden(diagram_type)?;
         let start = self.offset;
         let mut next_checkpoint = self.offset.saturating_add(4096);
         while self.offset < self.source.len() {
@@ -726,7 +801,7 @@ impl<'a> EventModelingCursor<'a> {
         }
         if start == self.offset {
             return Err(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 expected,
                 start,
             ));
@@ -777,10 +852,14 @@ fn eventmodeling_failure_controlled(
     error: Error,
     syntax: EventModelingSyntaxFacts,
     fallback: SourceSpan,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<EventModelingParseFailure> {
     let span = eventmodeling_error_span(&error, fallback);
-    let editor_facts = syntax.editor_facts_controlled(control)?;
+    let editor_facts = match editor_demand {
+        EditorFactsDemand::Capture => syntax.editor_facts_controlled(control)?,
+        EditorFactsDemand::Omit => EditorSemanticFacts::new(),
+    };
     Ok(EventModelingParseFailure {
         error: Box::new(error),
         editor_facts: Box::new(editor_facts),
@@ -796,11 +875,11 @@ fn eventmodeling_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
 }
 
 fn eventmodeling_exact_error(
-    meta: &ParseMetadata,
+    diagram_type: &str,
     message: impl Into<String>,
     span: SourceSpan,
 ) -> Error {
-    Error::diagram_parse_exact(meta.diagram_type.clone(), message, span)
+    Error::diagram_parse_exact(diagram_type.to_string(), message, span)
 }
 
 fn is_eventmodeling_id(value: &str) -> bool {
@@ -813,22 +892,26 @@ fn is_eventmodeling_id(value: &str) -> bool {
 
 fn take_eventmodeling_id_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     expected: &str,
 ) -> Result<EventModelingFieldSpan> {
-    let field = cursor.take_token(meta, expected)?;
+    let field = cursor.take_token(diagram_type, expected)?;
     if !is_eventmodeling_id(&field.text) {
-        return Err(eventmodeling_exact_error(meta, expected, field.span));
+        return Err(eventmodeling_exact_error(
+            diagram_type,
+            expected,
+            field.span,
+        ));
     }
     Ok(field)
 }
 
 fn take_eventmodeling_qualified_name_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     expected: &str,
 ) -> Result<EventModelingFieldSpan> {
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     let start = cursor.offset;
     let mut text = String::new();
     let mut end = start;
@@ -840,15 +923,15 @@ fn take_eventmodeling_qualified_name_cursor(
         let segment_start = cursor.offset;
         let Some(first) = cursor.source[cursor.offset..].chars().next() else {
             return Err(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 expected,
                 cursor.offset,
             ));
         };
         if first != '_' && !first.is_ascii_alphabetic() {
-            let invalid = cursor.take_token(meta, expected)?;
+            let invalid = cursor.take_token(diagram_type, expected)?;
             let span = SourceSpan::new(start, invalid.span.end);
-            return Err(eventmodeling_exact_error(meta, expected, span));
+            return Err(eventmodeling_exact_error(diagram_type, expected, span));
         }
         cursor.offset += first.len_utf8();
         let mut next_checkpoint = cursor.offset.saturating_add(4096);
@@ -871,12 +954,12 @@ fn take_eventmodeling_qualified_name_cursor(
         text.push_str(&cursor.source[segment_span.start..segment_span.end]);
         end = segment_span.end;
 
-        cursor.skip_hidden(meta)?;
+        cursor.skip_hidden(diagram_type)?;
         if !cursor.source[cursor.offset..].starts_with('.') {
             break;
         }
         cursor.offset += 1;
-        cursor.skip_hidden(meta)?;
+        cursor.skip_hidden(diagram_type)?;
     }
 
     Ok(EventModelingFieldSpan {
@@ -887,27 +970,31 @@ fn take_eventmodeling_qualified_name_cursor(
 
 fn take_eventmodeling_frame_id_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     expected: &str,
 ) -> Result<EventModelingFieldSpan> {
-    let field = cursor.take_token(meta, expected)?;
+    let field = cursor.take_token(diagram_type, expected)?;
     if field.text.is_empty()
         || field.text.len() > 3
         || !field.text.bytes().all(|byte| byte.is_ascii_digit())
     {
-        return Err(eventmodeling_exact_error(meta, expected, field.span));
+        return Err(eventmodeling_exact_error(
+            diagram_type,
+            expected,
+            field.span,
+        ));
     }
     Ok(field)
 }
 
 fn take_eventmodeling_entity_type_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<EventModelingFieldSpan> {
-    let field = cursor.take_token(meta, "expected eventmodeling entity type")?;
+    let field = cursor.take_token(diagram_type, "expected eventmodeling entity type")?;
     if !EVENTMODELING_ENTITY_TYPES.contains(&field.text.as_str()) {
         return Err(eventmodeling_exact_error(
-            meta,
+            diagram_type,
             "expected eventmodeling entity type",
             field.span,
         ));
@@ -917,25 +1004,24 @@ fn take_eventmodeling_entity_type_cursor(
 
 fn parse_eventmodeling_header_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<EventModelingFieldSpan> {
     let start = cursor.offset();
     if !cursor.consume_keyword("eventmodeling") {
-        let token =
-            cursor
-                .take_token(meta, "expected eventmodeling")
-                .unwrap_or(EventModelingFieldSpan {
-                    text: String::new(),
-                    span: SourceSpan::new(start, start),
-                });
+        let token = cursor
+            .take_token(diagram_type, "expected eventmodeling")
+            .unwrap_or(EventModelingFieldSpan {
+                text: String::new(),
+                span: SourceSpan::new(start, start),
+            });
         return Err(if token.span.start == token.span.end {
             Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected eventmodeling",
                 start,
             )
         } else {
-            eventmodeling_exact_error(meta, "expected eventmodeling", token.span)
+            eventmodeling_exact_error(diagram_type, "expected eventmodeling", token.span)
         });
     }
     Ok(EventModelingFieldSpan {
@@ -946,12 +1032,12 @@ fn parse_eventmodeling_header_cursor(
 
 fn parse_eventmodeling_entity_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<EventModelingFieldSpan> {
     cursor.consume_keyword("entity");
     take_eventmodeling_qualified_name_cursor(
         cursor,
-        meta,
+        diagram_type,
         "expected eventmodeling model entity name",
     )
 }
@@ -959,7 +1045,7 @@ fn parse_eventmodeling_entity_cursor(
 fn parse_eventmodeling_frame_cursor(
     cursor: &mut EventModelingCursor<'_>,
     frame_kind: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<EventModelingFrameFacts> {
     if frame_kind == "timeframe" {
         if !cursor.consume_keyword("timeframe") {
@@ -971,13 +1057,13 @@ fn parse_eventmodeling_frame_cursor(
 
     let name = take_eventmodeling_frame_id_cursor(
         cursor,
-        meta,
+        diagram_type,
         "expected eventmodeling frame id with one to three digits",
     )?;
-    let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, meta)?;
+    let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, diagram_type)?;
     let entity_identifier = take_eventmodeling_qualified_name_cursor(
         cursor,
-        meta,
+        diagram_type,
         "expected eventmodeling qualified entity identifier",
     )?;
 
@@ -986,27 +1072,30 @@ fn parse_eventmodeling_frame_cursor(
         if cursor.control.checkpoint().is_err() {
             break;
         }
-        cursor.skip_hidden(meta)?;
+        cursor.skip_hidden(diagram_type)?;
         if !cursor.starts_literal("->>") {
             break;
         }
         cursor.consume_literal("->>");
         source_frames.push(take_eventmodeling_frame_id_cursor(
             cursor,
-            meta,
+            diagram_type,
             "expected eventmodeling source frame id",
         )?);
     }
 
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     let data_reference = if cursor.starts_literal("[[") {
         cursor.consume_literal("[[");
-        let reference =
-            take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data reference")?;
-        cursor.skip_hidden(meta)?;
+        let reference = take_eventmodeling_id_cursor(
+            cursor,
+            diagram_type,
+            "expected eventmodeling data reference",
+        )?;
+        cursor.skip_hidden(diagram_type)?;
         if !cursor.starts_literal("]]") {
             return Err(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected closing ']]' for eventmodeling data reference",
                 cursor.offset(),
             ));
@@ -1017,7 +1106,7 @@ fn parse_eventmodeling_frame_cursor(
         None
     };
 
-    let (data_type, data_inline_value) = parse_eventmodeling_optional_inline(cursor, meta)?;
+    let (data_type, data_inline_value) = parse_eventmodeling_optional_inline(cursor, diagram_type)?;
     Ok(EventModelingFrameFacts {
         frame_kind: frame_kind.to_string(),
         name: name.text,
@@ -1035,25 +1124,25 @@ fn parse_eventmodeling_frame_cursor(
 
 fn parse_eventmodeling_optional_data_type(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<Option<EventModelingFieldSpan>> {
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     if !cursor.starts_literal("`") {
         return Ok(None);
     }
     cursor.consume_literal("`");
-    let field = cursor.take_token(meta, "expected eventmodeling data type")?;
+    let field = cursor.take_token(diagram_type, "expected eventmodeling data type")?;
     if !EVENTMODELING_DATA_TYPES.contains(&field.text.as_str()) {
         return Err(eventmodeling_exact_error(
-            meta,
+            diagram_type,
             format!("unsupported eventmodeling data type '{}'", field.text),
             field.span,
         ));
     }
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     if !cursor.starts_literal("`") {
         return Err(Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected closing backtick for eventmodeling data type",
             cursor.offset(),
         ));
@@ -1064,17 +1153,17 @@ fn parse_eventmodeling_optional_data_type(
 
 fn parse_eventmodeling_optional_inline(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<(
     Option<EventModelingFieldSpan>,
     Option<EventModelingFieldSpan>,
 )> {
-    let data_type = parse_eventmodeling_optional_data_type(cursor, meta)?;
-    cursor.skip_hidden(meta)?;
+    let data_type = parse_eventmodeling_optional_data_type(cursor, diagram_type)?;
+    cursor.skip_hidden(diagram_type)?;
     let Some(delimiter) = cursor.source[cursor.offset..].chars().next() else {
         if data_type.is_some() {
             return Err(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected eventmodeling inline data",
                 cursor.offset(),
             ));
@@ -1084,7 +1173,7 @@ fn parse_eventmodeling_optional_inline(
     if !matches!(delimiter, '{' | '"' | '\'') {
         if data_type.is_some() {
             return Err(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected eventmodeling inline data",
                 cursor.offset(),
             ));
@@ -1105,7 +1194,7 @@ fn parse_eventmodeling_optional_inline(
     }
     .ok_or_else(|| {
         Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected closing delimiter for eventmodeling inline data",
             start + line_end,
         )
@@ -1135,9 +1224,9 @@ struct FailedEventModelingBlock {
 
 fn parse_eventmodeling_block_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> std::result::Result<ParsedEventModelingBlock, FailedEventModelingBlock> {
-    let data_type = match parse_eventmodeling_optional_data_type(cursor, meta) {
+    let data_type = match parse_eventmodeling_optional_data_type(cursor, diagram_type) {
         Ok(data_type) => data_type,
         Err(error) => {
             return Err(FailedEventModelingBlock {
@@ -1148,7 +1237,7 @@ fn parse_eventmodeling_block_cursor(
             });
         }
     };
-    if let Err(error) = cursor.skip_hidden(meta) {
+    if let Err(error) = cursor.skip_hidden(diagram_type) {
         return Err(FailedEventModelingBlock {
             error: Box::new(error),
             data_type,
@@ -1160,7 +1249,7 @@ fn parse_eventmodeling_block_cursor(
         let span = cursor.insertion_span();
         return Err(FailedEventModelingBlock {
             error: Box::new(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected eventmodeling data block",
                 span.start,
             )),
@@ -1177,7 +1266,7 @@ fn parse_eventmodeling_block_cursor(
         let span = SourceSpan::new(block_start, cursor.source.len());
         return Err(FailedEventModelingBlock {
             error: Box::new(eventmodeling_exact_error(
-                meta,
+                diagram_type,
                 "eventmodeling data block must start on a new line",
                 span,
             )),
@@ -1203,7 +1292,7 @@ fn parse_eventmodeling_block_cursor(
         );
         return Err(FailedEventModelingBlock {
             error: Box::new(eventmodeling_exact_error(
-                meta,
+                diagram_type,
                 "eventmodeling data block must start on a new line",
                 span,
             )),
@@ -1242,7 +1331,7 @@ fn parse_eventmodeling_block_cursor(
     cursor.offset = cursor.source.len();
     Err(FailedEventModelingBlock {
         error: Box::new(Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected closing brace for eventmodeling data block",
             cursor.source.len(),
         )),
@@ -1259,29 +1348,31 @@ struct FailedEventModelingDataCursor {
 
 fn parse_eventmodeling_data_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> std::result::Result<EventModelingDataEntityFacts, FailedEventModelingDataCursor> {
     cursor.consume_keyword("data");
-    let name =
-        match take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data entity name")
-        {
-            Ok(name) => name,
-            Err(error) => {
-                return Err(FailedEventModelingDataCursor {
-                    error: Box::new(error),
-                    partial: Box::new(EventModelingDataEntityFacts {
-                        name: EventModelingFieldSpan {
-                            text: String::new(),
-                            span: cursor.insertion_span(),
-                        },
-                        data_type: None,
-                        block_text: String::new(),
-                        block_span: cursor.insertion_span(),
-                    }),
-                });
-            }
-        };
-    match parse_eventmodeling_block_cursor(cursor, meta) {
+    let name = match take_eventmodeling_id_cursor(
+        cursor,
+        diagram_type,
+        "expected eventmodeling data entity name",
+    ) {
+        Ok(name) => name,
+        Err(error) => {
+            return Err(FailedEventModelingDataCursor {
+                error: Box::new(error),
+                partial: Box::new(EventModelingDataEntityFacts {
+                    name: EventModelingFieldSpan {
+                        text: String::new(),
+                        span: cursor.insertion_span(),
+                    },
+                    data_type: None,
+                    block_text: String::new(),
+                    block_span: cursor.insertion_span(),
+                }),
+            });
+        }
+    };
+    match parse_eventmodeling_block_cursor(cursor, diagram_type) {
         Ok(block) => Ok(EventModelingDataEntityFacts {
             name,
             data_type: block.data_type,
@@ -1307,12 +1398,12 @@ struct FailedEventModelingNoteCursor {
 
 fn parse_eventmodeling_note_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> std::result::Result<EventModelingNoteFacts, FailedEventModelingNoteCursor> {
     cursor.consume_keyword("note");
     let source_frame = match take_eventmodeling_frame_id_cursor(
         cursor,
-        meta,
+        diagram_type,
         "expected eventmodeling note source frame",
     ) {
         Ok(source) => source,
@@ -1331,7 +1422,7 @@ fn parse_eventmodeling_note_cursor(
             });
         }
     };
-    match parse_eventmodeling_block_cursor(cursor, meta) {
+    match parse_eventmodeling_block_cursor(cursor, diagram_type) {
         Ok(block) => Ok(EventModelingNoteFacts {
             source_frame,
             data_type: block.data_type,
@@ -1370,7 +1461,7 @@ fn is_eventmodeling_top_level_start(cursor: &EventModelingCursor<'_>) -> bool {
 
 fn parse_eventmodeling_gwt_group(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     stop_keywords: &[&str],
 ) -> Result<Vec<EventModelingGwtStatementFacts>> {
     let mut statements = Vec::new();
@@ -1378,7 +1469,7 @@ fn parse_eventmodeling_gwt_group(
         if cursor.control.checkpoint().is_err() {
             break;
         }
-        cursor.skip_hidden(meta)?;
+        cursor.skip_hidden(diagram_type)?;
         if cursor.is_eof()
             || stop_keywords
                 .iter()
@@ -1387,10 +1478,10 @@ fn parse_eventmodeling_gwt_group(
         {
             break;
         }
-        let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, meta)?;
+        let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, diagram_type)?;
         let entity_reference = take_eventmodeling_id_cursor(
             cursor,
-            meta,
+            diagram_type,
             "expected eventmodeling gwt model entity reference",
         )?;
         statements.push(EventModelingGwtStatementFacts {
@@ -1400,7 +1491,7 @@ fn parse_eventmodeling_gwt_group(
     }
     if statements.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected at least one eventmodeling gwt statement",
             cursor.offset(),
         ));
@@ -1410,38 +1501,38 @@ fn parse_eventmodeling_gwt_group(
 
 fn parse_eventmodeling_gwt_cursor(
     cursor: &mut EventModelingCursor<'_>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<EventModelingGwtFacts> {
     cursor.consume_keyword("gwt");
     let source_frame = take_eventmodeling_frame_id_cursor(
         cursor,
-        meta,
+        diagram_type,
         "expected eventmodeling gwt source frame",
     )?;
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     if !cursor.consume_keyword("given") {
         return Err(Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected 'given' in eventmodeling gwt",
             cursor.offset(),
         ));
     }
-    let given = parse_eventmodeling_gwt_group(cursor, meta, &["when", "then"])?;
-    cursor.skip_hidden(meta)?;
+    let given = parse_eventmodeling_gwt_group(cursor, diagram_type, &["when", "then"])?;
+    cursor.skip_hidden(diagram_type)?;
     let when = if cursor.consume_keyword("when") {
-        parse_eventmodeling_gwt_group(cursor, meta, &["then"])?
+        parse_eventmodeling_gwt_group(cursor, diagram_type, &["then"])?
     } else {
         Vec::new()
     };
-    cursor.skip_hidden(meta)?;
+    cursor.skip_hidden(diagram_type)?;
     if !cursor.consume_keyword("then") {
         return Err(Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected 'then' in eventmodeling gwt",
             cursor.offset(),
         ));
     }
-    let then = parse_eventmodeling_gwt_group(cursor, meta, &[])?;
+    let then = parse_eventmodeling_gwt_group(cursor, diagram_type, &[])?;
     Ok(EventModelingGwtFacts {
         source_frame,
         given,
@@ -1452,7 +1543,7 @@ fn parse_eventmodeling_gwt_cursor(
 
 fn validate_eventmodeling_semantics(
     syntax: &mut EventModelingSyntaxFacts,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Option<Error>> {
     let mut frame_types = HashMap::with_capacity(syntax.frames.len());
@@ -1466,7 +1557,7 @@ fn validate_eventmodeling_semantics(
             std::collections::hash_map::Entry::Occupied(_) => {
                 duplicate_frame.get_or_insert_with(|| {
                     Error::diagram_parse_exact(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         format!(r#"Duplicate event modeling frame ID "{}""#, frame.name),
                         frame.name_span,
                     )
@@ -1760,7 +1851,7 @@ fn push_eventmodeling_gwt_facts(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{
@@ -1788,7 +1879,12 @@ mod tests {
         control.cancel_after_checkpoints(40);
 
         assert!(matches!(
-            construct_eventmodeling_semantic_source_controlled(&text, &meta(), &control),
+            construct_eventmodeling_semantic_source_controlled(
+                &text,
+                &meta().diagram_type,
+                EditorFactsDemand::Omit,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }
@@ -1844,7 +1940,13 @@ mod tests {
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
-            eventmodeling_failure_controlled(error, syntax, invalid_span, &control),
+            eventmodeling_failure_controlled(
+                error,
+                syntax,
+                invalid_span,
+                EditorFactsDemand::Capture,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }
@@ -2401,5 +2503,114 @@ gwt 02
                 facts.diagnostics
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "eventmodeling".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict"
+            })),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_model_preserves_domain_records_without_editor_work() {
+        let metadata = metadata();
+        let source = concat!(
+            "eventmodeling\n",
+            "accTitle: <script>secret</script>Public\n",
+            "tf 01 cmd AddItem { productId: 7 }\n",
+            "tf 02 evt ItemAdded ->> 01\n",
+            "data ItemAddedData {\n",
+            "  productId: 7\n",
+            "}\n",
+        );
+        reset_eventmodeling_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model = parse_eventmodeling_semantic_model_controlled(
+            source,
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.acc_title.as_deref(), Some("Public"));
+        assert_eq!(model.frames[0].name, "01");
+        assert_eq!(model.frames[0].model_entity_type, "cmd");
+        assert_eq!(model.frames[0].entity_identifier, "AddItem");
+        assert_eq!(
+            model.frames[0].data_inline_value.as_deref(),
+            Some("{ productId: 7 }")
+        );
+        assert_eq!(model.frames[1].source_frames, ["01"]);
+        assert_eq!(model.data_entities[0].name, "ItemAddedData");
+        assert!(
+            model.data_entities[0]
+                .data_block_value
+                .contains("productId: 7")
+        );
+        assert_eq!(eventmodeling_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "presentation")]
+        {
+            let full_metadata = crate::ParseMetadata {
+                diagram_type: metadata.diagram_type.clone(),
+                config: metadata.config.clone(),
+                effective_config: crate::presentation::PresentationConfig::from_config(
+                    metadata.semantic_config.clone(),
+                ),
+                title: metadata.title.clone(),
+            };
+            parse_eventmodeling_model_for_render_controlled(
+                source,
+                &full_metadata,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+
+            #[cfg(feature = "compat-json")]
+            {
+                parse_eventmodeling(source, &full_metadata).unwrap();
+                assert_eq!(crate::editor::test_work::read(), Default::default());
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_errors_keep_exact_spans_and_observe_cancellation() {
+        let source = "eventmodeling\ntf 01 invalid Started\n";
+        let metadata = metadata();
+        crate::editor::test_work::reset();
+        let error = parse_eventmodeling_semantic_model_controlled(
+            source,
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured parse diagnostic");
+        };
+        let start = source.find("invalid").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + "invalid".len())),
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = crate::OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_eventmodeling_semantic_model_controlled(source, &metadata, &control).is_err()
+        );
     }
 }

@@ -1,8 +1,11 @@
+#[cfg(feature = "presentation")]
 mod full;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) use full::preprocess_mermaid_public_parse_pipeline;
+#[cfg(feature = "presentation")]
 pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
+#[cfg(feature = "presentation")]
 pub(crate) use full::{
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
     preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,

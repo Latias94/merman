@@ -1,9 +1,11 @@
 use super::*;
-use crate::{
-    Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions, RenderSemanticModel,
-};
+#[cfg(feature = "presentation")]
+use crate::{Engine, ParseMetadata, ParseOptions, RenderSemanticModel};
+use crate::{MermaidConfig, OperationControl};
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
+#[cfg(feature = "presentation")]
 fn model(source: &str) -> StateDiagramRenderModel {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -27,6 +29,7 @@ fn chain(depth: usize) -> String {
     source
 }
 
+#[cfg(feature = "presentation")]
 fn meta() -> ParseMetadata {
     ParseMetadata {
         diagram_type: "stateDiagram-v2".to_string(),
@@ -36,6 +39,7 @@ fn meta() -> ParseMetadata {
     }
 }
 
+#[cfg(feature = "compat-json")]
 fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson {
     crate::ManagedSemanticJson::from(
         render_model_to_compat_json(model, &meta()).expect("state compatibility projection"),
@@ -43,6 +47,7 @@ fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson 
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_semantic_graph_matches_full_model_without_presentation_materialization() {
     let source = concat!(
         "stateDiagram-v2\ndirection LR\n",
@@ -138,16 +143,18 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
             &OperationControl::new(),
         )
         .unwrap();
-        let render = parse::parse_state_model_for_render_controlled(
-            source,
-            &meta(),
-            &OperationControl::new(),
-        )
-        .unwrap();
-        assert_eq!(
-            semantic.unwrap_err().to_string(),
-            render.unwrap_err().to_string()
-        );
+        let semantic_error = semantic.expect_err("canonical State validation rejects the input");
+        assert!(matches!(semantic_error, crate::Error::DiagramParse { .. }));
+        #[cfg(feature = "presentation")]
+        {
+            let render = parse::parse_state_model_for_render_controlled(
+                source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(semantic_error.to_string(), render.unwrap_err().to_string());
+        }
     }
     let control = OperationControl::new();
     control.cancel_after_checkpoints(20);
@@ -174,6 +181,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
     let model = model(concat!(
         "stateDiagram-v2\ndirection LR\n",
@@ -291,6 +299,7 @@ fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_root_document_lookup_preserves_first_root_composite() {
     let model = model(concat!(
         "stateDiagram-v2\nstate Container {\nstate Shared {\nNested\n}\n}\n",
@@ -340,6 +349,7 @@ fn state_root_document_lookup_preserves_first_root_composite() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_preserves_nested_documents() {
     for source in [
         "stateDiagram-v2\nA --> B: label\nnote right of A : note\n",
@@ -357,6 +367,7 @@ fn state_compatibility_projection_preserves_nested_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_supports_deep_documents() {
     let model = model(&chain(130));
     let json = compatibility(&model);
@@ -367,6 +378,7 @@ fn state_compatibility_projection_supports_deep_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_handles_shared_documents() {
     let mut model = model(&chain(130));
     let doc = model.states["S0"].doc;
@@ -407,10 +419,19 @@ fn state_divider_assignment_cancellation_releases_completed_grammar_documents() 
         "assignment had useful work before cancellation"
     );
     drop(document);
-    assert_eq!(model("stateDiagram-v2\nA\n").nodes.len(), 1);
+    let model = parse::parse_state_semantic_model_controlled(
+        "stateDiagram-v2\nA\n",
+        "stateDiagram-v2",
+        &MermaidConfig::default(),
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(model.nodes.len(), 1);
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_projection_cancellation_releases_completed_inner_documents() {
     let model = model(&chain(1000));
     let control = OperationControl::new();
@@ -433,6 +454,7 @@ fn state_projection_cancellation_releases_completed_inner_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_foreign_document_ids_report_projection_failure() {
     let foreign = model(&chain(3));
     let mut target = model("stateDiagram-v2\nA\n");
@@ -442,4 +464,32 @@ fn state_foreign_document_ids_report_projection_failure() {
         target.model_complexity(),
         model("stateDiagram-v2\nA\n").model_complexity()
     );
+}
+
+#[test]
+fn state_semantic_deep_documents_clone_count_and_drop_without_recursion() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            let source = chain(1000);
+            let model = parse::parse_state_semantic_model_controlled(
+                &source,
+                "stateDiagram-v2",
+                &MermaidConfig::default(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            let clone = model.clone();
+            assert_eq!(clone.document.len(), 1001);
+            let complexity = model.model_complexity();
+            assert!(complexity.items > model.nodes.len());
+            assert_eq!(complexity.nesting_depth, 1000);
+            assert_eq!(clone.model_complexity(), complexity);
+            drop(model);
+            drop(clone);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

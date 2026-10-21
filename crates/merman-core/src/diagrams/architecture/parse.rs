@@ -1,5 +1,12 @@
 use super::*;
 use crate::EditorRenamePolicy;
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
 use crate::diagrams::langium_common::{
     LangiumCommonFact, LangiumCommonField, LangiumCommonParse, is_ecmascript_line_terminator,
     parse_langium_common, parse_langium_string,
@@ -71,6 +78,7 @@ struct ArchitectureTrace {
     entries: Vec<ArchitectureTraceEntry>,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug)]
 pub(super) struct ArchitectureSemanticSource {
     db: ArchitectureDb,
@@ -109,15 +117,17 @@ struct ArchitectureStatementParser<'a> {
     base_offset: usize,
     pos: usize,
     facts: Vec<ArchitectureTraceFact>,
+    editor_demand: EditorFactsDemand,
 }
 
 impl<'a> ArchitectureStatementParser<'a> {
-    fn new(input: &'a str, base_offset: usize) -> Self {
+    fn new(input: &'a str, base_offset: usize, editor_demand: EditorFactsDemand) -> Self {
         Self {
             input,
             base_offset,
             pos: 0,
             facts: Vec::new(),
+            editor_demand,
         }
     }
 
@@ -161,16 +171,12 @@ impl<'a> ArchitectureStatementParser<'a> {
         )?;
         let icon = self.parse_icon()?;
         if let Some(icon) = &icon {
-            self.push_payload(
-                icon.clone(),
-                "architecture group icon",
-                EditorSemanticKind::String,
-            );
+            self.push_payload(icon, "architecture group icon", EditorSemanticKind::String);
         }
         let title = self.parse_title()?;
         if let Some(title) = &title {
             self.push_payload(
-                title.clone(),
+                title,
                 "architecture group title",
                 EditorSemanticKind::String,
             );
@@ -208,7 +214,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 icon = self.parse_icon()?;
                 if let Some(value) = &icon {
                     self.push_payload(
-                        value.clone(),
+                        value,
                         "architecture service icon",
                         EditorSemanticKind::String,
                     );
@@ -217,7 +223,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             Some('"' | '\'') => {
                 icon_text = Some(self.parse_string()?);
                 self.push_payload(
-                    icon_text.clone().expect("icon text was just parsed"),
+                    icon_text.as_ref().expect("icon text was just parsed"),
                     "architecture service icon text",
                     EditorSemanticKind::String,
                 );
@@ -227,7 +233,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         let title = self.parse_title()?;
         if let Some(title) = &title {
             self.push_payload(
-                title.clone(),
+                title,
                 "architecture service title",
                 EditorSemanticKind::String,
             );
@@ -282,7 +288,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             ));
         }
         self.push_payload(
-            direction.clone(),
+            &direction,
             "architecture alignment direction",
             EditorSemanticKind::String,
         );
@@ -318,7 +324,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         let lhs_direction =
             self.parse_direction("expected lhs direction", "invalid lhs direction")?;
         self.push_payload(
-            lhs_direction.clone(),
+            &lhs_direction,
             "architecture edge lhs direction",
             EditorSemanticKind::String,
         );
@@ -334,7 +340,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 .parse_title()?
                 .ok_or_else(|| self.insertion_error("expected edge title"))?;
             self.push_payload(
-                title.clone(),
+                &title,
                 "architecture edge title",
                 EditorSemanticKind::String,
             );
@@ -348,7 +354,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         let rhs_direction =
             self.parse_direction("expected rhs direction", "invalid rhs direction")?;
         self.push_payload(
-            rhs_direction.clone(),
+            &rhs_direction,
             "architecture edge rhs direction",
             EditorSemanticKind::String,
         );
@@ -390,7 +396,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 token.selection,
             ));
         }
-        self.push_entity(token.clone(), detail, kind);
+        self.push_entity(&token, detail, kind);
         Ok(ArchitectureIdentifier {
             text: token.value,
             span: token.selection,
@@ -411,7 +417,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 token.selection,
             ));
         }
-        self.push_reference(token.clone(), detail, kind);
+        self.push_reference(&token, detail, kind);
         Ok(ArchitectureIdentifier {
             text: token.value,
             span: token.selection,
@@ -610,12 +616,15 @@ impl<'a> ArchitectureStatementParser<'a> {
 
     fn push_entity(
         &mut self,
-        value: ArchitectureSpannedValue,
+        value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        if self.editor_demand == EditorFactsDemand::Omit {
+            return;
+        }
         self.facts.push(ArchitectureTraceFact {
-            value,
+            value: value.clone(),
             detail,
             kind,
             role: ArchitectureTraceFactRole::Entity,
@@ -625,12 +634,15 @@ impl<'a> ArchitectureStatementParser<'a> {
 
     fn push_reference(
         &mut self,
-        value: ArchitectureSpannedValue,
+        value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        if self.editor_demand == EditorFactsDemand::Omit {
+            return;
+        }
         self.facts.push(ArchitectureTraceFact {
-            value,
+            value: value.clone(),
             detail,
             kind,
             role: ArchitectureTraceFactRole::Reference,
@@ -640,15 +652,18 @@ impl<'a> ArchitectureStatementParser<'a> {
 
     fn push_payload(
         &mut self,
-        value: ArchitectureSpannedValue,
+        value: &ArchitectureSpannedValue,
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
+        if self.editor_demand == EditorFactsDemand::Omit {
+            return;
+        }
         if value.value.is_empty() {
             return;
         }
         self.facts.push(ArchitectureTraceFact {
-            value,
+            value: value.clone(),
             detail,
             kind,
             role: ArchitectureTraceFactRole::Payload,
@@ -792,14 +807,16 @@ fn convert_architecture_title(raw: &str) -> String {
         .to_string()
 }
 
+#[cfg(all(test, feature = "compat-json"))]
 pub(super) fn parse_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ArchitectureSemanticSource> {
     let trace = parse_trace_controlled(
         code,
-        meta,
+        &meta.diagram_type,
         ArchitectureParseMode::Strict,
+        EditorFactsDemand::Capture,
         &crate::OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")?;
@@ -808,13 +825,19 @@ pub(super) fn parse_semantic_source(
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
-pub(super) fn parse_model_for_render_controlled(
+pub(super) fn parse_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<super::ArchitectureDiagramRenderModel>> {
+    diagram_type: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
     control.checkpoint()?;
-    let trace = match parse_trace_controlled(code, meta, ArchitectureParseMode::Strict, control)? {
+    let trace = match parse_trace_controlled(
+        code,
+        diagram_type,
+        ArchitectureParseMode::Strict,
+        EditorFactsDemand::Omit,
+        control,
+    )? {
         Ok(trace) => trace,
         Err(error) => return Ok(Err(error)),
     };
@@ -822,9 +845,10 @@ pub(super) fn parse_model_for_render_controlled(
         Ok(db) => db,
         Err(error) => return Ok(Err(error)),
     };
-    Ok(Ok(db.render_model_controlled(control)?))
+    Ok(Ok(db.semantic_model_controlled(control)?))
 }
 
+#[cfg(feature = "compat-json")]
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -833,17 +857,22 @@ pub(super) fn parse_combined_semantic_source_controlled(
     std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
-    let trace =
-        match parse_trace_controlled(code, meta, ArchitectureParseMode::Recovering, control)? {
-            Ok(trace) => trace,
-            Err(error) => {
-                let mut facts = EditorSemanticFacts::new();
-                push_recovery_error(&mut facts, &error);
-                return Ok(Err(crate::family::CombinedSemanticFailure::new(
-                    error, facts,
-                )));
-            }
-        };
+    let trace = match parse_trace_controlled(
+        code,
+        &meta.diagram_type,
+        ArchitectureParseMode::Recovering,
+        EditorFactsDemand::Capture,
+        control,
+    )? {
+        Ok(trace) => trace,
+        Err(error) => {
+            let mut facts = EditorSemanticFacts::new();
+            push_recovery_error(&mut facts, &error);
+            return Ok(Err(crate::family::CombinedSemanticFailure::new(
+                error, facts,
+            )));
+        }
+    };
     control.checkpoint()?;
     let mut syntax_error = None;
     for (index, entry) in trace.entries.iter().enumerate() {
@@ -883,11 +912,18 @@ pub(super) fn parse_combined_semantic_source_controlled(
 
 fn parse_trace_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     mode: ArchitectureParseMode,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<ArchitectureTrace>> {
     control.checkpoint()?;
+    #[cfg(test)]
+    ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.set(ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+    if editor_demand == EditorFactsDemand::Capture {
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
+    }
     let mut trace = ArchitectureTrace::default();
     let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
@@ -902,7 +938,7 @@ fn parse_trace_controlled(
             return Ok(handle_header_error(
                 &mut trace,
                 mode,
-                meta,
+                diagram_type,
                 trimmed_start,
                 trimmed.len(),
             ));
@@ -915,7 +951,7 @@ fn parse_trace_controlled(
             return Ok(handle_header_error(
                 &mut trace,
                 mode,
-                meta,
+                diagram_type,
                 trimmed_start,
                 trimmed.len(),
             ));
@@ -926,23 +962,31 @@ fn parse_trace_controlled(
         if !rest.is_empty() {
             let common_start = trimmed_start + "architecture-beta".len();
             let statement_start = common_start + leading;
-            if let Err(error) = parse_trace_statement(
+            let entry = match parse_trace_statement(
                 code,
                 &mut lines,
                 rest,
                 statement_start,
                 common_start,
                 mode,
-                &mut trace,
+                editor_demand,
             ) {
-                return Ok(Err(error));
-            }
+                Ok(entry) => entry,
+                Err(error) => return Ok(Err(error)),
+            };
+            trace.entries.push(entry);
         }
         break;
     }
 
     if !found_header {
-        return Ok(handle_header_error(&mut trace, mode, meta, code.len(), 0));
+        return Ok(handle_header_error(
+            &mut trace,
+            mode,
+            diagram_type,
+            code.len(),
+            0,
+        ));
     }
 
     while let Some(line) = lines.next() {
@@ -951,17 +995,19 @@ fn parse_trace_controlled(
         if trimmed.is_empty() {
             continue;
         }
-        if let Err(error) = parse_trace_statement(
+        let entry = match parse_trace_statement(
             code,
             &mut lines,
             trimmed,
             trimmed_start,
             line.start,
             mode,
-            &mut trace,
+            editor_demand,
         ) {
-            return Ok(Err(error));
-        }
+            Ok(entry) => entry,
+            Err(error) => return Ok(Err(error)),
+        };
+        trace.entries.push(entry);
     }
 
     control.checkpoint()?;
@@ -971,19 +1017,19 @@ fn parse_trace_controlled(
 fn handle_header_error(
     trace: &mut ArchitectureTrace,
     mode: ArchitectureParseMode,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     start: usize,
     len: usize,
 ) -> Result<ArchitectureTrace> {
     let error = if len == 0 {
         Error::diagram_parse_insertion_point(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected architecture-beta header",
             start,
         )
     } else {
         Error::diagram_parse_exact(
-            meta.diagram_type.clone(),
+            diagram_type.to_string(),
             "expected architecture-beta header",
             SourceSpan::new(start, start + len),
         )
@@ -1008,33 +1054,31 @@ fn parse_trace_statement(
     statement_start: usize,
     common_start: usize,
     mode: ArchitectureParseMode,
-    trace: &mut ArchitectureTrace,
-) -> Result<()> {
+    editor_demand: EditorFactsDemand,
+) -> Result<ArchitectureTraceEntry> {
     let parsed = if let Some(common) = parse_langium_common(code, common_start) {
         lines.offset = common_start + common.consumed;
-        architecture_common_trace_entry(common)
+        architecture_common_trace_entry(common, editor_demand)
     } else {
         let statement = extend_quoted_statement(code, lines, statement, statement_start);
-        ArchitectureStatementParser::new(statement, statement_start).parse()
+        ArchitectureStatementParser::new(statement, statement_start, editor_demand).parse()
     };
     match parsed {
-        Ok(entry) => trace.entries.push(entry),
-        Err(failure) if mode == ArchitectureParseMode::Strict => return Err(*failure.error),
-        Err(failure) => {
-            trace.entries.push(ArchitectureTraceEntry {
-                statement: None,
-                span: SourceSpan::new(statement_start, statement_start + statement.len()),
-                facts: failure.facts,
-                diagnostic: Some(take_parse_diagnostic(*failure.error)),
-                directive_prefix: failure.directive_prefix,
-            });
-        }
+        Ok(entry) => Ok(entry),
+        Err(failure) if mode == ArchitectureParseMode::Strict => Err(*failure.error),
+        Err(failure) => Ok(ArchitectureTraceEntry {
+            statement: None,
+            span: SourceSpan::new(statement_start, statement_start + statement.len()),
+            facts: failure.facts,
+            diagnostic: Some(take_parse_diagnostic(*failure.error)),
+            directive_prefix: failure.directive_prefix,
+        }),
     }
-    Ok(())
 }
 
 fn architecture_common_trace_entry(
     parsed: LangiumCommonParse,
+    editor_demand: EditorFactsDemand,
 ) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
     let LangiumCommonParse {
         fact, diagnostic, ..
@@ -1054,7 +1098,11 @@ fn architecture_common_trace_entry(
             "architecture accessibility description",
         ),
     };
-    let facts = common_payload_fact(&spanned, detail);
+    let facts = if editor_demand == EditorFactsDemand::Capture {
+        common_payload_fact(&spanned, detail)
+    } else {
+        Vec::new()
+    };
 
     if let Some(diagnostic) = diagnostic {
         return Err(StatementFailure::new(
@@ -1186,6 +1234,7 @@ fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {
     }
 }
 
+#[cfg(feature = "compat-json")]
 fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
     match error {
         Error::DiagramParse { diagnostic, .. } => {
@@ -1196,6 +1245,7 @@ fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
 }
 
 impl ArchitectureTrace {
+    #[cfg(all(test, feature = "compat-json"))]
     fn build_db(&self) -> Result<ArchitectureDb> {
         let control = crate::OperationControl::new();
         self.build_db_controlled(&control)
@@ -1305,6 +1355,7 @@ impl ArchitectureTrace {
         Ok(Ok(db))
     }
 
+    #[cfg(all(test, feature = "compat-json"))]
     fn editor_facts(
         &self,
         db: Option<&ArchitectureDb>,
@@ -1315,6 +1366,7 @@ impl ArchitectureTrace {
             .expect("a private parse control cannot be cancelled")
     }
 
+    #[cfg(feature = "compat-json")]
     fn declaration_kinds_controlled<'a>(
         &'a self,
         control: &crate::OperationControl,
@@ -1344,6 +1396,7 @@ impl ArchitectureTrace {
         Ok(kinds)
     }
 
+    #[cfg(feature = "compat-json")]
     fn editor_facts_controlled(
         &self,
         db: Option<&ArchitectureDb>,
@@ -1425,15 +1478,17 @@ impl ArchitectureTrace {
     }
 }
 
+#[cfg(feature = "compat-json")]
 impl ArchitectureSemanticSource {
+    #[cfg(test)]
     pub(super) fn compat_json(&self, meta: &ParseMetadata) -> Value {
-        super::render_model_to_compat_json(&self.db.render_model(), meta)
+        super::render_model_to_compat_json(&self.db.semantic_model(), meta)
             .expect("Architecture typed model must remain JSON-serializable")
     }
 
     #[cfg(test)]
-    pub(super) fn render_model(&self) -> ArchitectureDiagramRenderModel {
-        self.db.render_model()
+    pub(super) fn render_model(&self) -> ArchitectureDiagramModel {
+        self.db.semantic_model()
     }
 
     #[cfg(test)]
@@ -1447,7 +1502,7 @@ impl ArchitectureSemanticSource {
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         control.checkpoint()?;
-        let model = self.db.render_model_controlled(control)?;
+        let model = self.db.semantic_model_controlled(control)?;
         let json = super::render_model_to_compat_json_controlled(&model, meta, control)?;
         control.checkpoint()?;
         Ok((json, self.editor_facts))

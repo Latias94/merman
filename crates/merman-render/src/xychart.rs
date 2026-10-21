@@ -1949,30 +1949,32 @@ mod tests {
 
     fn layout(title: &str, orientation: &str, height: f64, legend: bool) -> XyChartDiagramLayout {
         let model = XyChartDiagramRenderModel {
-            orientation: orientation.to_string(),
-            title: Some(title.to_string()),
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
-                title: String::new(),
-                categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            semantic: merman_core::diagrams::xychart::XyChartDiagramModel {
+                orientation: orientation.to_string(),
+                title: Some(title.to_string()),
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisRenderModel::Band {
+                    title: String::new(),
+                    categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                },
+                y_axis: XyChartAxisRenderModel::Linear {
+                    title: "A fairly wide y-axis title".to_string(),
+                    min: Some(0.0),
+                    max: Some(100000.0),
+                },
+                plots: vec![XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Bar,
+                    title: Some("series".to_string()),
+                    values: vec![10.0, 20.0, 30.0],
+                    data: vec![
+                        ("a".to_string(), Some(10.0)),
+                        ("b".to_string(), Some(20.0)),
+                        ("c".to_string(), Some(30.0)),
+                    ],
+                    point_labels: Vec::new(),
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: "A fairly wide y-axis title".to_string(),
-                min: Some(0.0),
-                max: Some(100000.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Bar,
-                title: Some("series".to_string()),
-                values: vec![10.0, 20.0, 30.0],
-                data: vec![
-                    ("a".to_string(), Some(10.0)),
-                    ("b".to_string(), Some(20.0)),
-                    ("c".to_string(), Some(30.0)),
-                ],
-                point_labels: Vec::new(),
-            }],
             display: Default::default(),
         };
         let config =

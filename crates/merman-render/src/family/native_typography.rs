@@ -301,17 +301,15 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-treemap")]
         RenderSemanticModel::Treemap(model) => {
-            if let Some(styles) = &model.root.css_compiled_styles
-                && let Some(property) =
-                    declaration_scan::style_lists([styles.as_slice()], &control)?
+            if let Some(styles) = model.compiled_styles(None)
+                && let Some(property) = declaration_scan::style_lists([styles], &control)?
             {
                 return Ok(Some(property));
             }
-            for node in &model.nodes {
+            for index in 0..model.nodes.len() {
                 control.checkpoint()?;
-                if let Some(styles) = &node.css_compiled_styles
-                    && let Some(property) =
-                        declaration_scan::style_lists([styles.as_slice()], &control)?
+                if let Some(styles) = model.compiled_styles(Some(index))
+                    && let Some(property) = declaration_scan::style_lists([styles], &control)?
                 {
                     return Ok(Some(property));
                 }

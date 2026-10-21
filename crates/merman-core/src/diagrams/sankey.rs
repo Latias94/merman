@@ -1,9 +1,14 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
+use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, Result, SourceSpan, family,
 };
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -26,52 +31,62 @@ pub(crate) fn sankey_syntax_construction_count() -> usize {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SankeyRenderNode {
+pub struct SankeyNode {
     pub id: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SankeyRenderLink {
+pub struct SankeyLink {
     pub source: String,
     pub target: String,
     pub value: Value,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct SankeyRenderGraph {
+pub struct SankeyGraph {
     #[serde(default)]
-    pub nodes: Vec<SankeyRenderNode>,
+    pub nodes: Vec<SankeyNode>,
     #[serde(default)]
-    pub links: Vec<SankeyRenderLink>,
+    pub links: Vec<SankeyLink>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct SankeyDiagramRenderModel {
+pub struct SankeyDiagramModel {
     #[serde(default)]
-    pub graph: SankeyRenderGraph,
+    pub graph: SankeyGraph,
 }
+
+/// Full-parser spellings retained for presentation consumers.
+#[cfg(feature = "presentation")]
+pub type SankeyRenderNode = SankeyNode;
+#[cfg(feature = "presentation")]
+pub type SankeyRenderLink = SankeyLink;
+#[cfg(feature = "presentation")]
+pub type SankeyRenderGraph = SankeyGraph;
+#[cfg(feature = "presentation")]
+pub type SankeyDiagramRenderModel = SankeyDiagramModel;
 
 #[derive(Debug, Default, Clone)]
 struct SankeyDb {
-    nodes: Vec<SankeyRenderNode>,
+    nodes: Vec<SankeyNode>,
     nodes_map: HashMap<String, usize>,
-    links: Vec<SankeyRenderLink>,
+    links: Vec<SankeyLink>,
 }
 
 impl SankeyDb {
-    fn find_or_create_node(&mut self, id_raw: &str, meta: &ParseMetadata) -> String {
-        let id = sanitize_text(id_raw, meta.effective_config.as_config());
+    fn find_or_create_node(&mut self, id_raw: &str, config: &crate::MermaidConfig) -> String {
+        let id = sanitize_text(id_raw, config);
         if self.nodes_map.contains_key(&id) {
             return id;
         }
         let idx = self.nodes.len();
-        self.nodes.push(SankeyRenderNode { id: id.clone() });
+        self.nodes.push(SankeyNode { id: id.clone() });
         self.nodes_map.insert(id.clone(), idx);
         id
     }
 
     fn add_link(&mut self, source: String, target: String, value: Value) {
-        self.links.push(SankeyRenderLink {
+        self.links.push(SankeyLink {
             source,
             target,
             value,
@@ -79,9 +94,9 @@ impl SankeyDb {
     }
 
     #[inline]
-    fn into_render_model(self) -> SankeyDiagramRenderModel {
-        SankeyDiagramRenderModel {
-            graph: SankeyRenderGraph {
+    fn into_model(self) -> SankeyDiagramModel {
+        SankeyDiagramModel {
+            graph: SankeyGraph {
                 nodes: self.nodes,
                 links: self.links,
             },
@@ -108,8 +123,9 @@ struct SankeySemanticSource {
 }
 
 struct SankeySemanticConstruction {
-    source: SankeySemanticSource,
-    editor_facts: EditorSemanticFacts,
+    model: SankeyDiagramModel,
+    #[cfg(feature = "compat-json")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct SankeySyntaxOutcome {
@@ -153,25 +169,29 @@ impl SankeySemanticSource {
         Ok(facts)
     }
 
-    fn into_db(self, meta: &ParseMetadata) -> SankeyDb {
+    fn into_model_controlled(
+        self,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<SankeyDiagramModel> {
         let mut db = SankeyDb::default();
-        for record in self.records {
+        for (index, record) in self.records.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             let source_raw = normalize_field_value(&record.source.text);
             let target_raw = normalize_field_value(&record.target.text);
-            let source = db.find_or_create_node(&source_raw, meta);
-            let target = db.find_or_create_node(&target_raw, meta);
+            let source = db.find_or_create_node(&source_raw, config);
+            let target = db.find_or_create_node(&target_raw, config);
             let value = parse_float_json(record.value.text.trim());
             db.add_link(source, target, value);
         }
-        db
-    }
-
-    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
-        let model = self.into_db(meta).into_render_model();
-        render_model_to_compat_json(&model, meta)
+        control.checkpoint()?;
+        Ok(db.into_model())
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SankeyDiagramRenderModel,
     meta: &ParseMetadata,
@@ -186,22 +206,31 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_sankey_semantic_source(code, meta)?.into_compat_json(meta)
+    let model = parse_sankey_model(code, meta)?;
+    render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
-    let construction = construct_sankey_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_sankey_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
         |construction| {
             (
-                construction.source.into_compat_json(meta),
-                construction.editor_facts,
+                render_model_to_compat_json(&construction.model, meta),
+                construction.editor_facts.unwrap_or_default(),
             )
         },
         family::CombinedSemanticFailure::into_parts,
@@ -210,47 +239,66 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_sankey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SankeyDiagramRenderModel> {
-    Ok(parse_sankey_semantic_source(code, meta)?
-        .into_db(meta)
-        .into_render_model())
+    parse_sankey_model(code, meta)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_sankey_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<SankeyDiagramRenderModel>> {
-    let construction = construct_sankey_semantic_source_controlled(code, meta, control)?;
-    let source = match construction {
-        Ok(construction) => construction.source,
-        Err(failure) => return Ok(Err(failure.into_error())),
-    };
-    control.checkpoint()?;
-    Ok(Ok(source.into_db(meta).into_render_model()))
+    Ok(construct_sankey_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|construction| construction.model)
+    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
-fn parse_sankey_semantic_source(code: &str, meta: &ParseMetadata) -> Result<SankeySemanticSource> {
-    construct_sankey_semantic_source(code, meta)
-        .map(|construction| construction.source)
-        .map_err(family::CombinedSemanticFailure::into_error)
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
+fn parse_sankey_model(code: &str, meta: &ParseMetadata) -> Result<SankeyDiagramModel> {
+    construct_sankey_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map(|construction| construction.model)
+    .map_err(family::CombinedSemanticFailure::into_error)
 }
 
-fn construct_sankey_semantic_source(
+pub(crate) fn parse_sankey_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure> {
-    construct_sankey_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<SankeyDiagramModel>> {
+    Ok(construct_sankey_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|construction| construction.model)
+    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 fn construct_sankey_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure>,
@@ -261,24 +309,35 @@ fn construct_sankey_semantic_source_controlled(
 
     let SankeySyntaxOutcome { source, errors } =
         parse_sankey_syntax_outcome_controlled(code, control)?;
-    let mut editor_facts = source.editor_facts_controlled(code, control)?;
-    for (index, error) in errors.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(source.editor_facts_controlled(code, control)?)
         }
-        editor_facts.mark_recovered_from_parse_error(error.message.clone(), Some(error.span));
+    };
+    if let Some(facts) = editor_facts.as_mut() {
+        for (index, error) in errors.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            facts.mark_recovered_from_parse_error(error.message.clone(), Some(error.span));
+        }
     }
 
     if let Some(error) = errors.into_iter().next() {
         return Ok(Err(family::CombinedSemanticFailure::new(
-            Error::diagram_parse_exact(meta.diagram_type.clone(), error.message, error.span),
-            editor_facts,
+            Error::diagram_parse_exact(diagram_type.to_string(), error.message, error.span),
+            editor_facts.unwrap_or_default(),
         )));
     }
 
+    let model = source.into_model_controlled(config, control)?;
     control.checkpoint()?;
     Ok(Ok(SankeySemanticConstruction {
-        source,
+        model,
+        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -801,7 +860,7 @@ impl<'input, 'control> CsvParser<'input, 'control> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{Engine, ParseOptions};
@@ -1048,5 +1107,109 @@ A,B,0.597
                     .message
                     .contains("expected sankey header followed by csv")
         }));
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "sankey".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict",
+                "htmlLabels": true,
+                "dompurifyConfig": { "FORBID_TAGS": ["b"] }
+            })),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_graph_uses_semantic_sanitization_and_constructs_once_without_editor_work() {
+        let source = "sankey-beta\n<b>A</b>,B,12.5units\nB,<b>A</b>,NaN\n";
+        reset_sankey_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model = parse_sankey_semantic_model_controlled(
+            source,
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(model.graph.nodes.len(), 2);
+        assert_eq!(model.graph.nodes[0].id, "A");
+        assert_eq!(model.graph.nodes[1].id, "B");
+        assert_eq!(model.graph.links.len(), 2);
+        assert_eq!(model.graph.links[0].source, "A");
+        assert_eq!(model.graph.links[0].target, "B");
+        assert_eq!(model.graph.links[0].value, Value::from(12.5));
+        assert_eq!(model.graph.links[1].value, Value::Null);
+        assert_eq!(sankey_syntax_construction_count(), 1);
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default()
+        );
+    }
+
+    #[test]
+    fn semantic_csv_error_preserves_the_source_span_without_editor_work() {
+        let source = "  sankey-beta\r\nA,B,1\r\ninvalid\r\n";
+        let end = source.find("invalid").unwrap() + "invalid".len();
+        crate::editor::test_work::reset();
+        let error = parse_sankey_semantic_model_controlled(
+            source,
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a Sankey parse error");
+        };
+        assert!(diagnostic.message().contains("expected ','"));
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(end, end)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default()
+        );
+    }
+
+    #[test]
+    fn semantic_entry_can_cancel_while_reading_a_large_quoted_field() {
+        let source = format!("sankey-beta\n\"{}\",target,1\n", "a".repeat(12 * 1024));
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(4);
+        assert!(matches!(
+            parse_sankey_semantic_model_controlled(&source, &metadata(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn full_typed_and_json_requests_omit_editor_observers() {
+        let meta = crate::ParseMetadata {
+            diagram_type: "sankey".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        let source = "sankey-beta\nA,B,1\n";
+        crate::editor::test_work::reset();
+        parse_sankey(source, &meta).unwrap();
+        parse_sankey_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default(),
+        );
     }
 }

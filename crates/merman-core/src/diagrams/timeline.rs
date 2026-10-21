@@ -1,9 +1,12 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan, family::EditorFactsDemand,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
+    family::EditorFactsDemand,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -46,6 +49,7 @@ pub struct TimelineTask {
 }
 
 /// Backwards-compatible name for a semantic Timeline task.
+#[cfg(feature = "presentation")]
 pub type TimelineRenderTask = TimelineTask;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -79,6 +83,7 @@ impl TimelineDiagramModel {
     }
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct TimelineDiagramRenderModel {
     #[serde(default)]
@@ -92,10 +97,12 @@ pub struct TimelineDiagramRenderModel {
     pub sections: Vec<String>,
     #[serde(default)]
     pub tasks: Vec<TimelineRenderTask>,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum CompatibilityOutputState {
     Empty,
@@ -103,6 +110,7 @@ enum CompatibilityOutputState {
     Model,
 }
 
+#[cfg(feature = "presentation")]
 impl TimelineDiagramRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -160,10 +168,13 @@ impl TimelineDb {
 
 struct TimelineSemanticSource {
     model: TimelineDiagramModel,
+    #[cfg(feature = "compat-json")]
     compatibility_output: CompatibilityOutputState,
+    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
+#[cfg(feature = "presentation")]
 impl TimelineSemanticSource {
     fn into_render_model(self) -> TimelineDiagramRenderModel {
         TimelineDiagramRenderModel {
@@ -173,6 +184,7 @@ impl TimelineSemanticSource {
             acc_descr: self.model.acc_descr,
             sections: self.model.sections,
             tasks: self.model.tasks,
+            #[cfg(feature = "compat-json")]
             compatibility_output: self.compatibility_output,
         }
     }
@@ -180,6 +192,7 @@ impl TimelineSemanticSource {
 
 struct TimelineParseIssue {
     error: Error,
+    #[cfg(feature = "compat-json")]
     span: SourceSpan,
 }
 
@@ -196,6 +209,7 @@ impl TimelineParseOutcome {
         Ok(self.source)
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_combined(mut self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
         let mut editor_facts = self.source.editor_facts.take().unwrap_or_default();
         let mut first_error = None;
@@ -637,20 +651,27 @@ fn push_timeline_outline_fact(
     ));
 }
 
-fn timeline_parse_issue(error: Error, fallback: SourceSpan) -> TimelineParseIssue {
+fn timeline_parse_issue(error: Error, _fallback: SourceSpan) -> TimelineParseIssue {
+    #[cfg(feature = "compat-json")]
     let span = match &error {
-        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
-        _ => fallback,
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(_fallback),
+        _ => _fallback,
     };
-    TimelineParseIssue { error, span }
+    TimelineParseIssue {
+        error,
+        #[cfg(feature = "compat-json")]
+        span,
+    }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source =
         construct_timeline_semantic_source(code, &meta.diagram_type).into_strict_source()?;
     render_model_to_compat_json(&source.into_render_model(), meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_timeline_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -665,6 +686,7 @@ pub(crate) fn parse_timeline_json_and_editor_facts(
     .into_combined(meta))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &TimelineDiagramRenderModel,
     meta: &ParseMetadata,
@@ -693,7 +715,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_timeline_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -703,6 +725,7 @@ pub(crate) fn parse_timeline_model_for_render(
         .map(TimelineSemanticSource::into_render_model)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_timeline_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -745,6 +768,7 @@ pub(crate) fn parse_timeline_semantic_model_controlled(
     }
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_timeline_semantic_source(code: &str, diagram_type: &str) -> TimelineParseOutcome {
     construct_timeline_semantic_source_controlled(
         code,
@@ -1025,11 +1049,13 @@ fn parse_timeline_semantic_source(
     Ok(TimelineParseOutcome {
         source: TimelineSemanticSource {
             model,
+            #[cfg(feature = "compat-json")]
             compatibility_output: if header_seen {
                 CompatibilityOutputState::Model
             } else {
                 CompatibilityOutputState::Empty
             },
+            #[cfg(feature = "compat-json")]
             editor_facts,
         },
         issues,
@@ -1039,13 +1065,17 @@ fn parse_timeline_semantic_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use crate::{
         EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
         EditorSemanticKind, EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions,
         SourceSpan,
     };
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
+    use serde_json::json;
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn parse(text: &str) -> crate::ManagedSemanticJson {
         let engine = Engine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -1054,6 +1084,7 @@ mod tests {
             .model
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_simple_section_definition() {
         let model = parse(
@@ -1065,6 +1096,7 @@ section abc-123
         assert_eq!(model["sections"][0].as_str().unwrap(), "abc-123");
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_section_with_two_tasks() {
         let model = parse(
@@ -1083,6 +1115,7 @@ task2
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_two_sections_and_two_tasks_each() {
         let model = parse(
@@ -1121,6 +1154,7 @@ task4
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_typed_tasks_retain_duplicate_section_occurrences() {
         let source = concat!(
@@ -1161,6 +1195,7 @@ task4
         assert!(compat["tasks"][0].get("sectionIndex").is_none());
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_tasks_and_events() {
         let model = parse(
@@ -1203,6 +1238,7 @@ task2: event2: event3
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_events_support_markdown_link() {
         let model = parse(
@@ -1235,6 +1271,7 @@ task2: event2: event3
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_multiline_events_are_attached_to_previous_task() {
         let model = parse(
@@ -1275,6 +1312,7 @@ task2: event2: event3
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_allows_semicolons_in_title_section_and_events() {
         let model = parse(
@@ -1306,6 +1344,7 @@ section ;a;bc-123;
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_allows_hashtags_in_title_section_and_events() {
         let model = parse(
@@ -1338,6 +1377,7 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_event_missing_space_reports_insertion_point() {
         let engine = Engine::new();
@@ -1362,6 +1402,7 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
@@ -1408,6 +1449,7 @@ task2: event2: event3\n";
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_entrypoints_and_combined_projection_construct_once() {
         let engine = Engine::new();
@@ -1491,21 +1533,20 @@ task2: event2: event3\n";
         assert_eq!(semantic.tasks[1].events, ["API ready", "Tests green"]);
         assert_eq!(semantic.tasks[2].events, ["Release ready"]);
 
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "timeline",
-                source,
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-        let crate::RenderSemanticModel::Timeline(render) = parsed.model() else {
-            panic!("expected Timeline render model");
-        };
-        assert_eq!(
-            serde_json::to_value(semantic).unwrap(),
-            serde_json::to_value(render).unwrap()
-        );
+        #[cfg(feature = "presentation")]
+        {
+            let meta = crate::ParseMetadata {
+                diagram_type: "timeline".to_string(),
+                config: crate::MermaidConfig::default(),
+                effective_config: crate::presentation::PresentationConfig::default(),
+                title: None,
+            };
+            let render = parse_timeline_model_for_render(source, &meta).unwrap();
+            assert_eq!(
+                serde_json::to_value(semantic).unwrap(),
+                serde_json::to_value(render).unwrap()
+            );
+        }
         crate::editor::test_work::reset();
     }
 
@@ -1524,19 +1565,29 @@ task2: event2: event3\n";
         )
         .unwrap()
         .expect("semantic parse does not evaluate theme colors");
-        let meta = ParseMetadata {
-            diagram_type: "timeline".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
-            title: None,
-        };
-        let mut expected = parse_timeline_model_for_render(source, &meta).unwrap();
-        expected.sanitize_common_db_fields(&config);
-
         assert_eq!(
-            serde_json::to_value(semantic).unwrap(),
-            serde_json::to_value(expected).unwrap()
+            (
+                semantic.title.as_deref(),
+                semantic.acc_title.as_deref(),
+                semantic.acc_descr.as_deref()
+            ),
+            (Some("Delivery"), Some("Accessible"), Some("Description"))
         );
+        #[cfg(feature = "presentation")]
+        {
+            let meta = ParseMetadata {
+                diagram_type: "timeline".to_string(),
+                config: crate::MermaidConfig::empty_object(),
+                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                title: None,
+            };
+            let mut expected = parse_timeline_model_for_render(source, &meta).unwrap();
+            expected.sanitize_common_db_fields(&config);
+            assert_eq!(
+                serde_json::to_value(semantic).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
     }
 
     #[test]
@@ -1549,6 +1600,7 @@ task2: event2: event3\n";
         )
         .unwrap()
         .unwrap();
+        #[cfg(feature = "compat-json")]
         let meta = ParseMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
@@ -1567,9 +1619,11 @@ task2: event2: event3\n";
                 "tasks": [],
             })
         );
+        #[cfg(feature = "compat-json")]
         assert_eq!(parse_timeline("", &meta).unwrap(), json!({}));
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn timeline_typed_projection_preserves_empty_and_header_only_output_states() {
         let meta = ParseMetadata {
@@ -1590,6 +1644,7 @@ task2: event2: event3\n";
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_malformed_event_recovers_prior_parser_facts_once() {
         let engine = Engine::new();
@@ -1636,6 +1691,7 @@ task2: event2: event3\n";
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_direction_is_preserved_in_semantic_and_compatibility_models() {
         let engine = Engine::new();
@@ -1661,6 +1717,7 @@ task2: event2: event3\n";
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_semantic_facts_are_exact_for_crlf_unicode_and_repeated_text() {
         let source = concat!(
@@ -1726,6 +1783,7 @@ task2: event2: event3\n";
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_recovery_keeps_error_prefix_and_later_lines_while_strict_returns_first_error() {
         let source = concat!(
@@ -1783,6 +1841,7 @@ task2: event2: event3\n";
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_rejects_unterminated_multiline_acc_descr_like_pinned_jison() {
         let text = "timeline\naccDescr {\n  partial description\n";

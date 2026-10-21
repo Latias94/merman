@@ -1,11 +1,10 @@
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
+use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult, Result,
-    SemanticMetadata, SourceSpan,
-    parse_diagnostic::{
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
-    },
+    SemanticMetadata, SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(test)]
 use std::cell::Cell;
@@ -104,16 +103,21 @@ impl SequenceSemanticFailure {
         fallback_offset: usize,
     ) -> Error {
         match self {
-            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
+            Self::Grammar {
+                error,
+                editor_facts: _editor_facts,
+            } => Error::diagram_parse_diagnostic(
                 diagram_type.to_string(),
                 lalrpop_parse_diagnostic(&error, fallback_offset),
             ),
-            Self::Db { message, .. } => {
-                Error::diagram_parse_fallback(diagram_type.to_string(), message)
-            }
+            Self::Db {
+                message,
+                editor_facts: _editor_facts,
+            } => Error::diagram_parse_fallback(diagram_type.to_string(), message),
         }
     }
 
+    #[cfg(feature = "compat-json")]
     pub(super) fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
@@ -170,7 +174,11 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
     )?;
     match construction {
         Ok(source) => {
-            let mut model = source.db.into_model();
+            let SequenceSemanticSource {
+                db,
+                editor_facts: _editor_facts,
+            } = source;
+            let mut model = db.into_model();
             model.sanitize_common_db_fields(&meta.semantic_config);
             Ok(Ok(model))
         }
@@ -687,11 +695,15 @@ fn sequence_box_name_and_selection(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compat-json")]
     use super::super::compat::parse_sequence_json_and_editor_facts;
     use super::*;
-    use crate::{EditorSemanticRole, MermaidConfig, ParseMetadata};
+    use crate::MermaidConfig;
+    #[cfg(feature = "compat-json")]
+    use crate::{EditorSemanticRole, ParseMetadata};
     use std::fmt::Write as _;
 
+    #[cfg(feature = "compat-json")]
     fn meta() -> ParseMetadata {
         ParseMetadata {
             diagram_type: "sequence".to_string(),
@@ -741,6 +753,7 @@ mod tests {
         assert_eq!(model.destroyed_actor_message_index("A"), Some(7));
     }
 
+    #[cfg(feature = "compat-json")]
     fn editor_facts(source: &str) -> EditorSemanticFacts {
         crate::family::test_support::editor_facts(
             parse_sequence_json_and_editor_facts,
@@ -838,6 +851,7 @@ mod tests {
         assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn cancelled_editor_collection_stops_with_bounded_work_and_recovers() {
         let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
@@ -885,6 +899,7 @@ mod tests {
         assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn participant_definitions_references_and_payloads_have_distinct_roles() {
         let source = concat!(
@@ -935,6 +950,7 @@ mod tests {
         }));
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn unicode_implicit_participant_is_defined_once_then_referenced() {
         let source = concat!(
@@ -965,6 +981,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn reference_only_statements_do_not_create_participant_entities() {
         let source = concat!(

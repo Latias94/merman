@@ -1,5 +1,6 @@
 use super::ast::*;
 use super::model::*;
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticRole, EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
@@ -7,22 +8,24 @@ use crate::{
 use indexmap::IndexMap;
 
 pub(super) struct SemanticBuild {
-    pub(super) model: ZenumlDiagramRenderModel,
+    pub(super) model: ZenumlDiagramModel,
+    #[cfg(any(test, feature = "compat-json"))]
     pub(super) editor_facts: EditorSemanticFacts,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
 }
 
 #[cfg(test)]
 pub(super) fn build(parsed: ParsedSyntax) -> SemanticBuild {
-    build_controlled(parsed, &OperationControl::new())
+    build_controlled(parsed, EditorFactsDemand::Capture, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn build_controlled(
     parsed: ParsedSyntax,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<SemanticBuild> {
-    SemanticBuilder::new(parsed, control).build()
+    SemanticBuilder::new(parsed, editor_demand, control).build()
 }
 
 struct ParticipantAccumulator {
@@ -34,7 +37,7 @@ struct SemanticBuilder {
     diagnostics: Vec<SyntaxDiagnostic>,
     participants: IndexMap<String, ParticipantAccumulator>,
     groups: Vec<ZenumlGroup>,
-    facts: EditorSemanticFacts,
+    facts: Option<EditorSemanticFacts>,
     generated_statement_id: usize,
     ownable_statement_count: usize,
     some_statement_misses_from: bool,
@@ -49,13 +52,24 @@ struct ResolveContext {
 }
 
 impl SemanticBuilder {
-    fn new(parsed: ParsedSyntax, control: &OperationControl) -> Self {
+    fn new(
+        parsed: ParsedSyntax,
+        editor_demand: EditorFactsDemand,
+        control: &OperationControl,
+    ) -> Self {
         Self {
             syntax: parsed.document,
             diagnostics: parsed.diagnostics,
             participants: IndexMap::new(),
             groups: Vec::new(),
-            facts: EditorSemanticFacts::new(),
+            facts: match editor_demand {
+                EditorFactsDemand::Omit => None,
+                EditorFactsDemand::Capture => {
+                    #[cfg(test)]
+                    crate::editor::test_work::record_collection();
+                    Some(EditorSemanticFacts::new())
+                }
+            },
             generated_statement_id: 0,
             ownable_statement_count: 0,
             some_statement_misses_from: false,
@@ -65,8 +79,12 @@ impl SemanticBuilder {
 
     fn build(mut self) -> OperationControlResult<SemanticBuild> {
         self.control.checkpoint()?;
-        self.facts.push_directive_prefix("title");
-        if let Some(title) = self.syntax.title.clone() {
+        if let Some(facts) = &mut self.facts {
+            facts.push_directive_prefix("title");
+        }
+        if self.facts.is_some()
+            && let Some(title) = self.syntax.title.clone()
+        {
             self.push_payload(&title, "zenuml title", EditorSemanticKind::String);
         }
 
@@ -151,20 +169,22 @@ impl SemanticBuilder {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
-            self.facts.mark_recovered_from_parse_error(
-                format!(
-                    "zenuml parser recovered after parse error: {}",
-                    diagnostic.message
-                ),
-                Some(diagnostic.span),
-            );
-            self.facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                diagnostic.span,
-            ));
+            if let Some(facts) = &mut self.facts {
+                facts.mark_recovered_from_parse_error(
+                    format!(
+                        "zenuml parser recovered after parse error: {}",
+                        diagnostic.message
+                    ),
+                    Some(diagnostic.span),
+                );
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    diagnostic.span,
+                ));
+            }
         }
 
-        let model = ZenumlDiagramRenderModel {
+        let model = ZenumlDiagramModel {
             title: self.syntax.title.as_ref().map(|title| title.value.clone()),
             starter: has_explicit_starter.then_some(starter.value),
             participants: self
@@ -178,7 +198,8 @@ impl SemanticBuilder {
         self.control.checkpoint()?;
         Ok(SemanticBuild {
             model,
-            editor_facts: self.facts,
+            #[cfg(any(test, feature = "compat-json"))]
+            editor_facts: self.facts.unwrap_or_default(),
             diagnostics: self.diagnostics,
         })
     }
@@ -694,24 +715,26 @@ impl SemanticBuilder {
         }
         if let Some(span) = span {
             entry.participant.occurrences.push(span);
-            let symbol = if is_implicit_definition {
-                EditorSemanticSymbol::new(
-                    name,
-                    Some("zenuml implicit participant".to_string()),
-                    EditorSemanticKind::Event,
-                    span,
-                    span,
-                )
-            } else {
-                EditorSemanticSymbol::reference(
-                    name,
-                    Some(detail.to_string()),
-                    EditorSemanticKind::Event,
-                    span,
-                    span,
-                )
-            };
-            self.facts.push_symbol(symbol);
+            if let Some(facts) = &mut self.facts {
+                let symbol = if is_implicit_definition {
+                    EditorSemanticSymbol::new(
+                        name,
+                        Some("zenuml implicit participant".to_string()),
+                        EditorSemanticKind::Event,
+                        span,
+                        span,
+                    )
+                } else {
+                    EditorSemanticSymbol::reference(
+                        name,
+                        Some(detail.to_string()),
+                        EditorSemanticKind::Event,
+                        span,
+                        span,
+                    )
+                };
+                facts.push_symbol(symbol);
+            }
         }
         if let Some(emoji) = emoji {
             self.push_payload(
@@ -728,8 +751,11 @@ impl SemanticBuilder {
     }
 
     fn push_message_signature(&mut self, signature: &SpannedText) {
+        let Some(facts) = &mut self.facts else {
+            return;
+        };
         let (method, span) = signature_method(signature);
-        self.facts.push_symbol(EditorSemanticSymbol::with_role(
+        facts.push_symbol(EditorSemanticSymbol::with_role(
             method,
             Some("zenuml message".to_string()),
             EditorSemanticKind::Function,
@@ -740,7 +766,10 @@ impl SemanticBuilder {
     }
 
     fn push_entity(&mut self, value: &SpannedText, detail: &str) {
-        self.facts.push_symbol(EditorSemanticSymbol::new(
+        let Some(facts) = &mut self.facts else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::new(
             value.value.clone(),
             Some(detail.to_string()),
             EditorSemanticKind::Event,
@@ -750,7 +779,10 @@ impl SemanticBuilder {
     }
 
     fn push_outline(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
-        self.facts.push_symbol(EditorSemanticSymbol::outline(
+        let Some(facts) = &mut self.facts else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::outline(
             value.value.clone(),
             Some(detail.to_string()),
             kind,
@@ -760,7 +792,10 @@ impl SemanticBuilder {
     }
 
     fn push_payload(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
-        self.facts.push_symbol(EditorSemanticSymbol::payload(
+        let Some(facts) = &mut self.facts else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::payload(
             value.value.clone(),
             Some(detail.to_string()),
             kind,

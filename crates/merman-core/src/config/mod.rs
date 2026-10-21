@@ -1,3 +1,4 @@
+#[cfg(feature = "presentation")]
 pub(crate) mod presentation;
 
 use crate::json_value::clone_value_nonrecursive_controlled;
@@ -9,10 +10,12 @@ use serde_json::{Map, Value};
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(feature = "presentation")]
 mod appearance;
 mod source_presentation;
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) use appearance::resolve_appearance;
+#[cfg(feature = "presentation")]
 pub(crate) use appearance::{AppearanceDecision, MaterializationPlan};
 pub(crate) use source_presentation::is_presentation_field;
 

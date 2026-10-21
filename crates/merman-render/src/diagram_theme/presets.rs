@@ -448,6 +448,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn retained_presets_keep_dark_fallbacks_without_owning_typed_paints() {
         for preset in all_presets().filter(|preset| !is_native_candidate(*preset)) {

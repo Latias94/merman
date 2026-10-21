@@ -1,11 +1,15 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::strip_line_ending;
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
+use crate::family::{CombinedSemanticFailure, CombinedSemanticParse};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    family::{CombinedSemanticFailure, CombinedSemanticParse},
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -100,7 +104,18 @@ struct ArchitectureDb {
 
 mod parse;
 
+#[cfg(test)]
+pub(crate) fn reset_architecture_syntax_construction_count() {
+    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn architecture_syntax_construction_count() -> usize {
+    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
 impl ArchitectureDb {
+    #[cfg(feature = "compat-json")]
     fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
         if self.groups.contains_key(id) {
             return Some(EditorSemanticKind::Namespace);
@@ -123,16 +138,18 @@ impl ArchitectureDb {
         self.acc_descr = descr;
     }
 
-    fn render_model(&self) -> ArchitectureDiagramRenderModel {
+    #[cfg(feature = "compat-json")]
+    #[cfg(test)]
+    fn semantic_model(&self) -> ArchitectureDiagramModel {
         let control = OperationControl::new();
-        self.render_model_controlled(&control)
+        self.semantic_model_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
-    fn render_model_controlled(
+    fn semantic_model_controlled(
         &self,
         control: &OperationControl,
-    ) -> OperationControlResult<ArchitectureDiagramRenderModel> {
+    ) -> OperationControlResult<ArchitectureDiagramModel> {
         control.checkpoint()?;
         let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
@@ -146,11 +163,11 @@ impl ArchitectureDb {
             let Some(n) = self.nodes.get(id) else {
                 continue;
             };
-            nodes.push(ArchitectureRenderNode {
+            nodes.push(ArchitectureNodeModel {
                 id: n.id.clone(),
                 node_type: match n.ty {
-                    ArchitectureNodeType::Service => ArchitectureRenderNodeType::Service,
-                    ArchitectureNodeType::Junction => ArchitectureRenderNodeType::Junction,
+                    ArchitectureNodeType::Service => ArchitectureNodeKind::Service,
+                    ArchitectureNodeType::Junction => ArchitectureNodeKind::Junction,
                 },
                 edge_indices: n.edges.clone(),
                 icon: n.icon.clone(),
@@ -168,7 +185,7 @@ impl ArchitectureDb {
             let Some(g) = self.groups.get(id) else {
                 continue;
             };
-            groups.push(ArchitectureRenderGroup {
+            groups.push(ArchitectureGroupModel {
                 id: g.id.clone(),
                 icon: g.icon.clone(),
                 title: g.title.clone(),
@@ -181,7 +198,7 @@ impl ArchitectureDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            edges.push(ArchitectureRenderEdge {
+            edges.push(ArchitectureEdgeModel {
                 lhs_id: e.lhs_id.clone(),
                 lhs_dir: e.lhs_dir,
                 lhs_into: e.lhs_into,
@@ -199,14 +216,14 @@ impl ArchitectureDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            layout_hints.push(ArchitectureRenderLayoutHint {
+            layout_hints.push(ArchitectureLayoutHintModel {
                 direction: hint.direction,
                 members: hint.members.clone(),
             });
         }
 
         control.checkpoint()?;
-        Ok(ArchitectureDiagramRenderModel {
+        Ok(ArchitectureDiagramModel {
             title,
             acc_title,
             acc_descr,
@@ -699,10 +716,27 @@ fn architecture_reserved_id_message(id: &str) -> String {
     format!("reserved architecture keyword [{id}] cannot be used as an id")
 }
 
-pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse::parse_semantic_source(code, meta)?.compat_json(meta))
+pub(crate) fn parse_architecture_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
+    Ok(
+        parse::parse_model_controlled(code, &metadata.diagram_type, control)?.map(|mut model| {
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            model
+        }),
+    )
 }
 
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let model = parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
+}
+
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -723,8 +757,26 @@ pub(crate) fn parse_architecture_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectureDiagramRenderModel {
+#[cfg(feature = "presentation")]
+pub type ArchitectureDiagramRenderModel = ArchitectureDiagramModel;
+
+#[cfg(feature = "presentation")]
+pub type ArchitectureRenderNodeType = ArchitectureNodeKind;
+
+#[cfg(feature = "presentation")]
+pub type ArchitectureRenderNode = ArchitectureNodeModel;
+
+#[cfg(feature = "presentation")]
+pub type ArchitectureRenderGroup = ArchitectureGroupModel;
+
+#[cfg(feature = "presentation")]
+pub type ArchitectureRenderEdge = ArchitectureEdgeModel;
+
+#[cfg(feature = "presentation")]
+pub type ArchitectureRenderLayoutHint = ArchitectureLayoutHintModel;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArchitectureDiagramModel {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default, rename = "accTitle")]
@@ -732,16 +784,16 @@ pub struct ArchitectureDiagramRenderModel {
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default)]
-    pub nodes: Vec<ArchitectureRenderNode>,
+    pub nodes: Vec<ArchitectureNodeModel>,
     #[serde(default)]
-    pub groups: Vec<ArchitectureRenderGroup>,
+    pub groups: Vec<ArchitectureGroupModel>,
     #[serde(default)]
-    pub edges: Vec<ArchitectureRenderEdge>,
+    pub edges: Vec<ArchitectureEdgeModel>,
     #[serde(default, rename = "layoutHints")]
-    pub layout_hints: Vec<ArchitectureRenderLayoutHint>,
+    pub layout_hints: Vec<ArchitectureLayoutHintModel>,
 }
 
-impl ArchitectureDiagramRenderModel {
+impl ArchitectureDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -749,8 +801,9 @@ impl ArchitectureDiagramRenderModel {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ArchitectureDiagramRenderModel,
+    model: &ArchitectureDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
@@ -758,8 +811,9 @@ pub(crate) fn render_model_to_compat_json(
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
-    model: &ArchitectureDiagramRenderModel,
+    model: &ArchitectureDiagramModel,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
@@ -788,8 +842,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
         }
         let value = architecture_render_node_to_compat_json(node, &edges, control)?;
         match node.node_type {
-            ArchitectureRenderNodeType::Service => services.push(value.clone()),
-            ArchitectureRenderNodeType::Junction => junctions.push(value.clone()),
+            ArchitectureNodeKind::Service => services.push(value.clone()),
+            ArchitectureNodeKind::Junction => junctions.push(value.clone()),
         }
         nodes.push(value);
     }
@@ -839,7 +893,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
-fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Value {
+#[cfg(feature = "compat-json")]
+fn architecture_render_edge_to_compat_json(edge: &ArchitectureEdgeModel) -> Value {
     json!({
         "lhsId": edge.lhs_id,
         "lhsDir": edge.lhs_dir.to_string(),
@@ -853,8 +908,9 @@ fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Val
     })
 }
 
+#[cfg(feature = "compat-json")]
 fn architecture_render_node_to_compat_json(
-    node: &ArchitectureRenderNode,
+    node: &ArchitectureNodeModel,
     edges: &[Value],
     control: &OperationControl,
 ) -> OperationControlResult<Value> {
@@ -879,7 +935,7 @@ fn architecture_render_node_to_compat_json(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ArchitectureRenderNodeType {
+pub enum ArchitectureNodeKind {
     #[serde(rename = "service")]
     Service,
     #[serde(rename = "junction")]
@@ -888,10 +944,10 @@ pub enum ArchitectureRenderNodeType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderNode {
+pub struct ArchitectureNodeModel {
     pub id: String,
     #[serde(rename = "type")]
-    pub node_type: ArchitectureRenderNodeType,
+    pub node_type: ArchitectureNodeKind,
     #[serde(default)]
     pub edge_indices: Vec<usize>,
     #[serde(default)]
@@ -906,7 +962,7 @@ pub struct ArchitectureRenderNode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderGroup {
+pub struct ArchitectureGroupModel {
     pub id: String,
     #[serde(default)]
     pub icon: Option<String>,
@@ -918,7 +974,7 @@ pub struct ArchitectureRenderGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderEdge {
+pub struct ArchitectureEdgeModel {
     #[serde(rename = "lhsId")]
     pub lhs_id: String,
     #[serde(rename = "lhsDir")]
@@ -941,29 +997,31 @@ pub struct ArchitectureRenderEdge {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderLayoutHint {
+pub struct ArchitectureLayoutHintModel {
     pub direction: ArchitectureLayoutDirection,
     #[serde(default)]
     pub members: Vec<String>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<ArchitectureDiagramRenderModel> {
-    Ok(parse::parse_semantic_source(code, meta)?.render_model())
+) -> Result<ArchitectureDiagramModel> {
+    parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_architecture_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<ArchitectureDiagramRenderModel>> {
-    parse::parse_model_for_render_controlled(code, meta, control)
+) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
+    parse::parse_model_controlled(code, &meta.diagram_type, control)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{
@@ -2313,5 +2371,131 @@ api:R -- L:hub\n";
                 .count(),
             2
         );
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn architecture_canonical_model_preserves_authored_hints_without_editor_work() {
+        let source = "architecture-beta\napi:R -- L:join\nalign row api join\njunction join in root\nservice api(server)[API] in root\ngroup root(cloud)[Root]\n";
+        reset_architecture_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model = parse_architecture_semantic_model_controlled(
+            source,
+            &metadata(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            model
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            ["api", "join"]
+        );
+        assert_eq!(model.nodes[0].edge_indices, [0]);
+        assert_eq!(model.groups[0].id, "root");
+        assert_eq!(model.edges[0].lhs_id, "api");
+        assert_eq!(
+            model.layout_hints[0].direction,
+            ArchitectureLayoutDirection::Row
+        );
+        assert_eq!(model.layout_hints[0].members, ["api", "join"]);
+        assert_eq!(architecture_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn architecture_canonical_validation_keeps_exact_spans_without_editor_work() {
+        let source = "architecture-beta\nservice api\nservice api\n";
+        crate::editor::test_work::reset();
+        let error = parse_architecture_semantic_model_controlled(
+            source,
+            &metadata(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic")
+        };
+        let offset = source.rfind("api").unwrap();
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 3)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn architecture_canonical_construction_observes_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_architecture_semantic_model_controlled(
+                "architecture-beta\nservice api\n",
+                &metadata(),
+                &control
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn architecture_compat_layout_presence_uses_authored_config() {
+        let model = ArchitectureDiagramModel::default();
+        let mut meta = ParseMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::from_value(
+                serde_json::json!({"layout": "elk"}),
+            ),
+            title: None,
+        };
+        assert_eq!(
+            render_model_to_compat_json(&model, &meta).unwrap()["config"]["layout"],
+            "dagre"
+        );
+        meta.config = crate::MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
+        assert_eq!(
+            render_model_to_compat_json(&model, &meta).unwrap()["config"]["layout"],
+            "elk"
+        );
+    }
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn architecture_typed_projection_omits_editor_observers() {
+        let metadata = ParseMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        crate::editor::test_work::reset();
+        let model = parse_architecture_model_for_render_controlled(
+            "architecture-beta\nservice api\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!model.nodes.is_empty());
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

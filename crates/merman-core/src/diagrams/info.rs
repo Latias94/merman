@@ -1,3 +1,5 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::langium_common::{
     LangiumCommonParse, parse_langium_common, push_langium_common_editor_fact,
     push_langium_common_recovery,
@@ -5,8 +7,9 @@ use crate::diagrams::langium_common::{
 use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
+    EditorSemanticSymbol, Error, Result, SourceSpan, family,
 };
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 /// Canonical meaning of an Info diagram, without compatibility-output state.
@@ -16,14 +19,17 @@ pub struct InfoDiagramModel {
     pub show_info: bool,
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct InfoDiagramRenderModel {
     #[serde(rename = "showInfo")]
     pub show_info: bool,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compat_output: InfoCompatOutput,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Default)]
 enum InfoCompatOutput {
     Empty,
@@ -33,25 +39,31 @@ enum InfoCompatOutput {
 
 struct InfoSemanticSource {
     model: InfoDiagramModel,
+    #[cfg(feature = "compat-json")]
     compat_output: InfoCompatOutput,
+    #[cfg(feature = "compat-json")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
+#[cfg(feature = "presentation")]
 impl InfoSemanticSource {
     fn into_render_model(self) -> InfoDiagramRenderModel {
         InfoDiagramRenderModel {
             show_info: self.model.show_info,
+            #[cfg(feature = "compat-json")]
             compat_output: self.compat_output,
         }
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -78,6 +90,7 @@ pub(crate) fn parse_info_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &InfoDiagramRenderModel,
     meta: &ParseMetadata,
@@ -91,7 +104,7 @@ pub(crate) fn render_model_to_compat_json(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -100,6 +113,7 @@ pub(crate) fn parse_info_model_for_render(
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_info_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -150,7 +164,9 @@ fn construct_info_semantic_source_controlled(
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
                 model: InfoDiagramModel::default(),
+                #[cfg(feature = "compat-json")]
                 compat_output: InfoCompatOutput::Empty,
+                #[cfg(feature = "compat-json")]
                 editor_facts: None,
             }));
         }
@@ -240,7 +256,9 @@ fn construct_info_semantic_source_controlled(
     control.checkpoint()?;
     Ok(Ok(InfoSemanticSource {
         model: InfoDiagramModel { show_info },
+        #[cfg(feature = "compat-json")]
         compat_output: InfoCompatOutput::Model,
+        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -382,15 +400,17 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseOptions,
+        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, Engine, ParseDiagnosticSpanKind,
+        ParseOptions,
     };
 
+    #[cfg(feature = "presentation")]
     fn test_meta() -> ParseMetadata {
         ParseMetadata {
             diagram_type: "info".to_string(),
-            config: MermaidConfig::default(),
+            config: crate::MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
@@ -412,6 +432,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_info_projection_does_not_collect_editor_facts() {
         for (source, valid) in [
@@ -430,13 +451,17 @@ mod tests {
             assert_eq!(parsed.is_ok(), valid, "{source:?}");
             assert_eq!(crate::editor::test_work::read(), Default::default());
 
-            let compat = parse_info(source, &test_meta());
-            assert_eq!(compat.is_ok(), valid, "{source:?}");
-            assert_eq!(crate::editor::test_work::read(), Default::default());
+            #[cfg(feature = "compat-json")]
+            {
+                let compat = parse_info(source, &test_meta());
+                assert_eq!(compat.is_ok(), valid, "{source:?}");
+                assert_eq!(crate::editor::test_work::read(), Default::default());
+            }
         }
         crate::editor::test_work::reset();
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn parse_info_editor_facts_expose_parser_backed_spans() {
         crate::editor::test_work::reset();
@@ -461,6 +486,7 @@ mod tests {
         crate::editor::test_work::reset();
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_accepts_show_info_before_common_fields_like_pinned_grammar() {
         let source = "info\nshowInfo\ntitle Version\naccDescr: Build metadata\n";
@@ -493,6 +519,7 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_rejects_show_info_after_common_fields_like_pinned_grammar() {
         let source = "info\ntitle Version\nshowInfo\n";
@@ -527,6 +554,7 @@ mod tests {
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_invalid_headers_fail_all_family_parsers_with_exact_recovery_facts() {
         let meta = test_meta();
@@ -586,6 +614,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_invalid_headers_fail_strict_and_use_lenient_error_diagrams() {
         let engine = Engine::new();
@@ -637,6 +666,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_typed_projection_preserves_empty_and_model_outputs() {
         let meta = test_meta();
@@ -667,5 +697,36 @@ mod tests {
             render_model_to_compat_json(&InfoDiagramRenderModel::default(), &meta).unwrap(),
             json!({ "type": "info", "showInfo": false })
         );
+    }
+
+    #[test]
+    fn semantic_model_preserves_header_validation_and_statement_order() {
+        for (source, show_info) in [
+            ("", false),
+            ("info", false),
+            ("info\nshowInfo\ntitle Version\n", true),
+        ] {
+            crate::editor::test_work::reset();
+            let model = parse_info_semantic_model_controlled(
+                source,
+                "info",
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(model.show_info, show_info);
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+        for source in ["infox", "info\ntitle Version\nshowInfo\n"] {
+            assert!(
+                parse_info_semantic_model_controlled(
+                    source,
+                    "info",
+                    &crate::OperationControl::new()
+                )
+                .unwrap()
+                .is_err()
+            );
+        }
     }
 }

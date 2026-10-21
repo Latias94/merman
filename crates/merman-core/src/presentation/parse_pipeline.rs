@@ -1,25 +1,36 @@
 use crate::config::presentation::DetectorConfigCheckpoint;
 use crate::config::{AppearanceDecision, MaterializationPlan};
+#[cfg(any(feature = "compat-json", test))]
+use crate::diagram::CustomJsonRenderModel;
+#[cfg(feature = "compat-json")]
+use crate::diagram::{
+    CapturedPanic, DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
+    ParsedDiagram, ParsedEditorFacts, RegistryOwner, ResolvedSemanticParser,
+};
+use crate::diagram::{
+    DiagramWarningFact, ParsedDiagramRender, RenderSemanticModel, RenderSemanticParseOutput,
+    ResolvedRenderParser,
+};
 use crate::operation::OperationPhase;
 use crate::preprocess::{
-    DirectiveRecoveryMode, PreprocessCaptureOutcome, PreprocessedSource, SourceConfigEvidence,
+    DirectiveRecoveryMode, PreprocessedSource,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
-    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
+};
+#[cfg(feature = "compat-json")]
+use crate::preprocess::{
+    PreprocessCaptureOutcome, SourceConfigEvidence,
+    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 use crate::presentation::PresentationConfig;
+#[cfg(feature = "compat-json")]
+use crate::{EditorSemanticFacts, ManagedSemanticJson, common_db, diagram};
 use crate::{
-    EditorSemanticFacts, Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
-    OperationControlResult, ParseMetadata, ParseOptions, Result, SourceSpan, common_db, diagram,
-    diagrams::error_diagram, family, runtime, sanitize, theme,
+    Engine, Error, MermaidConfig, OperationControl, OperationControlResult, ParseMetadata,
+    ParseOptions, Result, SourceSpan, diagrams::error_diagram, family, runtime, sanitize, theme,
 };
-use diagram::{
-    CapturedPanic, CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramSnapshotCapture, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
-    ParsedEditorFacts, RegistryOwner, RenderSemanticModel, RenderSemanticParseOutput,
-    ResolvedRenderParser, ResolvedSemanticParser,
-};
+#[cfg(feature = "compat-json")]
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -35,17 +46,20 @@ enum PreprocessPath {
     Render,
 }
 
+#[cfg(feature = "compat-json")]
 struct CompatibilitySemanticParse {
     model: ManagedSemanticJson,
     warnings: CompatibilityWarnings,
 }
 
+#[cfg(feature = "compat-json")]
 enum CompatibilityWarnings {
     Typed(Vec<DiagramWarningFact>),
     BuiltInWithoutWarnings,
     CustomJson,
 }
 
+#[cfg(feature = "compat-json")]
 impl CompatibilitySemanticParse {
     fn built_in(model: ManagedSemanticJson, warning_facts: Vec<DiagramWarningFact>) -> Self {
         Self {
@@ -71,7 +85,9 @@ impl CompatibilitySemanticParse {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ParseTiming {
+    #[cfg(feature = "compat-json")]
     None,
+    #[cfg(feature = "compat-json")]
     Json,
     Render,
 }
@@ -208,6 +224,7 @@ impl OperationConfigBuilder {
     }
 }
 
+#[cfg(feature = "compat-json")]
 struct PreparedPreprocessCapture {
     outcome: PreparedPreprocessOutcome,
     source_config: SourceConfigEvidence,
@@ -216,6 +233,7 @@ struct PreparedPreprocessCapture {
 // The ready variant is the parse hot path and is moved exactly once into snapshot construction.
 // Boxing it would add one allocation to every parse only to shrink this short-lived control value.
 #[allow(clippy::large_enum_variant)]
+#[cfg(feature = "compat-json")]
 enum PreparedPreprocessOutcome {
     Ready(PreprocessedSource, ParseMetadata),
     Failed(Error),
@@ -235,6 +253,7 @@ impl<'a> EditorParseSourceMap<'a> {
         self.source.text()
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_facts(
         &self,
         facts: &mut EditorSemanticFacts,
@@ -363,6 +382,7 @@ impl<'a> ParsePipeline<'a> {
         Ok(metadata)
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
         self.parse_model(
             timing,
@@ -381,6 +401,7 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
+    #[cfg(feature = "compat-json")]
     fn parse_compatibility_semantic(
         &self,
         code: &str,
@@ -409,6 +430,7 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn parse_editor_snapshot(
         &self,
         timing: ParseTiming,
@@ -418,6 +440,7 @@ impl<'a> ParsePipeline<'a> {
             .map_err(Error::from)?
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn parse_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -428,6 +451,7 @@ impl<'a> ParsePipeline<'a> {
             .into_result())
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn capture_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -448,6 +472,7 @@ impl<'a> ParsePipeline<'a> {
         })
     }
 
+    #[cfg(feature = "compat-json")]
     fn parse_editor_snapshot_in_context_controlled(
         &self,
         timing: ParseTiming,
@@ -638,6 +663,7 @@ impl<'a> ParsePipeline<'a> {
         )))
     }
 
+    #[cfg(feature = "compat-json")]
     fn finish_snapshot_editor_facts(
         &self,
         owner: Option<RegistryOwner>,
@@ -790,6 +816,7 @@ impl<'a> ParsePipeline<'a> {
         })
     }
 
+    #[cfg(feature = "compat-json")]
     fn finish_editor_semantic_facts(
         &self,
         mut facts: EditorSemanticFacts,
@@ -913,6 +940,7 @@ impl<'a> ParsePipeline<'a> {
         Ok(Some(finish(meta, model)))
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_compatibility_semantic_warnings(
         parsed: &mut CompatibilitySemanticParse,
         source_map: &EditorParseSourceMap<'_>,
@@ -943,6 +971,7 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_custom_compatibility_json_warning_facts(
         model: &mut serde_json::Value,
         source_map: &EditorParseSourceMap<'_>,
@@ -965,6 +994,7 @@ impl<'a> ParsePipeline<'a> {
         );
     }
 
+    #[cfg(feature = "compat-json")]
     fn decode_custom_warning_facts_controlled(
         model: &Value,
         control: &OperationControl,
@@ -987,6 +1017,7 @@ impl<'a> ParsePipeline<'a> {
         Ok(Some(warning_facts))
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_warning_facts_controlled(
         warning_facts: &mut [DiagramWarningFact],
         source_map: &EditorParseSourceMap<'_>,
@@ -1002,6 +1033,7 @@ impl<'a> ParsePipeline<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "compat-json")]
     fn sync_compatibility_warning_facts(model: &mut Value, warning_facts: &[DiagramWarningFact]) {
         let Some(value) = model.get_mut("warningFacts") else {
             return;
@@ -1049,6 +1081,7 @@ impl<'a> ParsePipeline<'a> {
         control: &OperationControl,
     ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
         control.checkpoint()?;
+        #[cfg(feature = "compat-json")]
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
             .engine
@@ -1063,6 +1096,7 @@ impl<'a> ParsePipeline<'a> {
                 .map(RenderSemanticParseOutput::new));
         }
 
+        #[cfg(feature = "compat-json")]
         if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
             return Ok(diagram::parse_or_unsupported_controlled(
                 &self.engine.diagram_registry,
@@ -1086,7 +1120,11 @@ impl<'a> ParsePipeline<'a> {
             return parsed;
         }
 
-        if let Some(ResolvedSemanticParser::BuiltIn(_)) = semantic {
+        #[cfg(feature = "compat-json")]
+        let builtin_without_render = matches!(semantic, Some(ResolvedSemanticParser::BuiltIn(_)));
+        #[cfg(not(feature = "compat-json"))]
+        let builtin_without_render = family::is_builtin_diagram_type(&meta.diagram_type);
+        if builtin_without_render {
             return Ok(Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(
@@ -1174,6 +1212,7 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn preprocess_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1395,6 +1434,7 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn preprocess_input_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1439,7 +1479,11 @@ impl ParseTiming {
         self,
         context: &runtime::OperationContext,
     ) -> Option<runtime::OperationTiming> {
-        (self != Self::None).then(|| context.timing()).flatten()
+        match self {
+            #[cfg(feature = "compat-json")]
+            Self::None => None,
+            _ => context.timing(),
+        }
     }
 
     fn log_suppressed_error(
@@ -1454,7 +1498,9 @@ impl ParseTiming {
         };
 
         match self {
+            #[cfg(feature = "compat-json")]
             Self::None => {}
+            #[cfg(feature = "compat-json")]
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -1484,7 +1530,9 @@ impl ParseTiming {
         };
 
         match self {
+            #[cfg(feature = "compat-json")]
             Self::None => {}
+            #[cfg(feature = "compat-json")]
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -1530,24 +1578,34 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 
 #[cfg(test)]
 mod editor_parse_source_map_tests {
+    #[cfg(feature = "compat-json")]
     use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     use std::time::Duration;
 
-    use super::{CustomJsonRenderModel, EditorParseSourceMap, ParsePipeline, PreprocessPath};
+    #[cfg(feature = "compat-json")]
+    use super::EditorParseSourceMap;
+    use super::{CustomJsonRenderModel, ParsePipeline, PreprocessPath};
     use crate::{
-        CancelReason, DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax,
-        EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
-        Engine, Error, OperationCancelled, OperationControl, OperationControlResult,
-        OperationPhase, ParseMetadata, ParseOptions, PresentationConfig, Result, SourceSpan,
+        CancelReason, DetectorRegistry, Engine, Error, OperationCancelled, OperationControl,
+        OperationControlResult, OperationPhase, ParseMetadata, ParseOptions, PresentationConfig,
+        Result,
+    };
+    #[cfg(feature = "compat-json")]
+    use crate::{
+        DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan,
     };
 
+    #[cfg(feature = "compat-json")]
     fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         panic!("detector fixture panic")
     }
 
+    #[cfg(feature = "compat-json")]
     static FRONTMATTER_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
+    #[cfg(feature = "compat-json")]
     fn frontmatter_probe_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
         panic!("frontmatter probe detector must not run")
@@ -1651,6 +1709,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
         let control = OperationControl::new();
         control.cancel();
@@ -1705,6 +1764,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn controlled_capture_cancellation_never_returns_partial_evidence() {
         let control = OperationControl::new();
         control.cancel();
@@ -1718,6 +1778,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn editor_capture_retains_source_config_on_detection_failure() {
         let source = "%%{ initialize: { theme: 'dark' } }%%\nnot a diagram\n";
         let captured = Engine::new()
@@ -1737,6 +1798,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn editor_capture_retains_source_config_when_init_config_detection_panics() {
         let source = concat!(
             "%%{ initialize: { lazyLoadedDiagrams: true, config: { htmlLabels: false } } }%%\n",
@@ -1772,6 +1834,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn legacy_snapshot_facade_resumes_the_original_detector_panic_payload() {
         let source = "detector-panic-fixture\n";
         let mut engine = Engine::new();
@@ -1792,6 +1855,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn editor_capture_retains_later_source_config_on_preprocessing_failure() {
         let source = concat!(
             "---\n",
@@ -1817,6 +1881,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn editor_capture_preserves_frontmatter_error_before_later_detector_panic() {
         let source = concat!(
             "---\n",
@@ -1850,6 +1915,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn lenient_editor_capture_preserves_suppressed_detection_semantics() {
         let engine = Engine::new();
         let pipeline = ParsePipeline::detect(&engine, "not a diagram\n", ParseOptions::lenient());
@@ -1861,6 +1927,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
@@ -1882,6 +1949,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
@@ -1951,6 +2019,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {
         let original = "flowchart TD\nA%%{wrap}%%B\nC\n";
         let engine = Engine::new();
@@ -2003,6 +2072,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn fact_remap_observes_cancellation_during_large_fact_batches() {
         let original = "flowchart TD\nA\n";
         let engine = Engine::new();

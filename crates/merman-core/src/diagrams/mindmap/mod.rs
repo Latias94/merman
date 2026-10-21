@@ -1,22 +1,29 @@
 mod db;
 mod parse;
+#[cfg(feature = "presentation")]
 mod render_model;
 mod utils;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests;
 
-pub(crate) use parse::parse_mindmap_json_and_editor_facts;
-#[cfg(test)]
+pub use db::{MindmapDiagramModel, MindmapNodeModel};
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) use parse::parse_mindmap_model_for_render;
+#[cfg(feature = "presentation")]
+pub(crate) use parse::parse_mindmap_model_for_render_controlled;
+pub(crate) use parse::parse_mindmap_semantic_model_controlled;
 #[cfg(test)]
 pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };
-pub(crate) use parse::{parse_mindmap, parse_mindmap_model_for_render_controlled};
+#[cfg(feature = "compat-json")]
+pub(crate) use parse::{parse_mindmap, parse_mindmap_json_and_editor_facts};
+#[cfg(feature = "presentation")]
 pub use render_model::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
+#[cfg(feature = "compat-json")]
 pub(crate) use render_model::{
     render_model_to_compat_json, render_model_to_compat_json_controlled,
 };

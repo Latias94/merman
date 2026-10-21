@@ -263,7 +263,7 @@ futures = { workspace = true, features = ["std"] }
 tower-lsp-server.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 merman-analysis.workspace = true
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts"] }
 merman-editor-core.workspace = true
 ropey.workspace = true
 serde.workspace = true

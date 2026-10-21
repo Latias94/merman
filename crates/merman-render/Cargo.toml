@@ -123,7 +123,7 @@ libm.workspace = true
 manatee = { workspace = true, optional = true }
 memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["presentation", "compat-json"] }
 merman-theme-contract.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }

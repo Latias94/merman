@@ -34,7 +34,7 @@ merman-bindings-core = { workspace = true, features = [
     "png",
     "svg",
 ] }
-merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone"] }
+merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone", "presentation", "compat-json", "editor-facts"] }
 merman-editor-core = { workspace = true, features = ["all-diagrams"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true

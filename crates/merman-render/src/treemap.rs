@@ -41,18 +41,22 @@ fn push_node(
     model: &TreemapDiagramRenderModel,
     work_meter: &OperationWorkMeter,
 ) -> Result<()> {
-    let mut stack = vec![(&model.root, None, 0usize)];
+    let mut stack = vec![(&model.root, None, None, 0usize)];
     let mut seen = vec![false; model.nodes.len()];
-    while let Some((current, parent_idx, current_depth)) = stack.pop() {
+    while let Some((current, record_id, parent_idx, current_depth)) = stack.pop() {
         let children = current.children.as_deref().unwrap_or(&[]);
         work_meter.charge(
             1usize
                 .checked_add(children.len())
                 .ok_or_else(|| work_meter.arithmetic_overflow())?,
         )?;
-        let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
+        let own_value = current
+            .value
+            .as_ref()
+            .and_then(|value| json_f64(value.as_value()))
+            .unwrap_or(0.0);
         let css_compiled_styles =
-            clone_styles_with_work(current.css_compiled_styles.as_deref(), work_meter)?;
+            clone_styles_with_work(model.compiled_styles(record_id), work_meter)?;
         let idx = nodes.len();
         nodes.push(HierNode {
             name: current.name.clone(),
@@ -87,7 +91,12 @@ fn push_node(
                         message: "cyclic or repeated treemap child relationship".to_string(),
                     });
                 }
-                stack.push((node, Some(idx), current_depth.saturating_add(1)));
+                stack.push((
+                    node,
+                    Some(child),
+                    Some(idx),
+                    current_depth.saturating_add(1),
+                ));
             }
         }
     }
@@ -673,13 +682,14 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 #[cfg(test)]
 mod tests {
     use merman_core::diagrams::treemap::{
-        TreemapClassDefRenderModel, TreemapDiagramRenderModel, TreemapNodeRenderModel,
+        TreemapClassDefRenderModel, TreemapDiagramModel, TreemapDiagramRenderModel,
+        TreemapNodeRenderModel,
     };
 
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn work_budget_fixture() -> TreemapDiagramRenderModel {
-        TreemapDiagramRenderModel {
+        TreemapDiagramRenderModel::from_semantic_model(TreemapDiagramModel {
             root: TreemapNodeRenderModel {
                 name: "root".to_string(),
                 children: Some(vec![0]),
@@ -693,17 +703,17 @@ mod tests {
                 },
                 TreemapNodeRenderModel {
                     name: "Alpha".to_string(),
-                    value: Some(serde_json::json!(3)),
+                    value: Some(serde_json::json!(3).into()),
                     ..TreemapNodeRenderModel::default()
                 },
                 TreemapNodeRenderModel {
                     name: "Beta".to_string(),
-                    value: Some(serde_json::json!(2)),
+                    value: Some(serde_json::json!(2).into()),
                     ..TreemapNodeRenderModel::default()
                 },
             ],
-            ..TreemapDiagramRenderModel::default()
-        }
+            ..TreemapDiagramModel::default()
+        })
     }
 
     fn shared_class_fixture(styles: Vec<String>) -> TreemapDiagramRenderModel {

@@ -1,13 +1,14 @@
-use crate::{
-    Error, ManagedSemanticJson, MermaidConfig, OperationControl, OperationControlResult,
-    ParseMetadata, Result, SourceSpan,
-};
+use crate::json_value::ManagedJson;
+#[cfg(feature = "compat-json")]
+use crate::{Error, ParseMetadata, Result};
+use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+/// Canonical ZenUML participants, authored statements, and resolved message ownership.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ZenumlDiagramRenderModel {
+pub struct ZenumlDiagramModel {
     pub title: Option<String>,
     pub starter: Option<String>,
     pub participants: Vec<ZenumlParticipant>,
@@ -15,19 +16,22 @@ pub struct ZenumlDiagramRenderModel {
     pub statements: Vec<ZenumlStatement>,
 }
 
-impl Serialize for ZenumlDiagramRenderModel {
+#[cfg(feature = "presentation")]
+pub type ZenumlDiagramRenderModel = ZenumlDiagramModel;
+
+impl Serialize for ZenumlDiagramModel {
     fn serialize<S: serde::Serializer>(
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        let projected = render_model_to_typed_json_controlled(self, &OperationControl::new())
+        let projected = model_to_typed_json_controlled(self, &OperationControl::new())
             .expect("a private projection control cannot be cancelled")
             .map_err(serde::ser::Error::custom)?;
         projected.serialize(serializer)
     }
 }
 
-impl ZenumlDiagramRenderModel {
+impl ZenumlDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, _config: &MermaidConfig) {
         // ZenUML text stays as data throughout the typed pipeline. The SVG emitter escapes every
         // text and attribute position, so an HTML sanitizer must not rewrite language semantics.
@@ -175,20 +179,22 @@ pub struct ZenumlFragmentSection {
     pub span: SourceSpan,
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
         .expect("a private projection control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
-    let mut projected = match render_model_to_typed_json_controlled(model, control)? {
+    let mut projected = match model_to_typed_json_controlled(model, control)? {
         Ok(projected) => projected,
         Err(error) => {
             return Ok(Err(Error::diagram_parse_fallback(
@@ -223,20 +229,20 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(projected.into_unmanaged_value()))
 }
 
-fn render_model_to_typed_json_controlled(
-    model: &ZenumlDiagramRenderModel,
+fn model_to_typed_json_controlled(
+    model: &ZenumlDiagramModel,
     control: &OperationControl,
-) -> OperationControlResult<serde_json::Result<ManagedSemanticJson>> {
+) -> OperationControlResult<serde_json::Result<ManagedJson>> {
     enum Task<'a> {
         Statements(&'a [ZenumlStatement]),
         Statement(&'a ZenumlStatement),
         Sections(&'a [ZenumlFragmentSection]),
         Section(&'a ZenumlFragmentSection),
         FinishArray(usize),
-        FinishObject(ManagedSemanticJson, &'static str),
+        FinishObject(ManagedJson, &'static str),
     }
 
-    let mut root = ManagedSemanticJson::from_value(json!({
+    let mut root = ManagedJson::from_value(json!({
         "title": model.title,
         "starter": model.starter,
         "participants": [],
@@ -271,7 +277,7 @@ fn render_model_to_typed_json_controlled(
     }
 
     let mut tasks = vec![Task::Statements(&model.statements)];
-    let mut completed = Vec::<ManagedSemanticJson>::new();
+    let mut completed = Vec::<ManagedJson>::new();
     while let Some(task) = tasks.pop() {
         control.checkpoint()?;
         match task {
@@ -284,7 +290,7 @@ fn render_model_to_typed_json_controlled(
                 tasks.extend(sections.iter().rev().map(Task::Section));
             }
             Task::Statement(statement) => {
-                let object = ManagedSemanticJson::from_value(statement_to_value_shallow(statement));
+                let object = ManagedJson::from_value(statement_to_value_shallow(statement));
                 match &statement.kind {
                     ZenumlStatementKind::Message { body, .. }
                     | ZenumlStatementKind::Creation { body, .. } => {
@@ -311,15 +317,14 @@ fn render_model_to_typed_json_controlled(
                     .unwrap()
                     .insert("span".into(), json!(section.span));
                 tasks.push(Task::FinishObject(
-                    ManagedSemanticJson::from_value(object),
+                    ManagedJson::from_value(object),
                     "statements",
                 ));
                 tasks.push(Task::Statements(&section.statements));
             }
             Task::FinishArray(count) => {
                 let children = completed.drain(completed.len() - count..);
-                let mut array =
-                    ManagedSemanticJson::from_value(Value::Array(Vec::with_capacity(count)));
+                let mut array = ManagedJson::from_value(Value::Array(Vec::with_capacity(count)));
                 for (index, child) in children.enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
@@ -429,12 +434,13 @@ fn statement_to_value_shallow(statement: &ZenumlStatement) -> Value {
     Value::Object(object)
 }
 
+#[cfg(feature = "compat-json")]
 fn project_js_integer(source: &str) -> Option<f64> {
     let parsed = source.parse::<f64>().ok()?;
     (parsed != 0.0).then_some(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
 

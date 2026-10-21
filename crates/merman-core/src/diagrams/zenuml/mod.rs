@@ -11,29 +11,38 @@ mod model;
 mod parser;
 mod semantic;
 
-use crate::{
-    EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-};
+#[cfg(any(test, feature = "compat-json"))]
+use crate::EditorSemanticFacts;
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
+use crate::family::EditorFactsDemand;
+use crate::{Error, OperationControl, OperationControlResult, Result, SemanticMetadata};
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
+#[cfg(feature = "presentation")]
+pub use model::ZenumlDiagramRenderModel;
 pub use model::{
-    ZenumlDiagramRenderModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup,
-    ZenumlMessageStyle, ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
+    ZenumlDiagramModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup, ZenumlMessageStyle,
+    ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
 };
+#[cfg(feature = "compat-json")]
 pub(crate) use model::{render_model_to_compat_json, render_model_to_compat_json_controlled};
 
 struct ZenumlSemanticSource {
-    model: ZenumlDiagramRenderModel,
+    model: ZenumlDiagramModel,
+    #[cfg(any(test, feature = "compat-json"))]
     editor_facts: EditorSemanticFacts,
     first_diagnostic: Option<ast::SyntaxDiagnostic>,
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = parse_semantic_source(code, meta)?;
     model::render_model_to_compat_json(&source.model, meta)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_zenuml_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -41,12 +50,13 @@ pub(crate) fn parse_zenuml_model_for_render(
     Ok(parse_semantic_source(code, meta)?.model)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_zenuml_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ZenumlDiagramRenderModel>> {
-    let source = construct_semantic_source(code, control)?;
+    let source = construct_semantic_source(code, EditorFactsDemand::Omit, control)?;
     if let Some(diagnostic) = source.first_diagnostic {
         return Ok(Err(Error::diagram_parse_exact(
             meta.diagram_type.clone(),
@@ -57,12 +67,13 @@ pub(crate) fn parse_zenuml_model_for_render_controlled(
     Ok(Ok(source.model))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let source = construct_semantic_source(code, control)?;
+    let source = construct_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let construction = match &source.first_diagnostic {
         Some(diagnostic) => Err(crate::family::CombinedSemanticFailure::new(
             Error::diagram_parse_exact(
@@ -86,8 +97,9 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
-    let source = construct_semantic_source(code, &OperationControl::new())
+    let source = construct_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
         .expect("a private parse control cannot be cancelled");
     if let Some(diagnostic) = &source.first_diagnostic {
         return Err(Error::diagram_parse_exact(
@@ -99,8 +111,27 @@ fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSeman
     Ok(source)
 }
 
+pub(crate) fn parse_zenuml_semantic_model_controlled(
+    code: &str,
+    metadata: &SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ZenumlDiagramModel>> {
+    let source = construct_semantic_source(code, EditorFactsDemand::Omit, control)?;
+    if let Some(diagnostic) = source.first_diagnostic {
+        return Ok(Err(Error::diagram_parse_exact(
+            metadata.diagram_type.clone(),
+            diagnostic.message,
+            diagnostic.span,
+        )));
+    }
+    let mut model = source.model;
+    model.sanitize_common_db_fields(&metadata.semantic_config);
+    Ok(Ok(model))
+}
+
 fn construct_semantic_source(
     code: &str,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<ZenumlSemanticSource> {
     #[cfg(test)]
@@ -110,20 +141,157 @@ fn construct_semantic_source(
     let tokens = lexer::lex_controlled(code, control)?;
     let parsed = parser::parse_controlled(code, &tokens, control)?;
     control.checkpoint()?;
-    let semantic::SemanticBuild {
-        model,
-        editor_facts,
-        diagnostics,
-    } = semantic::build_controlled(parsed, control)?;
+    let built = semantic::build_controlled(parsed, editor_demand, control)?;
     control.checkpoint()?;
     Ok(ZenumlSemanticSource {
-        model,
-        editor_facts,
-        first_diagnostic: diagnostics.into_iter().next(),
+        model: built.model,
+        #[cfg(any(test, feature = "compat-json"))]
+        editor_facts: built.editor_facts,
+        first_diagnostic: built.diagnostics.into_iter().next(),
     })
 }
 
 #[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> SemanticMetadata {
+        SemanticMetadata {
+            diagram_type: "zenuml".into(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {"primaryColor": "not-a-color"}
+            })),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn canonical_entry_keeps_authored_records_and_ownership_without_editor_work() {
+        let source = concat!(
+            "zenuml\ntitle Authored title\n",
+            "group Business { @Actor Client @Boundary Service 00042 }\n",
+            "@Starter(Client)\nService.call(){new Model(x=1)}\n",
+        );
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("zenuml");
+        crate::editor::test_work::reset();
+        let model =
+            parse_zenuml_semantic_model_controlled(source, &metadata(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(model.title.as_deref(), Some("Authored title"));
+        assert_eq!(model.starter.as_deref(), Some("Client"));
+        assert_eq!(model.groups[0].id.as_deref(), Some("Business"));
+        assert_eq!(model.groups[0].participant_names, ["Client", "Service"]);
+        assert_eq!(
+            model
+                .participant("Service")
+                .unwrap()
+                .width_source
+                .as_deref(),
+            Some("00042")
+        );
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            body,
+            ..
+        } = &model.statements[0].kind
+        else {
+            panic!("expected message");
+        };
+        assert_eq!(resolved_from.as_deref(), Some("Client"));
+        assert_eq!(resolved_to.as_deref(), Some("Service"));
+        assert!(matches!(
+            &body[0].kind,
+            ZenumlStatementKind::Creation { constructor, parameters, .. }
+                if constructor == "Model" && parameters == "x=1"
+        ));
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("zenuml"),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn observer_demand_preserves_models_recovery_and_exact_error_spans() {
+        let source = "zenuml\n@Starter(A) A.call() ? B.call()";
+        crate::editor::test_work::reset();
+        let omitted =
+            construct_semantic_source(source, EditorFactsDemand::Omit, &OperationControl::new())
+                .unwrap();
+        assert!(omitted.editor_facts.symbols.is_empty());
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let captured =
+            construct_semantic_source(source, EditorFactsDemand::Capture, &OperationControl::new())
+                .unwrap();
+        assert_eq!(omitted.model, captured.model);
+        assert_eq!(omitted.first_diagnostic, captured.first_diagnostic);
+        assert_eq!(omitted.model.statements.len(), 2);
+        assert!(
+            captured
+                .editor_facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "B")
+        );
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        let expected = captured.first_diagnostic.unwrap();
+        crate::editor::test_work::reset();
+        let error =
+            parse_zenuml_semantic_model_controlled(source, &metadata(), &OperationControl::new())
+                .unwrap()
+                .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected diagram parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected.span));
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn semantic_construction_keeps_control_cancellation() {
+        for demand in [EditorFactsDemand::Omit, EditorFactsDemand::Capture] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(3);
+            assert!(construct_semantic_source("zenuml\nA.call()", demand, &control).is_err());
+        }
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        assert!(
+            parse_zenuml_semantic_model_controlled("zenuml\nA.call()", &metadata(), &control,)
+                .is_err()
+        );
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn typed_and_json_only_entrypoints_do_not_collect_editor_facts() {
+        let meta = ParseMetadata {
+            diagram_type: "zenuml".into(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        crate::editor::test_work::reset();
+        parse_zenuml_model_for_render_controlled(
+            "zenuml\n@Starter(A) B.call()",
+            &meta,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "compat-json")]
+        {
+            parse_zenuml("zenuml\n@Starter(A) B.call()", &meta).unwrap();
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
 mod tests {
     use super::*;
     use crate::{MermaidConfig, RenderSemanticModel};
@@ -137,6 +305,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn zenuml_boundary_construction_stages_on_host_stack() {
         use std::io::Write as _;
@@ -164,7 +333,12 @@ mod tests {
                     parser::parse_controlled(&source, &tokens, &OperationControl::new()).unwrap();
                 assert!(parsed.diagnostics.is_empty());
                 phase("semantic-begin");
-                let built = semantic::build_controlled(parsed, &OperationControl::new()).unwrap();
+                let built = semantic::build_controlled(
+                    parsed,
+                    EditorFactsDemand::Capture,
+                    &OperationControl::new(),
+                )
+                .unwrap();
                 phase("clone-begin");
                 let cloned = built.model.clone();
                 drop(cloned);
@@ -494,6 +668,7 @@ mod tests {
         assert!(incomplete.participant("_STARTER_").is_none());
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn width_projection_matches_parse_int_without_saturating_to_u64() {
         for (source_width, expected) in [
@@ -535,7 +710,10 @@ mod tests {
         };
         assert_eq!(label, "== Wide label ==");
 
-        let compat = parse_zenuml("zenuml\nA.m()", &meta()).expect("compat model");
-        assert!(compat["statements"][0].get("number").is_none());
+        #[cfg(feature = "compat-json")]
+        {
+            let compat = parse_zenuml("zenuml\nA.m()", &meta()).expect("compat model");
+            assert!(compat["statements"][0].get("number").is_none());
+        }
     }
 }

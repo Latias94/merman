@@ -1,24 +1,27 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
+use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, ParseMetadata, Result, SourceSpan,
-    parse_diagnostic::{
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
-    },
+    ParseDiagnosticSpanKind, Result, SourceSpan,
+    parse_diagnostic::lalrpop_parse_diagnostic,
     source_span::{
         has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::HashSet;
 
+#[cfg(feature = "presentation")]
+use super::StateDiagramRenderModel;
 use super::db::StateDb;
-use super::{
-    Lexer, StateDiagramModel, StateDiagramRenderModel, StateDocument, StateStatement, Tok,
-};
+use super::{Lexer, StateDiagramModel, StateDocument, StateStatement, Tok};
 
 #[cfg(test)]
 thread_local! {
@@ -87,15 +90,18 @@ impl StateSyntax {
 
 struct StateSemanticSource {
     db: StateDb,
+    #[cfg(feature = "compat-json")]
     editor_facts: EditorSemanticFacts,
 }
 
 struct StateSemanticFailure {
     error: Box<StateGrammarError>,
+    #[cfg(feature = "compat-json")]
     editor_facts: Box<EditorSemanticFacts>,
 }
 
 impl StateSemanticFailure {
+    #[cfg(feature = "presentation")]
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
         self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
     }
@@ -107,6 +113,7 @@ impl StateSemanticFailure {
         )
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(
         self,
         meta: &ParseMetadata,
@@ -115,6 +122,7 @@ impl StateSemanticFailure {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts_for_type(
         mut self,
         diagram_type: &str,
@@ -155,10 +163,12 @@ fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> 
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_state_semantic_source(code, meta)?.db.into_model(meta)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_state_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -198,6 +208,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_state_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -230,6 +241,7 @@ pub(crate) fn parse_state_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {
     construct_state_semantic_source(code, EditorFactsDemand::Omit, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -242,14 +254,15 @@ fn construct_state_semantic_source(
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<StateSemanticSource, StateSemanticFailure>> {
     let syntax = StateSyntax::lex(code, control)?;
-    let (editor_facts, document) =
+    let (_editor_facts, document) =
         syntax.into_editor_facts_and_document(code, facts_demand, control)?;
     let mut doc = match document {
         Ok(doc) => doc,
         Err(error) => {
             return Ok(Err(StateSemanticFailure {
                 error: Box::new(error),
-                editor_facts: Box::new(editor_facts),
+                #[cfg(feature = "compat-json")]
+                editor_facts: Box::new(_editor_facts),
             }));
         }
     };
@@ -260,7 +273,11 @@ fn construct_state_semantic_source(
     let mut db = StateDb::new();
     db.set_root_doc(doc, control)?;
     control.checkpoint()?;
-    Ok(Ok(StateSemanticSource { db, editor_facts }))
+    Ok(Ok(StateSemanticSource {
+        db,
+        #[cfg(feature = "compat-json")]
+        editor_facts: _editor_facts,
+    }))
 }
 
 pub(super) fn assign_divider_ids(

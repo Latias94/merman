@@ -337,7 +337,7 @@ png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
 pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
 [dependencies]
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts"] }
 merman-analysis = { workspace = true, optional = true }
 merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }

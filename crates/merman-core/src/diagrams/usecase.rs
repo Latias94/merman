@@ -3,12 +3,17 @@
 //! Grammar, declaration merging, and deferred resolution follow the pinned upstream
 //! `usecase.parser.ts`, `usecase.visitor.ts`, and `usecaseModelBuilder.ts`.
 
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
+use crate::family::EditorFactsDemand;
 use crate::{
-    EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan, family,
+    EditorSemanticFacts, Error, OperationControl, OperationControlResult, Result, SourceSpan,
+    family,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::json;
 use std::collections::BTreeMap;
 
 mod json_string;
@@ -329,7 +334,8 @@ pub struct UsecaseClassDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UsecaseDiagramRenderModel {
+/// Resolved use cases, actors, boundaries, relationships, and source-authored JSON records.
+pub struct UsecaseDiagramModel {
     pub direction: String,
     pub nodes: Vec<UsecaseNode>,
     pub boundaries: Vec<UsecaseBoundary>,
@@ -342,7 +348,10 @@ pub struct UsecaseDiagramRenderModel {
     pub acc_description: Option<String>,
 }
 
-impl UsecaseDiagramRenderModel {
+#[cfg(feature = "presentation")]
+pub type UsecaseDiagramRenderModel = UsecaseDiagramModel;
+
+impl UsecaseDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -365,35 +374,91 @@ impl ParseIssue {
     }
 }
 
+pub(crate) fn parse_usecase_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<UsecaseDiagramModel>> {
+    Ok(construct_usecase_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        metadata.title.as_deref(),
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|source| {
+        let mut model = source.model;
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    })
+    .map_err(family::CombinedSemanticFailure::into_error))
+}
+
+#[cfg(all(test, feature = "compat-json"))]
+fn construct(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
+    construct_usecase_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.title.as_deref(),
+        EditorFactsDemand::Capture,
+        control,
+    )
+}
+
 struct Construction {
-    model: UsecaseDiagramRenderModel,
+    model: UsecaseDiagramModel,
     editor_facts: EditorSemanticFacts,
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_usecase(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let control = OperationControl::new();
-    let construction = construct(code, meta, &control)
-        .expect("a private operation control cannot be cancelled")
-        .map_err(family::CombinedSemanticFailure::into_error)?;
+    let construction = construct_usecase_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.title.as_deref(),
+        EditorFactsDemand::Omit,
+        &control,
+    )
+    .expect("a private operation control cannot be cancelled")
+    .map_err(family::CombinedSemanticFailure::into_error)?;
     render_model_to_compat_json(&construction.model, meta)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_usecase_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<UsecaseDiagramRenderModel>> {
-    Ok(construct(code, meta, control)?
-        .map(|value| value.model)
-        .map_err(family::CombinedSemanticFailure::into_error))
+) -> OperationControlResult<Result<UsecaseDiagramModel>> {
+    Ok(construct_usecase_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.title.as_deref(),
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|value| value.model)
+    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_usecase_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
-    let construction = construct(code, meta, control)?;
+    let construction = construct_usecase_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.title.as_deref(),
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     Ok(family::CombinedSemanticParse::from_construction(
         construction,
         |value| {
@@ -406,8 +471,9 @@ pub(crate) fn parse_usecase_json_and_editor_facts(
     ))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     let json_nodes: Vec<_> = model
@@ -432,43 +498,164 @@ pub(crate) fn render_model_to_compat_json(
     )
 }
 
-fn construct(
+fn construct_usecase_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    title: Option<&str>,
+    editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     control.checkpoint()?;
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("usecase");
     let tokens = match lexer::lex(code, control)? {
         Ok(tokens) => tokens,
-        Err(issue) => return Ok(Err(failure(meta, issue, EditorSemanticFacts::new()))),
+        Err(issue) => {
+            return Ok(Err(failure(
+                diagram_type,
+                issue,
+                EditorSemanticFacts::new(),
+                editor_demand,
+            )));
+        }
     };
-    let mut parser = parse::Parser::new(code, tokens, control);
+    let mut parser = parse::Parser::new(code, tokens, editor_demand, control);
     let parsed = parser.parse()?;
     parser.finalize_editor_facts()?;
     if let Err(issue) = parsed {
-        return Ok(Err(failure(meta, issue, parser.facts)));
+        return Ok(Err(failure(
+            diagram_type,
+            issue,
+            parser.facts,
+            editor_demand,
+        )));
     }
-    let model = resolve::resolve(&parser.draft, meta, control)?;
+    let model = resolve::resolve(&parser.draft, title, control)?;
     match model {
         Ok(model) => Ok(Ok(Construction {
             model,
             editor_facts: parser.facts,
         })),
-        Err(issue) => Ok(Err(failure(meta, issue, parser.facts))),
+        Err(issue) => Ok(Err(failure(
+            diagram_type,
+            issue,
+            parser.facts,
+            editor_demand,
+        ))),
     }
 }
 
 fn failure(
-    meta: &ParseMetadata,
+    diagram_type: &str,
     issue: ParseIssue,
     mut facts: EditorSemanticFacts,
+    editor_demand: EditorFactsDemand,
 ) -> family::CombinedSemanticFailure {
-    facts.mark_recovered_from_parse_error(issue.message.clone(), Some(issue.span));
+    if editor_demand == EditorFactsDemand::Capture {
+        facts.mark_recovered_from_parse_error(issue.message.clone(), Some(issue.span));
+    }
     family::CombinedSemanticFailure::new(
-        Error::diagram_parse_exact(meta.diagram_type.clone(), issue.message, issue.span),
+        Error::diagram_parse_exact(diagram_type.to_string(), issue.message, issue.span),
         facts,
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests;
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "usecase".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict"
+            })),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_model_preserves_domain_records_without_editor_work() {
+        let mut metadata = metadata();
+        metadata.title = Some("<script>secret</script>Authentication".to_string());
+        let source = concat!(
+            "usecase-beta\n",
+            "actor User\n",
+            "Login[Sign in]\n",
+            "User --> Login\n",
+            "json Data@{\"enabled\":true,\"items\":[2,1]}\n",
+            "note for Login \"Try again\"\n",
+        );
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("usecase");
+        crate::editor::test_work::reset();
+        let model =
+            parse_usecase_semantic_model_controlled(source, &metadata, &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(model.title.as_deref(), Some("Authentication"));
+        assert_eq!(model.nodes[0].kind, UsecaseNodeKind::Actor);
+        assert_eq!(model.nodes[1].label, "Sign in");
+        assert_eq!(model.relationships[0].source, "User");
+        assert_eq!(model.relationships[0].target, "Login");
+        assert_eq!(model.notes[0].target, "Login");
+        assert_eq!(model.json_nodes[0].value["enabled"], true);
+        assert_eq!(model.json_nodes[0].value["items"][0], 2);
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("usecase"),
+            1,
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "presentation")]
+        {
+            let full_metadata = crate::ParseMetadata {
+                diagram_type: metadata.diagram_type.clone(),
+                config: metadata.config.clone(),
+                effective_config: crate::presentation::PresentationConfig::from_config(
+                    metadata.semantic_config.clone(),
+                ),
+                title: metadata.title.clone(),
+            };
+            parse_usecase_model_for_render_controlled(
+                source,
+                &full_metadata,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+
+            #[cfg(feature = "compat-json")]
+            {
+                parse_usecase(source, &full_metadata).unwrap();
+                assert_eq!(crate::editor::test_work::read(), Default::default());
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_errors_keep_exact_spans_and_observe_cancellation() {
+        let source = "usecase-beta\nactor User\nA -->";
+        let metadata = metadata();
+        crate::editor::test_work::reset();
+        let error = parse_usecase_semantic_model_controlled(
+            source,
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured parse diagnostic");
+        };
+        let start = source.len();
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start)),);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = crate::OperationControl::new();
+        control.cancel();
+        assert!(parse_usecase_semantic_model_controlled(source, &metadata, &control).is_err());
+    }
+}

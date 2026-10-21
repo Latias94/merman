@@ -298,13 +298,13 @@ impl<'a> Iterator for StatementWalk<'a> {
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, OperationControl, ParseMetadata};
+    use crate::{MermaidConfig, OperationControl, SemanticMetadata};
 
-    fn metadata() -> ParseMetadata {
-        ParseMetadata {
+    fn metadata() -> SemanticMetadata {
+        SemanticMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
             title: None,
         }
     }

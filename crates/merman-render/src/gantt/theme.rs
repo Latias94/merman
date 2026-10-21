@@ -1844,24 +1844,33 @@ mod tests {
             (GanttRenderTask::default(), GanttTaskBarState::Default),
             (
                 GanttRenderTask {
-                    crit: true,
+                    semantic: merman_core::diagrams::gantt::GanttTask {
+                        crit: true,
+                        ..Default::default()
+                    },
                     ..GanttRenderTask::default()
                 },
                 GanttTaskBarState::Crit,
             ),
             (
                 GanttRenderTask {
-                    done: true,
-                    crit: true,
+                    semantic: merman_core::diagrams::gantt::GanttTask {
+                        done: true,
+                        crit: true,
+                        ..Default::default()
+                    },
                     ..GanttRenderTask::default()
                 },
                 GanttTaskBarState::DoneCrit,
             ),
             (
                 GanttRenderTask {
-                    active: true,
-                    done: true,
-                    crit: true,
+                    semantic: merman_core::diagrams::gantt::GanttTask {
+                        active: true,
+                        done: true,
+                        crit: true,
+                        ..Default::default()
+                    },
                     ..GanttRenderTask::default()
                 },
                 GanttTaskBarState::ActiveCrit,
@@ -1995,7 +2004,10 @@ mod tests {
         for count in [0, 1, 4096] {
             let tasks = vec![
                 GanttRenderTask {
-                    id: "ordinary-task".to_string(),
+                    semantic: merman_core::diagrams::gantt::GanttTask {
+                        id: "ordinary-task".to_string(),
+                        ..Default::default()
+                    },
                     ..GanttRenderTask::default()
                 };
                 count
@@ -2023,25 +2035,34 @@ mod tests {
     fn unthemed_layout_preserves_source_states_without_retaining_evidence_mapping() {
         let tasks = vec![
             GanttRenderTask {
-                id: "later".into(),
-                start_ms: 1000,
-                end_ms: 2000,
-                active: true,
-                crit: true,
+                semantic: merman_core::diagrams::gantt::GanttTask {
+                    id: "later".into(),
+                    start_ms: 1000,
+                    end_ms: 2000,
+                    active: true,
+                    crit: true,
+                    ..Default::default()
+                },
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                id: "first".into(),
-                start_ms: 0,
-                end_ms: 2000,
-                done: true,
+                semantic: merman_core::diagrams::gantt::GanttTask {
+                    id: "first".into(),
+                    start_ms: 0,
+                    end_ms: 2000,
+                    done: true,
+                    ..Default::default()
+                },
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                id: "tie".into(),
-                start_ms: 0,
-                end_ms: 2000,
-                crit: true,
+                semantic: merman_core::diagrams::gantt::GanttTask {
+                    id: "tie".into(),
+                    start_ms: 0,
+                    end_ms: 2000,
+                    crit: true,
+                    ..Default::default()
+                },
                 ..GanttRenderTask::default()
             },
         ];
@@ -2081,13 +2102,19 @@ mod tests {
     fn layout_binding_maps_render_order_back_to_semantic_occurrences() {
         let tasks = [
             GanttRenderTask {
-                id: "active".to_string(),
-                active: true,
+                semantic: merman_core::diagrams::gantt::GanttTask {
+                    id: "active".to_string(),
+                    active: true,
+                    ..Default::default()
+                },
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                id: "done".to_string(),
-                done: true,
+                semantic: merman_core::diagrams::gantt::GanttTask {
+                    id: "done".to_string(),
+                    done: true,
+                    ..Default::default()
+                },
                 ..GanttRenderTask::default()
             },
         ];
@@ -2117,9 +2144,12 @@ mod tests {
             .expect("compile Gantt multi-state theme")
             .resolve(crate::DiagramFamilyId::GANTT);
         let task = GanttRenderTask {
-            id: "task".to_string(),
-            active: true,
-            crit: true,
+            semantic: merman_core::diagrams::gantt::GanttTask {
+                id: "task".to_string(),
+                active: true,
+                crit: true,
+                ..Default::default()
+            },
             ..GanttRenderTask::default()
         };
         let work_meter =

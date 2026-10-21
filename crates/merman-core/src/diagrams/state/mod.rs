@@ -6,12 +6,14 @@ use crate::diagrams::scan::{
 };
 
 mod ast;
+mod complexity;
 mod db;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod lifecycle_tests;
 mod model;
 mod parse;
+#[cfg(feature = "presentation")]
 mod render_model;
 
 pub(super) const CSS_EDGE_NOTE_EDGE: &str = "transition note-edge";
@@ -21,21 +23,26 @@ pub use model::{
     StateRelation, StateStyleClass,
 };
 
+#[cfg(feature = "presentation")]
 pub use render_model::{
     StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
     StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
+#[cfg(feature = "compat-json")]
 pub(crate) use render_model::{
     render_model_to_compat_json, render_model_to_compat_json_controlled,
 };
 
-pub(crate) use parse::{
-    parse_state, parse_state_model_for_render_controlled, parse_state_semantic_model_controlled,
-};
+#[cfg(feature = "compat-json")]
+pub(crate) use parse::parse_state;
+#[cfg(feature = "presentation")]
+pub(crate) use parse::parse_state_model_for_render_controlled;
+pub(crate) use parse::parse_state_semantic_model_controlled;
 
+#[cfg(feature = "compat-json")]
 pub(crate) use parse::parse_state_json_and_editor_facts;
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
 
 pub use ast::{

@@ -1,5 +1,8 @@
 //! Iterative JSON value ownership used by configuration and explicit projections.
 
+mod managed;
+pub use managed::ManagedJson;
+
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Number, Value};
 use std::collections::HashMap;

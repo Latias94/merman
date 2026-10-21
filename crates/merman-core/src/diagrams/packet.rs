@@ -1,14 +1,19 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, MermaidConfig, Result, SourceSpan,
     editor::ensure_editor_recovery_from_error, family, source_span::recovery_fallback_span,
 };
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
 pub const DEFAULT_PACKET_BITS_PER_ROW: i64 = 32;
@@ -31,6 +36,26 @@ pub fn validate_packet_bits_per_row(
     Ok(value)
 }
 
+/// Packet bit ranges grouped by the admitted row-width configuration.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct PacketDiagramModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub packet: Vec<Vec<PacketRenderBlock>>,
+}
+
+impl PacketDiagramModel {
+    fn sanitize_common_db_fields(&mut self, config: &MermaidConfig) {
+        crate::common_db::sanitize_optional_title(&mut self.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PacketDiagramRenderModel {
     pub title: Option<String>,
@@ -39,10 +64,12 @@ pub struct PacketDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub packet: Vec<Vec<PacketRenderBlock>>,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum CompatibilityOutputState {
     Empty,
@@ -50,7 +77,9 @@ enum CompatibilityOutputState {
     Model,
 }
 
+#[cfg(feature = "presentation")]
 impl PacketDiagramRenderModel {
+    #[cfg(feature = "compat-json")]
     fn empty_compatibility_output() -> Self {
         Self {
             compatibility_output: CompatibilityOutputState::Empty,
@@ -65,6 +94,21 @@ impl PacketDiagramRenderModel {
     }
 }
 
+#[cfg(feature = "presentation")]
+impl PacketDiagramRenderModel {
+    fn from_semantic_model(model: PacketDiagramModel) -> Self {
+        Self {
+            title: model.title,
+            acc_title: model.acc_title,
+            acc_descr: model.acc_descr,
+            packet: model.packet,
+            #[cfg(feature = "compat-json")]
+            compatibility_output: CompatibilityOutputState::Model,
+        }
+    }
+}
+
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &PacketDiagramRenderModel,
     meta: &ParseMetadata,
@@ -104,20 +148,45 @@ struct PacketBlock {
 
 enum PacketParseOutput {
     Empty,
-    Model(PacketDiagramRenderModel),
+    Model(PacketDiagramModel),
+}
+
+impl PacketParseOutput {
+    fn into_semantic_model(self) -> PacketDiagramModel {
+        match self {
+            Self::Empty => PacketDiagramModel::default(),
+            Self::Model(model) => model,
+        }
+    }
+
+    #[cfg(feature = "presentation")]
+    fn into_render_model(self) -> PacketDiagramRenderModel {
+        match self {
+            Self::Empty => {
+                #[cfg(feature = "compat-json")]
+                return PacketDiagramRenderModel::empty_compatibility_output();
+                #[cfg(not(feature = "compat-json"))]
+                PacketDiagramRenderModel::default()
+            }
+            Self::Model(model) => PacketDiagramRenderModel::from_semantic_model(model),
+        }
+    }
 }
 
 struct PacketSemanticSource {
     output: PacketParseOutput,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "compat-json")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 type PacketWord = Vec<PacketRenderBlock>;
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
     packet_output_into_json(parse_packet_semantic_source(code, meta)?.output, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -125,11 +194,17 @@ pub(crate) fn parse_packet_json_and_editor_facts(
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction(
-        construct_packet_semantic_source_controlled(code, meta, control)?,
+        construct_packet_semantic_source_controlled(
+            code,
+            &meta.diagram_type,
+            meta.effective_config.as_config(),
+            EditorFactsDemand::Capture,
+            control,
+        )?,
         |source| {
             (
                 packet_output_into_json(source.output, meta),
-                source.editor_facts,
+                source.editor_facts.unwrap_or_default(),
             )
         },
         family::CombinedSemanticFailure::into_parts,
@@ -138,57 +213,85 @@ pub(crate) fn parse_packet_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> Result<Value> {
     match output {
         PacketParseOutput::Empty => Ok(json!({})),
-        PacketParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
+        PacketParseOutput::Model(model) => {
+            render_model_to_compat_json(&PacketDiagramRenderModel::from_semantic_model(model), meta)
+        }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_packet_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PacketDiagramRenderModel> {
-    match parse_packet_semantic_source(code, meta)?.output {
-        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::empty_compatibility_output()),
-        PacketParseOutput::Model(model) => Ok(model),
-    }
+    Ok(parse_packet_semantic_source(code, meta)?
+        .output
+        .into_render_model())
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_packet_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<PacketDiagramRenderModel>> {
-    let construction = construct_packet_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_packet_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
     };
-    let model = match source.output {
-        PacketParseOutput::Empty => PacketDiagramRenderModel::empty_compatibility_output(),
-        PacketParseOutput::Model(model) => model,
-    };
+    let model = source.output.into_render_model();
     Ok(Ok(model))
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PacketSemanticSource> {
-    construct_packet_semantic_source(code, meta)
-        .map_err(family::CombinedSemanticFailure::into_error)
+    construct_packet_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(family::CombinedSemanticFailure::into_error)
 }
 
-fn construct_packet_semantic_source(
+pub(crate) fn parse_packet_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure> {
-    construct_packet_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<PacketDiagramModel>> {
+    Ok(construct_packet_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|source| {
+        let mut model = source.output.into_semantic_model();
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    })
+    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 fn construct_packet_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &MermaidConfig,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure>,
@@ -202,7 +305,8 @@ fn construct_packet_semantic_source_controlled(
         Ok(None) => {
             return Ok(Ok(PacketSemanticSource {
                 output: PacketParseOutput::Empty,
-                editor_facts: EditorSemanticFacts::new(),
+                #[cfg(feature = "compat-json")]
+                editor_facts: None,
             }));
         }
         Err(error) => {
@@ -210,29 +314,41 @@ fn construct_packet_semantic_source_controlled(
                 error,
                 EditorSemanticFacts::new(),
                 code,
+                editor_demand,
             )));
         }
     };
     let mut offset = body.offset;
     let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<PacketBlock> = Vec::new();
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
     let mut first_error = None;
 
     while offset < code.len() {
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             if let Some(diagnostic) = &parsed.diagnostic {
-                push_langium_common_recovery(&mut editor_facts, diagnostic);
+                if let Some(facts) = &mut editor_facts {
+                    push_langium_common_recovery(facts, diagnostic);
+                }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
+                        diagram_type,
                         diagnostic.message.clone(),
                         diagnostic.span.start,
                     )
                 });
             }
-            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "packet");
+            if let Some(facts) = &mut editor_facts {
+                push_langium_common_editor_fact(facts, &parsed.fact, "packet");
+            }
             common.push(parsed.fact);
             offset += parsed.consumed;
             continue;
@@ -248,7 +364,9 @@ fn construct_packet_semantic_source_controlled(
         }
 
         if let Some(block) = parse_packet_block_spanned(line, line_start) {
-            push_packet_block_editor_fact(&mut editor_facts, &block);
+            if let Some(facts) = &mut editor_facts {
+                push_packet_block_editor_fact(facts, &block);
+            }
             blocks.push(block.semantic);
             continue;
         }
@@ -259,33 +377,33 @@ fn construct_packet_semantic_source_controlled(
             format!("unexpected packet statement: {t}")
         };
         let start = line_start + visible.find(t).unwrap_or_default();
-        editor_facts.mark_recovered_from_parse_error(
-            diagnostic.clone(),
-            Some(SourceSpan::new(start, start + t.len())),
-        );
-        first_error.get_or_insert_with(|| {
-            Error::diagram_parse_fallback(meta.diagram_type.clone(), diagnostic)
-        });
+        if let Some(facts) = &mut editor_facts {
+            facts.mark_recovered_from_parse_error(
+                diagnostic.clone(),
+                Some(SourceSpan::new(start, start + t.len())),
+            );
+        }
+        first_error.get_or_insert_with(|| Error::diagram_parse_fallback(diagram_type, diagnostic));
     }
 
-    let packet_result = match validate_packet_bits_per_row(config_i64(
-        meta.effective_config.as_config(),
-        "packet.bitsPerRow",
-    )) {
+    let packet_result = match validate_packet_bits_per_row(config_i64(config, "packet.bitsPerRow"))
+    {
         Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
         Err(error) => Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
+            diagram_type,
             error.to_string(),
         )),
     };
     let packet = match packet_result {
         Ok(packet) => packet,
         Err(error) => {
-            editor_facts = ensure_editor_recovery_from_error(
-                editor_facts,
-                &error,
-                recovery_fallback_span(code),
-            );
+            if let Some(facts) = editor_facts.take() {
+                editor_facts = Some(ensure_editor_recovery_from_error(
+                    facts,
+                    &error,
+                    recovery_fallback_span(code),
+                ));
+            }
             if first_error.is_none() {
                 first_error = Some(error);
             }
@@ -297,19 +415,19 @@ fn construct_packet_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            editor_facts.unwrap_or_default(),
         )));
     }
 
     control.checkpoint()?;
     Ok(Ok(PacketSemanticSource {
-        output: PacketParseOutput::Model(PacketDiagramRenderModel {
+        output: PacketParseOutput::Model(PacketDiagramModel {
             title: common.title,
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
             packet,
-            compatibility_output: CompatibilityOutputState::Model,
         }),
+        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
@@ -318,9 +436,14 @@ fn packet_parse_failure(
     error: Error,
     editor_facts: EditorSemanticFacts,
     code: &str,
+    editor_demand: EditorFactsDemand,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts =
-        ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
+    let editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => editor_facts,
+        EditorFactsDemand::Capture => {
+            ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code))
+        }
+    };
     family::CombinedSemanticFailure::new(error, editor_facts)
 }
 
@@ -781,6 +904,91 @@ struct PacketBlockSpanned {
 }
 
 #[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    #[test]
+    fn packet_semantics_preserve_split_ranges_without_editor_work() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("packet");
+        crate::editor::test_work::reset();
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::from_value(serde_json::json!({
+                "packet": {"bitsPerRow": 8}
+            })),
+            title: None,
+        };
+        let source = "packet\ntitle Header\n+12: \"wide\"\n+1: \"flag\"\n";
+        let model = parse_packet_semantic_model_controlled(
+            source,
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.title.as_deref(), Some("Header"));
+        assert_eq!(model.packet.len(), 2);
+        assert_eq!((model.packet[0][0].start, model.packet[0][0].end), (0, 7));
+        assert_eq!((model.packet[1][0].start, model.packet[1][0].end), (8, 11));
+        assert_eq!((model.packet[1][1].start, model.packet[1][1].end), (12, 12));
+        assert_eq!(model.packet[1][1].label, "flag");
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("packet"),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        assert!(matches!(
+            parsed.model,
+            crate::SemanticDiagramModel::Packet(_)
+        ));
+
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::Engine::new()
+                .with_site_config(crate::presentation::PresentationConfig::from_config(
+                    metadata.semantic_config.clone(),
+                ))
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::Packet(full) = full.model() else {
+                panic!("expected Packet");
+            };
+            assert_eq!(
+                serde_json::to_value(&model).unwrap(),
+                serde_json::to_value(full).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn packet_semantic_admission_keeps_numeric_errors_and_cancellation() {
+        let parser = crate::SemanticParser::new();
+        for source in ["packet\n+0: \"zero\"", "packet\n0-7: \"byte\"\n10: \"gap\""] {
+            assert!(matches!(
+                parser.parse_diagram_sync(source),
+                Err(Error::DiagramParse { .. })
+            ));
+        }
+        let parser = parser.with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "packet": {"bitsPerRow": 0}
+        })));
+        assert!(parser.parse_diagram_sync("packet\n+1: \"bit\"").is_err());
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(4);
+        assert!(
+            parser
+                .parse_diagram_controlled_sync("packet\n+1: \"bit\"", &control)
+                .is_err()
+        );
+    }
+}
+
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{Engine, ParseOptions};
@@ -819,7 +1027,13 @@ mod tests {
         };
 
         assert!(matches!(
-            construct_packet_semantic_source_controlled(&text, &meta, &control),
+            construct_packet_semantic_source_controlled(
+                &text,
+                &meta.diagram_type,
+                meta.effective_config.as_config(),
+                EditorFactsDemand::Capture,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }

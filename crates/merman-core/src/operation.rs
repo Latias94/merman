@@ -645,7 +645,12 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "diagram-sequence", feature = "diagram-state"))]
+    #[cfg(all(
+        feature = "diagram-sequence",
+        feature = "diagram-state",
+        feature = "compat-json",
+        feature = "editor-facts"
+    ))]
     #[test]
     fn parse_projection_terminals_precede_facts_and_allow_fresh_operations() {
         use crate::parse_pipeline::{ParsePipeline, ParseTiming};
@@ -762,7 +767,11 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "diagram-sequence")]
+    #[cfg(all(
+        feature = "diagram-sequence",
+        feature = "compat-json",
+        feature = "editor-facts"
+    ))]
     #[test]
     fn sequence_editor_capture_deadline_interrupts_facts_and_recovers() {
         use crate::{DiagramParseOutcome, EditorSemanticCompleteness, Engine, ParsedEditorFacts};
@@ -834,7 +843,11 @@ mod tests {
         assert_eq!(crate::editor::test_work::read().collections, 1);
     }
 
-    #[cfg(feature = "diagram-state")]
+    #[cfg(all(
+        feature = "diagram-state",
+        feature = "compat-json",
+        feature = "editor-facts"
+    ))]
     #[test]
     fn state_editor_capture_deadline_bounds_event_drain_and_recovers() {
         use crate::{
@@ -928,7 +941,11 @@ mod tests {
         assert_eq!(crate::editor::test_work::read().collections, 1);
     }
 
-    #[cfg(feature = "diagram-state")]
+    #[cfg(all(
+        feature = "diagram-state",
+        feature = "compat-json",
+        feature = "editor-facts"
+    ))]
     #[test]
     fn state_editor_capture_deadline_bounds_single_token_id_list() {
         use crate::{

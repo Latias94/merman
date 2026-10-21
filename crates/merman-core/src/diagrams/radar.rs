@@ -1,14 +1,19 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
+use crate::family::EditorFactsDemand;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::ensure_editor_recovery_from_error, family, source_span::recovery_fallback_span,
+    EditorSemanticSymbol, Error, Result, SourceSpan, editor::ensure_editor_recovery_from_error,
+    family, source_span::recovery_fallback_span,
 };
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 
 const MAX_TICKS: i64 = 32;
 
@@ -53,13 +58,13 @@ struct SpannedRadarValue {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarRenderAxis {
+pub struct RadarAxis {
     pub name: String,
     pub label: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarRenderCurve {
+pub struct RadarCurve {
     pub name: String,
     pub label: String,
     #[serde(default)]
@@ -67,7 +72,7 @@ pub struct RadarRenderCurve {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarRenderOptions {
+pub struct RadarOptions {
     #[serde(rename = "showLegend")]
     pub show_legend: bool,
     pub ticks: Value,
@@ -76,35 +81,44 @@ pub struct RadarRenderOptions {
     pub graticule: String,
 }
 
-impl Default for RadarRenderOptions {
+impl Default for RadarOptions {
     fn default() -> Self {
         Self {
             show_legend: true,
-            ticks: json!(5),
+            ticks: Value::from(5),
             max: None,
-            min: json!(0),
+            min: Value::from(0),
             graticule: "circle".to_string(),
         }
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct RadarDiagramRenderModel {
+pub struct RadarDiagramModel {
     pub title: Option<String>,
     #[serde(rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default)]
-    pub axes: Vec<RadarRenderAxis>,
+    pub axes: Vec<RadarAxis>,
     #[serde(default)]
-    pub curves: Vec<RadarRenderCurve>,
+    pub curves: Vec<RadarCurve>,
     #[serde(default)]
-    pub options: RadarRenderOptions,
+    pub options: RadarOptions,
+}
+
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(transparent)]
+pub struct RadarDiagramRenderModel {
+    model: RadarDiagramModel,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility: RadarCompatibilityOutputState,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, Default)]
 enum RadarCompatibilityOutputState {
     Empty,
@@ -112,7 +126,9 @@ enum RadarCompatibilityOutputState {
     Model,
 }
 
+#[cfg(feature = "presentation")]
 impl RadarDiagramRenderModel {
+    #[cfg(feature = "compat-json")]
     fn empty_compatibility_output() -> Self {
         Self {
             compatibility: RadarCompatibilityOutputState::Empty,
@@ -120,10 +136,55 @@ impl RadarDiagramRenderModel {
         }
     }
 
+    pub fn as_semantic_model(&self) -> &RadarDiagramModel {
+        &self.model
+    }
+
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        self.model.sanitize_common_db_fields(config);
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for RadarDiagramRenderModel {
+    type Target = RadarDiagramModel;
+
+    fn deref(&self) -> &Self::Target {
+        &self.model
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for RadarDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.model
+    }
+}
+
+impl RadarDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
+/// Full-parser spellings retained for presentation consumers.
+#[cfg(feature = "presentation")]
+pub type RadarRenderAxis = RadarAxis;
+#[cfg(feature = "presentation")]
+pub type RadarRenderCurve = RadarCurve;
+#[cfg(feature = "presentation")]
+pub type RadarRenderOptions = RadarOptions;
+
+#[cfg(feature = "presentation")]
+impl RadarDiagramRenderModel {
+    fn from_semantic_model(model: RadarDiagramModel) -> Self {
+        Self {
+            model,
+            #[cfg(feature = "compat-json")]
+            compatibility: RadarCompatibilityOutputState::Model,
+        }
     }
 }
 
@@ -132,14 +193,15 @@ struct RadarDb {
     title: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    axes: Vec<RadarRenderAxis>,
-    curves: Vec<RadarRenderCurve>,
-    options: RadarRenderOptions,
+    axes: Vec<RadarAxis>,
+    curves: Vec<RadarCurve>,
+    options: RadarOptions,
 }
 
 struct RadarSemanticSource {
-    db: Option<RadarDb>,
-    editor_facts: EditorSemanticFacts,
+    model: Option<RadarDiagramModel>,
+    #[cfg(feature = "compat-json")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 impl RadarDb {
@@ -150,7 +212,7 @@ impl RadarDb {
             acc_descr: None,
             axes: Vec::new(),
             curves: Vec::new(),
-            options: RadarRenderOptions::default(),
+            options: RadarOptions::default(),
         }
     }
 
@@ -162,7 +224,7 @@ impl RadarDb {
         let mut rendered = Vec::with_capacity(axes.len());
         for axis in axes {
             control.checkpoint()?;
-            rendered.push(RadarRenderAxis {
+            rendered.push(RadarAxis {
                 label: axis
                     .label
                     .map(|label| label.text)
@@ -195,7 +257,7 @@ impl RadarDb {
                         return Ok(Err(error.with_exact_span_if_missing(curve_span)));
                     }
                 };
-            rendered.push(RadarRenderCurve {
+            rendered.push(RadarCurve {
                 name: curve.name.text,
                 label,
                 entries,
@@ -222,7 +284,7 @@ impl RadarDb {
         }
         if let Some(OptionValueAst::Number(v)) = last.get("ticks") {
             self.options.ticks = if v.as_f64().is_some_and(|ticks| ticks > MAX_TICKS as f64) {
-                json!(MAX_TICKS)
+                Value::from(MAX_TICKS)
             } else {
                 v.clone()
             };
@@ -240,15 +302,14 @@ impl RadarDb {
     }
 
     #[inline]
-    fn into_render_model(self) -> RadarDiagramRenderModel {
-        RadarDiagramRenderModel {
+    fn into_model(self) -> RadarDiagramModel {
+        RadarDiagramModel {
             title: self.title,
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,
             axes: self.axes,
             curves: self.curves,
             options: self.options,
-            compatibility: RadarCompatibilityOutputState::Model,
         }
     }
 }
@@ -509,7 +570,7 @@ fn apply_radar_statement_controlled(
 }
 
 fn compute_curve_entries_controlled(
-    axes: &[RadarRenderAxis],
+    axes: &[RadarAxis],
     entries: &[EntryAst],
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Vec<Value>>> {
@@ -556,14 +617,28 @@ fn compute_curve_entries_controlled(
     Ok(Ok(values))
 }
 
+#[cfg(feature = "presentation")]
+impl RadarSemanticSource {
+    fn into_render_model(self) -> RadarDiagramRenderModel {
+        match self.model {
+            Some(model) => RadarDiagramRenderModel::from_semantic_model(model),
+            None => {
+                #[cfg(feature = "compat-json")]
+                return RadarDiagramRenderModel::empty_compatibility_output();
+                #[cfg(not(feature = "compat-json"))]
+                RadarDiagramRenderModel::default()
+            }
+        }
+    }
+}
+
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_radar_semantic_source(code, meta)?
-        .db
-        .map(RadarDb::into_render_model)
-        .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
+    let model = parse_radar_semantic_source(code, meta)?.into_render_model();
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -571,15 +646,17 @@ pub(crate) fn parse_radar_json_and_editor_facts(
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction(
-        construct_radar_semantic_source_controlled(code, meta, control)?,
-        |source| {
-            let model = source
-                .db
-                .map(RadarDb::into_render_model)
-                .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
+        construct_radar_semantic_source_controlled(
+            code,
+            &meta.diagram_type,
+            EditorFactsDemand::Capture,
+            control,
+        )?,
+        |mut source| {
+            let editor_facts = source.editor_facts.take().unwrap_or_default();
             (
-                render_model_to_compat_json(&model, meta),
-                source.editor_facts,
+                render_model_to_compat_json(&source.into_render_model(), meta),
+                editor_facts,
             )
         },
         family::CombinedSemanticFailure::into_parts,
@@ -588,38 +665,33 @@ pub(crate) fn parse_radar_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_radar_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RadarDiagramRenderModel> {
-    parse_radar_semantic_source(code, meta).map(|source| {
-        source
-            .db
-            .map(RadarDb::into_render_model)
-            .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output)
-    })
+    parse_radar_semantic_source(code, meta).map(RadarSemanticSource::into_render_model)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_radar_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<RadarDiagramRenderModel>> {
-    let construction = construct_radar_semantic_source_controlled(code, meta, control)?;
-    let source = match construction {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(failure.into_error())),
-    };
+    let construction = construct_radar_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     control.checkpoint()?;
-    Ok(Ok(source
-        .db
-        .map(RadarDb::into_render_model)
-        .unwrap_or_else(
-            RadarDiagramRenderModel::empty_compatibility_output,
-        )))
+    Ok(construction
+        .map(RadarSemanticSource::into_render_model)
+        .map_err(family::CombinedSemanticFailure::into_error))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RadarDiagramRenderModel,
     meta: &ParseMetadata,
@@ -627,7 +699,6 @@ pub(crate) fn render_model_to_compat_json(
     if matches!(model.compatibility, RadarCompatibilityOutputState::Empty) {
         return Ok(json!({}));
     }
-
     let mut out = Map::with_capacity(8);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("title".to_string(), json!(&model.title));
@@ -643,23 +714,41 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-#[inline]
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<RadarSemanticSource> {
-    construct_radar_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
+    construct_radar_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(family::CombinedSemanticFailure::into_error)
 }
 
-#[inline]
-fn construct_radar_semantic_source(
+pub(crate) fn parse_radar_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure> {
-    construct_radar_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<RadarDiagramModel>> {
+    Ok(construct_radar_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .map(|source| {
+        let mut model = source.model.unwrap_or_default();
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    })
+    .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 fn construct_radar_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure>,
@@ -672,14 +761,18 @@ fn construct_radar_semantic_source_controlled(
         Ok(Some(body)) => body,
         Ok(None) => {
             return Ok(Ok(RadarSemanticSource {
-                db: None,
-                editor_facts: EditorSemanticFacts::new(),
+                model: None,
+                #[cfg(feature = "compat-json")]
+                editor_facts: None,
             }));
         }
         Err(error) => {
             return Ok(Err(radar_parse_failure(
                 error,
-                EditorSemanticFacts::new(),
+                match editor_demand {
+                    EditorFactsDemand::Omit => None,
+                    EditorFactsDemand::Capture => Some(EditorSemanticFacts::new()),
+                },
                 code,
             )));
         }
@@ -687,7 +780,14 @@ fn construct_radar_semantic_source_controlled(
     let mut offset = body.offset;
 
     let mut common = LangiumCommonFacts::default();
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
     let mut axes: Vec<AxisAst> = Vec::new();
     let mut curves: Vec<CurveAst> = Vec::new();
     let mut options: Vec<OptionAst> = Vec::new();
@@ -697,16 +797,20 @@ fn construct_radar_semantic_source_controlled(
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             if let Some(diagnostic) = &parsed.diagnostic {
-                push_langium_common_recovery(&mut editor_facts, diagnostic);
+                if let Some(facts) = editor_facts.as_mut() {
+                    push_langium_common_recovery(facts, diagnostic);
+                }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         diagnostic.message.clone(),
                         diagnostic.span.start,
                     )
                 });
             }
-            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "radar");
+            if let Some(facts) = editor_facts.as_mut() {
+                push_langium_common_editor_fact(facts, &parsed.fact, "radar");
+            }
             common.push(parsed.fact);
             offset += parsed.consumed;
             continue;
@@ -720,7 +824,9 @@ fn construct_radar_semantic_source_controlled(
 
         match parse_radar_statement(&statement, statement_start, control)? {
             Ok(parsed) => {
-                push_radar_statement_facts(&mut editor_facts, &parsed.event, control)?;
+                if let Some(facts) = editor_facts.as_mut() {
+                    push_radar_statement_facts(facts, &parsed.event, control)?;
+                }
                 apply_radar_statement_controlled(
                     parsed.event,
                     &mut axes,
@@ -731,13 +837,15 @@ fn construct_radar_semantic_source_controlled(
             }
             Err(message) => {
                 let invalid = statement.trim_end();
-                editor_facts.mark_recovered_from_parse_error(
-                    message.clone(),
-                    Some(SourceSpan::new(
-                        statement_start,
-                        statement_start + invalid.len(),
-                    )),
-                );
+                if let Some(facts) = editor_facts.as_mut() {
+                    facts.mark_recovered_from_parse_error(
+                        message.clone(),
+                        Some(SourceSpan::new(
+                            statement_start,
+                            statement_start + invalid.len(),
+                        )),
+                    );
+                }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_fallback("radar".to_string(), message)
                 });
@@ -752,8 +860,13 @@ fn construct_radar_semantic_source_controlled(
     db.acc_descr = common.acc_descr;
     db.set_axes_controlled(axes, control)?;
     if let Err(error) = db.set_curves_controlled(curves, control)? {
-        editor_facts =
-            ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
+        if let Some(facts) = editor_facts.take() {
+            editor_facts = Some(ensure_editor_recovery_from_error(
+                facts,
+                &error,
+                recovery_fallback_span(code),
+            ));
+        }
         if first_error.is_none() {
             first_error = Some(error);
         }
@@ -764,23 +877,25 @@ fn construct_radar_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            editor_facts.unwrap_or_default(),
         )));
     }
 
     Ok(Ok(RadarSemanticSource {
-        db: Some(db),
+        model: Some(db.into_model()),
+        #[cfg(feature = "compat-json")]
         editor_facts,
     }))
 }
 
 fn radar_parse_failure(
     error: Error,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Option<EditorSemanticFacts>,
     code: &str,
 ) -> family::CombinedSemanticFailure {
-    let editor_facts =
-        ensure_editor_recovery_from_error(editor_facts, &error, recovery_fallback_span(code));
+    let editor_facts = editor_facts
+        .map(|facts| ensure_editor_recovery_from_error(facts, &error, recovery_fallback_span(code)))
+        .unwrap_or_default();
     family::CombinedSemanticFailure::new(error, editor_facts)
 }
 
@@ -1530,7 +1645,7 @@ impl<'input> TokenParser<'input> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{EditorSemanticRole, Engine, ParseOptions};
@@ -1570,7 +1685,12 @@ mod tests {
         };
 
         assert!(matches!(
-            construct_radar_semantic_source_controlled(&text, &meta, &control),
+            construct_radar_semantic_source_controlled(
+                &text,
+                &meta.diagram_type,
+                EditorFactsDemand::Omit,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }
@@ -2060,6 +2180,141 @@ curve mycurve{1,2,3}
             render_model_to_compat_json(&RadarDiagramRenderModel::default(), &empty_meta).unwrap()
                 ["type"],
             json!("radar")
+        );
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "radar".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict",
+                "htmlLabels": true,
+                "dompurifyConfig": { "FORBID_TAGS": ["b"] }
+            })),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_axes_curves_and_options_construct_once_without_editor_work() {
+        let source = concat!(
+            "radar-beta\n",
+            "title <b>Delivery</b>\n",
+            "axis Cost[\"Cost label\"], Time\n",
+            "curve Current{Time: 3, Cost: 2}\n",
+            "ticks 40, min 1, max 9, graticule polygon, showLegend false\n",
+        );
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("radar");
+        crate::editor::test_work::reset();
+        let model = parse_radar_semantic_model_controlled(
+            source,
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(model.title.as_deref(), Some("Delivery"));
+        assert_eq!(model.axes.len(), 2);
+        assert_eq!(model.axes[0].name, "Cost");
+        assert_eq!(model.axes[0].label, "Cost label");
+        assert_eq!(model.curves[0].name, "Current");
+        assert_eq!(model.curves[0].entries, [Value::from(2), Value::from(3)]);
+        assert_eq!(model.options.ticks, Value::from(MAX_TICKS));
+        assert_eq!(model.options.min, Value::from(1));
+        assert_eq!(model.options.max, Some(Value::from(9)));
+        assert_eq!(model.options.graticule, "polygon");
+        assert!(!model.options.show_legend);
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("radar"),
+            1
+        );
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default()
+        );
+    }
+
+    #[test]
+    fn semantic_empty_input_has_no_compatibility_sentinel() {
+        let model =
+            parse_radar_semantic_model_controlled("", &metadata(), &crate::OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert!(model.axes.is_empty());
+        assert!(model.curves.is_empty());
+        assert_eq!(model.options.ticks, Value::from(5));
+        assert!(model.options.show_legend);
+    }
+
+    #[test]
+    fn semantic_curve_validation_keeps_exact_error_span_without_editor_work() {
+        let source = "radar-beta\r\naxis A,B\r\n  curve sample{A: 1}\r\n";
+        let start = source.find("sample").unwrap();
+        crate::editor::test_work::reset();
+        let error = parse_radar_semantic_model_controlled(
+            source,
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a radar parse error");
+        };
+        assert!(diagnostic.message().contains("Missing entry for axis B"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + "sample{A: 1}".len()))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default()
+        );
+    }
+
+    #[test]
+    fn semantic_entry_can_cancel_inside_an_axis_list() {
+        let axes = (0..512)
+            .map(|index| format!("axis_{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let source = format!("radar-beta\naxis {axes}\n");
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(20);
+        assert!(matches!(
+            parse_radar_semantic_model_controlled(&source, &metadata(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn full_typed_and_json_requests_omit_editor_observers() {
+        let meta = crate::ParseMetadata {
+            diagram_type: "radar".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        let source = "radar-beta\naxis A,B\ncurve Sample{1,2}\n";
+        crate::editor::test_work::reset();
+        parse_radar(source, &meta).unwrap();
+        parse_radar_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::editor::test_work::read(),
+            crate::editor::test_work::Counts::default(),
         );
     }
 }

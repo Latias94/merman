@@ -1,11 +1,16 @@
+#[cfg(feature = "presentation")]
+use crate::ParseMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
+use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, SourceSpan,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, Result,
+    SourceSpan,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -38,8 +43,8 @@ struct KanbanNode {
     span: SourceSpan,
     level: usize,
     label: String,
-    width: i64,
-    padding: i64,
+    ty: i32,
+    metadata: Option<crate::json_value::ManagedJson>,
     parent_id: Option<String>,
 
     ticket: Option<String>,
@@ -50,6 +55,34 @@ struct KanbanNode {
     shape: Option<String>,
 }
 
+/// Authored Kanban sections, cards, and card metadata, without visual dimensions.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanDiagramModel {
+    pub nodes: Vec<KanbanNodeModel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanNodeModel {
+    pub id: String,
+    pub label: String,
+    pub level: usize,
+    pub node_type: i32,
+    pub span: SourceSpan,
+    pub is_group: bool,
+    pub parent_id: Option<String>,
+    pub ticket: Option<String>,
+    pub priority: Option<String>,
+    pub assigned: Option<String>,
+    pub icon: Option<String>,
+    pub css_classes: Option<String>,
+    pub shape: Option<String>,
+    /// Source-authored metadata, including properties unknown to the renderer.
+    pub metadata: Option<crate::json_value::ManagedJson>,
+}
+
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanDiagramRenderModel {
@@ -57,6 +90,7 @@ pub struct KanbanDiagramRenderModel {
     pub nodes: Vec<KanbanRenderNode>,
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanRenderNode {
@@ -78,6 +112,7 @@ pub struct KanbanRenderNode {
     compatibility: KanbanRenderNodeCompatibility,
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Default)]
 struct KanbanRenderNodeCompatibility {
     level: usize,
@@ -91,6 +126,7 @@ struct KanbanRenderNodeCompatibility {
     shape: Option<String>,
 }
 
+#[cfg(feature = "presentation")]
 impl KanbanRenderNode {
     /// Creates a render node with no parent or optional card metadata.
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
@@ -105,24 +141,54 @@ impl KanbanRenderNode {
 #[derive(Debug, Default)]
 struct KanbanDb {
     nodes: Vec<KanbanNode>,
-    section_indices: Vec<usize>,
     next_auto_id: i64,
+}
+
+#[cfg(feature = "presentation")]
+struct KanbanPresentationPolicy {
+    padding: i64,
+}
+
+#[cfg(feature = "presentation")]
+impl KanbanPresentationPolicy {
+    fn from_config(config: &MermaidConfig) -> Self {
+        Self {
+            padding: get_i64(config, "mindmap.padding").unwrap_or(10),
+        }
+    }
+
+    fn validate_node(&self, ty: i32, span: SourceSpan) -> Result<()> {
+        if matches!(
+            ty,
+            NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON
+        ) {
+            self.padding.checked_mul(2).ok_or_else(|| {
+                Error::diagram_parse_exact(
+                    "kanban",
+                    "node padding exceeds the supported integer range",
+                    span,
+                )
+            })?;
+        }
+        Ok(())
+    }
 }
 
 struct KanbanSemanticSource {
     db: KanbanDb,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct KanbanParseFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    editor_facts: Option<EditorSemanticFacts>,
     span: SourceSpan,
 }
 
 impl KanbanParseFailure {
+    #[cfg(feature = "compat-json")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
-        let mut facts = *self.editor_facts;
+        let mut facts = self.editor_facts.unwrap_or_default();
         facts.mark_recovered_from_parse_error(
             format!("kanban parser recovered after parse error: {}", self.error),
             Some(self.span),
@@ -147,7 +213,7 @@ struct KanbanNodeSpec {
 #[derive(Debug, Clone)]
 struct ParsedKanbanNode {
     spec: KanbanNodeSpec,
-    entity: SpannedText,
+    entity: Option<SpannedText>,
     label: Option<SpannedText>,
     span: SourceSpan,
 }
@@ -264,24 +330,9 @@ impl KanbanDb {
         level: usize,
         spec: KanbanNodeSpec,
         span: SourceSpan,
-        shape_data: Option<(KanbanShapeData, Value)>,
+        shape_data: Option<(KanbanShapeData, crate::json_value::ManagedJson)>,
         config: &MermaidConfig,
     ) -> Result<()> {
-        let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
-        let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
-        match spec.ty {
-            NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => {
-                padding = padding.checked_mul(2).ok_or_else(|| {
-                    Error::diagram_parse_exact(
-                        "kanban",
-                        "node padding exceeds the supported integer range",
-                        span,
-                    )
-                })?;
-            }
-            _ => {}
-        }
-
         let mut id = sanitize_text(&spec.id_raw, config);
         if id.is_empty() {
             id = format!("kbn{}", self.next_auto_id);
@@ -293,8 +344,8 @@ impl KanbanDb {
             span,
             level,
             label: sanitize_text(&spec.descr_raw, config),
-            width,
-            padding,
+            ty: spec.ty,
+            metadata: None,
             parent_id: None,
             ticket: None,
             priority: None,
@@ -305,75 +356,40 @@ impl KanbanDb {
         };
 
         if let Some((shape_data, document)) = shape_data {
-            apply_shape_data(&mut node, &document, shape_data.span)?;
+            apply_shape_data(&mut node, document.as_value(), shape_data.span)?;
+            node.metadata = Some(document);
         }
 
         if let Some(section_idx) = self.get_section_index(level)? {
             node.parent_id = Some(self.nodes[section_idx].id.clone());
-        } else {
-            self.section_indices.push(self.nodes.len());
         }
         self.nodes.push(node);
         Ok(())
     }
 
-    fn data_nodes_for_render(&self, config: &MermaidConfig) -> Vec<KanbanRenderNode> {
-        let mut out = Vec::new();
-        for &section_idx in &self.section_indices {
-            let Some(section) = self.nodes.get(section_idx) else {
-                continue;
-            };
-            out.push(KanbanRenderNode {
-                id: section.id.clone(),
-                label: sanitize_text(&section.label, config),
-                is_group: true,
-                parent_id: None,
-                ticket: section.ticket.clone(),
-                priority: section.priority.clone(),
-                assigned: section.assigned.clone(),
-                icon: section.icon.clone(),
-                compatibility: KanbanRenderNodeCompatibility {
-                    level: section.level,
-                    width: section.width,
-                    padding: section.padding,
-                    ticket: section.ticket.clone(),
-                    priority: section.priority.clone(),
-                    assigned: section.assigned.clone(),
-                    icon: section.icon.clone(),
-                    css_classes: section.css_classes.clone(),
-                    shape: section.shape.clone(),
-                },
-            });
-
-            for item in self
+    fn into_semantic_model(self, config: &MermaidConfig) -> KanbanDiagramModel {
+        KanbanDiagramModel {
+            nodes: self
                 .nodes
-                .iter()
-                .filter(|n| n.parent_id.as_deref() == Some(&section.id))
-            {
-                out.push(KanbanRenderNode {
-                    id: item.id.clone(),
-                    label: sanitize_text(&item.label, config),
-                    is_group: false,
-                    parent_id: Some(section.id.clone()),
-                    ticket: item.ticket.clone(),
-                    priority: item.priority.clone(),
-                    assigned: item.assigned.clone(),
-                    icon: item.icon.clone(),
-                    compatibility: KanbanRenderNodeCompatibility {
-                        level: item.level,
-                        width: item.width,
-                        padding: item.padding,
-                        ticket: item.ticket.clone(),
-                        priority: item.priority.clone(),
-                        assigned: item.assigned.clone(),
-                        icon: item.icon.clone(),
-                        css_classes: item.css_classes.clone(),
-                        shape: item.shape.clone(),
-                    },
-                });
-            }
+                .into_iter()
+                .map(|node| KanbanNodeModel {
+                    id: node.id,
+                    label: sanitize_text(&node.label, config),
+                    level: node.level,
+                    node_type: node.ty,
+                    span: node.span,
+                    is_group: node.parent_id.is_none(),
+                    parent_id: node.parent_id,
+                    ticket: node.ticket,
+                    priority: node.priority,
+                    assigned: node.assigned,
+                    icon: node.icon,
+                    css_classes: node.css_classes,
+                    shape: node.shape,
+                    metadata: node.metadata,
+                })
+                .collect(),
         }
-        out
     }
 }
 
@@ -463,7 +479,11 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-fn parse_node_spec_for_render(input: &str, input_start: usize) -> Result<ParsedKanbanNode> {
+fn parse_node_spec_for_render(
+    input: &str,
+    input_start: usize,
+    editor_demand: EditorFactsDemand,
+) -> Result<ParsedKanbanNode> {
     let input = input.trim_end();
     if input.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -505,17 +525,17 @@ fn parse_node_spec_for_render(input: &str, input_start: usize) -> Result<ParsedK
                 descr_raw: label.text.clone(),
                 ty,
             },
-            entity: label,
+            entity: matches!(editor_demand, EditorFactsDemand::Capture).then_some(label),
             label: None,
             span: SourceSpan::new(input_start, closing_start + end.len()),
         });
     }
 
     let (id_raw, rest) = split_node_id(input);
-    let id = SpannedText {
+    let id = matches!(editor_demand, EditorFactsDemand::Capture).then(|| SpannedText {
         text: id_raw.to_string(),
         span: SourceSpan::new(input_start, input_start + id_raw.len()),
-    };
+    });
     let rest = rest.trim_end();
     if rest.is_empty() {
         return Ok(ParsedKanbanNode {
@@ -571,7 +591,7 @@ fn parse_node_spec_for_render(input: &str, input_start: usize) -> Result<ParsedK
             ty,
         },
         entity: id,
-        label: Some(label),
+        label: matches!(editor_demand, EditorFactsDemand::Capture).then_some(label),
         span: SourceSpan::new(input_start, closing_start + end.len()),
     })
 }
@@ -712,6 +732,7 @@ fn node_type_for(start: &str, end: &str) -> i32 {
     }
 }
 
+#[cfg(feature = "presentation")]
 fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     let mut cur = cfg.as_value();
     for segment in dotted_path.split('.') {
@@ -943,6 +964,7 @@ fn consume_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     first: &str,
     first_start: usize,
+    editor_demand: EditorFactsDemand,
 ) -> Result<KanbanShapeData> {
     let Some(mut rest) = first.strip_prefix("@{") else {
         return Ok(KanbanShapeData {
@@ -957,15 +979,20 @@ fn consume_shape_data(
     let mut quoted = String::new();
     let block_start = first_start;
     let mut current_scan_start = first_start + "@{".len();
-    let mut metadata = KanbanMetadataCursor::new(lines.source);
+    let mut metadata = matches!(editor_demand, EditorFactsDemand::Capture)
+        .then(|| KanbanMetadataCursor::new(lines.source));
 
     loop {
         let it = rest.char_indices().peekable();
         for (idx, ch) in it {
             let source_offset = current_scan_start + idx;
             if !in_quote && ch == '}' {
-                metadata.close(source_offset);
-                let fields = metadata.into_fields();
+                let fields = if let Some(mut metadata) = metadata.take() {
+                    metadata.close(source_offset);
+                    metadata.into_fields()
+                } else {
+                    Vec::new()
+                };
                 let after_close = &rest[idx + ch.len_utf8()..];
                 let visible_tail = strip_inline_comment(after_close);
                 if !visible_tail.trim().is_empty() {
@@ -985,7 +1012,9 @@ fn consume_shape_data(
                     fields,
                 });
             }
-            metadata.consume(source_offset, ch);
+            if let Some(metadata) = &mut metadata {
+                metadata.consume(source_offset, ch);
+            }
             if in_quote {
                 if ch == '"' {
                     out.push_str(&replace_newline_whitespace_with_br(&quoted));
@@ -1007,10 +1036,14 @@ fn consume_shape_data(
             out.push(ch);
         }
 
-        metadata.line_break(current_scan_start + rest.len());
+        if let Some(metadata) = &mut metadata {
+            metadata.line_break(current_scan_start + rest.len());
+        }
 
         let Some(next_line) = lines.next() else {
-            metadata.finish_at_eof(lines.offset());
+            if let Some(metadata) = &mut metadata {
+                metadata.finish_at_eof(lines.offset());
+            }
             return Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 "unterminated @{ ... } metadata block",
@@ -1047,6 +1080,7 @@ fn split_node_and_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     rest: &str,
     rest_start: usize,
+    editor_demand: EditorFactsDemand,
 ) -> Result<(String, Option<KanbanShapeData>)> {
     let mut in_quote = false;
     let mut in_backtick_quote = false;
@@ -1079,7 +1113,8 @@ fn split_node_and_shape_data(
 
         if rest[idx..].starts_with("@{") {
             let node_part = rest[..idx].trim_end().to_string();
-            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx)?;
+            let shape_data =
+                consume_shape_data(lines, &rest[idx..], rest_start + idx, editor_demand)?;
             return Ok((node_part, Some(shape_data)));
         }
     }
@@ -1087,17 +1122,12 @@ fn split_node_and_shape_data(
     Ok((rest.trim_end().to_string(), None))
 }
 
-fn construct_kanban_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<KanbanSemanticSource, KanbanParseFailure> {
-    construct_kanban_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-}
-
 fn construct_kanban_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &MermaidConfig,
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] presentation: Option<&KanbanPresentationPolicy>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
     control.checkpoint()?;
@@ -1105,9 +1135,15 @@ fn construct_kanban_semantic_source_controlled(
     KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut db = KanbanDb::default();
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
     let mut first_failure = None;
-
     let mut lines = KanbanLineCursor::new(code);
     let header_tail = loop {
         control.checkpoint()?;
@@ -1115,11 +1151,11 @@ fn construct_kanban_semantic_source_controlled(
             let span = SourceSpan::new(lines.offset(), lines.offset());
             return Ok(Err(KanbanParseFailure {
                 error: Box::new(Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
+                    diagram_type,
                     "expected kanban header",
                     span.start,
                 )),
-                editor_facts: Box::new(editor_facts),
+                editor_facts,
                 span,
             }));
         };
@@ -1147,11 +1183,11 @@ fn construct_kanban_semantic_source_controlled(
         let span = SourceSpan::new(trimmed_start, trimmed_start + trimmed.len());
         return Ok(Err(KanbanParseFailure {
             error: Box::new(Error::diagram_parse_exact(
-                meta.diagram_type.clone(),
+                diagram_type,
                 "expected kanban header",
                 span,
             )),
-            editor_facts: Box::new(editor_facts),
+            editor_facts,
             span,
         }));
     };
@@ -1162,8 +1198,11 @@ fn construct_kanban_semantic_source_controlled(
             &mut lines,
             KanbanStatementContext {
                 db: &mut db,
-                facts: &mut editor_facts,
-                meta,
+                facts: editor_facts.as_mut(),
+                config,
+                editor_demand,
+                #[cfg(feature = "presentation")]
+                presentation,
                 control,
             },
             tail,
@@ -1174,15 +1213,17 @@ fn construct_kanban_semantic_source_controlled(
         record_kanban_failure(&mut first_failure, error, fallback);
     }
     control.checkpoint()?;
-
     while let Some(source_line) = lines.next() {
         control.checkpoint()?;
         if let Err(error) = parse_kanban_statement(
             &mut lines,
             KanbanStatementContext {
                 db: &mut db,
-                facts: &mut editor_facts,
-                meta,
+                facts: editor_facts.as_mut(),
+                config,
+                editor_demand,
+                #[cfg(feature = "presentation")]
+                presentation,
                 control,
             },
             source_line.text,
@@ -1195,11 +1236,10 @@ fn construct_kanban_semantic_source_controlled(
             record_kanban_failure(&mut first_failure, error, fallback);
         }
     }
-
     if let Some((error, span)) = first_failure {
         Ok(Err(KanbanParseFailure {
             error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
+            editor_facts,
             span,
         }))
     } else {
@@ -1221,8 +1261,11 @@ fn record_kanban_failure(
 
 struct KanbanStatementContext<'a> {
     db: &'a mut KanbanDb,
-    facts: &'a mut EditorSemanticFacts,
-    meta: &'a ParseMetadata,
+    facts: Option<&'a mut EditorSemanticFacts>,
+    config: &'a MermaidConfig,
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")]
+    presentation: Option<&'a KanbanPresentationPolicy>,
     control: &'a crate::OperationControl,
 }
 
@@ -1234,8 +1277,11 @@ fn parse_kanban_statement(
 ) -> crate::OperationControlResult<Result<()>> {
     let KanbanStatementContext {
         db,
-        facts,
-        meta,
+        mut facts,
+        config,
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        presentation,
         control,
     } = context;
     control.checkpoint()?;
@@ -1287,22 +1333,22 @@ fn parse_kanban_statement(
                 span,
             )));
         }
-        facts.push_directive_prefix("icon");
+        if let Some(facts) = facts.as_deref_mut() {
+            facts.push_directive_prefix("icon");
+        }
         if icon.text.is_empty() {
             return Ok(Ok(()));
         }
-        db.decorate_last(
-            None,
-            Some(icon.text.clone()),
-            meta.effective_config.as_config(),
-        );
-        facts.push_symbol(EditorSemanticSymbol::payload(
-            icon.text,
-            Some("kanban icon".to_string()),
-            EditorSemanticKind::String,
-            icon.span,
-            icon.span,
-        ));
+        db.decorate_last(None, Some(icon.text.clone()), config);
+        if let Some(facts) = facts.as_deref_mut() {
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                icon.text,
+                Some("kanban icon".to_string()),
+                EditorSemanticKind::String,
+                icon.span,
+                icon.span,
+            ));
+        }
         return Ok(Ok(()));
     }
 
@@ -1316,37 +1362,40 @@ fn parse_kanban_statement(
                 rest_start + 3 + leading + class_raw.len(),
             ),
         };
-        db.decorate_last(
-            Some(class_name.text.clone()),
-            None,
-            meta.effective_config.as_config(),
-        );
+        db.decorate_last(Some(class_name.text.clone()), None, config);
         if !class_name.text.is_empty() {
-            facts.push_directive_prefix(":::");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                class_name.text,
-                Some("kanban class".to_string()),
-                EditorSemanticKind::Class,
-                class_name.span,
-                class_name.span,
-            ));
+            if let Some(facts) = facts.as_deref_mut() {
+                facts.push_directive_prefix(":::");
+            }
+            if let Some(facts) = facts.as_deref_mut() {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    class_name.text,
+                    Some("kanban class".to_string()),
+                    EditorSemanticKind::Class,
+                    class_name.span,
+                    class_name.span,
+                ));
+            }
         }
         return Ok(Ok(()));
     }
 
-    let (node_part, shape_data) = match split_node_and_shape_data(lines, rest, rest_start) {
-        Ok(parsed) => parsed,
-        Err(error) => return Ok(Err(error)),
-    };
+    let (node_part, shape_data) =
+        match split_node_and_shape_data(lines, rest, rest_start, editor_demand) {
+            Ok(parsed) => parsed,
+            Err(error) => return Ok(Err(error)),
+        };
     if node_part.trim().is_empty() {
         return Ok(Ok(()));
     }
-    let parsed = match parse_node_spec_for_render(&node_part, rest_start) {
+    let parsed = match parse_node_spec_for_render(&node_part, rest_start, editor_demand) {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
     let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
-    if let Some(shape_data) = &shape_data {
+    if let Some(facts) = facts.as_deref_mut()
+        && let Some(shape_data) = &shape_data
+    {
         push_kanban_metadata_facts(facts, &shape_data.fields);
     }
     let shape_data = match shape_data {
@@ -1364,45 +1413,51 @@ fn parse_kanban_statement(
                     )));
                 }
             };
-            Some((shape_data, document))
+            Some((
+                shape_data,
+                crate::json_value::ManagedJson::from_value(document),
+            ))
         }
         None => None,
     };
-    if let Err(error) = db.add_node(
-        indent,
-        parsed.spec,
-        parsed.span,
-        shape_data,
-        meta.effective_config.as_config(),
-    ) {
+    #[cfg(feature = "presentation")]
+    if let Some(presentation) = presentation
+        && let Err(error) = presentation.validate_node(parsed.spec.ty, parsed.span)
+    {
         return Ok(Err(error));
     }
-    let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
-    if is_section {
-        facts.push_symbol(EditorSemanticSymbol::outline(
-            parsed.entity.text.clone(),
-            Some("kanban section".to_string()),
-            EditorSemanticKind::Namespace,
-            parsed.entity.span,
-            parsed.entity.span,
-        ));
-    } else {
-        facts.push_symbol(EditorSemanticSymbol::new(
-            parsed.entity.text.clone(),
-            Some("kanban item".to_string()),
-            fact_kind,
-            parsed.entity.span,
-            parsed.entity.span,
-        ));
+    if let Err(error) = db.add_node(indent, parsed.spec, parsed.span, shape_data, config) {
+        return Ok(Err(error));
     }
-    if let Some(label) = parsed.label {
-        facts.push_symbol(EditorSemanticSymbol::payload(
-            label.text,
-            Some("kanban label".to_string()),
-            EditorSemanticKind::String,
-            label.span,
-            label.span,
-        ));
+    if let Some(facts) = facts {
+        let entity = parsed.entity.expect("captured node entity");
+        let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
+        if is_section {
+            facts.push_symbol(EditorSemanticSymbol::outline(
+                entity.text,
+                Some("kanban section".to_string()),
+                EditorSemanticKind::Namespace,
+                entity.span,
+                entity.span,
+            ));
+        } else {
+            facts.push_symbol(EditorSemanticSymbol::new(
+                entity.text,
+                Some("kanban item".to_string()),
+                fact_kind,
+                entity.span,
+                entity.span,
+            ));
+        }
+        if let Some(label) = parsed.label {
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                label.text,
+                Some("kanban label".to_string()),
+                EditorSemanticKind::String,
+                label.span,
+                label.span,
+            ));
+        }
     }
     control.checkpoint()?;
     Ok(Ok(()))
@@ -1449,12 +1504,97 @@ fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
     }
 }
 
+pub(crate) fn parse_kanban_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<KanbanDiagramModel>> {
+    Ok(construct_kanban_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        EditorFactsDemand::Omit,
+        #[cfg(feature = "presentation")]
+        None,
+        control,
+    )?
+    .map(|source| source.db.into_semantic_model(&metadata.semantic_config))
+    .map_err(|failure| *failure.error))
+}
+
+#[cfg(feature = "presentation")]
+impl KanbanDiagramModel {
+    fn into_render_model(self, config: &MermaidConfig) -> Result<KanbanDiagramRenderModel> {
+        let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
+        let base_padding = get_i64(config, "mindmap.padding").unwrap_or(10);
+        let nodes = self
+            .nodes
+            .into_iter()
+            .map(|node| {
+                let padding = if matches!(
+                    node.node_type,
+                    NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON
+                ) {
+                    base_padding.checked_mul(2).ok_or_else(|| {
+                        Error::diagram_parse_exact(
+                            "kanban",
+                            "node padding exceeds the supported integer range",
+                            node.span,
+                        )
+                    })?
+                } else {
+                    base_padding
+                };
+                Ok(KanbanRenderNode {
+                    id: node.id,
+                    label: node.label,
+                    is_group: node.is_group,
+                    parent_id: node.parent_id,
+                    ticket: node.ticket.clone(),
+                    priority: node.priority.clone(),
+                    assigned: node.assigned.clone(),
+                    icon: node.icon.clone(),
+                    compatibility: KanbanRenderNodeCompatibility {
+                        level: node.level,
+                        width,
+                        padding,
+                        ticket: node.ticket,
+                        priority: node.priority,
+                        assigned: node.assigned,
+                        icon: node.icon,
+                        css_classes: node.css_classes,
+                        shape: node.shape,
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        // Mermaid emits each section followed by every card with that section ID. Repeated
+        // authored section IDs therefore intentionally repeat their matching cards.
+        let (sections, cards): (Vec<_>, Vec<_>) = nodes.into_iter().partition(|node| node.is_group);
+        let mut nodes = Vec::new();
+        for section in sections {
+            let section_id = section.id.clone();
+            nodes.push(section);
+            nodes.extend(
+                cards
+                    .iter()
+                    .filter(|card| card.parent_id.as_deref() == Some(section_id.as_str()))
+                    .cloned(),
+            );
+        }
+        Ok(KanbanDiagramRenderModel { nodes })
+    }
+}
+
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let model = kanban_db_into_render_model(&source.db, meta);
+    let model =
+        parse_kanban_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -1462,13 +1602,23 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
-        construct_kanban_semantic_source_controlled(code, meta, control)?,
+        construct_kanban_semantic_source_controlled(
+            code,
+            &meta.diagram_type,
+            meta.effective_config.as_config(),
+            EditorFactsDemand::Capture,
+            Some(&KanbanPresentationPolicy::from_config(
+                meta.effective_config.as_config(),
+            )),
+            control,
+        )?,
         |source| {
-            let model = kanban_db_into_render_model(&source.db, meta);
-            (
-                render_model_to_compat_json(&model, meta),
-                source.editor_facts,
-            )
+            let model = source
+                .db
+                .into_semantic_model(meta.effective_config.as_config())
+                .into_render_model(meta.effective_config.as_config())
+                .and_then(|model| render_model_to_compat_json(&model, meta));
+            (model, source.editor_facts.unwrap_or_default())
         },
         KanbanParseFailure::into_error_and_editor_facts,
     );
@@ -1476,12 +1626,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
     Ok(parsed)
 }
 
-fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
-    KanbanDiagramRenderModel {
-        nodes: db.data_nodes_for_render(meta.effective_config.as_config()),
-    }
-}
-
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &KanbanDiagramRenderModel,
     meta: &ParseMetadata,
@@ -1505,100 +1650,93 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
+#[cfg(feature = "compat-json")]
 fn kanban_sections_to_json(model: &KanbanDiagramRenderModel) -> Value {
-    let sections = model
-        .nodes
-        .iter()
-        .filter(|node| node.is_group)
-        .map(|node| {
-            let compat = &node.compatibility;
-            let mut out = Map::new();
-            out.insert("id".to_string(), json!(&node.id));
-            out.insert("label".to_string(), json!(&node.label));
-            out.insert("level".to_string(), json!(compat.level));
-            out.insert("width".to_string(), json!(compat.width));
-            out.insert("padding".to_string(), json!(compat.padding));
-            out.insert("isGroup".to_string(), json!(false));
-            for (key, value) in [
-                ("ticket", &compat.ticket),
-                ("priority", &compat.priority),
-                ("assigned", &compat.assigned),
-                ("icon", &compat.icon),
-                ("cssClasses", &compat.css_classes),
-                ("shape", &compat.shape),
-            ] {
-                if let Some(value) = value {
-                    out.insert(key.to_string(), json!(value));
+    Value::Array(
+        model
+            .nodes
+            .iter()
+            .filter(|node| node.is_group)
+            .map(|node| {
+                let compat = &node.compatibility;
+                let mut out = Map::new();
+                out.insert("id".to_string(), json!(&node.id));
+                out.insert("label".to_string(), json!(&node.label));
+                out.insert("level".to_string(), json!(compat.level));
+                out.insert("width".to_string(), json!(compat.width));
+                out.insert("padding".to_string(), json!(compat.padding));
+                out.insert("isGroup".to_string(), json!(false));
+                for (key, value) in [
+                    ("ticket", &compat.ticket),
+                    ("priority", &compat.priority),
+                    ("assigned", &compat.assigned),
+                    ("icon", &compat.icon),
+                    ("cssClasses", &compat.css_classes),
+                    ("shape", &compat.shape),
+                ] {
+                    if let Some(value) = value {
+                        out.insert(key.to_string(), json!(value));
+                    }
                 }
-            }
-            Value::Object(out)
-        })
-        .collect();
-    Value::Array(sections)
+                Value::Object(out)
+            })
+            .collect(),
+    )
 }
 
+#[cfg(feature = "compat-json")]
 fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig) -> Vec<Value> {
     let look = config.get_str("look").unwrap_or("classic");
-    model
-        .nodes
-        .iter()
-        .map(|node| {
-            if node.is_group {
-                json!({
-                    "id": node.id,
-                    "label": node.label,
-                    "isGroup": true,
-                    "ticket": node.ticket,
-                    "shape": "kanbanSection",
-                    "level": node.compatibility.level,
-                    "look": look,
-                })
-            } else {
-                json!({
-                    "id": node.id,
-                    "parentId": node.parent_id,
-                    "label": node.label,
-                    "isGroup": false,
-                    "ticket": node.ticket,
-                    "priority": node.priority,
-                    "assigned": node.assigned,
-                    "icon": node.icon,
-                    "shape": "kanbanItem",
-                    "level": node.compatibility.level,
-                    "rx": 5,
-                    "ry": 5,
-                    "cssStyles": ["text-align: left"],
-                })
-            }
-        })
-        .collect()
+    model.nodes.iter().map(|node| {
+        if node.is_group {
+            json!({"id": node.id, "label": node.label, "isGroup": true, "ticket": node.ticket,
+                "shape": "kanbanSection", "level": node.compatibility.level, "look": look})
+        } else {
+            json!({"id": node.id, "parentId": node.parent_id, "label": node.label, "isGroup": false,
+                "ticket": node.ticket, "priority": node.priority, "assigned": node.assigned, "icon": node.icon,
+                "shape": "kanbanItem", "level": node.compatibility.level, "rx": 5, "ry": 5,
+                "cssStyles": ["text-align: left"]})
+        }
+    }).collect()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_kanban_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
-    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok(kanban_db_into_render_model(&source.db, meta))
+    parse_kanban_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_kanban_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<KanbanDiagramRenderModel>> {
-    let construction = construct_kanban_semantic_source_controlled(code, meta, control)?;
-    match construction {
-        Ok(source) => {
-            control.checkpoint()?;
-            Ok(Ok(kanban_db_into_render_model(&source.db, meta)))
-        }
-        Err(failure) => Ok(Err(*failure.error)),
-    }
+    let construction = construct_kanban_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Omit,
+        Some(&KanbanPresentationPolicy::from_config(
+            meta.effective_config.as_config(),
+        )),
+        control,
+    )?;
+    control.checkpoint()?;
+    Ok(construction
+        .map_err(|failure| *failure.error)
+        .and_then(|source| {
+            source
+                .db
+                .into_semantic_model(meta.effective_config.as_config())
+                .into_render_model(meta.effective_config.as_config())
+        }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{
@@ -2181,5 +2319,201 @@ mod tests {
         let model = parse("kanban\n  root@{ label: \"line1\n      line2\" }\n");
         let sections = sections(&model);
         assert_eq!(sections[0]["label"].as_str().unwrap(), "line1<br>line2");
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "kanban".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_cards_preserve_authored_metadata_without_editor_work() {
+        reset_kanban_syntax_construction_count();
+        crate::editor::test_work::reset();
+        let model = parse_kanban_semantic_model_controlled(
+            "kanban\n  todo[Todo]\n    card[Caption]@{ ticket: MC-1, priority: high, custom: [1, 2] }\n    ::icon(star)\n    :::highlight\n",
+            &metadata(), &crate::OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(model.nodes.len(), 2);
+        assert!(model.nodes[0].is_group);
+        let card = &model.nodes[1];
+        assert_eq!(
+            (
+                card.id.as_str(),
+                card.label.as_str(),
+                card.parent_id.as_deref()
+            ),
+            ("card", "Caption", Some("todo"))
+        );
+        assert_eq!(card.ticket.as_deref(), Some("MC-1"));
+        assert_eq!(card.icon.as_deref(), Some("star"));
+        assert_eq!(card.css_classes.as_deref(), Some("highlight"));
+        assert_eq!(
+            card.metadata.as_ref().unwrap()["custom"],
+            serde_json::json!([1, 2])
+        );
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn semantic_config_and_exact_errors_share_the_parser() {
+        let mut metadata = metadata();
+        metadata.semantic_config =
+            MermaidConfig::from_value(serde_json::json!({"securityLevel": "strict"}));
+        let model = parse_kanban_semantic_model_controlled(
+            "kanban\n  a[<script>bad()</script>Safe]\n",
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.nodes[0].label, "Safe");
+        let input = "kanban\n  broken[Open";
+        let error = parse_kanban_semantic_model_controlled(
+            input,
+            &metadata,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected exact parser diagnostic")
+        };
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(input.len(), input.len()))
+        );
+        #[cfg(feature = "presentation")]
+        {
+            let full = ParseMetadata {
+                diagram_type: metadata.diagram_type,
+                config: metadata.config,
+                effective_config: crate::presentation::PresentationConfig::from_value(
+                    crate::json_value::clone_value_nonrecursive(
+                        metadata.semantic_config.as_value(),
+                    ),
+                ),
+                title: None,
+            };
+            let full_error = parse_kanban_model_for_render_controlled(
+                input,
+                &full,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap_err();
+            assert_eq!(error.to_string(), full_error.to_string());
+        }
+    }
+
+    #[test]
+    fn semantic_cancellation_stops_before_construction() {
+        reset_kanban_syntax_construction_count();
+        let control = crate::OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_kanban_semantic_model_controlled("kanban\n  root", &metadata(), &control)
+                .is_err()
+        );
+        assert_eq!(kanban_syntax_construction_count(), 0);
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn typed_and_json_paths_skip_editor_projection() {
+        let full = ParseMetadata {
+            diagram_type: "kanban".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        crate::editor::test_work::reset();
+        reset_kanban_syntax_construction_count();
+        parse_kanban_model_for_render_controlled(
+            "kanban\n  section\n    card",
+            &full,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_kanban_syntax_construction_count();
+        parse_kanban("kanban\n  section\n    card", &full).unwrap();
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn canonical_cards_keep_source_identity_while_full_repeats_duplicate_section_groups() {
+        let source = "kanban\n  same[First]\n    one[One]\n  same[Second]\n    two[Two]\n";
+        let canonical = parse_kanban_semantic_model_controlled(
+            source,
+            &metadata(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(canonical.nodes.len(), 4);
+        let projected = canonical
+            .into_render_model(&MermaidConfig::empty_object())
+            .unwrap();
+        let ids: Vec<_> = projected
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["same", "one", "two", "same", "one", "two"]);
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn full_visual_validation_keeps_first_error_and_recovery_span() {
+        let source = "kanban\n  section[Section]\n  broken[";
+        let full = ParseMetadata {
+            diagram_type: "kanban".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::from_value(
+                serde_json::json!({"mindmap": {"padding": i64::MAX}}),
+            ),
+            title: None,
+        };
+        let error = parse_kanban_model_for_render_controlled(
+            source,
+            &full,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected parser diagnostic")
+        };
+        assert_eq!(
+            diagnostic.message(),
+            "node padding exceeds the supported integer range"
+        );
+        let start = source.find("section").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + "section[Section]".len()))
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_kanban_json_and_editor_facts,
+            source,
+            &full,
+        );
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics[0].span, diagnostic.span());
     }
 }

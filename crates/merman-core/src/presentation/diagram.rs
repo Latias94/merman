@@ -1,9 +1,10 @@
-use crate::diagram::{CapturedPanic, DiagramWarningFact};
-use crate::{
-    EditorSemanticFacts, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
-    OperationControlResult, OperationPhase, ParseMetadata, Result,
-    preprocess::SourceConfigEvidence,
-};
+#[cfg(feature = "compat-json")]
+use crate::diagram::CapturedPanic;
+use crate::diagram::DiagramWarningFact;
+use crate::json_value::ManagedJson as ManagedSemanticJson;
+#[cfg(feature = "compat-json")]
+use crate::{EditorSemanticFacts, Error, OperationPhase, preprocess::SourceConfigEvidence};
+use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 /// The outer [`OperationControlResult`] reports cooperative cancellation; the inner [`Result`]
 /// reports Mermaid detection or parse failures. Non-cancellable `Engine` snapshot and model APIs
 /// surface an unexpected outer cancellation as [`crate::Error::OperationCancelled`].
+#[cfg(feature = "compat-json")]
 pub type DiagramSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,
@@ -22,6 +24,7 @@ pub type DiagramSemanticParser = fn(
 ) -> OperationControlResult<Result<Value>>;
 
 /// Parser used by the pinned built-in semantic JSON path.
+#[cfg(feature = "compat-json")]
 pub(crate) type BuiltInDiagramSemanticParser =
     fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
 
@@ -45,17 +48,20 @@ pub type CustomJsonRenderParser = fn(
 
 /// Ownership of a parser resolved from a built-in registry plus its custom overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "compat-json")]
 pub(crate) enum RegistryOwner {
     BuiltIn,
     Custom,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "compat-json")]
 pub(crate) enum ResolvedSemanticParser {
     BuiltIn(BuiltInDiagramSemanticParser),
     Custom(DiagramSemanticParser),
 }
 
+#[cfg(feature = "compat-json")]
 impl ResolvedSemanticParser {
     pub(crate) const fn owner(self) -> RegistryOwner {
         match self {
@@ -67,17 +73,20 @@ impl ResolvedSemanticParser {
 
 /// Registry for semantic JSON parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
+#[cfg(feature = "compat-json")]
 pub struct DiagramRegistry {
     builtins: Arc<HashMap<&'static str, BuiltInDiagramSemanticParser>>,
     overlays: Arc<HashMap<&'static str, DiagramSemanticParser>>,
 }
 
+#[cfg(feature = "compat-json")]
 impl Default for DiagramRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "compat-json")]
 impl DiagramRegistry {
     /// Creates an empty registry.
     pub fn new() -> Self {
@@ -131,6 +140,7 @@ impl DiagramRegistry {
 
 /// Parsed diagram metadata plus the Mermaid-compatible semantic JSON model.
 #[derive(Debug, Clone)]
+#[cfg(feature = "compat-json")]
 pub struct ParsedDiagram {
     /// Diagram type and effective configuration extracted during preprocessing.
     pub meta: ParseMetadata,
@@ -140,6 +150,7 @@ pub struct ParsedDiagram {
 
 /// Parser-backed editor facts produced by a diagram parse operation.
 #[derive(Debug)]
+#[cfg(feature = "compat-json")]
 pub enum ParsedEditorFacts {
     Available(EditorSemanticFacts),
     Unavailable,
@@ -147,6 +158,7 @@ pub enum ParsedEditorFacts {
 
 /// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]
+#[cfg(feature = "compat-json")]
 pub enum DiagramParseOutcome {
     Parsed {
         /// Mermaid-compatible semantic JSON retained for existing projections.
@@ -159,6 +171,7 @@ pub enum DiagramParseOutcome {
     Panicked(String),
 }
 
+#[cfg(feature = "compat-json")]
 impl DiagramParseOutcome {
     /// Returns the semantic model when family construction succeeded.
     pub fn parsed_model(&self) -> Option<&ManagedSemanticJson> {
@@ -175,6 +188,7 @@ impl DiagramParseOutcome {
 /// retained together so downstream analysis cannot reconstruct parser state from compatibility
 /// JSON or by parsing the source again.
 #[derive(Debug)]
+#[cfg(feature = "compat-json")]
 pub struct DiagramParseSnapshot {
     meta: ParseMetadata,
     outcome: DiagramParseOutcome,
@@ -183,6 +197,7 @@ pub struct DiagramParseSnapshot {
     recovered_incomplete_directive: bool,
 }
 
+#[cfg(feature = "compat-json")]
 impl DiagramParseSnapshot {
     pub(crate) fn new(
         meta: ParseMetadata,
@@ -253,6 +268,7 @@ impl DiagramParseSnapshot {
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
+#[cfg(feature = "compat-json")]
 pub enum DiagramSnapshotCapture {
     Snapshot(Option<DiagramParseSnapshot>),
     Failed {
@@ -268,6 +284,7 @@ pub enum DiagramSnapshotCapture {
     },
 }
 
+#[cfg(feature = "compat-json")]
 impl DiagramSnapshotCapture {
     pub(crate) fn into_result(self) -> Result<Option<DiagramParseSnapshot>> {
         match self {
@@ -285,6 +302,7 @@ impl DiagramSnapshotCapture {
 #[serde(rename_all = "snake_case")]
 pub enum CustomJsonProvenance {
     /// Produced by a custom semantic JSON parser because no custom render parser was registered.
+    #[cfg(feature = "compat-json")]
     SemanticRegistryOverlay,
     /// Produced by an explicitly registered custom render-model parser.
     RenderRegistryOverlay,
@@ -308,6 +326,7 @@ impl CustomJsonRenderModel {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn from_semantic_registry(
         model_name: impl Into<String>,
         value: impl Into<ManagedSemanticJson>,
@@ -352,8 +371,7 @@ impl CustomJsonRenderModel {
 
 /// Typed semantic model used by the headless renderer.
 ///
-/// Most public callers should use [`ParsedDiagram`] when they need JSON output. This enum is for
-/// render paths that benefit from typed data and avoiding a JSON round trip.
+/// Retains family-owned typed data for headless rendering without a JSON round trip.
 ///
 /// Family variants and their payload modules are compiled only when the owning `diagram-*`
 /// feature is enabled. `Flowchart` is shared by `diagram-flowchart` and `diagram-swimlane`;
@@ -554,251 +572,259 @@ impl RenderSemanticParseOutput {
     }
 }
 
-mod builtin_render_semantic_private {
-    pub trait Sealed {}
-}
+#[cfg(feature = "compat-json")]
+mod compatibility {
+    use super::*;
 
-/// Family-owned typed semantic data that can project the public compatibility JSON contract.
-///
-/// This trait is sealed because built-in family membership is defined by the pinned Mermaid
-/// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
-pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
-    fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson>;
-
-    fn compatibility_json_controlled(
-        &self,
-        meta: &ParseMetadata,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
-        control.checkpoint()?;
-        let projected = self.compatibility_json(meta);
-        control.checkpoint()?;
-        Ok(projected)
+    mod builtin_render_semantic_private {
+        pub trait Sealed {}
     }
-}
 
-macro_rules! impl_builtin_render_semantic {
-    ($model:path, $project:path) => {
-        impl builtin_render_semantic_private::Sealed for $model {}
+    /// Family-owned typed semantic data that can project the public compatibility JSON contract.
+    ///
+    /// This trait is sealed because built-in family membership is defined by the pinned Mermaid
+    /// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
+    pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
+        fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson>;
 
-        impl BuiltinRenderSemantic for $model {
-            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
-                $project(self, meta).map(ManagedSemanticJson::from)
-            }
+        fn compatibility_json_controlled(
+            &self,
+            meta: &ParseMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+            control.checkpoint()?;
+            let projected = self.compatibility_json(meta);
+            control.checkpoint()?;
+            Ok(projected)
         }
-    };
+    }
+
+    macro_rules! impl_builtin_render_semantic {
+        ($model:path, $project:path) => {
+            impl builtin_render_semantic_private::Sealed for $model {}
+
+            impl BuiltinRenderSemantic for $model {
+                fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                    $project(self, meta).map(ManagedSemanticJson::from)
+                }
+            }
+        };
+    }
+
+    #[cfg(any(
+        feature = "diagram-mindmap",
+        feature = "diagram-architecture",
+        feature = "diagram-gantt",
+        feature = "diagram-block",
+        feature = "diagram-state",
+        feature = "diagram-treemap",
+        feature = "diagram-ishikawa",
+        feature = "diagram-zenuml",
+        feature = "diagram-wardley"
+    ))]
+    macro_rules! impl_builtin_render_semantic_controlled {
+        ($model:path, $project:path, $controlled_project:path) => {
+            impl builtin_render_semantic_private::Sealed for $model {}
+
+            impl BuiltinRenderSemantic for $model {
+                fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                    $project(self, meta).map(ManagedSemanticJson::from)
+                }
+
+                fn compatibility_json_controlled(
+                    &self,
+                    meta: &ParseMetadata,
+                    control: &OperationControl,
+                ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+                    $controlled_project(self, meta, control)
+                        .map(|result| result.map(ManagedSemanticJson::from))
+                }
+            }
+        };
+    }
+
+    impl_builtin_render_semantic!(
+        crate::diagrams::error_diagram::ErrorDiagramRenderModel,
+        crate::diagrams::error_diagram::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-mindmap")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::mindmap::MindmapDiagramRenderModel,
+        crate::diagrams::mindmap::render_model_to_compat_json,
+        crate::diagrams::mindmap::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-state")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::state::StateDiagramRenderModel,
+        crate::diagrams::state::render_model_to_compat_json,
+        crate::diagrams::state::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-sequence")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::sequence::SequenceDiagramRenderModel,
+        crate::diagrams::sequence::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-zenuml")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::zenuml::ZenumlDiagramRenderModel,
+        crate::diagrams::zenuml::render_model_to_compat_json,
+        crate::diagrams::zenuml::render_model_to_compat_json_controlled
+    );
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    impl_builtin_render_semantic!(
+        crate::diagrams::flowchart::FlowchartModel,
+        crate::diagrams::flowchart::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-architecture")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::architecture::ArchitectureDiagramRenderModel,
+        crate::diagrams::architecture::render_model_to_compat_json,
+        crate::diagrams::architecture::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-class")]
+    impl_builtin_render_semantic!(
+        crate::models::class_diagram::ClassDiagram,
+        crate::diagrams::class::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-c4")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::c4::C4DiagramRenderModel,
+        crate::diagrams::c4::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-cynefin")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::cynefin::CynefinDiagramRenderModel,
+        crate::diagrams::cynefin::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-railroad")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::railroad::RailroadDiagramRenderModel,
+        crate::diagrams::railroad::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-kanban")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::kanban::KanbanDiagramRenderModel,
+        crate::diagrams::kanban::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-gantt")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::gantt::GanttDiagramRenderModel,
+        crate::diagrams::gantt::render_model_to_compat_json,
+        crate::diagrams::gantt::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-pie")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::pie::PieDiagramRenderModel,
+        crate::diagrams::pie::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-packet")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::packet::PacketDiagramRenderModel,
+        crate::diagrams::packet::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-timeline")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::timeline::TimelineDiagramRenderModel,
+        crate::diagrams::timeline::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-journey")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::journey::JourneyDiagramRenderModel,
+        crate::diagrams::journey::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-requirement")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::requirement::RequirementDiagramRenderModel,
+        crate::diagrams::requirement::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-sankey")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::sankey::SankeyDiagramRenderModel,
+        crate::diagrams::sankey::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-radar")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::radar::RadarDiagramRenderModel,
+        crate::diagrams::radar::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-info")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::info::InfoDiagramRenderModel,
+        crate::diagrams::info::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-treemap")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::treemap::TreemapDiagramRenderModel,
+        crate::diagrams::treemap::render_model_to_compat_json,
+        crate::diagrams::treemap::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-block")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::block::BlockDiagramRenderModel,
+        crate::diagrams::block::render_model_to_compat_json,
+        crate::diagrams::block::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-er")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::er::ErDiagramRenderModel,
+        crate::diagrams::er::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-quadrant-chart")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::quadrant_chart::QuadrantChartRenderModel,
+        crate::diagrams::quadrant_chart::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-xychart")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::xychart::XyChartDiagramRenderModel,
+        crate::diagrams::xychart::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-git-graph")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::git_graph::GitGraphRenderModel,
+        crate::diagrams::git_graph::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-tree-view")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::tree_view::TreeViewDiagramRenderModel,
+        crate::diagrams::tree_view::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-ishikawa")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
+        crate::diagrams::ishikawa::render_model_to_compat_json,
+        crate::diagrams::ishikawa::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-event-modeling")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        crate::diagrams::eventmodeling::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-venn")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::venn::VennDiagramRenderModel,
+        crate::diagrams::venn::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-wardley")]
+    impl_builtin_render_semantic_controlled!(
+        crate::diagrams::wardley::WardleyDiagramRenderModel,
+        crate::diagrams::wardley::render_model_to_compat_json,
+        crate::diagrams::wardley::render_model_to_compat_json_controlled
+    );
+    #[cfg(feature = "diagram-usecase")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::usecase::UsecaseDiagramRenderModel,
+        crate::diagrams::usecase::render_model_to_compat_json
+    );
+    #[cfg(feature = "diagram-agentflow")]
+    impl_builtin_render_semantic!(
+        crate::diagrams::agentflow::AgentflowDiagramRenderModel,
+        crate::diagrams::agentflow::render_model_to_compat_json
+    );
 }
 
-#[cfg(any(
-    feature = "diagram-mindmap",
-    feature = "diagram-architecture",
-    feature = "diagram-gantt",
-    feature = "diagram-block",
-    feature = "diagram-state",
-    feature = "diagram-treemap",
-    feature = "diagram-ishikawa",
-    feature = "diagram-zenuml",
-    feature = "diagram-wardley"
-))]
-macro_rules! impl_builtin_render_semantic_controlled {
-    ($model:path, $project:path, $controlled_project:path) => {
-        impl builtin_render_semantic_private::Sealed for $model {}
-
-        impl BuiltinRenderSemantic for $model {
-            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
-                $project(self, meta).map(ManagedSemanticJson::from)
-            }
-
-            fn compatibility_json_controlled(
-                &self,
-                meta: &ParseMetadata,
-                control: &OperationControl,
-            ) -> OperationControlResult<Result<ManagedSemanticJson>> {
-                $controlled_project(self, meta, control)
-                    .map(|result| result.map(ManagedSemanticJson::from))
-            }
-        }
-    };
-}
-
-impl_builtin_render_semantic!(
-    crate::diagrams::error_diagram::ErrorDiagramRenderModel,
-    crate::diagrams::error_diagram::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-mindmap")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::mindmap::MindmapDiagramRenderModel,
-    crate::diagrams::mindmap::render_model_to_compat_json,
-    crate::diagrams::mindmap::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-state")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::state::StateDiagramRenderModel,
-    crate::diagrams::state::render_model_to_compat_json,
-    crate::diagrams::state::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-sequence")]
-impl_builtin_render_semantic!(
-    crate::diagrams::sequence::SequenceDiagramRenderModel,
-    crate::diagrams::sequence::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-zenuml")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::zenuml::ZenumlDiagramRenderModel,
-    crate::diagrams::zenuml::render_model_to_compat_json,
-    crate::diagrams::zenuml::render_model_to_compat_json_controlled
-);
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-impl_builtin_render_semantic!(
-    crate::diagrams::flowchart::FlowchartModel,
-    crate::diagrams::flowchart::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-architecture")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::architecture::ArchitectureDiagramRenderModel,
-    crate::diagrams::architecture::render_model_to_compat_json,
-    crate::diagrams::architecture::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-class")]
-impl_builtin_render_semantic!(
-    crate::models::class_diagram::ClassDiagram,
-    crate::diagrams::class::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-c4")]
-impl_builtin_render_semantic!(
-    crate::diagrams::c4::C4DiagramRenderModel,
-    crate::diagrams::c4::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-cynefin")]
-impl_builtin_render_semantic!(
-    crate::diagrams::cynefin::CynefinDiagramRenderModel,
-    crate::diagrams::cynefin::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-railroad")]
-impl_builtin_render_semantic!(
-    crate::diagrams::railroad::RailroadDiagramRenderModel,
-    crate::diagrams::railroad::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-kanban")]
-impl_builtin_render_semantic!(
-    crate::diagrams::kanban::KanbanDiagramRenderModel,
-    crate::diagrams::kanban::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-gantt")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::gantt::GanttDiagramRenderModel,
-    crate::diagrams::gantt::render_model_to_compat_json,
-    crate::diagrams::gantt::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-pie")]
-impl_builtin_render_semantic!(
-    crate::diagrams::pie::PieDiagramRenderModel,
-    crate::diagrams::pie::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-packet")]
-impl_builtin_render_semantic!(
-    crate::diagrams::packet::PacketDiagramRenderModel,
-    crate::diagrams::packet::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-timeline")]
-impl_builtin_render_semantic!(
-    crate::diagrams::timeline::TimelineDiagramRenderModel,
-    crate::diagrams::timeline::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-journey")]
-impl_builtin_render_semantic!(
-    crate::diagrams::journey::JourneyDiagramRenderModel,
-    crate::diagrams::journey::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-requirement")]
-impl_builtin_render_semantic!(
-    crate::diagrams::requirement::RequirementDiagramRenderModel,
-    crate::diagrams::requirement::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-sankey")]
-impl_builtin_render_semantic!(
-    crate::diagrams::sankey::SankeyDiagramRenderModel,
-    crate::diagrams::sankey::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-radar")]
-impl_builtin_render_semantic!(
-    crate::diagrams::radar::RadarDiagramRenderModel,
-    crate::diagrams::radar::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-info")]
-impl_builtin_render_semantic!(
-    crate::diagrams::info::InfoDiagramRenderModel,
-    crate::diagrams::info::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-treemap")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::treemap::TreemapDiagramRenderModel,
-    crate::diagrams::treemap::render_model_to_compat_json,
-    crate::diagrams::treemap::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-block")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::block::BlockDiagramRenderModel,
-    crate::diagrams::block::render_model_to_compat_json,
-    crate::diagrams::block::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-er")]
-impl_builtin_render_semantic!(
-    crate::diagrams::er::ErDiagramRenderModel,
-    crate::diagrams::er::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-quadrant-chart")]
-impl_builtin_render_semantic!(
-    crate::diagrams::quadrant_chart::QuadrantChartRenderModel,
-    crate::diagrams::quadrant_chart::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-xychart")]
-impl_builtin_render_semantic!(
-    crate::diagrams::xychart::XyChartDiagramRenderModel,
-    crate::diagrams::xychart::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-git-graph")]
-impl_builtin_render_semantic!(
-    crate::diagrams::git_graph::GitGraphRenderModel,
-    crate::diagrams::git_graph::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-tree-view")]
-impl_builtin_render_semantic!(
-    crate::diagrams::tree_view::TreeViewDiagramRenderModel,
-    crate::diagrams::tree_view::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-ishikawa")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
-    crate::diagrams::ishikawa::render_model_to_compat_json,
-    crate::diagrams::ishikawa::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-event-modeling")]
-impl_builtin_render_semantic!(
-    crate::diagrams::eventmodeling::EventModelingDiagramRenderModel,
-    crate::diagrams::eventmodeling::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-venn")]
-impl_builtin_render_semantic!(
-    crate::diagrams::venn::VennDiagramRenderModel,
-    crate::diagrams::venn::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-wardley")]
-impl_builtin_render_semantic_controlled!(
-    crate::diagrams::wardley::WardleyDiagramRenderModel,
-    crate::diagrams::wardley::render_model_to_compat_json,
-    crate::diagrams::wardley::render_model_to_compat_json_controlled
-);
-#[cfg(feature = "diagram-usecase")]
-impl_builtin_render_semantic!(
-    crate::diagrams::usecase::UsecaseDiagramRenderModel,
-    crate::diagrams::usecase::render_model_to_compat_json
-);
-#[cfg(feature = "diagram-agentflow")]
-impl_builtin_render_semantic!(
-    crate::diagrams::agentflow::AgentflowDiagramRenderModel,
-    crate::diagrams::agentflow::render_model_to_compat_json
-);
+#[cfg(feature = "compat-json")]
+pub use compatibility::BuiltinRenderSemantic;
 
 impl RenderSemanticModel {
     /// Applies Mermaid common DB sanitization to family-owned typed fields.
@@ -1016,6 +1042,7 @@ impl RenderSemanticModel {
     ///
     /// Built-in families delegate to their own lossless projector. This never reparses source;
     /// custom adapters retain their explicitly named JSON boundary.
+    #[cfg(feature = "compat-json")]
     pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
         let control = OperationControl::new();
         self.compatibility_json_controlled(meta, &control)
@@ -1023,6 +1050,7 @@ impl RenderSemanticModel {
     }
 
     /// Projects the public compatibility JSON while observing the caller's operation control.
+    #[cfg(feature = "compat-json")]
     pub fn compatibility_json_controlled(
         &self,
         meta: &ParseMetadata,
@@ -1314,6 +1342,7 @@ fn parsed_operation_family_id(
 }
 
 /// Parses with a registry entry while preserving the caller-owned parse control.
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_or_unsupported_controlled(
     registry: &DiagramRegistry,
     diagram_type: &str,
@@ -1341,6 +1370,7 @@ mod registry_clone_tests {
     use super::*;
     use std::sync::Arc;
 
+    #[cfg(feature = "compat-json")]
     fn custom_semantic_parser(
         _code: &str,
         _meta: &ParseMetadata,
@@ -1362,6 +1392,7 @@ mod registry_clone_tests {
         )))
     }
 
+    #[cfg(feature = "compat-json")]
     fn cancelling_semantic_parser(
         _code: &str,
         _meta: &ParseMetadata,
@@ -1373,6 +1404,7 @@ mod registry_clone_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn semantic_registry_clone_uses_copy_on_write_storage() {
         let original = DiagramRegistry::pinned_mermaid_baseline();
         let mut cloned = original.clone();
@@ -1392,6 +1424,7 @@ mod registry_clone_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn custom_semantic_parsers_share_the_operation_control() {
         let mut engine = crate::Engine::new();
         engine
@@ -1407,6 +1440,7 @@ mod registry_clone_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     fn custom_parser_cancellation_is_typed_for_non_cancellable_snapshot_apis() {
         let mut engine = crate::Engine::new();
         engine
@@ -1438,5 +1472,51 @@ mod registry_clone_tests {
         assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
         assert!(!original.contains("copy-on-write-render-test"));
         assert!(cloned.contains("copy-on-write-render-test"));
+    }
+
+    #[test]
+    fn custom_render_payload_retains_managed_lifecycle_without_legacy_json_parsing() {
+        const DEPTH: usize = 5_000;
+        fn parser(
+            _code: &str,
+            _meta: &ParseMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+            let mut value = Value::Null;
+            for _ in 0..DEPTH {
+                value = Value::Array(vec![value]);
+            }
+            let model = CustomJsonRenderModel::new("managed-custom-render", value);
+            control.checkpoint()?;
+            Ok(Ok(model))
+        }
+
+        let mut engine = crate::Engine::new();
+        *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
+        engine
+            .render_diagram_registry_mut()
+            .insert("managed-custom-render", parser);
+        let parsed = engine
+            .parse_diagram_for_render_model_with_type_sync(
+                "managed-custom-render",
+                "custom input",
+                crate::ParseOptions::strict(),
+            )
+            .expect("explicit custom render adapter")
+            .expect("custom render result");
+        let (_, RenderSemanticModel::CustomJson(model)) = parsed.into_parts() else {
+            panic!("custom render payload must retain its named model");
+        };
+        assert_eq!(
+            model.provenance(),
+            CustomJsonProvenance::RenderRegistryOverlay
+        );
+        let cloned = model.clone();
+        let mut output = Vec::new();
+        cloned.json().write_json(&mut output).unwrap();
+        assert_eq!(output.len(), DEPTH * 2 + 4);
+        assert_eq!(&output[DEPTH..DEPTH + 4], b"null");
+        drop(cloned);
+        drop(model);
     }
 }

@@ -66,24 +66,29 @@ const PLACEMENT_RIGHT_OF: i32 = 1;
 const PLACEMENT_OVER: i32 = 2;
 
 mod ast;
+#[cfg(feature = "compat-json")]
 mod compat;
 mod db;
 mod lexer;
 mod model;
 mod parse;
+#[cfg(feature = "presentation")]
+mod presentation;
 
 use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
+#[cfg(feature = "compat-json")]
 pub(crate) use compat::{
-    parse_sequence, parse_sequence_json_and_editor_facts,
-    parse_sequence_model_for_render_controlled, render_model_to_compat_json,
+    parse_sequence, parse_sequence_json_and_editor_facts, render_model_to_compat_json,
 };
 pub(crate) use parse::parse_sequence_semantic_model_controlled;
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::{
     reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
 };
+#[cfg(feature = "presentation")]
+pub(crate) use presentation::parse_sequence_model_for_render_controlled;
 // Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
 pub use model::{
     SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
@@ -93,10 +98,13 @@ pub use model::{
     SequenceNotePlacement, SequenceSignalSemantics,
 };
 // Transitional alias while full-render consumers migrate to the canonical model name.
+#[cfg(feature = "presentation")]
 pub use model::SequenceDiagramModel as SequenceDiagramRenderModel;
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compat-json")]
+    use super::render_model_to_compat_json;
     use super::{
         LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
         LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
@@ -106,12 +114,14 @@ mod tests {
         LINETYPE_PAR_OVER_START, LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START,
         PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF, SequenceCentralDecoration,
         SequenceControlKind, SequenceControlRole, SequenceControlSemantics, SequenceMessage,
-        SequenceMessageDirection, SequenceMessageKind, SequenceMessageMarker,
-        SequenceMessagePayload, SequenceMessageStroke, SequenceNotePlacement,
-        render_model_to_compat_json,
+        SequenceMessageKind, SequenceMessagePayload, SequenceNotePlacement,
     };
+    #[cfg(feature = "presentation")]
+    use super::{SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke};
+    #[cfg(feature = "presentation")]
     use crate::{Engine, ParseOptions, RenderSemanticModel};
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn parser_preserves_bracketed_block_titles_for_the_renderer() {
         let parsed = Engine::new()
@@ -134,6 +144,7 @@ mod tests {
         assert_eq!(model.messages[2].message_text(), "[Action 2]");
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn typed_render_model_projects_exact_compatibility_json() {
         let source = r#"sequenceDiagram
@@ -170,6 +181,7 @@ Worker-->>Bob: Done"#;
         );
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_resolves_add_message_lifecycle_ownership() {
         let parsed = Engine::new()
@@ -210,11 +222,15 @@ Worker-->>Bob: Done"#;
         assert_eq!(round_trip.created_actor_message_index("B"), Some(6));
         assert_eq!(round_trip.destroyed_actor_message_index("A"), Some(7));
 
-        let compat = render_model_to_compat_json(model, parsed.metadata())
-            .expect("compatibility projection should succeed");
-        assert!(compat.get("actorLifecycles").is_none());
+        #[cfg(feature = "compat-json")]
+        {
+            let compat = render_model_to_compat_json(model, parsed.metadata())
+                .expect("compatibility projection should succeed");
+            assert!(compat.get("actorLifecycles").is_none());
+        }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn consecutive_lifecycle_declarations_keep_only_the_latest_pending_actor() {
         for (source, consumed_actor, superseded_actor, created) in [
@@ -267,6 +283,7 @@ Worker-->>Bob: Done"#;
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_projects_pinned_signal_semantics() {
         let parsed = Engine::new()
@@ -368,6 +385,7 @@ A--//B: dotted open half bottom"#,
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_projects_every_pinned_half_arrow_semantic() {
         let cases = [
@@ -517,6 +535,7 @@ A--//B: dotted open half bottom"#,
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_classifies_central_marker_records_without_losing_decorations() {
         let parsed = Engine::new()
