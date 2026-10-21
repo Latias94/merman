@@ -14,6 +14,18 @@ prerelease component such as `0.8.0-alpha.5`, `0.8.0-beta.1`, or `0.8.0-rc.1` us
 channel. Do not describe the project or a `0.x` release as alpha solely because its major version
 is zero.
 
+## Maintenance branches
+
+Use `release/0.9.x` for the compatible 0.9 maintenance line, including 0.9.1, 0.9.2, and later patch releases. The branch was renamed from `release/0.9.1` after the 0.9.2 backports were merged; published tags retain their original commits.
+
+- Target backport pull requests at `release/0.9.x`. Accept compatible bug fixes, security fixes, and the documentation or packaging changes needed to release them.
+- Keep the published 0.9 integration contracts and Mermaid 12.1.0 baseline. New features, the compiled-theme migration, and Mermaid baseline upgrades continue on `main`.
+- Prefer fixes that land on `main` first, then cherry-pick them with their regression tests. Adapt a fix to the maintenance implementation when a direct cherry-pick would import development APIs. Forward-port maintenance-only fixes when they also affect `main`.
+- Keep `v0.9.1`, `v0.9.2`, and later release tags immutable. The branch moves as fixes are merged; a tag identifies the exact released source.
+- Freeze the candidate to a 40-character commit SHA and run the release preflight for that SHA and version before creating its tag. The preflight takes an immutable SHA rather than the maintenance branch name; publication remains owned by the existing tag and dispatch workflows.
+
+The branch name does not publish a version. Historical release notes may retain the branch name used at the time of publication.
+
 ## Release Workflows
 
 | Workflow | Publishes | Channel |

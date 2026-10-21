@@ -2,6 +2,10 @@
 
 Use this index to choose an upgrade path by the version you have installed. Merman `0.9.1` retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
+## 0.9 maintenance line
+
+`release/0.9.x` carries compatible patch releases and prepares 0.9.2 from the published 0.9.1 baseline. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [0.9.2 changelog](../../CHANGELOG.md#092---2026-10-21) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
+
 ## Merman 0.9.1
 
 Merman 0.9.1 is a patch release with no additional API migration from 0.9.0. Review the [changelog](../../CHANGELOG.md) for fixes and updated CLI behavior.

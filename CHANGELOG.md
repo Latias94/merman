@@ -4,13 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
-
 ## [0.9.2] - 2026-10-21
 
 ### Fixed
 
-- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#228](https://github.com/Latias94/merman/issues/228)
+- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#228](https://github.com/Latias94/merman/issues/228). Thanks [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
 - Filled C4 boundaries no longer cover their children. Host themes also reach boundary labels, relationships, and arrowheads while explicit configuration and relationship styles retain priority. [#229](https://github.com/Latias94/merman/issues/229)
 - Wardley host themes reach anchor labels, component surfaces, and structural lines while preserving explicit colors and evolved-component styling. [#230](https://github.com/Latias94/merman/issues/230)
 - ZenUML host themes consistently style the frame, participants, messages, lifelines, notes, groups, activations, and text. Explicit ZenUML settings retain priority, and layout uses the same typography as the rendered labels. [#231](https://github.com/Latias94/merman/issues/231)
@@ -20,6 +18,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Validate Requirement source CSS while preserving declaration order, quoted values, and `!important` handling.
 
 These rendering fixes can change SVG and exported image/PDF snapshots. Review regenerated output; the existing Presentation API and Options JSON schema 2 remain the integration contract.
+
+### Security
+
+- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
 
 ## [0.9.1] - 2026-10-18
 

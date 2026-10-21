@@ -1,13 +1,23 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-18 (Asia/Shanghai)
+Last updated: 2026-10-21 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Selected preparation target: `0.9.1`, based on the `v0.9.0` source tag. See the [0.9.1 preparation record](#091-preparation) for the patch release scope. Verify each registry and GitHub channel independently before publication; independent versions retain separate release tracks.
+Selected maintenance preparation target: `0.9.2` on `release/0.9.x`, based on immutable `v0.9.1`. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. Verify each registry and GitHub channel independently before publication; independent versions retain separate release tracks.
+
+## 0.9.2 preparation
+
+Status on 2026-10-21 (Asia/Shanghai): PR [#235](https://github.com/Latias94/merman/pull/235) is merged at `ae3299f9a9db517e91c808e63a67cb8d30a1ce37`. The branch was renamed from `release/0.9.1` to `release/0.9.x` without changing that source commit. The immutable `v0.9.1` tag remains at `f6202f702dbde0a75049b1a62b3124feae709b3d`.
+
+The selected delta fixes implicit symbolic-font selection, C4 boundary layering and host paints, Wardley and ZenUML host styling, explicit Mermaid palette precedence, look selectors, and Block/Requirement CSS validation. It also includes the certificate dependency fixes for RUSTSEC-2026-0382 and RUSTSEC-2026-0383. The existing Presentation API, Options JSON schema 2, and Mermaid 12.1.0 baseline remain intact. The [0.9.2 changelog](../../CHANGELOG.md#092---2026-10-21) records user-visible changes; the [backport review](https://github.com/Latias94/merman/blob/main/docs/release/V092_BACKPORT_READINESS.md) records the implementation decisions and earlier local evidence.
+
+PR #235's selected checks passed, including Linux/macOS/Windows owners, SVG comparison, Web/Node/native bindings, dependency audits, and the aggregate `pr-gate`. The merged implementation tree equals its reviewed head `8d27e9e4f8aa35b7095b45a728f5953538cde438`. Those PR results establish source readiness, not immutable release preflight or registry delivery. Freeze the final source after these documentation changes and run the maintenance workflow for that exact SHA and version before creating `v0.9.2`. Reconfirm the intended date if publication moves beyond 2026-10-21. No 0.9.2 tag, successful immutable preflight, registry upload, or package-channel publication is asserted here.
+
+The workspace candidate and coupled package metadata are already projected to `0.9.2`. The independently versioned Typst wrapper, Tree-sitter grammar, Roughr crate, and VS Code extension retain their versions. Their separate publication owners remain outside this maintenance preparation.
 
 ## 0.9.1 preparation
 
