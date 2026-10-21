@@ -1572,7 +1572,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
 
@@ -2055,7 +2055,7 @@ curve mycurve{1,2,3}
         let empty_meta = ParseMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let empty = parse_radar_model_for_render("", &empty_meta).unwrap();

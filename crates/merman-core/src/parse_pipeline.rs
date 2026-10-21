@@ -1,3 +1,4 @@
+use crate::config::presentation::DetectorConfigCheckpoint;
 use crate::config::{AppearanceDecision, MaterializationPlan};
 use crate::operation::OperationPhase;
 use crate::preprocess::{
@@ -7,6 +8,7 @@ use crate::preprocess::{
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
+use crate::presentation::PresentationConfig;
 use crate::{
     EditorSemanticFacts, Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
     OperationControlResult, ParseMetadata, ParseOptions, Result, SourceSpan, common_db, diagram,
@@ -84,9 +86,9 @@ pub(crate) struct ParsePipeline<'a> {
 /// Owns the configuration through detection, appearance selection, and paint input freezing.
 /// Snapshots remain local to the phases that need their values or mutation provenance.
 struct OperationConfigBuilder {
-    effective: MermaidConfig,
+    effective: PresentationConfig,
     source: MermaidConfig,
-    detector_checkpoint: Option<crate::config::DetectorConfigCheckpoint>,
+    detector_checkpoint: Option<DetectorConfigCheckpoint>,
 }
 
 impl OperationConfigBuilder {
@@ -102,7 +104,9 @@ impl OperationConfigBuilder {
         let source = if overrides.is_empty_object() {
             overrides.clone()
         } else {
-            let source = effective.source_filtered_overrides(overrides, control)?;
+            let source = effective
+                .as_config()
+                .source_filtered_overrides(overrides, control)?;
             effective.deep_merge_explicit(source.as_value());
             source
         };
@@ -118,7 +122,7 @@ impl OperationConfigBuilder {
         engine: &Engine,
         diagram_type: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<MermaidConfig>> {
+    ) -> OperationControlResult<Result<PresentationConfig>> {
         let Self {
             mut effective,
             source,
@@ -133,15 +137,20 @@ impl OperationConfigBuilder {
         let decision = AppearanceDecision::resolve(
             diagram_type,
             &source,
-            &engine.site_config_overrides,
-            engine.theme_compatibility_config.as_ref(),
+            engine.site_config_overrides.as_config(),
+            engine
+                .theme_compatibility_config
+                .as_ref()
+                .map(PresentationConfig::as_config),
             &defaults,
         );
         match decision.materialization_plan(
             effective.get_str("theme"),
             engine.site_config.get_str("theme"),
         ) {
-            MaterializationPlan::InheritInitialized => decision.apply_to(&mut effective),
+            MaterializationPlan::InheritInitialized => {
+                decision.apply_to_presentation(&mut effective)
+            }
             MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
@@ -155,17 +164,17 @@ impl OperationConfigBuilder {
                 }
                 // Detector writes cannot replace authored appearance. Scoped-key presence is
                 // checked again because replay can create or remove a scoped setting.
-                decision.apply_to(&mut effective);
+                decision.apply_to_presentation(&mut effective);
             }
         }
         // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
         if diagram_type == "flowchart-elk" {
             effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
         }
-        if let Some(family) = family::operation_family_id(diagram_type, &effective) {
+        if let Some(family) = family::operation_family_id(diagram_type, effective.as_config()) {
             effective.freeze_family_paint_inputs(
                 family.as_str(),
-                &engine.initialization_inputs,
+                engine.initialization_inputs.as_config(),
                 &source,
                 detector_changes.as_ref(),
                 control,
@@ -181,7 +190,7 @@ impl OperationConfigBuilder {
         decision: &AppearanceDecision<'_>,
         source_config: &MermaidConfig,
         selected: theme::MermaidThemeId,
-    ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+    ) -> std::result::Result<PresentationConfig, theme::ThemeResolutionError> {
         let mut raw_config = engine.site_config.clone();
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
@@ -194,7 +203,7 @@ impl OperationConfigBuilder {
             .unwrap_or_else(|| serde_json::json!({}));
         raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
         raw_config.deep_merge_explicit(source_config.as_value());
-        decision.apply_to(&mut raw_config);
+        decision.apply_to_presentation(&mut raw_config);
         theme::materialize_selected_theme(raw_config, selected)
     }
 }
@@ -571,7 +580,10 @@ impl<'a> ParsePipeline<'a> {
 
         control.checkpoint()?;
         let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-        common_db::apply_common_db_sanitization(model.as_value_mut(), &meta.effective_config);
+        common_db::apply_common_db_sanitization(
+            model.as_value_mut(),
+            meta.effective_config.as_config(),
+        );
         control.checkpoint()?;
         let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         let custom_warning_adapter_succeeded = if matches!(owner, Some(RegistryOwner::Custom)) {
@@ -752,7 +764,7 @@ impl<'a> ParsePipeline<'a> {
             let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
             output
                 .model_mut()
-                .sanitize_common_db_fields(&meta.effective_config);
+                .sanitize_common_db_fields(meta.effective_config.as_config());
             let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
             let (line_offset, column_offset) = code.parser_position_offset();
@@ -884,7 +896,7 @@ impl<'a> ParsePipeline<'a> {
         };
 
         let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-        sanitize(&mut model, &meta.effective_config);
+        sanitize(&mut model, meta.effective_config.as_config());
         let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         postprocess(&mut model, &source_map);
 
@@ -1263,9 +1275,7 @@ impl<'a> ParsePipeline<'a> {
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
             None => {
-                config.detector_checkpoint = Some(crate::config::DetectorConfigCheckpoint::new(
-                    &config.effective,
-                ));
+                config.detector_checkpoint = Some(DetectorConfigCheckpoint::new(&config.effective));
                 match self.engine.registry.detect_type_precleaned_controlled(
                     pre.code(),
                     &mut config.effective,
@@ -1286,7 +1296,7 @@ impl<'a> ParsePipeline<'a> {
             .get("secure")
             .is_some()
         {
-            &self.engine.initialization_inputs
+            self.engine.initialization_inputs.as_config()
         } else {
             &upstream_defaults
         };
@@ -1297,7 +1307,7 @@ impl<'a> ParsePipeline<'a> {
         };
 
         control.checkpoint()?;
-        let title = sanitized_title(pre.title.as_deref(), &effective_config);
+        let title = sanitized_title(pre.title.as_deref(), effective_config.as_config());
         control.checkpoint()?;
 
         if matches!(diagram_type.as_str(), "agentflow" | "eventmodeling")
@@ -1528,17 +1538,17 @@ mod editor_parse_source_map_tests {
     use crate::{
         CancelReason, DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax,
         EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
-        Engine, Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
-        OperationPhase, ParseMetadata, ParseOptions, Result, SourceSpan,
+        Engine, Error, OperationCancelled, OperationControl, OperationControlResult,
+        OperationPhase, ParseMetadata, ParseOptions, PresentationConfig, Result, SourceSpan,
     };
 
-    fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+    fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         panic!("detector fixture panic")
     }
 
     static FRONTMATTER_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-    fn frontmatter_probe_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+    fn frontmatter_probe_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
         panic!("frontmatter probe detector must not run")
     }
@@ -1573,9 +1583,10 @@ mod editor_parse_source_map_tests {
 
     #[test]
     fn operation_selects_appearance_once_with_or_without_rematerialization() {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "theme": "dark", "themeVariables": { "primaryColor": "#123456" },
-        })));
+        let engine =
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+                "theme": "dark", "themeVariables": { "primaryColor": "#123456" },
+            })));
         for (source, materializations, expected_theme) in [
             ("flowchart TD\nA-->B", 0, "dark"),
             (
@@ -1605,14 +1616,14 @@ mod editor_parse_source_map_tests {
 
     #[test]
     fn rematerialization_replays_detector_values_before_reapplying_authored_appearance() {
-        fn detector(_source: &str, config: &mut MermaidConfig) -> bool {
+        fn detector(_source: &str, config: &mut PresentationConfig) -> bool {
             config.set_value("flowchart.nodeSpacing", serde_json::json!(71));
             config.set_value("flowchart.theme", serde_json::json!("forest"));
             config.set_value("themeVariables.primaryColor", serde_json::json!("#abcdef"));
             true
         }
         let mut engine =
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "theme": "dark",
             })));
         *engine.registry_mut() = DetectorRegistry::new();

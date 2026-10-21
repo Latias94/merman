@@ -118,7 +118,7 @@ impl TreeViewParseOutcome {
                     acc_title,
                     acc_descr,
                     nodes,
-                    &meta.effective_config,
+                    meta.effective_config.as_config(),
                 )
                 .map_err(|message| {
                     editor_facts.mark_recovered_from_parse_error(message.clone(), None);
@@ -257,9 +257,14 @@ pub(crate) fn parse_tree_view_model_for_render_controlled(
         nodes,
         editor_facts: _,
     } = parsed;
-    let model =
-        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
-            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message));
+    let model = tree_view_input_to_render_model(
+        title,
+        acc_title,
+        acc_descr,
+        nodes,
+        meta.effective_config.as_config(),
+    )
+    .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message));
     control.checkpoint()?;
     Ok(model)
 }
@@ -302,9 +307,14 @@ fn construct_tree_view_semantic_source(
         nodes,
         editor_facts: _,
     } = parsed;
-    let render_model =
-        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
-            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
+    let render_model = tree_view_input_to_render_model(
+        title,
+        acc_title,
+        acc_descr,
+        nodes,
+        meta.effective_config.as_config(),
+    )
+    .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
     Ok(TreeViewSemanticSource { render_model })
 }
 
@@ -1216,7 +1226,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "treeView".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -1298,7 +1308,7 @@ plain file.ts ## entry point
     #[test]
     fn sanitizes_descriptions_before_projecting_tree_view_semantics() {
         let mut meta = meta();
-        meta.effective_config = MermaidConfig::from_value(json!({
+        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict"
         }));
         let source = "treeView-beta\nfile.txt ## <style>.bad{display:none}</style><b>safe</b>\n";

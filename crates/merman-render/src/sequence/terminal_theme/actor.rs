@@ -21,7 +21,7 @@ pub(crate) struct SequencePreparedActorTheme {
 impl SequencePreparedActorTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        sanitize_config: &merman_core::MermaidConfig,
+        sanitize_config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<SequencePreparedActorTheme> {
@@ -223,7 +223,7 @@ mod tests {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let prepared = SequencePreparedActorTheme::resolve(
             Some(&resolved),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &model,
             &meter,
         )

@@ -2,13 +2,14 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
-    RenderedDocument, Renderer,
+    DiagramFamilyId, Engine, OperationControl, RenderOutput, RenderRequest, RenderedDocument,
+    Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
@@ -67,7 +68,7 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
         for look in ["classic", "neo", "handDrawn"] {
             for html_labels in [false, true] {
                 let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-                    MermaidConfig::from_value(serde_json::json!({
+                    PresentationConfig::from_value(serde_json::json!({
                         "theme": scheme, "look": look, "htmlLabels": html_labels,
                     })),
                 ));

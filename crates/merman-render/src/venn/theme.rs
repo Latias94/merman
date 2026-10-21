@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -34,7 +34,7 @@ pub(crate) struct VennTypographyThemePlan {
 impl VennTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         _title: Option<&str>,
         layout: &VennDiagramLayout,
         model: &merman_core::diagrams::venn::VennDiagramRenderModel,
@@ -265,7 +265,7 @@ pub(crate) struct VennTitleThemePlan {
 impl VennTitleThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -313,7 +313,7 @@ mod tests {
         ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     };
     use crate::resources::RenderResourcePolicy;
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]
@@ -340,7 +340,7 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
         let plan = VennTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
             .expect("resolve Venn title theme");
         plan.record_title();

@@ -1146,7 +1146,7 @@ impl ResolvedFamilyStylePlan {
     fn adapt_state(
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         title: Option<&str>,
         effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
         work_meter: &crate::resources::OperationWorkMeter,
@@ -1530,7 +1530,7 @@ impl FamilyRenderContext {
     fn adapt_state(
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         title: Option<&str>,
     ) -> Result<()> {
         let effective_theme_resource_policy = self.session.effective_theme_resource_policy();
@@ -4033,8 +4033,8 @@ fn render_family_artifact_svg(
 
 #[cfg(feature = "diagram-agentflow")]
 fn project_agentflow_flowchart_config(
-    config: &merman_core::MermaidConfig,
-) -> merman_core::MermaidConfig {
+    config: &merman_core::presentation::PresentationConfig,
+) -> merman_core::presentation::PresentationConfig {
     let mut projected = config.clone();
     let root = config.as_value();
     let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);

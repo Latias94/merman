@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -70,7 +70,7 @@ pub(crate) struct RequirementTextPaintPlan {
 impl RequirementTextPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let theme = theme.filter(|theme| {
@@ -420,7 +420,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::REQUIREMENT);
-        RequirementTextPaintPlan::resolve(Some(&theme), &MermaidConfig::empty_object(), work)
+        RequirementTextPaintPlan::resolve(Some(&theme), &PresentationConfig::empty_object(), work)
             .unwrap()
     }
 

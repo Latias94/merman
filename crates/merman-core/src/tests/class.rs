@@ -1,3 +1,4 @@
+use crate::presentation::PresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
@@ -754,7 +755,7 @@ click Class1 href "javascript:alert(1)" "A tooltip" _self"#,
 #[test]
 fn parse_diagram_class_security_level_sandbox_forces_link_target_top() {
     let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
+        let mut cfg = PresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("sandbox"));
         cfg
     });
@@ -775,7 +776,7 @@ click Class1 href "google.com" "A tooltip" _self
 #[test]
 fn parse_diagram_class_security_level_loose_marks_callback_effective() {
     let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
+        let mut cfg = PresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("loose"));
         cfg
     });

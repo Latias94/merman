@@ -4,7 +4,7 @@ fn meta() -> ParseMetadata {
     ParseMetadata {
         diagram_type: "usecase".to_string(),
         config: crate::MermaidConfig::empty_object(),
-        effective_config: crate::MermaidConfig::empty_object(),
+        effective_config: crate::presentation::PresentationConfig::empty_object(),
         title: None,
     }
 }

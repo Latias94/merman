@@ -8,7 +8,7 @@ use crate::graph_label::{
 pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_label<'a>(
     label: &'a str,
     label_type: &str,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     prepared_label: crate::flowchart::FlowchartPreparedLabelResolution<'a>,
 ) -> std::borrow::Cow<'a, str> {
@@ -31,14 +31,14 @@ pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_label<'a>(
 fn flowchart_label_html_impl(
     label: &str,
     label_type: &str,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
     if let Some(html) = crate::math::render_math_html_label(label, config, math_renderer) {
         return html;
     }
     let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
-    merman_core::sanitize::sanitize_xhtml(&html, config)
+    merman_core::sanitize::sanitize_xhtml(&html, config.as_config())
 }
 
 pub(in crate::svg::parity) fn flowchart_label_plain_text(
@@ -237,7 +237,7 @@ mod tests {
         fn render_html_label(
             &self,
             _text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<String> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Some("unexpected backend reentry".to_string())
@@ -251,7 +251,7 @@ mod tests {
         let html = flowchart_label_html_with_prepared_label(
             "value $$x$$",
             "text",
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             Some(&renderer),
             crate::flowchart::FlowchartPreparedLabelResolution::Unavailable(
                 crate::math::MathPreparationUnavailable::BackendDeclined,
@@ -315,10 +315,11 @@ mod tests {
     #[test]
     fn markdown_html_output_follows_upstream_raw_tokens_and_escapes() {
         for security_level in ["strict", "loose", "antiscript", "sandbox"] {
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "htmlLabels": true,
-                "securityLevel": security_level,
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "htmlLabels": true,
+                    "securityLevel": security_level,
+                }));
             for (input, text) in [
                 ("`<span style='font-size:64px'>AVAVAV</span>`", "`AVAVAV`"),
                 (
@@ -345,7 +346,7 @@ mod tests {
 
     #[test]
     fn markdown_html_output_decodes_mermaid_entities_before_html_projection() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "loose"
         }));
@@ -363,7 +364,7 @@ mod tests {
 
     #[test]
     fn markdown_html_output_preserves_authored_raw_tags() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "loose"
         }));
@@ -385,10 +386,11 @@ mod tests {
     #[test]
     fn html_image_prefix_matching_preserves_unicode_and_malformed_tags() {
         for security_level in ["strict", "loose", "antiscript", "sandbox"] {
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "htmlLabels": true,
-                "securityLevel": security_level
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "htmlLabels": true,
+                    "securityLevel": security_level
+                }));
             for surrounding in ["", "<span>中文😀</span>", "&lt;img&gt;", "<é>α</é>"] {
                 for suffix in [" src='x'>", "inary src='x'>", ">", " src=x>"] {
                     let lower = format!("{surrounding}<img{suffix}");
@@ -408,7 +410,7 @@ mod tests {
 
     #[test]
     fn html_image_after_many_tags_preserves_text_and_image_style() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "strict"
         }));
@@ -424,7 +426,7 @@ mod tests {
 
     #[test]
     fn html_unclosed_image_recovers_before_xhtml_serialization() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "strict"
         }));
@@ -436,7 +438,7 @@ mod tests {
 
     #[test]
     fn html_label_output_preserves_entity_and_direct_nbsp_boundaries() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "loose"
         }));

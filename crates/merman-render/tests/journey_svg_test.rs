@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector,
@@ -134,7 +135,7 @@ fn render_journey_rules_with_requirement(
         .expect("compile Journey rules");
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        Engine::new().with_site_config(PresentationConfig::from_value(config)),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .expect("parse Journey")
@@ -431,7 +432,7 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
             ] {
                 let parsed = merman_render::__private::install_parse_compatibility(
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
                 )
                 .parse_diagram_for_render_model_sync(
                     "journey\n  title Release\n  section Delivery\n    Ship release: 5: Maintainer\n",
@@ -851,7 +852,7 @@ fn journey_explicit_theme_font_size_owns_only_the_size_route() {
     let theme = journey_typography_theme(21.0);
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "24px" }
         }))),
     )
@@ -973,7 +974,7 @@ fn journey_task_palette_preserves_source_owned_slots_and_counts_typed_slots() {
         .expect("compile Journey task palette theme");
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     )

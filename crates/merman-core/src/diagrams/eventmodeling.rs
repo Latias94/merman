@@ -305,7 +305,7 @@ impl EventModelingSemanticSource {
             }
             let data_inline_value = if let Some(data) = frame.data_inline_value {
                 control.checkpoint()?;
-                let value = sanitize_text(&data.text, &meta.effective_config);
+                let value = sanitize_text(&data.text, meta.effective_config.as_config());
                 control.checkpoint()?;
                 Some(value)
             } else {
@@ -315,7 +315,10 @@ impl EventModelingSemanticSource {
                 name: frame.name,
                 frame_kind: frame.frame_kind,
                 model_entity_type: frame.model_entity_type,
-                entity_identifier: sanitize_text(&frame.entity_identifier, &meta.effective_config),
+                entity_identifier: sanitize_text(
+                    &frame.entity_identifier,
+                    meta.effective_config.as_config(),
+                ),
                 source_frames,
                 data_inline_value,
                 data_reference: frame.data_reference.map(|data| data.text),
@@ -325,7 +328,8 @@ impl EventModelingSemanticSource {
         let mut data_entities = Vec::with_capacity(self.syntax.data_entities.len());
         for data in self.syntax.data_entities {
             control.checkpoint()?;
-            let data_block_value = sanitize_text(&data.block_text, &meta.effective_config);
+            let data_block_value =
+                sanitize_text(&data.block_text, meta.effective_config.as_config());
             control.checkpoint()?;
             data_entities.push(EventModelingDataEntityRenderModel {
                 name: data.name.text,
@@ -336,13 +340,13 @@ impl EventModelingSemanticSource {
         Ok(EventModelingDiagramRenderModel {
             title: common
                 .title
-                .map(|value| sanitize_text(&value, &meta.effective_config)),
+                .map(|value| sanitize_text(&value, meta.effective_config.as_config())),
             acc_title: common
                 .acc_title
-                .map(|value| sanitize_acc_title(&value, &meta.effective_config)),
+                .map(|value| sanitize_acc_title(&value, meta.effective_config.as_config())),
             acc_descr: common
                 .acc_descr
-                .map(|value| sanitize_acc_descr(&value, &meta.effective_config)),
+                .map(|value| sanitize_acc_descr(&value, meta.effective_config.as_config())),
             frames,
             data_entities,
         })
@@ -1768,7 +1772,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "eventmodeling".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

@@ -780,7 +780,7 @@ fn construct_block_semantic_source(
     control.checkpoint()?;
     let mut db = BlockDb::default();
     db.clear();
-    db.set_hierarchy(document, &meta.effective_config, control)?;
+    db.set_hierarchy(document, meta.effective_config.as_config(), control)?;
 
     control.checkpoint()?;
     Ok(Ok(BlockSemanticSource { db, editor_facts }))
@@ -2641,7 +2641,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "block".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }

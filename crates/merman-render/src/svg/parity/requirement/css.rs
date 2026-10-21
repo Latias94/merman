@@ -134,7 +134,7 @@ mod tests {
             }
         });
 
-        let config = merman_core::MermaidConfig::from_value(cfg);
+        let config = merman_core::presentation::PresentationConfig::from_value(cfg);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );

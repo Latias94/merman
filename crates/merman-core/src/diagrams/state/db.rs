@@ -423,7 +423,7 @@ impl StateDb {
             &self.document,
             &self.states,
             &self.style_classes,
-            &meta.effective_config,
+            meta.effective_config.as_config(),
             control,
         ) {
             Ok(data) => data,
@@ -1318,7 +1318,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "stateDiagram".to_string(),
             config: config.clone(),
-            effective_config: config,
+            effective_config: crate::presentation::PresentationConfig::from_config(config),
             title: None,
         }
     }

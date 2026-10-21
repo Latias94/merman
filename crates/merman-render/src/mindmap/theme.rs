@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::mindmap::{MindmapDiagramRenderEdge, MindmapDiagramRenderModel};
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -57,7 +57,7 @@ enum MindmapEdgeStrokeSource {
 }
 
 impl MindmapEdgeStrokeSource {
-    fn is_owned(self, config: &MermaidConfig) -> bool {
+    fn is_owned(self, config: &PresentationConfig) -> bool {
         let path = match self {
             Self::ColorScale { section } => MINDMAP_COLOR_SCALE_PATHS[section],
             Self::NodeBorder => "themeVariables.nodeBorder",
@@ -66,7 +66,7 @@ impl MindmapEdgeStrokeSource {
     }
 }
 
-pub(crate) fn mindmap_color_scale_css(config: &MermaidConfig, slot: usize) -> String {
+pub(crate) fn mindmap_color_scale_css(config: &PresentationConfig, slot: usize) -> String {
     config
         .get_str(&format!("themeVariables.cScale{slot}"))
         .map(str::to_string)
@@ -75,7 +75,7 @@ pub(crate) fn mindmap_color_scale_css(config: &MermaidConfig, slot: usize) -> St
         })
 }
 
-pub(crate) fn mindmap_node_border_css(config: &MermaidConfig) -> String {
+pub(crate) fn mindmap_node_border_css(config: &PresentationConfig) -> String {
     let root_label = config
         .get_str("themeVariables.gitBranchLabel0")
         .unwrap_or("#ffffff");
@@ -89,7 +89,10 @@ pub(crate) fn mindmap_neo_edges_use_node_border(theme: &str) -> bool {
     theme.contains("redux") || theme == "neo-dark"
 }
 
-pub(crate) fn mindmap_model_look<'a>(model_look: &'a str, config: &'a MermaidConfig) -> &'a str {
+pub(crate) fn mindmap_model_look<'a>(
+    model_look: &'a str,
+    config: &'a PresentationConfig,
+) -> &'a str {
     let model_look = model_look.trim();
     if model_look.is_empty() || model_look == "default" {
         crate::config::mermaid_config_diagram_look(config).as_str()
@@ -119,7 +122,7 @@ pub(crate) struct MindmapNodeFillOwnership {
 }
 
 impl MindmapNodeFillOwnership {
-    pub(crate) fn from_config(config: &MermaidConfig) -> Self {
+    pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self {
             color_scale: std::array::from_fn(|section| {
                 merman_core::__private::config_path_overrides_typed_default(
@@ -158,7 +161,7 @@ fn normalized_section(section: i32) -> Option<usize> {
     node_palette_ordinal_for_section(section).map(|ordinal| ordinal - 1)
 }
 
-pub(super) fn mindmap_theme_color_limit(config: &MermaidConfig) -> usize {
+pub(super) fn mindmap_theme_color_limit(config: &PresentationConfig) -> usize {
     crate::config::config_f64(config.as_value(), &["themeVariables", "THEME_COLOR_LIMIT"])
         .map(|value| value.round() as i64)
         .filter(|value| *value > 0)
@@ -167,7 +170,7 @@ pub(super) fn mindmap_theme_color_limit(config: &MermaidConfig) -> usize {
 }
 
 fn mindmap_edge_stroke_source(
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     edge: &MindmapDiagramRenderEdge,
 ) -> Option<MindmapEdgeStrokeSource> {
     let section = edge.section.and_then(normalized_section)?;
@@ -237,7 +240,7 @@ struct MindmapNodePaintRuleObservation {
 
 /// The two Mermaid tokens historically supplied by the Mindmap compatibility bridge.
 ///
-/// This is intentionally a writer-local view rather than a cloned `MermaidConfig`: source
+/// This is intentionally a writer-local view rather than a cloned `PresentationConfig`: source
 /// ownership remains tied to the original effective config, while the SVG writer owns the small
 /// legacy-compatible fanout into node, root, edge, and label CSS.
 #[derive(Debug)]
@@ -270,7 +273,7 @@ pub(crate) enum MindmapWriterThemeToken {
 impl MindmapNodePalettePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -328,7 +331,7 @@ impl MindmapNodePalettePlan {
     fn resolve_node_paint(
         &mut self,
         theme: &ResolvedDiagramTheme,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         let style = theme.style_with_work_meter(
@@ -551,7 +554,7 @@ impl MindmapNodePalettePlan {
     fn resolve_edge_stroke(
         &mut self,
         theme: &ResolvedDiagramTheme,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
@@ -703,7 +706,7 @@ impl MindmapNodePalettePlan {
     }
 
     fn baseline(
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -740,7 +743,7 @@ impl MindmapNodePalettePlan {
 
     fn prepare_css_binding(
         &mut self,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
@@ -845,7 +848,7 @@ impl MindmapNodePalettePlan {
 
     pub(crate) fn edge_inherits_node_stroke(
         &self,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         edge: &MindmapDiagramRenderEdge,
     ) -> bool {
         self.node_stroke.is_some()
@@ -1059,9 +1062,9 @@ mod tests {
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use serde_json::{Value, json};
 
-    fn effective_config(site_config: Value) -> MermaidConfig {
+    fn effective_config(site_config: Value) -> PresentationConfig {
         merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(site_config))
+            .with_site_config(PresentationConfig::from_value(site_config))
             .parse_metadata_sync("mindmap\n  root\n    child\n")
             .expect("parse Mindmap config fixture")
             .effective_config
@@ -1113,7 +1116,7 @@ mod tests {
         ] {
             let plan = MindmapNodePalettePlan::resolve(
                 None,
-                &MermaidConfig::from_value(config),
+                &PresentationConfig::from_value(config),
                 &model,
                 &work_meter(),
             )

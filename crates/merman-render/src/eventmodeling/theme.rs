@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_css_number_or_string;
 use crate::diagram_theme::{
@@ -68,7 +68,7 @@ pub(crate) struct EventModelingTextThemePlan {
 impl EventModelingTextThemePlan {
     pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         mut css_binding: super::EventModelingCssBinding,
         layout: &EventModelingDiagramLayout,
         work_meter: &OperationWorkMeter,

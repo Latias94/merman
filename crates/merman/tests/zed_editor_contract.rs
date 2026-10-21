@@ -6,11 +6,12 @@ use merman::svg::{
     SvgRenderOptions,
 };
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 
 fn zed_like_engine() -> Engine {
-    let theme_config = MermaidConfig::from_value(serde_json::json!({
+    let theme_config = PresentationConfig::from_value(serde_json::json!({
         "theme": "base",
         "darkMode": true,
         "fontFamily": "system-ui",

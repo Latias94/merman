@@ -7,7 +7,8 @@ type FamilyFixture = (
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
@@ -353,9 +354,10 @@ fn quadrantchart_site_font_family_outranks_typed_font_stack() {
     let theme = quadrantchart_typography_theme(
         FontStack::single("Quadrant Typed").expect("valid typed Quadrant font stack"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "fontFamily": "Site Quadrant Font" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "fontFamily": "Site Quadrant Font" }
+        })));
     let rendered = render_quadrantchart_with_theme_and_engine(
         "quadrantChart\nFeature: [0.5, 0.5]\n",
         &theme,
@@ -734,7 +736,7 @@ fn quadrantchart_point_fill_resolves_each_source_and_config_owner_before_typed_t
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 
-    let config_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let config_engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({ "themeVariables": { "quadrantPointFill": "#abcdef" } }),
     ));
     let rendered = render_quadrantchart_with_theme_and_engine(
@@ -1064,7 +1066,7 @@ fn quadrantchart_text_fill_respects_each_config_channel() {
         let rendered = render_quadrantchart_with_theme_and_engine(
             TEXT_PAINT_SOURCE,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let fills = quadrant_text_fills(rendered.svg());
         for text in ["Alpha", "Beta", "Low", "High", "Bottom", "Top", "Title"] {
@@ -1086,7 +1088,7 @@ fn quadrantchart_text_fill_respects_each_config_channel() {
     let rendered = render_quadrantchart_with_theme_and_engine(
         TEXT_PAINT_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables": {
                 "quadrantPointTextFill": "#abcdef", "quadrantXAxisTextFill": "#abcdef",
                 "quadrantYAxisTextFill": "#abcdef", "quadrantTitleFill": "#abcdef"
@@ -1303,7 +1305,7 @@ fn quadrantchart_specific_role_ordinals_do_not_use_the_global_text_index() {
     let rendered = render_quadrantchart_with_theme_requirement_and_engine(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"quadrantXAxisTextFill": "#fedcba"}
         }))),
         ThemePortabilityRequirement::BestEffort,
@@ -1375,7 +1377,7 @@ fn quadrantchart_title_fill_preserves_source_ownership_absence_and_author_order(
         ("quadrantChart\nx-axis Low --> High\n", Engine::new()),
         (
             TEXT_PAINT_SOURCE,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables": {"quadrantTitleFill": "#fedcba"}}),
             )),
         ),
@@ -1474,12 +1476,14 @@ fn quadrantchart_axis_fill_preserves_legacy_border_fallback_and_stroke_ownership
             let theme = quadrantchart_series_rule_theme(rule);
             for source_owned in [false, true] {
                 let engine = if source_owned {
-                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                        "themeVariables": {
-                            "quadrantExternalBorderStrokeFill": "#fedcba",
-                            "quadrantInternalBorderStrokeFill": "#fedcba"
-                        }
-                    })))
+                    Engine::new().with_site_config(PresentationConfig::from_value(
+                        serde_json::json!({
+                            "themeVariables": {
+                                "quadrantExternalBorderStrokeFill": "#fedcba",
+                                "quadrantInternalBorderStrokeFill": "#fedcba"
+                            }
+                        }),
+                    ))
                 } else {
                     Engine::new()
                 };
@@ -1616,7 +1620,7 @@ fn quadrantchart_axis_border_and_label_owners_are_independent() {
     );
     let theme = quadrantchart_series_rule_theme(rule);
     for source in [TEXT_PAINT_SOURCE, "quadrantChart\n"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "quadrantXAxisTextFill": "#fedcba", "quadrantYAxisTextFill": "#fedcba", "quadrantExternalBorderStrokeFill": "#fedcba" }
         })));
         let rendered = render_quadrantchart_with_theme_and_engine(source, &theme, engine);
@@ -1637,7 +1641,7 @@ fn quadrantchart_axis_border_and_label_owners_are_independent() {
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
     }
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "themeVariables": { "quadrantXAxisTextFill": "#fedcba", "quadrantYAxisTextFill": "#fedcba", "quadrantExternalBorderStrokeFill": "#fedcba", "quadrantInternalBorderStrokeFill": "#fedcba" }
     })));
     let rendered = render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, engine);
@@ -1654,7 +1658,7 @@ fn quadrantchart_axis_paint_is_not_applicable_without_visible_borders_or_labels(
             .with_fill(CanvasPaint::solid("#2468ac").unwrap())
             .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
     ));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "quadrantChart": { "quadrantExternalBorderStrokeWidth": 0, "quadrantInternalBorderStrokeWidth": 0 }
     })));
     let rendered = render_quadrantchart_with_theme_and_engine("quadrantChart\n", &theme, engine);

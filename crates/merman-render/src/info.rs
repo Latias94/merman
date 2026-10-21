@@ -15,9 +15,9 @@ use crate::family::{
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::TextMeasurer;
-use merman_core::MermaidConfig;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 
 const INFO_BASELINE_WIDTH_PX: f64 = 400.0;
 const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
@@ -136,7 +136,7 @@ struct InfoUnsupportedRoute {
 impl InfoTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         measurer: &dyn TextMeasurer,
         work_meter: &OperationWorkMeter,
     ) -> std::result::Result<Self, OperationWorkError> {
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn css_failure_and_duplicates_keep_info_fill_coupled_to_the_first_terminal() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let plan = InfoTypographyThemePlan::resolve(
             None,
             &config,
@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn info_layout_records_upstream_configured_canvas_size() {
         let measurer = DeterministicTextMeasurer::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let typography_theme = InfoTypographyThemePlan::resolve(
             None,
             &config,

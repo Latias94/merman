@@ -1246,7 +1246,7 @@ mod tests {
             panic!("expected Flowchart semantic edges");
         };
         let builder = FlowchartSvgLabelSidecarBuilder::default();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = crate::text::TextStyle::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         builder.measure_for_layout(
@@ -1384,7 +1384,7 @@ mod tests {
             );
             let plan = FlowchartTextPaintPlan::resolve(
                 Some(&theme),
-                &merman_core::MermaidConfig::default(),
+                &merman_core::presentation::PresentationConfig::default(),
                 false,
                 &work,
             )

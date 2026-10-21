@@ -823,7 +823,7 @@ pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) fixture_path: &'a Path,
     pub(crate) upstream_svg: &'a str,
     pub(crate) text: &'a str,
-    pub(crate) site_config: Option<merman::MermaidConfig>,
+    pub(crate) site_config: Option<merman::presentation::PresentationConfig>,
 }
 
 #[derive(Debug)]

@@ -60,7 +60,7 @@ struct SankeyDb {
 
 impl SankeyDb {
     fn find_or_create_node(&mut self, id_raw: &str, meta: &ParseMetadata) -> String {
-        let id = sanitize_text(id_raw, &meta.effective_config);
+        let id = sanitize_text(id_raw, meta.effective_config.as_config());
         if self.nodes_map.contains_key(&id) {
             return id;
         }
@@ -832,7 +832,7 @@ mod tests {
     #[test]
     fn sankey_typed_projection_matches_complete_compatibility_json() {
         let text = "sankey-beta\nA,B,1\nB,C,NaN\n";
-        let effective_config = crate::MermaidConfig::from_value(json!({
+        let effective_config = crate::presentation::PresentationConfig::from_value(json!({
             "theme": "forest",
             "securityLevel": "strict"
         }));

@@ -1660,7 +1660,7 @@ fn construct_git_graph_semantic_source_controlled(
     let common = LangiumCommonDbFields::from_facts(&common);
     let direction = header.direction;
 
-    let effective_config = &meta.effective_config;
+    let effective_config = meta.effective_config.as_config();
     let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
         // Upstream committed SVG fixtures are generated after a successful `mermaid.parse(code)`
         // followed by `mermaid.render(...)`. Seeded gitGraph auto ids consume the global
@@ -1972,7 +1972,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "gitGraph".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
@@ -1986,9 +1986,10 @@ mod tests {
     }
 
     fn parse_with_seed(text: &str, seed: i64) -> crate::ManagedSemanticJson {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
-            json!({ "gitGraph": { "seed": seed } }),
-        ));
+        let engine =
+            Engine::new().with_site_config(crate::presentation::PresentationConfig::from_value(
+                json!({ "gitGraph": { "seed": seed } }),
+            ));
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2032,9 +2033,11 @@ mod tests {
 
     #[test]
     fn parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-            "gitGraph": { "seed": 1 }
-        })));
+        let engine = Engine::new().with_site_config(
+            crate::presentation::PresentationConfig::from_value(json!({
+                "gitGraph": { "seed": 1 }
+            })),
+        );
         let input = r#"
 gitGraph TB:
 title <script>alert(1)</script><b>Git title</b>
@@ -2431,7 +2434,7 @@ merge feature id:"M1"
             &ParseMetadata {
                 diagram_type: "gitGraph".to_string(),
                 config: MermaidConfig::default(),
-                effective_config: MermaidConfig::default(),
+                effective_config: crate::presentation::PresentationConfig::default(),
                 title: None,
             },
         );

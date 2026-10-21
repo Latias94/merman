@@ -2,13 +2,13 @@
 
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
-    DetectorRegistry, Engine, MermaidConfig, OperationControl, RenderError, RenderOutput,
-    RenderRequest, Renderer,
+    DetectorRegistry, Engine, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
+    presentation::PresentationConfig,
 };
 
 const SOURCE: &str = "stateDiagram-v2\nReady --> Done\n";
 
-fn replace_config_with_nested_theme(_source: &str, config: &mut MermaidConfig) -> bool {
+fn replace_config_with_nested_theme(_source: &str, config: &mut PresentationConfig) -> bool {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();

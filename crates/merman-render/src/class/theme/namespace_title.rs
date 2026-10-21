@@ -25,7 +25,7 @@ pub(super) struct ClassNamespaceTitleThemePlan {
 impl ClassNamespaceTitleThemePlan {
     pub(super) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {

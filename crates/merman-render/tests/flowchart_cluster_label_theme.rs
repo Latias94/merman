@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
@@ -33,18 +34,18 @@ fn compile(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
         .unwrap()
 }
 
-fn config(swimlane: bool, base: &str, html: bool) -> MermaidConfig {
+fn config(swimlane: bool, base: &str, html: bool) -> PresentationConfig {
     let mut config = json!({"theme": base, "htmlLabels": html, "flowchart": {"htmlLabels": html}});
     if swimlane {
         config["layout"] = json!("swimlane");
     }
-    MermaidConfig::from_value(config)
+    PresentationConfig::from_value(config)
 }
 
 fn render(
     source: &str,
     theme: &DiagramTheme,
-    config: MermaidConfig,
+    config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
@@ -295,7 +296,7 @@ fn cluster_label_fill_yields_to_explicit_config_and_emitted_source_color() {
             let rendered = render(
                 ONE,
                 &theme,
-                MermaidConfig::from_value(value),
+                PresentationConfig::from_value(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -446,7 +447,7 @@ fn cluster_label_config_ownership_follows_the_actual_theme_dependency() {
             let rendered = render(
                 ONE,
                 &theme,
-                MermaidConfig::from_value(value),
+                PresentationConfig::from_value(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();

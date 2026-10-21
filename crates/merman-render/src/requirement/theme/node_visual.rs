@@ -141,7 +141,7 @@ impl RequirementPaintThemePlan {
     pub(super) fn prepare_node_visuals(
         mut self,
         model: &RequirementDiagramRenderModel,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let config = config.as_value();
@@ -272,7 +272,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for html in [false, true] {
-            let config = MermaidConfig::from_value(serde_json::json!({"htmlLabels": html}));
+            let config = PresentationConfig::from_value(serde_json::json!({"htmlLabels": html}));
             let plan =
                 RequirementPaintThemePlan::resolve_with_title(None, &config, &model, None, &work)
                     .unwrap();
@@ -316,7 +316,7 @@ mod tests {
             "requirements": [{"name": "a", "type": "Requirement", "cssStyles": ["fill:#123456"]}]
         }))
         .unwrap();
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let work = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );

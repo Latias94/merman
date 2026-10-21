@@ -1,4 +1,5 @@
-use crate::{MermaidConfig, OperationControl, OperationControlResult, Result};
+use crate::presentation::PresentationConfig;
+use crate::{OperationControl, OperationControlResult, Result};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ pub struct DetectTypeError {
 }
 
 /// Predicate used by [`DetectorRegistry`] to recognize one Mermaid diagram family.
-pub type DetectorFn = fn(text: &str, config: &mut MermaidConfig) -> bool;
+pub type DetectorFn = fn(text: &str, config: &mut PresentationConfig) -> bool;
 
 /// One diagram detector entry.
 #[derive(Debug, Clone)]
@@ -49,7 +50,7 @@ impl DetectorRegistry {
     }
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
-    pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
+    pub fn detect_type(&self, text: &str, config: &mut PresentationConfig) -> Result<&'static str> {
         let control = OperationControl::new();
         self.detect_type_controlled(text, config, &control)
             .expect("a private parse control cannot be cancelled")
@@ -58,7 +59,7 @@ impl DetectorRegistry {
     pub(crate) fn detect_type_controlled(
         &self,
         text: &str,
-        config: &mut MermaidConfig,
+        config: &mut PresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
@@ -92,7 +93,7 @@ impl DetectorRegistry {
     pub fn detect_type_precleaned(
         &self,
         text: &str,
-        config: &mut MermaidConfig,
+        config: &mut PresentationConfig,
     ) -> Result<&'static str> {
         let control = OperationControl::new();
         self.detect_type_precleaned_controlled(text, config, &control)
@@ -102,7 +103,7 @@ impl DetectorRegistry {
     pub(crate) fn detect_type_precleaned_controlled(
         &self,
         text: &str,
-        config: &mut MermaidConfig,
+        config: &mut PresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
@@ -178,15 +179,15 @@ impl Default for DetectorRegistry {
     }
 }
 
-pub(crate) fn detector_frontmatter_unparsed(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_frontmatter_unparsed(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("---")
 }
 
-pub(crate) fn detector_error(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_error(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim().eq_ignore_ascii_case("error")
 }
 
-pub(crate) fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_c4(txt: &str, _config: &mut PresentationConfig) -> bool {
     // Matches Mermaid's upstream regex exactly (note the missing grouping in JS).
     txt.trim_start_matches(char::is_whitespace)
         .starts_with("C4Context")
@@ -196,43 +197,43 @@ pub(crate) fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
         || txt.contains("C4Deployment")
 }
 
-pub(crate) fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_kanban(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("kanban")
 }
 
-pub(crate) fn detector_class_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_class_v2(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("classDiagram")
 }
 
-pub(crate) fn detector_er(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_er(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("erDiagram")
 }
 
-pub(crate) fn detector_gantt(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_gantt(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("gantt")
 }
 
-pub(crate) fn detector_info(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_info(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("info")
 }
 
-pub(crate) fn detector_pie(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_pie(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("pie")
 }
 
-pub(crate) fn detector_requirement(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_requirement(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("requirement")
 }
 
-pub(crate) fn detector_sequence(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_sequence(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("sequenceDiagram")
 }
 
-pub(crate) fn detector_swimlane(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_swimlane(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_js_word_boundary(txt.trim_start(), "swimlane-beta")
 }
 
-pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut PresentationConfig) -> bool {
     let trimmed = txt.trim_start();
     if trimmed.starts_with("flowchart-elk") {
         config.set_value("layout", serde_json::Value::String("elk".to_string()));
@@ -241,91 +242,91 @@ pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> b
     false
 }
 
-pub(crate) fn detector_flowchart_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_flowchart_v2(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("graph") || txt.trim_start().starts_with("flowchart")
 }
 
-pub(crate) fn detector_timeline(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_timeline(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("timeline")
 }
 
-pub(crate) fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_git_graph(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("gitGraph")
 }
 
-pub(crate) fn detector_usecase(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_usecase(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start()
         .strip_prefix("usecase-beta")
         .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
 }
 
-pub(crate) fn detector_agentflow(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_agentflow(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_js_word_boundary(txt.trim_start(), "agentflow-beta")
 }
 
-pub(crate) fn detector_state_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_state_v2(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("stateDiagram")
 }
 
-pub(crate) fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_journey(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("journey")
 }
 
-pub(crate) fn detector_quadrant(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_quadrant(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("quadrantChart")
 }
 
-pub(crate) fn detector_sankey(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_sankey(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("sankey")
 }
 
-pub(crate) fn detector_packet(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_packet(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("packet")
 }
 
-pub(crate) fn detector_xychart(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_xychart(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("xychart")
 }
 
-pub(crate) fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_block(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("block")
 }
 
-pub(crate) fn detector_tree_view(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_tree_view(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("treeView-beta")
 }
 
-pub(crate) fn detector_ishikawa(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_ishikawa(txt: &str, _config: &mut PresentationConfig) -> bool {
     let t = txt.trim_start();
     starts_with_header_case_insensitive(t, "ishikawa-beta")
         || starts_with_header_case_insensitive(t, "ishikawa")
 }
 
-pub(crate) fn detector_eventmodeling(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_eventmodeling(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("eventmodeling")
 }
 
-pub(crate) fn detector_railroad(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_railroad(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-beta")
 }
 
-pub(crate) fn detector_railroad_ebnf(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_railroad_ebnf(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-ebnf-beta")
 }
 
-pub(crate) fn detector_railroad_abnf(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_railroad_abnf(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-abnf-beta")
 }
 
-pub(crate) fn detector_railroad_peg(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_railroad_peg(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-peg-beta")
 }
 
-pub(crate) fn detector_wardley(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_wardley(txt: &str, _config: &mut PresentationConfig) -> bool {
     starts_with_case_insensitive_prefix(txt.trim_start(), "wardley-beta")
 }
 
-pub(crate) fn detector_cynefin(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_cynefin(txt: &str, _config: &mut PresentationConfig) -> bool {
     let Some(rest) = txt.trim_start().strip_prefix("cynefin-beta") else {
         return false;
     };
@@ -360,34 +361,34 @@ fn starts_with_js_word_boundary(text: &str, header: &str) -> bool {
     })
 }
 
-pub(crate) fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_radar(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("radar-beta")
 }
 
-pub(crate) fn detector_treemap(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_treemap(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("treemap")
 }
 
-pub(crate) fn detector_venn(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_venn(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("venn-beta")
 }
 
-pub(crate) fn detector_mindmap(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_mindmap(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("mindmap")
 }
 
-pub(crate) fn detector_architecture(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_architecture(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("architecture")
 }
 
-pub(crate) fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_zenuml(txt: &str, _config: &mut PresentationConfig) -> bool {
     txt.trim_start().starts_with("zenuml")
 }
 
 #[cfg(test)]
 mod remove_directives_tests {
     use super::{DetectorRegistry, remove_directives};
-    use crate::{MermaidConfig, OperationCancelled, OperationControl};
+    use crate::{OperationCancelled, OperationControl, PresentationConfig};
     use std::borrow::Cow;
 
     #[test]
@@ -397,7 +398,7 @@ mod remove_directives_tests {
 
         let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
             "flowchart TD",
-            &mut MermaidConfig::empty_object(),
+            &mut PresentationConfig::empty_object(),
             &control,
         );
 
@@ -407,7 +408,7 @@ mod remove_directives_tests {
     #[test]
     fn detection_uses_the_greedy_frontmatter_match_without_parsing_yaml() {
         let registry = DetectorRegistry::pinned_mermaid_baseline();
-        let mut config = MermaidConfig::empty_object();
+        let mut config = PresentationConfig::empty_object();
         let source = "---\n\n---\n\nMORE\n---\nerror";
         assert_eq!(registry.detect_type(source, &mut config).unwrap(), "error");
     }
@@ -419,7 +420,7 @@ mod remove_directives_tests {
         control.cancel_after_checkpoints(3);
         let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
             &source,
-            &mut MermaidConfig::empty_object(),
+            &mut PresentationConfig::empty_object(),
             &control,
         );
         assert!(result.is_err());
@@ -452,7 +453,7 @@ mod registry_clone_tests {
     use super::*;
     use std::sync::Arc;
 
-    fn always_detects(_text: &str, _config: &mut MermaidConfig) -> bool {
+    fn always_detects(_text: &str, _config: &mut PresentationConfig) -> bool {
         true
     }
 

@@ -11,7 +11,7 @@ fn meta() -> ParseMetadata {
     ParseMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: MermaidConfig::empty_object(),
+        effective_config: crate::presentation::PresentationConfig::empty_object(),
         title: None,
     }
 }
@@ -36,7 +36,7 @@ fn parse(text: &str) -> crate::ManagedSemanticJson {
 
 fn parse_with_site_config(
     text: &str,
-    site_config: Option<MermaidConfig>,
+    site_config: Option<crate::presentation::PresentationConfig>,
 ) -> crate::ManagedSemanticJson {
     let engine = match site_config {
         Some(site_config) => Engine::new().with_site_config(site_config),
@@ -120,7 +120,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     let meta = ParseMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
-        effective_config: MermaidConfig::default(),
+        effective_config: crate::presentation::PresentationConfig::default(),
         title: None,
     };
     let standalone_json = parse_gantt(text, &meta).unwrap();
@@ -185,7 +185,8 @@ fn gantt_typed_projection_matches_compatibility_semantics() {
         "Build: crit,build,2026-01-01,2d\n",
         "click build href \"https://example.com/\" onBuild\n",
     );
-    let effective_config = MermaidConfig::from_value(json!({ "securityLevel": "loose" }));
+    let effective_config =
+        crate::presentation::PresentationConfig::from_value(json!({ "securityLevel": "loose" }));
     let meta = ParseMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
@@ -354,7 +355,7 @@ fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
     let meta = ParseMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: MermaidConfig::empty_object(),
+        effective_config: crate::presentation::PresentationConfig::empty_object(),
         title: None,
     };
     for source in ["", "gantt"] {
@@ -1582,7 +1583,7 @@ task2: id2, 2013-01-02, 1d
 click id2 call myFn("a,b", c)
 click id1 call myFn2()
 "#,
-        Some(MermaidConfig::from_value(json!({
+        Some(crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "loose"
         }))),
     );
@@ -1610,7 +1611,7 @@ task2: id2, 2013-01-02, 1d
 click id1 myFn
 click id2 href "https://example.com/" myOtherFn
 "#,
-        Some(MermaidConfig::from_value(json!({
+        Some(crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "loose"
         }))),
     );
@@ -1640,7 +1641,7 @@ task2: id2, 2013-01-02, 1d
 click id1 hrefHandler
 click id2 callHandler
 "#,
-        Some(MermaidConfig::from_value(json!({
+        Some(crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "loose"
         }))),
     );
@@ -1664,7 +1665,7 @@ section A
 task: id1, 2013-01-01, 1d
 click id1 href "javascript:alert(1)" myFn
 "#,
-        Some(MermaidConfig::from_value(json!({
+        Some(crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict"
         }))),
     );
@@ -1683,7 +1684,7 @@ section A
 task: id1, 2013-01-01, 1d
 click id1 href "https://example.com/" "open details"
 "#,
-        Some(MermaidConfig::from_value(json!({
+        Some(crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "loose"
         }))),
     );

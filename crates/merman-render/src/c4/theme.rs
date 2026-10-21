@@ -66,7 +66,10 @@ struct C4BoundaryTerminalExpectation {
 }
 
 impl C4BoundaryTerminalExpectation {
-    fn baseline(boundary: &C4BoundaryRenderModel, config: &merman_core::MermaidConfig) -> Self {
+    fn baseline(
+        boundary: &C4BoundaryRenderModel,
+        config: &merman_core::presentation::PresentationConfig,
+    ) -> Self {
         // Authored element styles keep precedence over explicit site-level boundary colors.
         Self {
             alias: boundary.alias.clone().into_boxed_str(),
@@ -110,7 +113,7 @@ impl C4ClusterThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         boundaries: &[C4BoundaryRenderModel],
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let explicit_boundaries = boundaries
@@ -399,7 +402,7 @@ impl C4ClusterThemePlan {
 
     pub(crate) fn baseline(
         boundaries: &[C4BoundaryRenderModel],
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
     ) -> Self {
         let boundaries = boundaries
             .iter()

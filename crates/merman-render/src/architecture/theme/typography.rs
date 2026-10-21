@@ -1,4 +1,4 @@
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -38,7 +38,7 @@ impl ArchitectureTypographyEmission {
 impl ArchitectureTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -161,7 +161,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
 
     #[test]
     fn typed_values_are_resolved_for_svg_labels_only() {
@@ -178,8 +178,10 @@ mod tests {
             )
             .expect("compile Architecture theme")
             .resolve(DiagramFamilyId::ARCHITECTURE);
-        let plan =
-            ArchitectureTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::empty_object());
+        let plan = ArchitectureTypographyThemePlan::resolve(
+            Some(&theme),
+            &PresentationConfig::empty_object(),
+        );
 
         assert_eq!(plan.font_family_css(), "Inter");
         assert_eq!(plan.font_size_px(), 18.0);
@@ -200,7 +202,7 @@ mod tests {
             )
             .expect("compile Architecture theme")
             .resolve(DiagramFamilyId::ARCHITECTURE);
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px" }
         }));
         let plan = ArchitectureTypographyThemePlan::resolve(Some(&theme), &config);

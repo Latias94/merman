@@ -854,10 +854,10 @@ mod tests {
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::MermaidConfig;
     use merman_core::diagrams::git_graph::{
         GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
     };
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
     use std::cell::RefCell;
 
@@ -876,7 +876,7 @@ mod tests {
     }
 
     fn typography_plan(config: &serde_json::Value) -> GitGraphTypographyThemePlan {
-        GitGraphTypographyThemePlan::resolve(None, &MermaidConfig::from_value(config.clone()))
+        GitGraphTypographyThemePlan::resolve(None, &PresentationConfig::from_value(config.clone()))
     }
 
     fn direct_typography_plan(
@@ -896,7 +896,7 @@ mod tests {
             .resolve(DiagramFamilyId::GIT_GRAPH);
         GitGraphTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(config.clone()),
+            &PresentationConfig::from_value(config.clone()),
         )
     }
 

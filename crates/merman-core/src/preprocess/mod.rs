@@ -438,8 +438,13 @@ fn preprocess_single_pass_controlled(
                 .map(str::trim)
                 .find(|line| !line.is_empty() && !line.starts_with("%%"))
                 .unwrap_or("");
-            crate::detect::detector_agentflow(header, &mut MermaidConfig::empty_object())
-                || crate::detect::detector_eventmodeling(header, &mut MermaidConfig::empty_object())
+            crate::detect::detector_agentflow(
+                header,
+                &mut crate::presentation::PresentationConfig::empty_object(),
+            ) || crate::detect::detector_eventmodeling(
+                header,
+                &mut crate::presentation::PresentationConfig::empty_object(),
+            )
         }
     };
     let mut with_comments = preserve_comments.then(|| source.clone());
@@ -1850,7 +1855,7 @@ fn detect_init_controlled(
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
-    let mut config_for_detect = MermaidConfig::empty_object();
+    let mut config_for_detect = crate::presentation::PresentationConfig::empty_object();
     let mut detected_type = diagram_type.map(str::to_owned);
     let mut detection_attempted = diagram_type.is_some();
 
@@ -2816,7 +2821,10 @@ mod tests {
 
     static INIT_DETECTOR_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-    fn counting_flowchart_detector(_text: &str, _config: &mut MermaidConfig) -> bool {
+    fn counting_flowchart_detector(
+        _text: &str,
+        _config: &mut crate::presentation::PresentationConfig,
+    ) -> bool {
         INIT_DETECTOR_CALLS.fetch_add(1, Ordering::Relaxed);
         true
     }

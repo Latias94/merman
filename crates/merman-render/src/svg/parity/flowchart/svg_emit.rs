@@ -57,7 +57,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
     pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
-    pub(super) effective_config: &'a merman_core::MermaidConfig,
+    pub(super) effective_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,

@@ -1,6 +1,7 @@
 //! Node effects must reach shape terminals without changing label or source ownership.
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
@@ -68,7 +69,7 @@ fn render_with_html_labels(
 ) -> merman_render::Result<RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"htmlLabels":html_labels, "look":look}),
         )),
     )

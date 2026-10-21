@@ -7,6 +7,7 @@ use crate::io::read_named_text_file;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::io::read_named_text_file_controlled;
 use crate::resources::ResolvedResourcePolicy;
+use merman::presentation::PresentationConfig;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
 use serde_json::Value;
@@ -74,7 +75,8 @@ pub(crate) fn engine_for(
 }
 
 fn engine_from_config(runtime: ResolvedCliRuntimePolicy, site_config: MermaidConfig) -> Engine {
-    runtime.apply_engine(Engine::new().with_site_config(site_config))
+    runtime
+        .apply_engine(Engine::new().with_site_config(PresentationConfig::from_config(site_config)))
 }
 
 #[derive(Debug, Clone)]
@@ -464,7 +466,9 @@ fn renderer_from_config(
         .map(|input| input.compile(&compiler, control))
         .transpose()?;
     let renderer = merman::Renderer::new()
-        .with_engine(runtime.apply_engine(Engine::new().with_site_config(site_config)))
+        .with_engine(runtime.apply_engine(
+            Engine::new().with_site_config(PresentationConfig::from_config(site_config)),
+        ))
         .with_parse_options(parse_options)
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {

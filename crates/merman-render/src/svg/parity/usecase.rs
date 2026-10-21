@@ -52,7 +52,7 @@ fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
 }
 
 struct UsecaseLabelRenderContext<'a> {
-    config: &'a merman_core::MermaidConfig,
+    config: &'a merman_core::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
 }
 
@@ -252,7 +252,7 @@ fn write_label(
 pub(crate) fn render_usecase_diagram_svg_model(
     prepared: &UsecasePreparedArtifact,
     model: &UsecaseDiagramRenderModel,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -713,7 +713,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 .map(|value| {
                     format!(
                         ", stereotype {}",
-                        merman_core::sanitize::sanitize_text(value, config)
+                        merman_core::sanitize::sanitize_text(value, config.as_config())
                     )
                 })
                 .unwrap_or_default();

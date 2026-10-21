@@ -706,7 +706,7 @@ impl StateStylePlan {
 
     pub(crate) fn resolve_with_config(
         model: &StateDiagramRenderModel,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
@@ -5181,7 +5181,7 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::Engine::new().with_site_config(
-                    merman_core::MermaidConfig::from_value(json!({
+                    merman_core::presentation::PresentationConfig::from_value(json!({
                         "themeVariables": {"fontFamily": family}
                     })),
                 ))
@@ -5246,7 +5246,7 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::Engine::new().with_site_config(
-                    merman_core::MermaidConfig::from_value(json!({
+                    merman_core::presentation::PresentationConfig::from_value(json!({
                         "themeVariables": config
                     })),
                 ))

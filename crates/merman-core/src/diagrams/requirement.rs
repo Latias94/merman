@@ -2129,7 +2129,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "requirement".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
@@ -2410,7 +2410,7 @@ mod tests {
             "login - verifies -> api\n",
         );
         let mut meta = test_meta();
-        meta.effective_config = MermaidConfig::from_value(json!({
+        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
             "theme": "forest",
             "securityLevel": "strict"
         }));

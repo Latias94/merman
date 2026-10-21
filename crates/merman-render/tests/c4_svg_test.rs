@@ -449,9 +449,10 @@ fn c4_text_fill_is_not_applicable_without_a_title_or_with_explicit_text_color() 
     let theme = DiagramThemeCompiler::new()
         .compile(spec.clone())
         .expect("typed text theme");
-    let owned_engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-        serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
-    ));
+    let owned_engine =
+        Engine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(
+            serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+        ));
     for (source, engine, config_owned) in [
         ("C4Context\nSystem(a, \"Service\")\n", Engine::new(), false),
         (
@@ -745,9 +746,11 @@ fn c4_text_palette_respects_the_fill_winner_and_host_color_owner() {
     let source = "---\ntitle: Inherited paint\n---\nC4Context\nSystem(a, \"Service\")\n";
     for config_owned in [false, true] {
         let engine = if config_owned {
-            Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-                serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
-            ))
+            Engine::new().with_site_config(
+                merman_core::presentation::PresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+                ),
+            )
         } else {
             Engine::new()
         };
@@ -1583,12 +1586,12 @@ fn c4_dynamic_text_colors_remain_single_xml_attributes_for_site_and_source_value
 UpdateRelStyle(system, external, $textColor="{authored_color}")
 "#
     );
-    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-        serde_json::json!({"c4": {
+    let engine = Engine::new().with_site_config(
+        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({"c4": {
             "boundary_font_color": site_color,
             "relationship_text_color": site_color
-        }}),
-    ));
+        }})),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()

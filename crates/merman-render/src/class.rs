@@ -1235,7 +1235,7 @@ fn layout_prepared_node(
 
 struct ClassBoxMeasureCtx<'a> {
     measurer: &'a dyn TextMeasurer,
-    mermaid_config: &'a merman_core::MermaidConfig,
+    mermaid_config: &'a merman_core::presentation::PresentationConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
     html_calc_text_style: &'a TextStyle,
@@ -1252,7 +1252,7 @@ pub(crate) fn class_math_label_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width_px: Option<f64>,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Option<crate::text::TextMetrics> {
     if !crate::math::contains_delimited_math(text) {
@@ -2124,10 +2124,10 @@ pub(crate) fn class_normalize_xhtml_br_tags(html: &str) -> String {
 
 pub(crate) fn class_note_html_fragment(
     note_src: &str,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config);
+    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config.as_config());
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -2135,7 +2135,7 @@ pub(crate) fn class_html_measure_note_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     note_src: &str,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
     crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
@@ -2177,7 +2177,7 @@ fn note_dimensions(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     padding: f64,
-    mermaid_config: Option<&merman_core::MermaidConfig>,
+    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
@@ -2210,7 +2210,7 @@ fn label_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     if text.trim().is_empty() {
@@ -2234,7 +2234,7 @@ fn edge_title_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     let trimmed = text.trim();
@@ -2287,7 +2287,7 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
 
 pub(crate) fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     typography_theme: &ClassTextThemePlan,
@@ -2318,7 +2318,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
 )]
 pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
@@ -2354,7 +2354,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 
 fn measure_class_diagram(
     model: &ClassDiagramModel,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render_config: &ClassRenderConfig,
@@ -2813,7 +2813,7 @@ fn layout_class_diagram_dagre(
 #[doc(hidden)]
 pub fn debug_build_class_diagram_dagre_graph(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
     let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
@@ -3658,7 +3658,7 @@ mod tests {
                 .expect("within normal source budget");
             stage("source-budget-accepted-before-engine-parse");
             let parsed = Engine::new()
-                .with_site_config(merman_core::MermaidConfig::from_value(
+                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"htmlLabels": true, "securityLevel": security}),
                 ))
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
@@ -4264,7 +4264,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<String> {
             text.contains("$$").then(|| text.to_string())
         }
@@ -4272,7 +4272,7 @@ mod tests {
         fn measure_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -4687,7 +4687,7 @@ mod tests {
             "domId": "classId-Formula-0"
         }))
         .expect("Class node");
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let text_style = default_style();
         let context = super::ClassBoxMeasureCtx {
             measurer: &ClassMathGeometryMeasurer,
@@ -4710,7 +4710,7 @@ mod tests {
 
     #[test]
     fn class_svg_math_note_keeps_math_renderer_width_in_note_geometry() {
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = default_style();
 
         let (width, height, metrics) = super::note_dimensions(

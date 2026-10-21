@@ -596,7 +596,7 @@ A[Plain source]"##,
             .unwrap();
         let environment = merman::SvgEnvironment::deterministic();
         let renderer = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
-            merman::MermaidConfig::from_value(serde_json::json!({
+            merman::presentation::PresentationConfig::from_value(serde_json::json!({
                 "layout": "dagre",
             })),
         ));

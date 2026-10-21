@@ -1006,9 +1006,9 @@ fn parse_quadrant_chart_semantic_source(
                 if axis.operator.is_some() && axis.right.is_none() {
                     left.push_str(" ⟶");
                 }
-                db.set_x_axis_left(&left, &meta.effective_config);
+                db.set_x_axis_left(&left, meta.effective_config.as_config());
                 if let Some(right) = axis.right {
-                    db.set_x_axis_right(&right.value, &meta.effective_config);
+                    db.set_x_axis_right(&right.value, meta.effective_config.as_config());
                 }
                 continue;
             }
@@ -1044,9 +1044,9 @@ fn parse_quadrant_chart_semantic_source(
                 if axis.operator.is_some() && axis.right.is_none() {
                     bottom.push_str(" ⟶");
                 }
-                db.set_y_axis_bottom(&bottom, &meta.effective_config);
+                db.set_y_axis_bottom(&bottom, meta.effective_config.as_config());
                 if let Some(top) = axis.right {
-                    db.set_y_axis_top(&top.value, &meta.effective_config);
+                    db.set_y_axis_top(&top.value, meta.effective_config.as_config());
                 }
                 continue;
             }
@@ -1078,7 +1078,7 @@ fn parse_quadrant_chart_semantic_source(
                     "quadrant chart quadrant",
                     EditorSemanticKind::String,
                 );
-                db.set_quadrant_text(index, &text.value, &meta.effective_config);
+                db.set_quadrant_text(index, &text.value, meta.effective_config.as_config());
                 matched_quadrant = true;
                 break;
             }
@@ -1134,7 +1134,7 @@ fn parse_quadrant_chart_semantic_source(
                         point.x,
                         point.y,
                         &styles,
-                        &meta.effective_config,
+                        meta.effective_config.as_config(),
                     ) {
                         first_error
                             .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
@@ -1330,7 +1330,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "quadrantChart".to_string(),
             config: MermaidConfig::default(),
-            effective_config: generated::default_site_config(),
+            effective_config: generated::default_presentation_config(),
             title: None,
         };
         let err = parse_quadrant_chart("quadrant-1 do\n", &meta)

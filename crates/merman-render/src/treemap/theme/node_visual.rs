@@ -385,7 +385,7 @@ mod tests {
         layout.sections.clear();
         layout.leaves.truncate(1);
         layout.leaves[0].css_compiled_styles = None;
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
@@ -432,7 +432,7 @@ mod tests {
         layout.leaves.truncate(1);
         layout.leaves[0].parent_name = None;
         layout.leaves[0].css_compiled_styles = Some(vec!["fill:red;".repeat(1000)]);
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "theme": "custom", "themeVariables": {"cScale11": "x".repeat(70_000)}
         }));
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn prepared_visuals_keep_independent_ordinal_domains_and_fitted_source_variants() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "theme": "custom",
             "themeVariables": {"cScale0":"#111111", "cScale1":"#222222", "cScaleLabel0":"#333333", "cScaleLabel1":"#444444", "cScaleLabel2":"#555555"}
         }));
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn prepared_default_theme_keeps_fixed_fill_scale_and_explicit_label_scale() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"cScale0":"#111111", "cScaleLabel0":"#333333"}
         }));
         let layout = layout();
@@ -544,7 +544,7 @@ mod tests {
         layout.leaves.truncate(1);
         layout.leaves[0].parent_name = None;
         layout.leaves[0].css_compiled_styles = None;
-        let config = MermaidConfig::from_value(
+        let config = PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"cScaleLabel0":"#ffffff", "textColor":"#123456"}}),
         );
         let plan = TreemapTypographyThemePlan::resolve(

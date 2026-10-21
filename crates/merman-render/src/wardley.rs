@@ -660,7 +660,8 @@ pub(crate) fn layout_wardley_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let config =
+        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
     let typography_theme = WardleyTypographyThemePlan::resolve(None, &config);
     layout_wardley_diagram_typed_with_theme(
         model,

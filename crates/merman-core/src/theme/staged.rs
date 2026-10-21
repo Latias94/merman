@@ -7,9 +7,12 @@
 //! JavaScript `||`, and JavaScript `??`.
 
 use super::{ThemeResolutionError, is_js_truthy, value_is_missing};
+#[cfg(test)]
+use crate::MermaidConfig;
+use crate::ThemeEvaluationLimitExceeded;
 use crate::compatibility_json::number_value;
+use crate::presentation::PresentationConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
-use crate::{MermaidConfig, ThemeEvaluationLimitExceeded};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -124,7 +127,7 @@ impl Owners {
 
 #[derive(Debug, Clone, Copy)]
 enum OwnerSource<'a> {
-    Config(&'a MermaidConfig),
+    Config(&'a PresentationConfig),
     #[cfg(test)]
     AllExplicit,
 }
@@ -639,7 +642,7 @@ impl Resolution {
         program: StagedProgram,
         prepared_constructor: &Map<String, Value>,
         explicit: &Map<String, Value>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
     ) -> Result<Self, ThemeResolutionError> {
         Self::execute_impl(
             program,
@@ -725,7 +728,7 @@ impl Resolution {
         })
     }
 
-    pub(super) fn materialize_into(self, config: &mut MermaidConfig) {
+    pub(super) fn materialize_into(self, config: &mut PresentationConfig) {
         config.set_value_preserving_theme_compatibility(
             "themeVariables",
             Value::Object(self.variables),
@@ -2441,19 +2444,21 @@ mod tests {
     #[test]
     fn empty_staged_materialization_preserves_config_bytes_and_compatibility() {
         use super::super::{ThemeProgram, apply_theme_defaults};
-        use crate::config::ThemeParseBinding;
+        use crate::config::presentation::ThemeParseBinding;
 
         for (program, theme) in staged_programs() {
             let theme_program = ThemeProgram::resolve(theme);
             let mut inputs = Vec::new();
-            inputs.push(MermaidConfig::from_value(json!({"theme": theme.as_str()})));
+            inputs.push(PresentationConfig::from_value(
+                json!({"theme": theme.as_str()}),
+            ));
             for raw in [
                 json!({}),
                 json!({"nodeBkg": null}),
                 Value::Null,
                 json!(false),
             ] {
-                inputs.push(MermaidConfig::from_value(json!({
+                inputs.push(PresentationConfig::from_value(json!({
                     "theme": theme.as_str(), "themeVariables": raw,
                 })));
             }
@@ -2462,7 +2467,7 @@ mod tests {
                 MermaidConfig::from_value(json!({"theme": theme.as_str()})),
             )
             .unwrap();
-            inputs.push(MermaidConfig::from_theme_parse_binding(binding));
+            inputs.push(PresentationConfig::from_theme_parse_binding(binding));
             let binding = ThemeParseBinding::try_new(
                 [0x7a; 32],
                 MermaidConfig::from_value(json!({
@@ -2470,20 +2475,21 @@ mod tests {
                 })),
             )
             .unwrap();
-            let mut normalized_owner = MermaidConfig::from_theme_parse_binding(binding);
+            let mut normalized_owner = PresentationConfig::from_theme_parse_binding(binding);
             normalized_owner
                 .set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
             assert!(normalized_owner.has_theme_variable_calculation_owners());
             inputs.push(normalized_owner);
-            let mut explicit_owner = MermaidConfig::from_value(json!({"theme": theme.as_str()}));
+            let mut explicit_owner =
+                PresentationConfig::from_value(json!({"theme": theme.as_str()}));
             explicit_owner.set_value_explicit("themeVariables", json!({}));
             assert!(explicit_owner.has_theme_variable_calculation_owners());
             inputs.push(explicit_owner);
 
             for mut actual in inputs {
                 let mut expected = actual.clone();
-                let explicit =
-                    theme_program.normalize_overrides(super::super::theme_variables_map(&expected));
+                let explicit = theme_program
+                    .normalize_overrides(super::super::theme_variables_map(expected.as_config()));
                 assert!(explicit.is_empty());
                 let resolution = Resolution::execute_with_owners(
                     program,
@@ -2521,7 +2527,7 @@ mod tests {
     fn custom_detector_observes_staged_executor_key_order() {
         use super::super::{MermaidThemeId, ThemeProgram};
 
-        fn detector(_text: &str, config: &mut MermaidConfig) -> bool {
+        fn detector(_text: &str, config: &mut PresentationConfig) -> bool {
             let theme = MermaidThemeId::parse(config.get_str("theme").unwrap()).unwrap();
             let theme_program = ThemeProgram::resolve(theme);
             let expected = Resolution::execute_impl(
@@ -2541,7 +2547,7 @@ mod tests {
 
         for (program, theme) in staged_programs() {
             let mut engine =
-                crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": theme.as_str(),
                 })));
             *engine.registry_mut() = crate::DetectorRegistry::new();
@@ -2567,7 +2573,7 @@ mod tests {
                 let explicit = (0..count)
                     .map(|index| (format!("z{index:08}"), json!(1)))
                     .collect::<Map<_, _>>();
-                let mut config = MermaidConfig::from_value(json!({}));
+                let mut config = PresentationConfig::from_value(json!({}));
                 config.deep_merge_explicit(&json!({"themeVariables": explicit}));
                 assert!(
                     AuthorityState::new(&explicit, OwnerSource::Config(&config))
@@ -2626,7 +2632,7 @@ mod tests {
             ("primaryColor", true, false),
             ("secondaryColor", false, true),
         ] {
-            let mut config = MermaidConfig::from_value(json!({"themeVariables": explicit}));
+            let mut config = PresentationConfig::from_value(json!({"themeVariables": explicit}));
             config.deep_merge_explicit(&json!({"themeVariables": {(owned): "#123456"}}));
             let resolved = Resolution::execute_with_owners(
                 StagedProgram::Base,

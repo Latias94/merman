@@ -16,12 +16,12 @@ pub(crate) const KANBAN_ITEM_LABEL_PADDING_Y_PX: f64 = 10.0;
 const KANBAN_DETAIL_LABEL_MEASUREMENT_PASSES: usize = 2;
 
 pub(crate) struct KanbanMarkdown<'a> {
-    sanitize_config: &'a merman_core::MermaidConfig,
+    sanitize_config: &'a merman_core::presentation::PresentationConfig,
     auto_wrap: bool,
 }
 
 impl<'a> KanbanMarkdown<'a> {
-    pub(crate) fn new(effective_config: &'a merman_core::MermaidConfig) -> Self {
+    pub(crate) fn new(effective_config: &'a merman_core::presentation::PresentationConfig) -> Self {
         Self {
             sanitize_config: effective_config,
             auto_wrap: crate::config::config_bool(
@@ -33,7 +33,7 @@ impl<'a> KanbanMarkdown<'a> {
     }
 
     pub(crate) fn render(&self, raw: &str) -> String {
-        let sanitized = merman_core::sanitize::sanitize_text(raw, self.sanitize_config);
+        let sanitized = merman_core::sanitize::sanitize_text(raw, self.sanitize_config.as_config());
         crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
     }
 
@@ -189,7 +189,7 @@ fn replace_first_like_javascript(source: &str, search: &str, replacement: &str) 
 fn prepare_kanban_ticket_link(
     ticket_base_url: Option<&str>,
     ticket: Option<&str>,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
 ) -> Option<KanbanPreparedTicketLink> {
     let ticket = ticket.filter(|ticket| !ticket.is_empty())?;
     let ticket_url = replace_first_like_javascript(ticket_base_url?, "#TICKET#", ticket);
@@ -338,7 +338,8 @@ pub(crate) fn layout_kanban_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let effective_config =
+        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
     let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
     prepare_kanban_diagram_typed_with_work_meter(
         model,
@@ -354,7 +355,7 @@ pub(crate) fn layout_kanban_diagram_typed(
 /// Prepares a Kanban model under the cumulative work meter owned by the render operation.
 pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     model: &KanbanDiagramRenderModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
@@ -730,7 +731,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
 #[cfg(test)]
 pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     layout: &KanbanDiagramLayout,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanPreparedArtifact> {
     let config_view = KanbanConfigView::new(effective_config.as_value());
@@ -872,7 +873,7 @@ mod tests {
         let (prepared, collections) = crate::text::VisibleTextStyleFacts::count_collections(|| {
             prepare_kanban_diagram_typed_with_work_meter(
                 &model,
-                &merman_core::MermaidConfig::default(),
+                &merman_core::presentation::PresentationConfig::default(),
                 None,
                 &measurer,
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
@@ -898,7 +899,7 @@ mod tests {
                 item("second", "Second task", "done"),
             ],
         };
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "RootFallback",
             "themeVariables": {
                 "fontFamily": "Configured, monospace",
@@ -983,7 +984,7 @@ mod tests {
         let narrow_meter = OperationWorkMeter::new(narrow_policy);
         let error = prepare_kanban_diagram_typed_with_work_meter(
             &model,
-            &merman_core::MermaidConfig::from_value(json!({})),
+            &merman_core::presentation::PresentationConfig::from_value(json!({})),
             None,
             &measurer,
             &narrow_meter,
@@ -1006,7 +1007,7 @@ mod tests {
         let exact_measurer = CountingTextMeasurer::default();
         prepare_kanban_diagram_typed_with_work_meter(
             &model,
-            &merman_core::MermaidConfig::from_value(json!({})),
+            &merman_core::presentation::PresentationConfig::from_value(json!({})),
             None,
             &exact_measurer,
             &exact_meter,

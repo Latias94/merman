@@ -10,11 +10,11 @@ use super::wrap_sequence_label_like_mermaid_lines;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
-use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
     SequenceMessageStroke, SequenceSignalSemantics,
 };
+use merman_core::presentation::PresentationConfig;
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;
@@ -219,7 +219,7 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) msg_terminal_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,

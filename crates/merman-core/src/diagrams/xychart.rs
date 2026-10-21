@@ -430,7 +430,7 @@ impl XyChartState {
     }
 
     fn set_x_axis_title(&mut self, title: &str, meta: &ParseMetadata) {
-        let t = sanitize_text(title.trim(), &meta.effective_config);
+        let t = sanitize_text(title.trim(), meta.effective_config.as_config());
         match &mut self.x_axis {
             AxisData::Band { title, .. } => *title = t,
             AxisData::Linear { title, .. } => *title = t,
@@ -438,7 +438,7 @@ impl XyChartState {
     }
 
     fn set_y_axis_title(&mut self, title: &str, meta: &ParseMetadata) {
-        let t = sanitize_text(title.trim(), &meta.effective_config);
+        let t = sanitize_text(title.trim(), meta.effective_config.as_config());
         match &mut self.y_axis {
             AxisData::Linear { title, .. } => *title = t,
             AxisData::Band { title, .. } => *title = t,
@@ -461,7 +461,7 @@ impl XyChartState {
         };
         let categories = categories
             .into_iter()
-            .map(|c| sanitize_text(c.trim(), &meta.effective_config))
+            .map(|c| sanitize_text(c.trim(), meta.effective_config.as_config()))
             .collect::<Vec<_>>();
         self.x_axis = AxisData::Band { title, categories };
         self.has_set_x_axis = true;
@@ -555,7 +555,7 @@ impl XyChartState {
                 if point.label.is_empty() {
                     String::new()
                 } else {
-                    sanitize_text(&point.label, &meta.effective_config)
+                    sanitize_text(&point.label, meta.effective_config.as_config())
                 }
             })
             .collect::<Vec<_>>();
@@ -609,7 +609,7 @@ impl XyChartState {
                     point_labels: p.point_labels,
                 })
                 .collect(),
-            display: XyChartDisplayPolicy::from_config(&meta.effective_config),
+            display: XyChartDisplayPolicy::from_config(meta.effective_config.as_config()),
         }
     }
 }
@@ -980,7 +980,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
-    let title = sanitize_text(title.trim(), &meta.effective_config);
+    let title = sanitize_text(title.trim(), meta.effective_config.as_config());
     (!title.is_empty()).then_some(title)
 }
 

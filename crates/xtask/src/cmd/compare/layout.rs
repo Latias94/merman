@@ -1,7 +1,7 @@
 //! Common layout options used by SVG compare commands.
 
-pub(crate) fn svg_compare_site_config() -> merman::MermaidConfig {
-    merman::MermaidConfig::from_value(serde_json::json!({
+pub(crate) fn svg_compare_site_config() -> merman::presentation::PresentationConfig {
+    merman::presentation::PresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -13,7 +13,9 @@ pub(crate) fn svg_compare_site_config() -> merman::MermaidConfig {
     }))
 }
 
-pub(crate) fn svg_compare_site_config_with(overrides: serde_json::Value) -> merman::MermaidConfig {
+pub(crate) fn svg_compare_site_config_with(
+    overrides: serde_json::Value,
+) -> merman::presentation::PresentationConfig {
     let mut config = svg_compare_site_config();
     config.deep_merge(&overrides);
     config

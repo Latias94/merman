@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::Result;
 use crate::diagram_theme::{
@@ -158,7 +158,7 @@ impl ErrorTypographyThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         measurer: &dyn TextMeasurer,
     ) -> Self {
         Self::resolve_with_message(theme, effective_config, measurer, None)
@@ -166,7 +166,7 @@ impl ErrorTypographyThemePlan {
 
     pub(crate) fn resolve_with_message(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         measurer: &dyn TextMeasurer,
         message: Option<&str>,
     ) -> Self {
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn error_font_receipt_requires_unique_css_and_cannot_repair_a_wrong_first_emission() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let plan =
             ErrorTypographyThemePlan::resolve(None, &config, &DeterministicTextMeasurer::default());
         let with_text = || {
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn error_layout_preserves_upstream_canvas_and_anchors_for_the_default_font() {
         let measurer = DeterministicTextMeasurer::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let typography_theme = ErrorTypographyThemePlan::resolve(None, &config, &measurer);
         let layout = layout_error_diagram_typed(
             &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel {
@@ -517,7 +517,7 @@ mod detail_tests {
 
     #[test]
     fn detail_text_participates_in_viewport_and_terminal_font_evidence() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let plan = ErrorTypographyThemePlan::resolve_with_message(
             None,

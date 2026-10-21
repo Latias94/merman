@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use crate::config::config_string;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
@@ -138,7 +138,7 @@ struct WardleyUnsupportedRoute {
 impl WardleyTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         Self {
             paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
@@ -166,7 +166,7 @@ impl WardleyTypographyThemePlan {
     pub(crate) fn prepare_root_background(
         &mut self,
         root_theme: Option<&crate::diagram_theme::RootThemePlan>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) {
         if root_theme.is_some_and(|plan| {
             plan.replaces_default_family_background(
@@ -280,7 +280,8 @@ mod tests {
 
     #[test]
     fn prepared_paint_preserves_defaults_and_raw_nested_root_fallbacks() {
-        let defaults = WardleyTypographyThemePlan::resolve(None, &MermaidConfig::empty_object());
+        let defaults =
+            WardleyTypographyThemePlan::resolve(None, &PresentationConfig::empty_object());
         let paint = defaults.paint_binding();
         assert_eq!(paint.background_color, "#fff");
         assert_eq!(paint.axis_color, "#000");
@@ -292,7 +293,7 @@ mod tests {
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "background": "var(--background)",
                 "primaryTextColor": "currentColor",

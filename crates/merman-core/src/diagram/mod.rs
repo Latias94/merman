@@ -1402,7 +1402,7 @@ fn parsed_operation_family_id(
     if matches!(model, RenderSemanticModel::CustomJson(_)) {
         return None;
     }
-    crate::family::operation_family_id(&meta.diagram_type, &meta.effective_config)
+    crate::family::operation_family_id(&meta.diagram_type, meta.effective_config.as_config())
 }
 
 /// Parses with a registry entry while preserving the caller-owned parse control.

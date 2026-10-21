@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig};
+use merman_core::Engine;
+use merman_core::presentation::PresentationConfig;
 use serde_json::json;
 
 #[test]
@@ -10,7 +11,7 @@ fn site_theme_color_limit_uses_ecmascript_whitespace() {
         "Infinity\u{0085}",
         "\u{feff}2\u{feff}",
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "dark",
             "themeVariables": { "THEME_COLOR_LIMIT": value }
         })));
@@ -19,7 +20,7 @@ fn site_theme_color_limit_uses_ecmascript_whitespace() {
             .unwrap_or_else(|error| panic!("Mermaid accepts {value:?}: {error}"));
     }
 
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "dark",
         "themeVariables": { "THEME_COLOR_LIMIT": "\u{feff}65\u{feff}" }
     })));
@@ -32,7 +33,7 @@ fn site_theme_color_limit_uses_ecmascript_whitespace() {
 
 #[test]
 fn diagram_appearance_uses_raw_user_variables_without_leaking_between_operations() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "dark",
         "themeVariables": { "primaryColor": "#123456" },
         "flowchart": { "theme": "forest", "look": "handDrawn" }
@@ -71,7 +72,7 @@ fn diagram_appearance_uses_raw_user_variables_without_leaking_between_operations
 
 #[test]
 fn appearance_resolution_cannot_restore_secure_source_keys() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "dark", "secure": ["theme"],
     })));
     let source =
@@ -84,7 +85,7 @@ fn appearance_resolution_cannot_restore_secure_source_keys() {
 #[test]
 fn null_theme_sentinel_retains_initialized_variables_without_rederiving_them() {
     let engine =
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({ "theme": "dark" })));
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({ "theme": "dark" })));
     let initialized = engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .unwrap()
@@ -105,10 +106,10 @@ fn null_theme_sentinel_retains_initialized_variables_without_rederiving_them() {
 #[test]
 fn exact_site_config_discards_prior_appearance_provenance() {
     let engine = Engine::new()
-        .with_site_config(MermaidConfig::from_value(
+        .with_site_config(PresentationConfig::from_value(
             json!({ "flowchart": { "theme": "dark" } }),
         ))
-        .with_exact_site_config(Some(MermaidConfig::from_value(
+        .with_exact_site_config(Some(PresentationConfig::from_value(
             json!({ "theme": "forest" }),
         )));
     assert_eq!(
@@ -134,7 +135,7 @@ fn exact_site_config_discards_prior_appearance_provenance() {
 
 #[test]
 fn invalid_initialization_theme_normalizes_but_invalid_source_theme_falls_through() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "bogus", "flowchart": { "theme": "constructor" }
     })));
     assert_eq!(
@@ -147,7 +148,7 @@ fn invalid_initialization_theme_normalizes_but_invalid_source_theme_falls_throug
     );
 
     let engine =
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({ "theme": "dark" })));
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({ "theme": "dark" })));
     for value in ["bogus", "null"] {
         let source = format!("---\nconfig:\n  theme: {value}\n---\nflowchart TD\nA-->B");
         assert_eq!(
@@ -164,7 +165,7 @@ fn invalid_initialization_theme_normalizes_but_invalid_source_theme_falls_throug
 #[test]
 fn syntax_aliases_detect_independently_of_obsolete_renderer_selectors() {
     for renderer in ["elk", "dagre-wrapper", "dagre-d3", "bogus"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "layout": "dagre", "flowchart": { "defaultRenderer": renderer },
             "class": { "defaultRenderer": renderer }, "state": { "defaultRenderer": renderer },
         })));

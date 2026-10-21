@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -53,7 +54,7 @@ deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
 
 fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
@@ -83,7 +84,7 @@ fn try_render_wardley_with_resource_policy(
     diagram_id: &str,
     resource_policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
@@ -561,7 +562,7 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "wardley-site-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "fontFamily": "SiteWardleyFont,serif" }
             }))),
             "wardley-beta\ncomponent API [0.6, 0.7]\n".to_string(),
@@ -569,7 +570,7 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
         ),
         (
             "wardley-source-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "secure": []
             }))),
             concat!(

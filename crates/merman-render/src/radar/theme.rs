@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::{config_css_number_or_string, config_string, value_at};
 use crate::diagram_theme::{
@@ -50,7 +50,7 @@ pub(crate) struct RadarTypographyThemePlan {
 impl RadarTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -221,7 +221,7 @@ pub(crate) struct RadarTitleThemePlan {
 impl RadarTitleThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -625,7 +625,7 @@ pub(crate) struct RadarSeriesPaintPlan {
 impl RadarSeriesPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         model: &RadarDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -760,7 +760,7 @@ impl RadarSeriesPaintPlan {
     }
 }
 
-fn uses_fixed_mermaid_palette_surface(effective_config: &MermaidConfig) -> bool {
+fn uses_fixed_mermaid_palette_surface(effective_config: &PresentationConfig) -> bool {
     value_at(
         effective_config.as_value(),
         &["themeVariables", "THEME_COLOR_LIMIT"],
@@ -958,7 +958,7 @@ mod tests {
 
     #[test]
     fn typography_receipt_requires_the_complete_ordered_writer_pass() {
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         assert!(
             RadarTypographyThemePlan::resolve(None, &config)
                 .begin_terminal_receipt(0, 0)
@@ -1007,7 +1007,7 @@ mod tests {
 
     #[test]
     fn typography_receipt_rejects_duplicate_incomplete_and_misordered_passes() {
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let theme = resolved_typography();
         let plan = RadarTypographyThemePlan::resolve(Some(&theme), &config);
 
@@ -1057,7 +1057,7 @@ mod tests {
 
     #[test]
     fn typography_receipt_rejects_mismatched_css_values() {
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let theme = resolved_typography();
 
         for emission in [

@@ -126,7 +126,7 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
@@ -145,7 +145,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
     pub use_gradient: bool,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
 }

@@ -449,7 +449,7 @@ pub fn unsupported_native_html_style(
 fn unsupported_native_flowchart_html_style(
     model: &merman_core::diagrams::flowchart::FlowchartModel,
     context: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     swimlane: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {

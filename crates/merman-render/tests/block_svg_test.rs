@@ -2,7 +2,8 @@ mod common;
 
 use base64::Engine as _;
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -103,7 +104,7 @@ fn root_view_box(document: &roxmltree::Document<'_>) -> (f64, f64, f64, f64) {
 }
 
 fn render_block_geometry(config: serde_json::Value, source: &str) -> (String, serde_json::Value) {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Block geometry")
@@ -501,7 +502,7 @@ fn block_node_label_paint_is_bound_to_node_terminals() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"] -- \"Edge\" --> B[\"Beta\"]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": html}),
             )),
         );
@@ -556,7 +557,7 @@ fn block_empty_node_label_paint_is_not_applicable() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\" \"]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": html}),
             )),
         );
@@ -576,7 +577,7 @@ fn block_node_label_source_color_suppresses_theme_evidence() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"]\n style A color:#123456\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": html}),
             )),
         );
@@ -689,7 +690,7 @@ fn block_node_label_mixed_source_ownership_proves_only_theme_nodes() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"] B[\"Beta\"]\n style A color:#123456\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": html}),
             )),
         );
@@ -719,7 +720,7 @@ fn block_node_label_config_color_is_not_a_typed_application() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables": {path: "#123456"}}),
             )),
         );
@@ -803,7 +804,7 @@ fn block_node_label_class_color_owns_only_assigned_classes() {
             let rendered = render_block_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"htmlLabels": html}),
                 )),
             );
@@ -951,10 +952,11 @@ fn block_mixed_base_typography_fails_closed() {
 #[test]
 fn block_explicit_typography_ownership_outranks_typed_values() {
     let theme = block_typography_theme("Typed Block Sans", 22.0);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontFamily": "Site Block Sans",
-        "themeVariables": { "fontSize": "30px" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontFamily": "Site Block Sans",
+            "themeVariables": { "fontSize": "30px" }
+        })));
     let rendered = render_block_with_theme_and_engine(
         r#"block
   A["Alpha"] --> B["Beta"]
@@ -1292,9 +1294,10 @@ fn block_explicit_main_background_outranks_typed_node_fill() {
     let theme = block_node_fill_theme(
         CanvasPaint::solid("#654321").expect("valid config-suppressed Block node fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "mainBkg": "#445566" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "mainBkg": "#445566" }
+        })));
     let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
     let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
 
@@ -1496,9 +1499,10 @@ fn block_explicit_node_border_outranks_typed_node_stroke() {
     let theme = block_node_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid config-suppressed Block node stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "nodeBorder": "#445566" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "nodeBorder": "#445566" }
+        })));
     let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
     let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
 
@@ -1864,11 +1868,12 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "nodeTextColor": "#123456"
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "nodeTextColor": "#123456"
+            }
+        })));
     let svg = render_block_svg_from_text_with_engine(
         &engine,
         r#"block
@@ -1905,11 +1910,12 @@ block
 
 #[test]
 fn block_svg_rejects_unsupported_cluster_theme_color() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "clusterBkg": "not-a-css-color"
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "clusterBkg": "not-a-css-color"
+            }
+        })));
     let error = try_render_block_svg_from_text_with_engine(
         &engine,
         r#"block
@@ -2456,7 +2462,7 @@ fn block_absent_text_rules_have_no_terminal_even_with_frontmatter_and_composite_
                     let rendered = render_block_with_theme_and_engine(
                         source,
                         &theme,
-                        Engine::new().with_site_config(MermaidConfig::from_value(
+                        Engine::new().with_site_config(PresentationConfig::from_value(
                             serde_json::json!({
                                 "htmlLabels": html_labels
                             }),
@@ -2603,7 +2609,7 @@ fn block_background_reconciles_missing_labels_and_explicit_config() {
                 let rendered = render_block_with_theme_and_engine(
                     source,
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
                 );
                 let expected = if config_owned { "#123456" } else { "#b316cd" };
                 assert!(rendered.svg().contains(&format!(
@@ -2763,7 +2769,7 @@ fn block_edge_source_config_and_absent_edges_are_not_applicable() {
     for (source, engine) in [
         (
             "block\n A --> B\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"lineColor":"#2468ac"}}),
             )),
         ),
@@ -3109,7 +3115,7 @@ fn block_cluster_source_and_explicit_config_own_their_properties() {
         let engine = if source_style {
             Engine::new()
         } else {
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef","clusterBorder":"#123456"}})))
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef","clusterBorder":"#123456"}})))
         };
         let rendered = render_block_with_theme_and_engine(&source, &theme, engine);
         assert!(!rendered.svg().contains("fill:#b316cd;"));
@@ -3179,11 +3185,11 @@ fn block_cluster_class_source_and_config_masks_are_property_local() {
             BLOCK_CLUSTER_SOURCE.to_string()
         };
         let engine = if case == "cluster-config" {
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef"}}),
             ))
         } else if case == "node-config" {
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"mainBkg":"#abcdef", "nodeBorder":"#abcdef"}}),
             ))
         } else {
@@ -3529,7 +3535,7 @@ fn block_marker_explicit_fill_config_leaves_typed_stroke_available() {
             ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#167bc1").unwrap()),
         ),
     ]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"themeVariables":{"arrowheadColor":"#315724"}}),
     ));
     let rendered = render_block_with_theme_and_engine(BLOCK_MARKER_SOURCE, &theme, engine);
@@ -3591,15 +3597,16 @@ fn block_marker_unsupported_ordinal_does_not_repaint_other_references() {
 #[test]
 fn block_look_resources_precede_markers_and_follow_theme_configuration() {
     for (theme, gradient, flood) in [("redux", false, "#000000"), ("redux-dark", true, "#FFFFFF")] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "theme": theme,
-            "look": "neo",
-            "themeVariables": {
-                "useGradient": gradient,
-                "gradientStart": "#123456",
-                "gradientStop": "#abcdef"
-            }
-        })));
+        let engine =
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+                "theme": theme,
+                "look": "neo",
+                "themeVariables": {
+                    "useGradient": gradient,
+                    "gradientStart": "#123456",
+                    "gradientStop": "#abcdef"
+                }
+            })));
         let svg = render_block_svg_from_text_with_engine(&engine, "block-beta\n  A[\"Alpha\"]\n");
         let document = roxmltree::Document::parse(&svg).expect("Block SVG");
         let root = document.root_element();
@@ -3666,7 +3673,7 @@ fn block_composite_palette_wraps_slots_and_preserves_author_styles() {
         ("redux-dark-color", false),
         ("redux", false),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": theme, "look": "classic",
             "themeVariables": {"borderColorArray": ["#aa0000", "#00aa00"],
                 "bkgColorArray": if tinted { vec!["#eeeeee"] } else { vec![] }, "THEME_COLOR_LIMIT": 1}
@@ -3754,7 +3761,7 @@ fn block_uppercase_source_color_reaches_svg_text_fill() {
     let rendered = render_block_with_theme_and_engine(
         "block\n A[\"Alpha\"]\n style A COLOR:#123456\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"htmlLabels":false}),
         )),
     );

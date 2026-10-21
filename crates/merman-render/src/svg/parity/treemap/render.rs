@@ -1343,7 +1343,8 @@ mod tests {
             sections: Vec::new(),
             leaves: vec![leaf("over-wide", 1.0, 0.0, 100.0, 100.0)],
         };
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
             None,
             &config,
@@ -1603,7 +1604,8 @@ mod tests {
         let execution =
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
                 .expect("SVG execution");
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
             None,
             &config,

@@ -9,8 +9,9 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::presentation::PresentationConfig;
 use merman_core::{
-    DiagramFamilyId, Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
+    DiagramFamilyId, Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
 };
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -298,7 +299,7 @@ fn prepare_flowchart_family_with_theme_engine_and_portability(
 
 fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         )),
         text,
@@ -334,7 +335,7 @@ fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
             ["A", "B", "E", "C", "D"].as_slice(),
         ),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"layout": "elk"}),
         ));
         let svg = render_flowchart_svg_from_text_with_engine(engine, source);
@@ -382,7 +383,7 @@ fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
     ];
     for (source, upstream, edge_id) in fixtures {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout": "elk"}),
             )),
             source,
@@ -801,12 +802,13 @@ fn flowchart_accessibility_ids_close_for_title_only_and_description_only() {
 #[test]
 fn flowchart_shadow_css_references_the_emitted_document_filters() {
     let source = "flowchart TD\nA --> B\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "neo",
-        "themeVariables": {
-            "dropShadow": "url(#drop-shadow) url(#drop-shadow-small)"
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "dropShadow": "url(#drop-shadow) url(#drop-shadow-small)"
+            }
+        })));
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin Flowchart shadow-closure session");
@@ -1726,7 +1728,7 @@ fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
         .begin_session()
         .unwrap();
     let text = "flowchart TD\nA[box] --> A\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -2135,7 +2137,7 @@ flowchart TD
     );
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"%%{init: {"securityLevel": "loose"}}%%
@@ -2441,9 +2443,10 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     B -->|Yes| C[Execute]
     B -->|No| D[End]
     C --> D"#;
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "flowchart": {"minNodeWidth": 0}
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "flowchart": {"minNodeWidth": 0}
+        })));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -2481,9 +2484,10 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
     let text = r#"flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]"#;
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "flowchart": {"minNodeWidth": 0}
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "flowchart": {"minNodeWidth": 0}
+        })));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -2735,7 +2739,7 @@ fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_val
         ),
         (
             "explicit Mermaid config",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "theme": "base",
                 "themeVariables": {"strokeWidth": 9}
             }))),
@@ -2932,7 +2936,7 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
         for case in &cases {
             let theme = node_label_fill_theme(family, "#ef4444");
             let engine =
-                Engine::new().with_site_config(MermaidConfig::from_value(case.config.clone()));
+                Engine::new().with_site_config(PresentationConfig::from_value(case.config.clone()));
             let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
                 prepare_flowchart_family_with_theme_engine_and_portability(
                     source,
@@ -3134,7 +3138,7 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
 
     for security_level in ["strict", "sandbox"] {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "securityLevel": security_level
             }))),
             source,
@@ -3147,7 +3151,7 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
     }
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         source,
@@ -3373,13 +3377,14 @@ flowchart LR
 
 #[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "mainBkg": "#111827",
-            "nodeTextColor": "#f8fafc",
-            "textColor": "#fde68a"
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "mainBkg": "#111827",
+                "nodeTextColor": "#f8fafc",
+                "textColor": "#fde68a"
+            }
+        })));
     let svg = render_flowchart_svg_from_text_with_engine(
         engine,
         r#"flowchart TD
@@ -3488,7 +3493,7 @@ L@{ shape: lined-cylinder, label: "Lined cylinder" }
 
     for security_level in ["strict", "sandbox"] {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "securityLevel": security_level
             }))),
             source,
@@ -3503,7 +3508,7 @@ L@{ shape: lined-cylinder, label: "Lined cylinder" }
     }
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         source,
@@ -3543,11 +3548,11 @@ fn flowchart_neo_source_animation_uses_the_parsed_final_css_winner() {
         r##"%%{init: {"look": "neo"}}%%
 flowchart LR
     A inline-active@==> B
-    B class-disabled@==> C
+    B disabled-edge@==> C
     C custom-token@==> D
     classDef disabled animation:none
     classDef token --animation-token:dash
-    class class-disabled disabled
+    class disabled-edge disabled
     class custom-token token
     linkStyle 0 animation:dash 2s linear
 "##,
@@ -3578,7 +3583,7 @@ flowchart LR
         "inline animation must suppress the non-animated Neo mask: {inline_active:?}"
     );
 
-    for inactive_id in ["class-disabled", "custom-token"] {
+    for inactive_id in ["disabled-edge", "custom-token"] {
         let inactive = edge(inactive_id);
         assert!(
             inactive
@@ -3598,14 +3603,14 @@ flowchart LR
 #[test]
 fn flowchart_neo_ignores_removed_private_presentation_keys() {
     let baseline_engine =
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
             "flowchart": {"curve": "rounded"}
         })));
     let private_keys_engine =
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
@@ -3640,14 +3645,14 @@ fn flowchart_private_compact_edge_corners_key_does_not_change_elk_routes() {
     BELOW[Below] --> TARGET
 "#;
     let baseline = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": "elk",
             "look": "neo"
         }))),
         text,
     );
     let with_private_key = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": "elk",
             "look": "neo",
             "flowchart": {"compactEdgeCorners": true}
@@ -4734,10 +4739,11 @@ fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
     for html_labels in [true, false] {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let text = "flowchart TB\nA@{ shape: hourglass, label: \"Hourglass label\" }\n";
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "htmlLabels": html_labels,
-            "flowchart": { "htmlLabels": html_labels },
-        })));
+        let engine =
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+                "htmlLabels": html_labels,
+                "flowchart": { "htmlLabels": html_labels },
+            })));
         let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
             .expect("parse ok")
             .expect("diagram detected");
@@ -4924,7 +4930,7 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
     let expected_text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega";
     for html_labels in [false, true] {
         for wrapping_width in [60, 240] {
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "layout": "elk", "look": "classic", "htmlLabels": html_labels,
                 "flowchart": { "htmlLabels": html_labels, "wrappingWidth": wrapping_width, "minNodeWidth": 0 }
             })));
@@ -5829,7 +5835,7 @@ fn flowchart_markdown_raw_html_overflow_keeps_host_profile_style_widths() {
     ] {
         for wrapping_width in [40, 120] {
             let engine =
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "securityLevel": "strict",
                     "flowchart": { "htmlLabels": true, "wrappingWidth": wrapping_width }
                 })));
@@ -5878,7 +5884,7 @@ fn flowchart_markdown_raw_html_overflow_keeps_host_profile_style_widths() {
 
 #[test]
 fn flowchart_html_layout_and_wrapping_ignore_policy_removed_markdown_content() {
-    let config = MermaidConfig::from_value(serde_json::json!({
+    let config = PresentationConfig::from_value(serde_json::json!({
         "flowchart": { "htmlLabels": true, "wrappingWidth": 120 },
         "dompurifyConfig": { "FORBID_TAGS": ["strong"], "KEEP_CONTENT": false }
     }));
@@ -6385,7 +6391,7 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -6506,7 +6512,7 @@ fn dagre_flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let parsed = block_on(
             Engine::new()
-                .with_site_config(MermaidConfig::from_value(
+                .with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"layout": "dagre"}),
                 ))
                 .parse_diagram_for_render_model(text, ParseOptions::default()),
@@ -6548,7 +6554,7 @@ fn dagre_flowchart_empty_subgraph_node_applies_inline_style() {
         .begin_session()
         .unwrap();
     let text = "flowchart TD\nsubgraph Empty\nend\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -7070,7 +7076,7 @@ fn dagre_flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
  n1@{ shape: summary, label: "summary" }
  n2@{ shape: crossed-circle, label: "crossed-circle" }
 "#;
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -7183,7 +7189,7 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
 
     fn render(text: &str) -> String {
         render_with_engine(
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout": "dagre"}),
             )),
             text,
@@ -7422,7 +7428,7 @@ fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
                             .expect("portable cluster title")
                     };
                     let typed = render(&theme, Engine::new());
-                    let legacy = render(&baseline, Engine::new().with_site_config(MermaidConfig::from_value(
+                    let legacy = render(&baseline, Engine::new().with_site_config(PresentationConfig::from_value(
                         serde_json::json!({ "themeVariables": { "titleColor": "#2468ac", "nodeTextColor": "#333" } })
                     )));
                     assert_eq!(
@@ -7516,7 +7522,7 @@ fn flowchart_title_fill_preserves_configuration_and_html_source_ownership() {
         let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
         for config_owned in [false, true] {
             let engine = if config_owned {
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({ "themeVariables": { "titleColor": "#abcdef" } }),
                 ))
             } else {
@@ -8007,7 +8013,7 @@ fn flowchart_background_requires_a_real_terminal_and_respects_config_owner() {
             ("flowchart TD\nA[Alpha] --> B[Beta]\n", Engine::new()),
             (
                 "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "theme": "base", "themeVariables": {"edgeLabelBackground": "#ac6824"}
                 }))),
             ),
@@ -8244,7 +8250,7 @@ fn flowchart_rounded_rect_radius_uses_effective_theme_and_source_truthiness() {
             if let Some(radius) = radius.clone() {
                 config["themeVariables"] = serde_json::json!({"radius": radius});
             }
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
             let svg =
                 render_flowchart_svg_from_text_with_engine(engine, "flowchart TD\nA(Label)\n");
             let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
@@ -8271,12 +8277,13 @@ fn flowchart_rounded_rect_radius_uses_effective_theme_and_source_truthiness() {
 #[test]
 fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
     let render_paths = |radius: serde_json::Value, source: &str| {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "look": "handDrawn", "theme": "default", "handDrawnSeed": 42,
-            // Equal padding isolates the drawRect primitive from each shape's sizing policy.
-            "flowchart": {"padding": 0},
-            "themeVariables": {"radius": radius}
-        })));
+        let engine =
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+                "look": "handDrawn", "theme": "default", "handDrawnSeed": 42,
+                // Equal padding isolates the drawRect primitive from each shape's sizing policy.
+                "flowchart": {"padding": 0},
+                "themeVariables": {"radius": radius}
+            })));
         let svg = render_flowchart_svg_from_text_with_engine(engine, source);
         let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
         let shape = document
@@ -8309,11 +8316,12 @@ fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
 fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &str) {
     use kurbo::Shape as _;
 
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "layout": backend,
-        "look": "classic",
-        "state": { "padding": 8 }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "layout": backend,
+            "look": "classic",
+            "state": { "padding": 8 }
+        })));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
@@ -8513,9 +8521,10 @@ fn flowchart_elk_line_hops_rewrite_original_dashed_and_authored_masks() {
         marker: String,
     }
     let render = |look: &str, line_hops: serde_json::Value| {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "layout": "elk", "look": look, "elk": { "lineHops": line_hops }
-        })));
+        let engine =
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+                "layout": "elk", "look": look, "elk": { "lineHops": line_hops }
+            })));
         let mut source = "flowchart TD\nA & B -.-> C & D\n".to_owned();
         if look == "classic" {
             source.push_str("linkStyle default stroke-dasharray:0 7 50 9,stroke:#123456\n");
@@ -8674,7 +8683,7 @@ fn flowchart_ancestor_descendant_routes_retain_real_segments_for_supported_curve
         "flowchart TB\nOut --> In\nsubgraph Sub\nIn\nend\nIn --> Sub\n",
     ] {
         for curve in ["linear", "basis", "rounded"] {
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout":"dagre", "flowchart":{"curve":curve}}),
             ));
             let svg = render_flowchart_svg_from_text_with_engine(engine, source);

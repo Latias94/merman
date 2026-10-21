@@ -2,14 +2,15 @@
 
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 use serde_json::{Value, json};
 
 const SOURCE: &str = "sequenceDiagram\nAlice->>Bob: Hello";
 
-fn config(value: Value) -> MermaidConfig {
-    MermaidConfig::from_value(value)
+fn config(value: Value) -> PresentationConfig {
+    PresentationConfig::from_value(value)
 }
 
 fn one_dark() -> DiagramTheme {

@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
@@ -284,7 +284,7 @@ impl Default for GitGraphPaletteSourceOwnership {
 }
 
 impl GitGraphPaletteSourceOwnership {
-    fn from_config(config: &MermaidConfig) -> Self {
+    fn from_config(config: &PresentationConfig) -> Self {
         Self {
             git: std::array::from_fn(|slot| {
                 merman_core::__private::config_path_overrides_typed_default(
@@ -373,7 +373,7 @@ pub(crate) struct GitGraphNodePalettePlan {
 impl GitGraphNodePalettePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &GitGraphDiagramLayout,
         has_title: bool,
         work_meter: &OperationWorkMeter,
@@ -706,7 +706,7 @@ impl GitGraphNodePalettePlan {
     pub(crate) fn resolve_text_paint(
         &mut self,
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         title: Option<&str>,
         work: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
@@ -1035,7 +1035,7 @@ mod tests {
         for theme in std::iter::once(None).chain(themes.iter().map(Some)) {
             let plan = GitGraphNodePalettePlan::resolve(
                 theme,
-                &MermaidConfig::default(),
+                &PresentationConfig::default(),
                 &layout,
                 false,
                 &work_meter(),
@@ -1069,7 +1069,7 @@ mod tests {
             .resolve(DiagramFamilyId::GIT_GRAPH);
         let plan = GitGraphNodePalettePlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &layout,
             false,
             &work_meter(),
@@ -1179,7 +1179,7 @@ mod tests {
 
     #[test]
     fn prepared_palette_shares_property_local_ownership_and_masks() {
-        let config = MermaidConfig::from_value(serde_json::json!({"theme": "default"}));
+        let config = PresentationConfig::from_value(serde_json::json!({"theme": "default"}));
         let typography = GitGraphTypographyThemePlan::resolve(None, &config);
         let mut plan = receipt_plan();
         plan.fill_winner_by_slot[0] = true;
@@ -1277,7 +1277,7 @@ mod tests {
         let theme = unsupported_fill_theme(ThemeTarget::Marker);
         let evidence = GitGraphNodePalettePlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &empty_layout(),
             false,
             &work_meter(),
@@ -1300,7 +1300,7 @@ mod tests {
         let theme = unsupported_fill_theme(ThemeTarget::Title);
         let evidence = GitGraphNodePalettePlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &empty_layout(),
             true,
             &work_meter(),

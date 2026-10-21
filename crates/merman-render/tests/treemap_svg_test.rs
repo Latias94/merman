@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -652,7 +653,7 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
                 serde_json::json!({"treemap": {"labelColor": "#abcdef"}}),
             )
         };
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
         let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
@@ -739,7 +740,7 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
         let rendered = render_treemap_with_theme(
             "treemap\n\"Section\"\n  \"Leaf\": 12\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(site_config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(site_config)),
         );
         let document = roxmltree::Document::parse(rendered.svg())
             .unwrap_or_else(|error| panic!("{name}: valid Treemap SVG: {error}"));
@@ -894,7 +895,7 @@ fn treemap_text_palette_respects_visible_roles_and_config_owners() {
             true,
         ),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_treemap_with_theme_requirement(
             "treemap\n\"Leaf\": 12\n",
             &theme,
@@ -1107,7 +1108,7 @@ fn treemap_explicit_title_color_owners_outrank_typed_fill() {
         ),
         (
             "treemap\ntitle Site-owned title\n\"Leaf\": 1\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "titleColor": "#fedcba" }
             }))),
         ),
@@ -1511,9 +1512,10 @@ fn treemap_host_title_font_variable_remains_unverified_for_portable_themes() {
         FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
     );
     let source = "treemap\ntitle Dynamic title\n\"Leaf\": 42\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "treemap": { "titleFontSize": "var(--treemap-title-size)" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "treemap": { "titleFontSize": "var(--treemap-title-size)" }
+        })));
     let rendered = try_render_treemap_with_theme_requirement(
         source,
         &theme,

@@ -195,7 +195,7 @@ mod tests {
         let prepared = super::super::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,

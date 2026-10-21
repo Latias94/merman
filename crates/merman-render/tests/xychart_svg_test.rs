@@ -3,7 +3,8 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -701,7 +702,7 @@ fn xychart_explicit_plot_palette_owners_outrank_typed_series_palette() {
     let cases = [
         (
             "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {
                     "xyChart": { "plotColorPalette": "#fedcba" }
                 }
@@ -713,7 +714,7 @@ fn xychart_explicit_plot_palette_owners_outrank_typed_series_palette() {
                 "{\"plotColorPalette\": \"#fedcba\"}}}}%%\n",
                 "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
             ),
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "secure": []
             }))),
         ),
@@ -816,7 +817,7 @@ fn xychart_explicit_site_and_source_font_paths_outrank_typed_font_stack() {
     let cases = [
         (
             "xychart-site-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "fontFamily": "XYChartSite,sans-serif" }
             }))),
             "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n".to_string(),
@@ -824,7 +825,7 @@ fn xychart_explicit_site_and_source_font_paths_outrank_typed_font_stack() {
         ),
         (
             "xychart-source-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "secure": []
             }))),
             concat!(
@@ -974,7 +975,7 @@ fn xychart_title_absence_and_configuration_release_only_the_fill_obligation() {
         let rendered = render_xychart_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let title = doc
@@ -1220,7 +1221,7 @@ fn xychart_axis_config_colors_follow_logical_axes_in_both_orientations() {
         let rendered = render_xychart_with_theme_and_engine(
             &source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (group, prefix, title_text) in if horizontal {
@@ -1376,7 +1377,7 @@ fn xychart_text_fill_reaches_legend_without_promoting_point_labels() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\ntitle Hidden\nx-axis [A, B]\ny-axis 0 --> 10\nline Trend [3 \"First\", 7 \"Last\"]\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        Engine::new().with_site_config(PresentationConfig::from_value(config)),
     );
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
     let texts = doc
@@ -1414,7 +1415,7 @@ fn xychart_zero_sized_title_and_axis_text_cannot_certify_paint() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let texts = doc
@@ -1455,7 +1456,7 @@ fn xychart_degenerate_ticks_do_not_certify_paint_or_create_ordinal_residuals() {
                     "showAxisLine": false, "showTick": true,
                     "tickLength": tick_length, "tickWidth": 2
                 });
-                let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                let engine = Engine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"xyChart": {"xAxis": axis, "yAxis": axis}}),
                 ));
                 let source = format!(
@@ -1737,7 +1738,7 @@ fn xychart_series_source_palette_owns_colors_but_not_width_or_alpha() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\n x-axis [A]\n y-axis 0 --> 10\n bar \"Bar\" [4]\n line \"Line\" [7]\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":"#fedcba"}}}),
         )),
     );
@@ -1862,7 +1863,7 @@ fn xychart_series_legend_receipt_tracks_hidden_and_nonfitting_legends() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\n x-axis [A]\n y-axis 0 --> 10\n bar \"A very long legend title that does not fit\" [4]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         assert!(
@@ -2354,7 +2355,7 @@ fn xychart_series_kind_rules_preserve_source_color_ownership() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\nline [7]",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":"#fedcba"}}}),
         )),
     );
@@ -2516,7 +2517,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
         ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "xyChart": {"showLegend": false}
             }))),
             0,
@@ -2524,7 +2525,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
         ),
         (
             "xychart\nx-axis [A]\nbar \"A very long legend title that does not fit\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "xyChart": {"width": 80, "height": 80}
             }))),
             0,
@@ -2532,7 +2533,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
         ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"xyChart": {"legendTextColor": "#123456"}}
             }))),
             0,
@@ -2719,7 +2720,7 @@ fn xychart_role_typography_clear_and_source_size_preserve_other_properties() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4, 7]",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "xyChart":{"titleFontSize":23,"xAxis":{"titleFontSize":19}}
             }))),
         );
@@ -2812,7 +2813,7 @@ fn xychart_source_font_size_ownership_is_independent_of_absent_role_rules() {
         }
         let theme = xychart_role_recipe(styles);
         let axis = serde_json::json!({"showLabel":false,"showTitle":false,"showTick":false,"showAxisLine":false});
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "xyChart":{"titleFontSize":23,"showLegend":false,"showDataLabel":false,"xAxis":axis,"yAxis":axis}
         })));
         let (_, rendered) = try_render_xychart_with_theme(
@@ -2845,7 +2846,7 @@ fn xychart_role_typography_requires_supported_selectors_and_visible_text() {
         let (_, rendered) = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "xyChart":{"showTitle":show_title}
             }))),
             &environment,
@@ -3339,7 +3340,7 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
         }
     }
     let theme = compile(vec![tick_rule.clone()]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"xyChart":{"xAxisTickColor":"#123456", "yAxisTickColor":"#123456"}}})));
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"xyChart":{"xAxisTickColor":"#123456", "yAxisTickColor":"#123456"}}})));
     let (_, rendered) =
         try_render_xychart_with_theme(source, &theme, engine, &strict, "ticks").unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -3395,7 +3396,7 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
             .iter()
             .all(|(_, opacity)| opacity.as_deref() == Some("0"))
     );
-    let hidden = Engine::new().with_site_config(MermaidConfig::from_value(
+    let hidden = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"xyChart":{"xAxis":{"showTick":false},"yAxis":{"showTick":false}}}),
     ));
     let (_, hidden) =
@@ -3462,7 +3463,7 @@ fn xychart_axis_tick_keeps_the_combined_axis_geometry_ordinal_sequence() {
     };
     let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
     let engine = || {
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"xyChart":{"xAxis":{"showLabel":false,"showTitle":false},"yAxis":{"showLabel":false,"showTitle":false}}})))
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"xyChart":{"xAxis":{"showLabel":false,"showTitle":false},"yAxis":{"showLabel":false,"showTitle":false}}})))
     };
     let strict = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
@@ -3544,7 +3545,7 @@ fn xychart_axis_label_glow_keeps_source_style_and_clear_semantics() {
             for orientation in ["", " horizontal"] {
                 let source =
                     format!("xychart{orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]");
-                let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "xyChart":{"xAxis":{"labelFontSize":19},"yAxis":{"labelFontSize":19}},
                     "themeVariables":{"xyChart":{"xAxisLabelColor":"#ff0000","yAxisLabelColor":"#ff0000"}}
                 })));
@@ -3677,7 +3678,7 @@ fn repair_u7_xychart_zero_size_text_does_not_certify_typography() {
         let (_, rendered) = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(zero.clone())),
+            Engine::new().with_site_config(PresentationConfig::from_value(zero.clone())),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "zero-font",
@@ -3712,7 +3713,7 @@ fn repair_u7_xychart_quoted_source_palette_receipt_uses_serialized_css() {
         let (_, rendered) = try_render_xychart_with_theme(
             "xychart\nx-axis [A, B]\nbar Sales [3, 7]\nline Trend [2, 6]",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":color}}}),
             )),
             &RenderEnvironment::deterministic()

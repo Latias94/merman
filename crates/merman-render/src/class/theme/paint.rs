@@ -31,7 +31,7 @@ pub(super) struct ClassPaintBinding {
 
 impl ClassPaintBinding {
     pub(super) fn compatibility(
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         owner_paths: &[&'static str],
         css: String,
     ) -> Self {

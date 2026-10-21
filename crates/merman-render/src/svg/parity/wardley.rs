@@ -858,7 +858,7 @@ mod tests {
         let model = WardleyDiagramRenderModel::default();
         let effective_config = serde_json::json!({});
         let effective_mermaid_config =
-            merman_core::MermaidConfig::from_value(effective_config.clone());
+            merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
         let typography_theme =
             crate::wardley::WardleyTypographyThemePlan::resolve(None, &effective_mermaid_config);
         let layout = crate::wardley::layout_wardley_diagram_typed(

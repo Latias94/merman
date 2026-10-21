@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -30,7 +30,7 @@ pub(crate) struct RequirementRelationPaintPlan {
 impl RequirementRelationPaintPlan {
     pub(crate) fn resolve(
         theme: &ResolvedDiagramTheme,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         model: &RequirementDiagramRenderModel,
         evidence: &mut FamilyThemeEvidence,
         work_meter: &OperationWorkMeter,

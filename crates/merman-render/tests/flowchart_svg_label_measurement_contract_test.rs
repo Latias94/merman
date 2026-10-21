@@ -292,7 +292,7 @@ end
         };
         for outcome in [HostOutcome::Success, HostOutcome::Missing] {
             let parsed = Engine::new()
-                .with_site_config(merman_core::MermaidConfig::from_value(
+                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({ "layout": backend }),
                 ))
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
@@ -503,9 +503,11 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
         for html in [false, true] {
             let engine = merman_render::__private::install_parse_compatibility(
                 &theme,
-                Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-                    serde_json::json!({"htmlLabels": html, "fontWeight": root_weight}),
-                )),
+                Engine::new().with_site_config(
+                    merman_core::presentation::PresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": html, "fontWeight": root_weight}),
+                    ),
+                ),
             );
             let parsed = engine
             .parse_diagram_for_render_model_sync(

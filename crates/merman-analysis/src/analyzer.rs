@@ -12,7 +12,7 @@ use crate::{
 use merman_core::{
     DiagramParseOutcome, DiagramSnapshotCapture, DiagramWarningFact, EditorSemanticFacts, Engine,
     Error as CoreError, MermaidConfig, ParseMetadata, ParsedEditorFacts,
-    preprocess::SourceConfigEvidence,
+    preprocess::SourceConfigEvidence, presentation::PresentationConfig,
 };
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -1052,7 +1052,12 @@ pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
 
 fn apply_options_to_engine(engine: Engine, options: &AnalysisOptions) -> Engine {
     engine
-        .with_exact_site_config(options.site_config().cloned())
+        .with_exact_site_config(
+            options
+                .site_config()
+                .cloned()
+                .map(PresentationConfig::from_config),
+        )
         .with_runtime_policy(options.runtime_policy().clone())
 }
 

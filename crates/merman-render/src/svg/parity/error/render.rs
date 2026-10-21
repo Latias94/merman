@@ -143,7 +143,7 @@ mod tests {
         let config = serde_json::json!({});
         let typography = crate::error::ErrorTypographyThemePlan::resolve_with_message(
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
             execution.text_measurer(),
             model.error_message.as_deref(),
         );

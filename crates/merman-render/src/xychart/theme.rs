@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet, ResolvedDiagramTheme,
@@ -43,7 +43,7 @@ pub(crate) struct XyChartTypographyTerminalReceipt {
 impl XyChartTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut role_fonts = BTreeMap::new();

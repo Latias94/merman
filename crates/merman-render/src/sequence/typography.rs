@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet,
@@ -63,7 +63,7 @@ struct SequenceBaseTypography {
 
 impl SequenceBaseTypography {
     fn resolve(
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         compat: &super::SequenceCompatBinding,
     ) -> Self {
@@ -242,7 +242,7 @@ pub(crate) struct SequenceResolvedTypography {
 impl SequenceResolvedTypography {
     fn resolve(
         role: SequenceTypographyRole,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
         base_typography: &SequenceBaseTypography,
@@ -485,7 +485,7 @@ pub(crate) struct SequenceTypographyPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SequenceTerminalForegroundProvenance {
-    MermaidConfig,
+    PresentationConfig,
     TypedTheme,
 }
 
@@ -498,7 +498,7 @@ pub(crate) struct SequenceTerminalTextStyle<'a> {
 
 impl SequenceTypographyPlan {
     pub(crate) fn resolve(
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -536,7 +536,7 @@ impl SequenceTypographyPlan {
             &base_typography,
         )?;
         let mut terminal_foreground_provenance =
-            [SequenceTerminalForegroundProvenance::MermaidConfig; SequenceTextSurface::COUNT];
+            [SequenceTerminalForegroundProvenance::PresentationConfig; SequenceTextSurface::COUNT];
         for surface in SequenceTextSurface::ALL {
             let typography = match surface.role() {
                 SequenceTypographyRole::Actor => &actor,
@@ -629,7 +629,7 @@ impl SequenceTypographyPlan {
             }
             _ => (
                 self.compat.text_surface_fill(surface),
-                SequenceTerminalForegroundProvenance::MermaidConfig,
+                SequenceTerminalForegroundProvenance::PresentationConfig,
             ),
         };
         SequenceTerminalTextStyle {
@@ -767,7 +767,7 @@ mod tests {
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let config = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "actorTextColor": "#123456" },
             })))
             .parse_metadata_sync("sequenceDiagram\nA->>B: Message\n")
@@ -782,7 +782,7 @@ mod tests {
         assert_eq!(box_title.foreground, participant.foreground);
         assert_eq!(
             participant.foreground_provenance,
-            SequenceTerminalForegroundProvenance::MermaidConfig
+            SequenceTerminalForegroundProvenance::PresentationConfig
         );
         assert_eq!(
             box_title.foreground_provenance,

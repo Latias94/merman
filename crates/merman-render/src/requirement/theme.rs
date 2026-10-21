@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 
 use super::source_typography::RequirementNodeTypography;
 use crate::diagram_theme::{
@@ -22,7 +22,7 @@ use crate::resources::OperationWorkMeter;
 
 mod node_visual;
 
-fn configured_font_size_css(effective_config: &MermaidConfig) -> Box<str> {
+fn configured_font_size_css(effective_config: &PresentationConfig) -> Box<str> {
     crate::config::config_css_number_or_string(
         effective_config.as_value(),
         &["themeVariables", "fontSize"],
@@ -84,7 +84,7 @@ pub(crate) struct RequirementPaintThemePlan {
 impl RequirementPaintThemePlan {
     pub(crate) fn resolve_with_title(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         model: &RequirementDiagramRenderModel,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
@@ -560,7 +560,7 @@ fn typed_stroke_expectation(
     .map(DirectPaintExpectation::from_paint)
 }
 
-fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
+fn mermaid_owns_requirement_fill(config: &PresentationConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
         || matches!(
             config.get_str("theme"),
@@ -575,7 +575,7 @@ fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
         ))
 }
 
-fn mermaid_owns_requirement_stroke(config: &MermaidConfig) -> bool {
+fn mermaid_owns_requirement_stroke(config: &PresentationConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
         || matches!(
             config.get_str("theme"),
@@ -859,7 +859,7 @@ mod tests {
     fn unthemed_plan_keeps_config_without_per_node_evidence() {
         use merman_core::diagrams::requirement::RequirementRenderElement;
 
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"}
         }));
@@ -935,7 +935,7 @@ mod tests {
         let model = serde_json::from_value(serde_json::json!({})).unwrap();
         let plan = RequirementPaintThemePlan::resolve_with_title(
             Some(&resolved),
-            &MermaidConfig::empty_object(),
+            &PresentationConfig::empty_object(),
             &model,
             None,
             &OperationWorkMeter::new(

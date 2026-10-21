@@ -183,7 +183,7 @@ fn construct_class_semantic_source<'a>(
         }
     };
 
-    let mut db = ClassDb::new(&meta.effective_config);
+    let mut db = ClassDb::new(meta.effective_config.as_config());
     for (index, action) in actions.into_iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;

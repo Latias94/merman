@@ -6,13 +6,13 @@ use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SwimlaneDirection, SwimlaneLayout};
 use crate::resources::OperationWorkMeter;
 use indexmap::IndexMap;
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use std::sync::Arc;
 
 pub(crate) fn layout_flat(
     measured: &[(&LayoutNode, &str)],
     edges: &[LayoutEdge],
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
     work_meter.preflight(super::swimlane_layout_preflight_work_units(

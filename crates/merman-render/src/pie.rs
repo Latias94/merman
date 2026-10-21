@@ -407,8 +407,8 @@ mod tests {
             DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
         };
         use crate::resources::RenderResourcePolicy;
-        use merman_core::MermaidConfig;
         use merman_core::diagrams::pie::PieRenderSection;
+        use merman_core::presentation::PresentationConfig;
 
         let mut model = PieDiagramRenderModel::default();
         model.title = Some("Title".to_string());
@@ -430,7 +430,7 @@ mod tests {
             ))
             .expect("compile Pie typography theme")
             .resolve(DiagramFamilyId::PIE);
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let work_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         );

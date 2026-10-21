@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -74,7 +74,7 @@ pub(crate) struct C4TextPaintReceipt<'a> {
 impl C4TextPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         title: Option<&str>,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -202,7 +202,7 @@ impl C4TextPaintPlan {
         model: &merman_core::diagrams::c4::C4DiagramRenderModel,
         layout: &crate::model::C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
     ) -> crate::Result<()> {
         // The writer historically selected the last source metadata for an alias, while
         // defaults came from the actual alias-keyed layout type. Preserve both owners.
@@ -416,7 +416,7 @@ mod tests {
             "container_width": 100.0, "container_height": 100.0, "c4_type": "C4Context", "title": null,
             "boundaries": [], "shapes": [shape, shape], "rels": [relation, relation]
         })).expect("C4 actual layout fixture");
-        let config = MermaidConfig::from_value(serde_json::json!({"c4": {
+        let config = PresentationConfig::from_value(serde_json::json!({"c4": {
             "person_border_color": "var(--actual-border)", "custom_border_color": "red"
         }}));
         let mut typography =

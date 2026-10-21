@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -253,16 +254,17 @@ fn state_layout_reflows_at_the_expanded_html_min_content_width() {
         .join("state")
         .join("stress_state_font_size_precedence_071.mmd");
     let text = std::fs::read_to_string(path).expect("font-size precedence fixture");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "secure": [
-            "secure",
-            "securityLevel",
-            "startOnLoad",
-            "maxTextSize",
-            "suppressErrorRendering",
-            "maxEdges"
-        ]
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "secure": [
+                "secure",
+                "securityLevel",
+                "startOnLoad",
+                "maxTextSize",
+                "suppressErrorRendering",
+                "maxEdges"
+            ]
+        })));
     let layout = layout_state_from_text_with_engine(engine, &text);
     let node = layout
         .nodes

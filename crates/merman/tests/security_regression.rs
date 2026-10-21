@@ -2,8 +2,8 @@
 
 use merman::svg::{RenderResourcePolicy, SvgPipeline};
 use merman::{
-    MermaidConfig, OperationControl, ParseOptions, RenderError, RenderOutput, RenderRequest,
-    Renderer, SvgEnvironment, SvgRequest,
+    OperationControl, ParseOptions, RenderError, RenderOutput, RenderRequest, Renderer,
+    SvgEnvironment, SvgRequest, presentation::PresentationConfig,
 };
 use merman_render::environment::RenderEnvironment as BackendRenderEnvironment;
 #[cfg(feature = "png")]
@@ -27,7 +27,7 @@ impl TypedSvgRenderer {
         }
     }
 
-    fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+    fn with_site_config(mut self, site_config: PresentationConfig) -> Self {
         let engine = self.renderer.engine().clone().with_site_config(site_config);
         self.renderer = self.renderer.with_engine(engine);
         self
@@ -287,7 +287,7 @@ kanban
 #[test]
 fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
     let renderer = TypedSvgRenderer::new()
-        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+        .with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "strict",
             "kanban": {
                 "ticketBaseUrl": "javascript:alert('#TICKET#')"
@@ -310,7 +310,7 @@ fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
 #[test]
 fn kanban_loose_parity_and_resvg_safe_keep_separate_security_contracts() {
     let renderer = TypedSvgRenderer::new()
-        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+        .with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose",
             "kanban": {
                 "ticketBaseUrl": "javascript:alert('#TICKET#')"
@@ -337,7 +337,7 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
     A["<b onclick='alert(1)'>Hello</b><br/><img src=x onerror='alert(1)'>"] --> B[Done]
 "#;
     let renderer = TypedSvgRenderer::new()
-        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+        .with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose",
             "flowchart": {
                 "htmlLabels": true
@@ -367,7 +367,7 @@ fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
                 ]),
             ),
         ))
-        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+        .with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
         })))
         .with_diagram_id("security-resvg-css");

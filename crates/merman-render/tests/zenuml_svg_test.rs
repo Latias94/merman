@@ -344,7 +344,9 @@ Bob-->Alice: Reply
 
 fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> String {
     let parsed = Engine::new()
-        .with_site_config(merman_core::MermaidConfig::from_value(config))
+        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+            config,
+        ))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -455,9 +457,11 @@ fn zenuml_configured_css_removes_forbidden_scalars_at_the_xml_boundary() {
 fn zenuml_configured_css_obeys_the_actual_svg_byte_ceiling() {
     let render = |policy| {
         let parsed = Engine::new()
-            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
-                "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
-            })))
+            .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
+                }),
+            ))
             .parse_diagram_for_render_model_sync("zenuml\nA->B: request\n", ParseOptions::strict())
             .unwrap()
             .unwrap();

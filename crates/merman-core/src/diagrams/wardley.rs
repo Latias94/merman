@@ -372,7 +372,8 @@ struct WardleySemanticSource {
 impl WardleySemanticSource {
     #[cfg(test)]
     fn into_render_model(mut self, meta: &ParseMetadata) -> WardleyDiagramRenderModel {
-        self.model.sanitize_common_db_fields(&meta.effective_config);
+        self.model
+            .sanitize_common_db_fields(meta.effective_config.as_config());
         self.model
     }
 
@@ -382,7 +383,8 @@ impl WardleySemanticSource {
         control: &OperationControl,
     ) -> OperationControlResult<WardleyDiagramRenderModel> {
         control.checkpoint()?;
-        self.model.sanitize_common_db_fields(&meta.effective_config);
+        self.model
+            .sanitize_common_db_fields(meta.effective_config.as_config());
         control.checkpoint()?;
         Ok(self.model)
     }
@@ -412,7 +414,7 @@ impl WardleySemanticSource {
             editor_facts,
         } = self;
         control.checkpoint()?;
-        model.sanitize_common_db_fields(&meta.effective_config);
+        model.sanitize_common_db_fields(meta.effective_config.as_config());
         let json = render_model_to_compat_json_controlled(&model, meta, control)?;
         control.checkpoint()?;
         Ok((json, editor_facts))
@@ -2732,7 +2734,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "wardley".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

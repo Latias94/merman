@@ -77,7 +77,7 @@ impl IshikawaSemanticSource {
     ) -> crate::OperationControlResult<IshikawaDiagramRenderModel> {
         for node in &mut self.nodes {
             control.checkpoint()?;
-            node.text = sanitize_text(&node.text, &meta.effective_config);
+            node.text = sanitize_text(&node.text, meta.effective_config.as_config());
         }
         nodes_to_render_model_controlled(self.nodes, control)
     }
@@ -510,7 +510,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "ishikawa".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

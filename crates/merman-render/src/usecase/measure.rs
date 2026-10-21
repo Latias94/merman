@@ -123,7 +123,7 @@ fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> T
 }
 
 struct LabelContext<'a> {
-    config: &'a merman_core::MermaidConfig,
+    config: &'a merman_core::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
@@ -325,14 +325,14 @@ fn escaped_markdown(text: &str) -> String {
 
 pub(super) fn measure(
     model: &UsecaseDiagramRenderModel,
-    config: &Value,
+    full_config: &merman_core::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
-    let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
-    let sanitize = |text: &str| merman_core::sanitize::sanitize_text(text, &sanitize_config);
+    let config = full_config.as_value();
+    let sanitize = |text: &str| merman_core::sanitize::sanitize_text(text, full_config.as_config());
     let min_width = number(config, "minNodeWidth", 120.0);
     let wrapping_width = Some(number(config, "wrappingWidth", 120.0));
     let mut nodes = Vec::new();
@@ -351,7 +351,7 @@ pub(super) fn measure(
             };
             let style = styled(base.clone(), &css);
             let label_context = LabelContext {
-                config: &sanitize_config,
+                config: full_config,
                 measurer,
                 math_renderer,
                 styles: &css,
@@ -452,7 +452,7 @@ pub(super) fn measure(
         let css = styles(model, &[], &[]);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config: &sanitize_config,
+            config: full_config,
             measurer,
             math_renderer,
             styles: &css,
@@ -487,7 +487,7 @@ pub(super) fn measure(
         let css = styles(model, &node.classes, &node.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config: &sanitize_config,
+            config: full_config,
             measurer,
             math_renderer,
             styles: &css,
@@ -568,7 +568,7 @@ pub(super) fn measure(
         let css = styles(model, &boundary.classes, &boundary.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config: &sanitize_config,
+            config: full_config,
             measurer,
             math_renderer,
             styles: &css,
@@ -609,7 +609,7 @@ pub(super) fn measure(
         apply_inline_styles(&mut css, &edge.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config: &sanitize_config,
+            config: full_config,
             measurer,
             math_renderer,
             styles: &css,
@@ -671,7 +671,7 @@ pub(super) fn measure(
                     0.0,
                     &label_context,
                 );
-                if sanitize_config
+                if full_config
                     .as_value()
                     .get("htmlLabels")
                     .and_then(Value::as_bool)
@@ -862,7 +862,7 @@ mod tests {
             let config = json!({"htmlLabels": html});
             let (nodes, edges) = measure(
                 &model,
-                &config,
+                &merman_core::presentation::PresentationConfig::from_value(config.clone()),
                 &UsecaseCssBinding::new(&config),
                 &DeterministicTextMeasurer::default(),
                 None,
@@ -919,7 +919,7 @@ mod tests {
         let mut work = work();
         let (mut nodes, mut edges) = measure(
             &model,
-            &config,
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
             &css_binding,
             &DeterministicTextMeasurer::default(),
             None,
@@ -992,7 +992,9 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let (small, _) = measure(
             &model,
-            &json!({"usecase": {"minNodeWidth": 900}}),
+            &merman_core::presentation::PresentationConfig::from_value(
+                json!({"usecase": {"minNodeWidth": 900}}),
+            ),
             &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
             &measurer,
             None,
@@ -1001,7 +1003,9 @@ mod tests {
         .unwrap();
         let (large, _) = measure(
             &model,
-            &json!({"usecase": {"actorFontSize": 40}}),
+            &merman_core::presentation::PresentationConfig::from_value(
+                json!({"usecase": {"actorFontSize": 40}}),
+            ),
             &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
             &measurer,
             None,
@@ -1029,7 +1033,7 @@ mod tests {
         });
         let (nodes, _) = measure(
             &model,
-            &json!({}),
+            &merman_core::presentation::PresentationConfig::from_value(json!({})),
             &UsecaseCssBinding::new(&json!({})),
             &DeterministicTextMeasurer::default(),
             None,

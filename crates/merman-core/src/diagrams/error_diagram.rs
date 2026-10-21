@@ -62,7 +62,7 @@ pub(crate) fn suppressed_error_diagram(
     typed.error_message = Some(error.to_string());
     let mut model = render_model_to_compat_json(&typed, &meta)
         .expect("Error typed model must remain JSON-serializable");
-    common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+    common_db::apply_common_db_sanitization(&mut model, meta.effective_config.as_config());
     ParsedDiagram {
         meta,
         model: model.into(),
@@ -94,7 +94,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "error".to_string(),
             config: crate::MermaidConfig::default(),
-            effective_config: crate::MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         };
         let compat = parse_error("", &meta).unwrap();

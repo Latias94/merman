@@ -931,7 +931,7 @@ mod font_style_tests {
             "fontFamily": "Cousine, sans-serif",
             "themeVariables": {"fontFamily": "Different, sans-serif"}
         });
-        let config = merman_core::MermaidConfig::from_value(config);
+        let config = merman_core::presentation::PresentationConfig::from_value(config);
         let font_stack =
             crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
         let family = font_stack.font_family_css();
@@ -964,7 +964,7 @@ mod font_style_tests {
                 self.measure(text, style).width
             }
         }
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "RootFallback",
             "themeVariables": {"fontFamily": "ThemeWinner"}
         }));

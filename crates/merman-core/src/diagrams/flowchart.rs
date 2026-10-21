@@ -479,7 +479,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             edge_defaults: &mut edge_defaults,
             security_level_loose,
             diagram_type: &meta.diagram_type,
-            config: &meta.effective_config,
+            config: meta.effective_config.as_config(),
             shape_data_documents: &shape_data_documents,
             control,
         };
@@ -1718,7 +1718,8 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let (node, render_label_source) = flow_node_to_model(node, &meta.effective_config);
+            let (node, render_label_source) =
+                flow_node_to_model(node, meta.effective_config.as_config());
             if let Some(source) = render_label_source {
                 render_label_sources.insert_node(node.id.clone(), source);
             }
@@ -1745,7 +1746,7 @@ impl FlowchartSemanticSource {
                 control.checkpoint()?;
             }
             let (subgraph, render_title_source) =
-                flow_subgraph_to_model(subgraph, &meta.effective_config);
+                flow_subgraph_to_model(subgraph, meta.effective_config.as_config());
             render_label_sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
             render_subgraphs.push(subgraph);
         }
@@ -1867,12 +1868,12 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<Stri
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option<String>)> {
-    let label = sanitized_optional_label(e.label.as_deref(), &meta.effective_config);
+    let label = sanitized_optional_label(e.label.as_deref(), meta.effective_config.as_config());
     let render_label_source = e
         .label
         .as_deref()
         .filter(|raw| render_label_source_needs_provenance(raw))
-        .map(|raw| sanitized_render_label_source(raw, &meta.effective_config));
+        .map(|raw| sanitized_render_label_source(raw, meta.effective_config.as_config()));
     let render_label_source = match (&label, render_label_source) {
         (Some(label), Some(source)) if *label != source => Some(source),
         _ => None,
@@ -2017,7 +2018,7 @@ mod tests {
         ParseMetadata {
             diagram_type: diagram_type.to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -2548,7 +2549,7 @@ F -- "&nbsp;" --> G
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let (model, render_label_sources) =
@@ -2805,7 +2806,7 @@ A -->|second &lt; owner| B
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let control = OperationControl::new();
@@ -2822,7 +2823,7 @@ A -->|second &lt; owner| B
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
@@ -2864,7 +2865,7 @@ A -->|second &lt; owner| B
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
@@ -2901,7 +2902,8 @@ A -->|second &lt; owner| B
     #[test]
     fn grouped_flowchart_edges_respect_configured_max_edges_before_expansion() {
         let mut meta = flowchart_test_meta("flowchart-v2");
-        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 6}));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 6}));
 
         let at_limit = parse_flowchart_ast("flowchart TD\na & b --> c & d & e\n", &meta)
             .expect("an edge group at maxEdges should parse");
@@ -2924,7 +2926,8 @@ A -->|second &lt; owner| B
     #[test]
     fn grouped_flowchart_edge_budget_is_shared_across_chains() {
         let mut meta = flowchart_test_meta("flowchart-v2");
-        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 7}));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 7}));
 
         let error = parse_flowchart_ast("flowchart TD\na & b --> c & d\ne & f --> g & h\n", &meta)
             .expect_err("the shared maxEdges budget should cover every chain");
@@ -2938,7 +2941,8 @@ A -->|second &lt; owner| B
     #[test]
     fn combined_flowchart_parser_enforces_max_edges_in_the_traced_path() {
         let mut meta = flowchart_test_meta("flowchart-v2");
-        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 3}));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 3}));
         let control = OperationControl::new();
 
         let parsed = parse_flowchart_json_and_editor_facts(
@@ -2968,7 +2972,7 @@ A -->|second &lt; owner| B
         let meta = ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let ast =

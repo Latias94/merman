@@ -110,9 +110,13 @@ impl MindmapSemanticSource {
         let color_by_depth = meta.effective_config.get_str("mindmap.colorBy") == Some("depth");
         db.assign_sections_controlled(root_id, None, color_by_depth, control)?;
 
-        let nodes =
-            db.to_layout_nodes_for_render_controlled(root_id, &meta.effective_config, control)?;
-        let edges = db.to_edges_for_render_controlled(root_id, &meta.effective_config, control)?;
+        let nodes = db.to_layout_nodes_for_render_controlled(
+            root_id,
+            meta.effective_config.as_config(),
+            control,
+        )?;
+        let edges =
+            db.to_edges_for_render_controlled(root_id, meta.effective_config.as_config(), control)?;
         control.checkpoint()?;
         Ok(Ok(MindmapDiagramRenderModel { nodes, edges }))
     }
@@ -180,7 +184,7 @@ fn mindmap_db_from_events(
 ) -> crate::OperationControlResult<Result<MindmapDb>> {
     let mut db = MindmapDb::default();
     db.clear();
-    let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
+    let parse_config = MindmapParseConfig::from_config(meta.effective_config.as_config());
 
     for (index, event) in events.into_iter().enumerate() {
         if index % 128 == 0 {
@@ -198,7 +202,7 @@ fn mindmap_db_from_events(
                         ty: node.ty,
                         diagram_type: &meta.diagram_type,
                     },
-                    &meta.effective_config,
+                    meta.effective_config.as_config(),
                     parse_config,
                     control,
                 )? {
@@ -206,10 +210,10 @@ fn mindmap_db_from_events(
                 }
             }
             MindmapParsedEvent::Class(class) => {
-                db.decorate_last(Some(class.value), None, &meta.effective_config);
+                db.decorate_last(Some(class.value), None, meta.effective_config.as_config());
             }
             MindmapParsedEvent::Icon(icon) => {
-                db.decorate_last(None, Some(icon.value), &meta.effective_config);
+                db.decorate_last(None, Some(icon.value), meta.effective_config.as_config());
             }
         }
     }

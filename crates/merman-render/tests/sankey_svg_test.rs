@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -519,7 +520,7 @@ fn sankey_explicit_font_family_owners_outrank_the_typed_stack() {
         ),
     ] {
         let engine = match site_config {
-            Some(config) => Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Some(config) => Engine::new().with_site_config(PresentationConfig::from_value(config)),
             None => Engine::new(),
         };
         let rendered = render_sankey_with_theme_requirement(
@@ -648,7 +649,7 @@ fn sankey_explicit_node_colors_outrank_typed_palette_per_node() {
         (
             "site",
             "sankey-beta\nA,B,10\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "sankey": { "nodeColors": { "A": "#fedcba" } }
             }))),
         ),
@@ -691,7 +692,7 @@ fn sankey_node_palette_is_not_applicable_when_every_visible_node_is_owned() {
     let rendered = render_sankey_with_theme_and_engine(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "sankey": {
                 "nodeColors": {
                     "A": "#fedcba",
@@ -775,7 +776,8 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
                     if config_owner {
                         config["themeVariables"] = serde_json::json!({"textColor":"#445566"});
                     }
-                    let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+                    let engine =
+                        Engine::new().with_site_config(PresentationConfig::from_value(config));
                     let rendered = render_sankey_with_theme_requirement(
                         "sankey-beta\nA,B,10\n",
                         &theme,

@@ -1,5 +1,6 @@
 use futures::executor::block_on;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::FlowchartLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -22,7 +23,7 @@ const LAYOUTS: &[&str] = if cfg!(feature = "layout-elk") {
 fn render(source: &str, layout: &str) -> (FlowchartLayout, String) {
     let parsed = block_on(
         Engine::new()
-            .with_site_config(MermaidConfig::from_value(
+            .with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout": layout}),
             ))
             .parse_diagram_for_render_model(source, ParseOptions::default()),

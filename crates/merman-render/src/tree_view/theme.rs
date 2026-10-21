@@ -184,7 +184,7 @@ struct TreeViewTerminalStrokeWidth {
 impl TreeViewThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         model: &TreeViewDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -513,7 +513,7 @@ impl TreeViewThemePlan {
             TreeViewCssBinding::from_config(&serde_json::Value::Null),
             InheritedFontStackPlan::resolve_property_local(
                 None,
-                &merman_core::MermaidConfig::default(),
+                &merman_core::presentation::PresentationConfig::default(),
             ),
             false,
         )
@@ -926,7 +926,7 @@ mod tests {
 
     #[test]
     fn no_recipe_binds_config_without_requesting_terminal_proof() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "treeView": {"lineThickness": 3},
             "themeVariables": {
                 "fontFamily": "Custom Font",
@@ -956,7 +956,7 @@ mod tests {
         for theme in [&empty, &unsupported] {
             let plan = TreeViewThemePlan::resolve(
                 Some(theme),
-                &merman_core::MermaidConfig::empty_object(),
+                &merman_core::presentation::PresentationConfig::empty_object(),
                 &TreeViewDiagramRenderModel::default(),
                 &work_meter(),
             )
@@ -969,7 +969,7 @@ mod tests {
     fn terminal_binding_keeps_property_local_config_ownership() {
         let theme = resolved_fill(ThemeTarget::NodeLabel);
         let model = TreeViewDiagramRenderModel::default();
-        let mut config = merman_core::MermaidConfig::empty_object();
+        let mut config = merman_core::presentation::PresentationConfig::empty_object();
         let typed = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
             .expect("bind typed Tree View");
         assert_eq!(typed.label_color_css(), "#123456");
@@ -997,9 +997,11 @@ mod tests {
         assert_eq!(authored.line_color_css(), "black");
 
         let host_config = merman_core::Engine::new()
-            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": {"treeView": {"labelColor": "var(--label)"}}
-            })))
+            .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": {"treeView": {"labelColor": "var(--label)"}}
+                }),
+            ))
             .parse_metadata_sync("treeView-beta\n    \"root\"\n")
             .expect("parse Tree View host config ownership")
             .effective_config;
@@ -1053,7 +1055,7 @@ mod tests {
 
         let evidence = TreeViewThemePlan::resolve(
             Some(&theme),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &model,
             &work_meter(),
         )
@@ -1081,7 +1083,7 @@ mod tests {
 
         let evidence = TreeViewThemePlan::resolve(
             Some(&theme),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &model,
             &work_meter(),
         )

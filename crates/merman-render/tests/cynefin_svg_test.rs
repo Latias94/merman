@@ -3,7 +3,8 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -338,7 +339,7 @@ fn cynefin_text_palette_only_remains_residual_when_its_fallback_is_needed() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile text palette theme");
         let engine = if case == "config" {
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "cynefin": { "textColor": "#123456" } }
             })))
         } else {
@@ -400,11 +401,12 @@ fn cynefin_explicit_text_color_outranks_typed_text_fill() {
     let theme = cynefin_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Cynefin typed text fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "cynefin": { "textColor": "#fedcba" }
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "cynefin": { "textColor": "#fedcba" }
+            }
+        })));
     let (_, rendered) = try_render_cynefin_with_theme(
         CYNEFIN_TEXT_FILL_SOURCE,
         &theme,
@@ -685,7 +687,7 @@ fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "site-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
             }))),
             "cynefin-beta\ncomplex\n\"A\"\n".to_string(),
@@ -693,7 +695,7 @@ fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
         ),
         (
             "source-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "secure": []
             }))),
             concat!(

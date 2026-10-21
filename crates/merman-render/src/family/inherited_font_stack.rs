@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::diagram_theme::{
@@ -202,7 +202,7 @@ impl InheritedFontStackPlan {
     /// Resolves the font stack independently from unsupported sibling typography properties.
     pub(crate) fn resolve_property_local(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let Some(theme) = theme else {
             return Self {
@@ -358,8 +358,10 @@ mod tests {
                 .with_font_size_px(24.0)
                 .expect("valid legacy font size"),
         );
-        let plan =
-            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default());
+        let plan = InheritedFontStackPlan::resolve_property_local(
+            Some(&theme),
+            &PresentationConfig::default(),
+        );
 
         assert_eq!(plan.outcome(), InheritedFontStackOutcome::Inactive);
         assert!(!plan.typed_font_stack_requested());
@@ -376,8 +378,10 @@ mod tests {
                 .with_font_size_px(24.0)
                 .expect("valid unsupported font size"),
         );
-        let plan =
-            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default());
+        let plan = InheritedFontStackPlan::resolve_property_local(
+            Some(&theme),
+            &PresentationConfig::default(),
+        );
 
         assert_eq!(plan.outcome(), InheritedFontStackOutcome::Typed);
         assert!(plan.typed_font_stack_requested());

@@ -5,13 +5,14 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
-    RenderedDocument, Renderer,
+    DiagramFamilyId, Engine, OperationControl, RenderOutput, RenderRequest, RenderedDocument,
+    Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
@@ -68,7 +69,7 @@ fn assert_no_native_consumer(target: ThemeTarget) {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
         for look in ["classic", "neo", "handDrawn"] {
             let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-                MermaidConfig::from_value(
+                PresentationConfig::from_value(
                     serde_json::json!({"theme": scheme, "htmlLabels": false, "look": look}),
                 ),
             ));
@@ -153,7 +154,7 @@ fn retired_block_text_bridges_are_absent() {
         ),
     ] {
         for look in ["classic", "neo", "handDrawn"] {
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": false, "look": look}),
             ));
             let baseline = engine.parse_metadata_sync(SOURCE).unwrap();

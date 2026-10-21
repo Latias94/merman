@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::pie::PieDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_string;
 use crate::diagram_theme::{
@@ -123,13 +123,13 @@ impl PieThemePlan {
         model: &PieDiagramRenderModel,
         effective_config: &serde_json::Value,
     ) -> Self {
-        let effective_config = MermaidConfig::from_value(effective_config.clone());
+        let effective_config = PresentationConfig::from_value(effective_config.clone());
         Self::baseline_with_config(model, &effective_config, None)
     }
 
     fn baseline_with_config(
         model: &PieDiagramRenderModel,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
     ) -> Self {
         let inherited_font_stack =
@@ -169,7 +169,7 @@ impl PieThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         model: &PieDiagramRenderModel,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -184,7 +184,7 @@ impl PieThemePlan {
 
     pub(crate) fn resolve_with_title(
         model: &PieDiagramRenderModel,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
@@ -227,7 +227,7 @@ impl PieThemePlan {
 
     fn resolve_palette(
         &mut self,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
@@ -286,7 +286,7 @@ impl PieThemePlan {
     fn resolve_rules(
         &mut self,
         model: &PieDiagramRenderModel,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
@@ -484,7 +484,7 @@ impl PieThemePlan {
 
     fn resolve_title_rules(
         &mut self,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
@@ -614,7 +614,7 @@ impl PieThemePlan {
 
     fn resolve_text_rules(
         &mut self,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         occurrence_count: usize,
         work_meter: &OperationWorkMeter,
@@ -1278,11 +1278,11 @@ fn record_terminal_paint(
     (matches, matches.then_some(paint.typed_owner).flatten())
 }
 
-fn mermaid_owns_stroke_site(effective_config: &MermaidConfig, path: &str) -> bool {
+fn mermaid_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
     merman_core::__private::config_path_overrides_typed_default(effective_config, path)
 }
 
-fn explicit_config_owns_stroke_site(effective_config: &MermaidConfig, path: &str) -> bool {
+fn explicit_config_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
     merman_core::__private::explicit_config_owns_path(effective_config, path)
 }
 
@@ -1499,7 +1499,7 @@ mod tests {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let plan = PieThemePlan::resolve(
             &PieDiagramRenderModel::default(),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             Some(&theme),
             &meter,
         )
@@ -1536,7 +1536,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
         let theme = resolved_slice_palette(colors);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -1559,7 +1559,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

@@ -1178,7 +1178,7 @@ impl std::ops::Deref for LayoutExecution<'_> {
 #[cfg(feature = "diagram-class")]
 pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     typography_theme: &crate::class::ClassTextThemePlan,
     render_config: &crate::class::ClassRenderConfig,
@@ -1223,7 +1223,7 @@ pub(crate) fn layout_class_typed_by_engine(
 ))]
 pub(crate) fn layout_flowchart_typed_by_engine(
     model: &FlowchartModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
     let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
@@ -1250,7 +1250,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
     render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,

@@ -464,7 +464,9 @@ mod tests {
             };
             let themed = parse(theme.install_parse_compatibility(merman_core::Engine::new()));
             let fallback = parse(merman_core::Engine::new().with_site_config(
-                merman_core::MermaidConfig::from_value(serde_json::json!({"theme": selected})),
+                merman_core::presentation::PresentationConfig::from_value(
+                    serde_json::json!({"theme": selected}),
+                ),
             ));
             let config = &themed.metadata().effective_config;
             assert_eq!(config.get_str("theme"), Some(selected));
@@ -1805,7 +1807,7 @@ mod tests {
             for &dark_mode in dark_modes {
                 let engine = match dark_mode {
                     Some(value) => merman_core::Engine::new().with_site_config(
-                        merman_core::MermaidConfig::from_value(
+                        merman_core::presentation::PresentationConfig::from_value(
                             serde_json::json!({"darkMode": value}),
                         ),
                     ),

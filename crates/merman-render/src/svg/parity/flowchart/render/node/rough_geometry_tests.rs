@@ -27,7 +27,7 @@ fn with_context<T>(
         declaration(shape)
     );
     let parsed = merman_core::Engine::new()
-        .with_site_config(merman_core::MermaidConfig::from_value(
+        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
             serde_json::json!({"look":look,"handDrawnSeed":seed,"flowchart":{"htmlLabels":false}}),
         ))
         .parse_diagram_for_render_model_sync(&source, merman_core::ParseOptions::strict())

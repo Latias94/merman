@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::theme::{XyChartTextRole, XyChartTypographyThemePlan, logical_axis, resolve_text_style};
 use crate::diagram_theme::{
@@ -112,7 +112,7 @@ struct RuleObservation {
 impl XyChartPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         layout: &mut XyChartDiagramLayout,
         typography: &XyChartTypographyThemePlan,
         measurer: &dyn crate::text::TextMeasurer,
@@ -1012,7 +1012,7 @@ pub(crate) fn text_is_visible(text: &str, font_size: f64) -> bool {
     visible_dimension(font_size) && !text.trim().is_empty()
 }
 
-fn source_owns(config: &MermaidConfig, channel: &str) -> bool {
+fn source_owns(config: &PresentationConfig, channel: &str) -> bool {
     merman_core::__private::config_path_overrides_typed_default(
         config,
         &format!("themeVariables.xyChart.{channel}"),
@@ -1106,7 +1106,7 @@ mod tests {
     fn captured_empty_owner_remains_active_and_rejects_foreign_receipts() {
         let typography = XyChartTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
         )
         .unwrap();
@@ -1183,12 +1183,12 @@ mod tests {
             .resolve(crate::DiagramFamilyId::XY_CHART);
         let typography = XyChartTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
         )
         .unwrap();
         let source_config = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            .with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"xyChart": {"titleColor": "black"}}
             })))
             .parse_metadata_sync("xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\n")
@@ -1244,7 +1244,7 @@ mod tests {
 
             let pending = XyChartPaintPlan::resolve(
                 Some(&theme),
-                &MermaidConfig::default(),
+                &PresentationConfig::default(),
                 &mut layout,
                 &typography,
                 &crate::text::DeterministicTextMeasurer::default(),
@@ -1283,7 +1283,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::XY_CHART);
         let typography = XyChartTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
         )
         .unwrap();
@@ -1307,7 +1307,7 @@ mod tests {
         });
         let plan = XyChartPaintPlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &mut layout,
             &typography,
             &crate::text::DeterministicTextMeasurer::default(),

@@ -106,7 +106,7 @@ struct RuleObservation {
 impl BlockMarkerPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -137,7 +137,7 @@ impl BlockMarkerPaintPlan {
 
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         _layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,

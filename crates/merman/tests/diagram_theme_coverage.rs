@@ -453,7 +453,8 @@ fn er_authored_redux_palettes_override_only_their_typed_paint_channel() {
             let engine = if source_owned {
                 merman::Engine::new()
             } else {
-                merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(config))
+                merman::Engine::new()
+                    .with_site_config(merman::presentation::PresentationConfig::from_value(config))
             };
             let mut renderer = TypedSvgRenderer::new()
                 .with_theme(theme.clone())

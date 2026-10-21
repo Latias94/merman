@@ -80,7 +80,9 @@ pub(super) struct ClassNodeThemePlan {
 }
 
 impl ClassNodeThemePlan {
-    pub(super) fn from_config(effective_config: &merman_core::MermaidConfig) -> Self {
+    pub(super) fn from_config(
+        effective_config: &merman_core::presentation::PresentationConfig,
+    ) -> Self {
         let mermaid_owns_fill = ["themeVariables.mainBkg", "themeVariables.primaryColor"]
             .into_iter()
             .any(|path| {
@@ -359,7 +361,7 @@ mod tests {
         let meter = work_meter();
         let plan = ClassRelationThemePlan::resolve(
             Some(&theme),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             0,
             2,
             &meter,
@@ -404,7 +406,7 @@ mod tests {
         let meter = work_meter();
         let plan = ClassRelationThemePlan::resolve(
             Some(&theme),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             0,
             2,
             &meter,
@@ -443,7 +445,7 @@ mod tests {
             .unwrap()
             .resolve(DiagramFamilyId::CLASS);
         let meter = work_meter();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let plan = ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter).unwrap();
         let work_after_plan = meter.used();
         let expectations = [plan.node_paint(1), plan.node_paint(2)];

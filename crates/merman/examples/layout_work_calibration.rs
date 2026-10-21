@@ -1,9 +1,9 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest,
-    RenderTarget, Renderer, SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput,
-    SvgRequest,
+    Engine, OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer,
+    SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    presentation::PresentationConfig,
 };
 use merman_core::ParseOptions;
 use serde::{Deserialize, Serialize};
@@ -367,7 +367,7 @@ struct CalibrationRenderer {
 
 impl CalibrationRenderer {
     fn new(policy: RenderResourcePolicy, theme: &str) -> Self {
-        let mut config = MermaidConfig::empty_object();
+        let mut config = PresentationConfig::empty_object();
         config.set_value("theme", serde_json::Value::String(theme.to_string()));
         Self {
             renderer: Renderer::new()

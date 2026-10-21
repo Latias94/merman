@@ -21,7 +21,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     node_visual_plan: &crate::class::ClassNodeVisualPlan,
     render_config: &crate::class::ClassRenderConfig,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,

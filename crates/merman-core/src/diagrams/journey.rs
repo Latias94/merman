@@ -937,7 +937,7 @@ A task: 5: Alice, Bob\n";
         let meta = ParseMetadata {
             diagram_type: "journey".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         for source in ["", "journey"] {
@@ -1017,7 +1017,7 @@ A task: 5: Alice, Bob\n";
             &ParseMetadata {
                 diagram_type: "journey".to_string(),
                 config: crate::MermaidConfig::empty_object(),
-                effective_config: crate::MermaidConfig::empty_object(),
+                effective_config: crate::presentation::PresentationConfig::empty_object(),
                 title: None,
             },
         );

@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -208,10 +209,11 @@ fn venn_theme_font_family_outranks_root_and_typed_font_family() {
         ThemeTextStyle::default()
             .with_font_stack(FontStack::single("VennTyped").expect("valid Venn typed font")),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontFamily": "VennRootFont",
-        "themeVariables": { "fontFamily": "VennThemeFont" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontFamily": "VennRootFont",
+            "themeVariables": { "fontFamily": "VennThemeFont" }
+        })));
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
@@ -366,7 +368,7 @@ fn venn_text_fill_is_not_applicable_when_config_or_source_owns_every_terminal() 
     let config_owned = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "vennSetTextColor": "#654321" }
         }))),
         ThemePortabilityRequirement::RequirePortable,
@@ -419,7 +421,7 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
     let default_snapshot = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "default",
             "themeVariables": { "textColor": "#654321" }
         }))),
@@ -439,7 +441,7 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
     let base_derived = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "base",
             "themeVariables": { "textColor": "#654321" }
         }))),
@@ -540,7 +542,7 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     );
@@ -571,7 +573,7 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     );

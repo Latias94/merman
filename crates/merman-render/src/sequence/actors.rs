@@ -11,9 +11,9 @@ use super::wrap_sequence_label_like_mermaid_lines;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceActor;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
 
 use super::metrics::measure_svg_like_with_html_br;
@@ -23,7 +23,7 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) actor_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) typography: &'a super::SequenceTypographyPlan,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) actor_width_min: f64,

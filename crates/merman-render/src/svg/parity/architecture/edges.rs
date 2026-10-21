@@ -834,7 +834,7 @@ mod tests {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
-                &merman_core::MermaidConfig::empty_object(),
+                &merman_core::presentation::PresentationConfig::empty_object(),
             );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();

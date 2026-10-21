@@ -1,11 +1,12 @@
 #![cfg(feature = "svg")]
 
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 
-fn legacy_init_theme_compat_config() -> MermaidConfig {
-    MermaidConfig::from_value(serde_json::json!({
+fn legacy_init_theme_compat_config() -> PresentationConfig {
+    PresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -21,7 +22,11 @@ fn render_svg(name: &str, source: &str) -> String {
     render_svg_with_site_config(name, source, legacy_init_theme_compat_config())
 }
 
-fn render_svg_with_site_config(name: &str, source: &str, site_config: MermaidConfig) -> String {
+fn render_svg_with_site_config(
+    name: &str,
+    source: &str,
+    site_config: PresentationConfig,
+) -> String {
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {
             diagram_id: Some(name.to_string()),
@@ -663,7 +668,7 @@ title Packet Visible Audit
 +8: "Byte"
 +16: "Word"
 "#,
-        MermaidConfig::from_value(serde_json::json!({
+        PresentationConfig::from_value(serde_json::json!({
             "packet": {
                 "startByteColor": "#22c55e",
                 "endByteColor": "#f97316",
@@ -836,7 +841,7 @@ fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
   Root
     Child
 "##,
-        MermaidConfig::from_value(serde_json::json!({
+        PresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {
@@ -911,7 +916,7 @@ fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
     string name
   }
 "#,
-        MermaidConfig::from_value(serde_json::json!({
+        PresentationConfig::from_value(serde_json::json!({
             "look": "neo",
             "themeVariables": {
                 "textColor": "#f8fafc",

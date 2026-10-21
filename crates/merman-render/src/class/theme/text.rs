@@ -112,7 +112,7 @@ impl ClassTextPaint {
 impl ClassTextThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
     ) -> Self {
         let mut text_rules = BTreeMap::new();
         let mut shadowed = BTreeMap::new();
@@ -1004,7 +1004,7 @@ mod tests {
 
     #[test]
     fn inactive_plan_preserves_class_layout_font_precedence() {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "Class Root, monospace",
             "themeVariables": {
                 "fontFamily": "Class Theme, sans-serif"
@@ -1023,7 +1023,7 @@ mod tests {
 
     #[test]
     fn node_style_facts_are_sealed_once_and_missing_ids_fail_closed() {
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let plan = ClassTextThemePlan::resolve(None, &config);
 
         assert!(matches!(

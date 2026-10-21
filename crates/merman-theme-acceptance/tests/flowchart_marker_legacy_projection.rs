@@ -7,13 +7,14 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
-    RenderedDocument, Renderer,
+    DiagramFamilyId, Engine, OperationControl, RenderOutput, RenderRequest, RenderedDocument,
+    Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
@@ -41,7 +42,7 @@ fn source(family: DiagramFamilyId, animated: bool) -> String {
 }
 
 fn engine(look: &str) -> Engine {
-    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "htmlLabels": false,
         "flowchart": { "htmlLabels": false },
         "look": look,

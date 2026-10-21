@@ -1975,9 +1975,10 @@ mod tests {
             }],
             display: Default::default(),
         };
-        let config = merman_core::MermaidConfig::from_value(json!({ "xyChart": {
-            "width": 700, "height": height, "showLegend": legend
-        }}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(json!({ "xyChart": {
+                "width": 700, "height": height, "showLegend": legend
+            }}));
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );
@@ -2119,7 +2120,7 @@ mod tests {
             panic!("expected XYChart render model");
         };
         let measurer = RecordingFont(Mutex::new(Vec::new()));
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(

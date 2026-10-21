@@ -1533,7 +1533,7 @@ mod tests {
         let model = serde_json::from_value(json!({})).expect("empty C4 model");
         let mut plan = crate::c4::C4TypographyThemePlan::resolve(
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
             None,
             &model,
         );

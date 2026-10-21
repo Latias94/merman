@@ -1,4 +1,5 @@
-use merman_core::{DiagramFamilyId, Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{DiagramFamilyId, Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
@@ -337,7 +338,7 @@ gitGraph
   commit id: "1" tag: "v1"
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showBranches": false }
         }))),
         "git-stack-fixed-roles",
@@ -406,7 +407,7 @@ gitGraph
   commit id: "1" tag: "v1"
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showBranches": false }
         }))),
         "git-size-fixed-roles",
@@ -452,7 +453,7 @@ fn gitgraph_base_dependent_role_sizes_use_the_typed_font_size() {
   commit id: "1" tag: "v1"
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showBranches": false },
             "themeVariables": {
                 "commitLabelFontSize": "inherit",
@@ -490,7 +491,7 @@ fn gitgraph_unmeasurable_role_size_fails_closed() {
             .expect("valid GitGraph font size"),
     );
     let engine = || {
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showBranches": false },
             "themeVariables": {
                 "commitLabelFontSize": "calc(10px + 1em)"
@@ -597,7 +598,7 @@ accDescr: This text is not a visual terminal
 commit id:"1"
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": {
                 "showBranches": false,
                 "showCommitLabel": false
@@ -835,12 +836,12 @@ fn render_source_and_site_config_cases(
         (
             "site",
             source.to_string(),
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         ),
         (
             "source",
             source_owned,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({ "secure": [] }))),
         ),
     ];
 
@@ -1160,7 +1161,8 @@ fn gitgraph_commit_background_accounts_for_each_winning_property() {
         ),
     ] {
         let theme = gitgraph_edge_rules_theme(rules);
-        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let engine =
+            || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             TWO_BRANCHES,
             &theme,
@@ -1240,7 +1242,7 @@ fn gitgraph_edge_label_background_is_not_applicable_without_visible_commit_label
   commit id: "1"
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showCommitLabel": false }
         }))),
         "git-edge-label-background-hidden",
@@ -1461,7 +1463,7 @@ fn gitgraph_edge_stroke_respects_commit_line_and_line_color_owners() {
     let site_commit_line = render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "commitLineColor": "#fedcba" }
         }))),
         "git-edge-commit-line-site-owner",
@@ -1489,7 +1491,7 @@ fn gitgraph_source_commit_line_color_is_sanitized_before_terminal_ownership() {
                 .expect("serialize GitGraph source config")
         ),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({ "secure": [] }))),
         "git-edge-source-commit-line-sanitized",
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph Edge SVG");
@@ -1552,7 +1554,7 @@ fn gitgraph_edge_stroke_is_not_applicable_when_branches_are_hidden() {
     let rendered = render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "gitGraph": { "showBranches": false }
         }))),
         "git-edge-hidden-branches",
@@ -1829,7 +1831,7 @@ fn gitgraph_node_palette_respects_source_and_site_git_slot_owners() {
         (
             "site",
             TWO_BRANCHES,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {
                     "git0": "#fedcba",
                     "gitInv0": "#abcdef",
@@ -1840,7 +1842,7 @@ fn gitgraph_node_palette_respects_source_and_site_git_slot_owners() {
         (
             "source",
             SOURCE_OWNED_TWO_BRANCHES,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({ "secure": [] }))),
         ),
     ];
 
@@ -1895,7 +1897,7 @@ fn gitgraph_node_palette_is_not_applicable_when_every_visible_slot_is_owned() {
     let rendered = render_gitgraph_with_theme_and_engine(
         "gitGraph\n  commit id: \"1\"\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "git0": "#fedcba" }
         }))),
         "git-owned-only",
@@ -1984,7 +1986,7 @@ fn gitgraph_redux_color_palette_preserves_site_border_color_array_surfaces() {
     let rendered = render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        Engine::new().with_site_config(PresentationConfig::from_value(config)),
         "git-redux-color-array-site",
     );
     let document =
@@ -2121,7 +2123,8 @@ fn gitgraph_text_fill_replaces_all_three_legacy_color_projections() {
                     let rendered = render_gitgraph_with_theme_and_engine(
                         source,
                         &theme,
-                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        Engine::new()
+                            .with_site_config(PresentationConfig::from_value(config.clone())),
                         "git-text",
                     );
                     let mut legacy_config = config;
@@ -2131,7 +2134,8 @@ fn gitgraph_text_fill_replaces_all_three_legacy_color_projections() {
                     let legacy = render_gitgraph_with_theme_and_engine(
                         source,
                         &empty_theme,
-                        Engine::new().with_site_config(MermaidConfig::from_value(legacy_config)),
+                        Engine::new()
+                            .with_site_config(PresentationConfig::from_value(legacy_config)),
                         "git-text",
                     );
                     assert_eq!(
@@ -2362,7 +2366,7 @@ fn gitgraph_text_applicability_follows_visible_inherited_surfaces() {
         let rendered = render_gitgraph_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
             &format!("git-text-{case}"),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2471,7 +2475,8 @@ fn gitgraph_text_fill_cannot_certify_unsupported_sibling_properties() {
         ),
     ] {
         let theme = gitgraph_edge_rules_theme(rules);
-        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let engine =
+            || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
@@ -2528,7 +2533,7 @@ fn gitgraph_node_palette_can_own_neo_backgrounds_without_certifying_text_fill() 
     let rendered = render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "neo", "gitGraph": {"showCommitLabel": false},
             "themeVariables": {"useGradient": false}
         }))),
@@ -2587,7 +2592,7 @@ fn gitgraph_specific_label_clear_does_not_restore_generic_text_fill() {
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"textColor": "#abcdef"},
                 "gitGraph": {"showCommitLabel": target == ThemeTarget::EdgeLabel}
             }))),
@@ -2635,7 +2640,7 @@ fn gitgraph_later_text_ordinal_is_not_masked_by_an_earlier_specific_label_rule()
     let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
         "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": {"textColor": "#fedcba", "commitLabelColor": "#fedcba"}
         }))),
         "git-text-later-ordinal",
@@ -2684,7 +2689,7 @@ fn gitgraph_text_typography_yields_to_the_winning_label_property() {
             font_rule(target, "LaterLabelFont"),
         ]);
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(source, &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "gitGraph": {"showBranches": false, "showCommitLabel": target == ThemeTarget::EdgeLabel}
             }))), "git-text-font-shadowed", ThemePortabilityRequirement::BestEffort).unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2729,7 +2734,7 @@ fn gitgraph_specific_label_fill_replaces_its_exact_legacy_color() {
                             source,
                             &gitgraph_edge_rules_theme([rule]),
                             Engine::new()
-                                .with_site_config(MermaidConfig::from_value(config.clone())),
+                                .with_site_config(PresentationConfig::from_value(config.clone())),
                             "git-specific-label",
                         );
                         let mut legacy_config = config;
@@ -2738,7 +2743,7 @@ fn gitgraph_specific_label_fill_replaces_its_exact_legacy_color() {
                             source,
                             &gitgraph_edge_rules_theme([]),
                             Engine::new()
-                                .with_site_config(MermaidConfig::from_value(legacy_config)),
+                                .with_site_config(PresentationConfig::from_value(legacy_config)),
                             "git-specific-label",
                         );
                         assert_eq!(
@@ -2831,7 +2836,7 @@ fn gitgraph_label_color_ownership_is_property_local_and_requires_visible_text() 
             let rendered = render_gitgraph_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     json!({"gitGraph": {"showCommitLabel": false}}),
                 )),
                 "git-label-absent",
@@ -2885,7 +2890,7 @@ fn gitgraph_specific_label_mixed_properties_and_ordinals_fail_closed() {
         ] {
             let theme = gitgraph_edge_rules_theme([rule]);
             let engine =
-                || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+                || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
             let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
             let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
                 source,
@@ -3025,8 +3030,9 @@ fn gitgraph_node_fill_reaches_state_and_tag_terminals_for_default_selectors() {
                 let rendered = render_gitgraph_with_theme_and_engine(
                     source,
                     &gitgraph_edge_rules_theme([rule]),
-                    Engine::new()
-                        .with_site_config(MermaidConfig::from_value(json!({"theme": theme_name}))),
+                    Engine::new().with_site_config(PresentationConfig::from_value(
+                        json!({"theme": theme_name}),
+                    )),
                     "git-node-fill-terminals",
                 );
                 let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -3107,7 +3113,8 @@ fn gitgraph_node_stroke_reaches_tag_terminal_without_compatibility_residuals() {
         let rendered = try_render_gitgraph_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": theme_name}))),
+            Engine::new()
+                .with_site_config(PresentationConfig::from_value(json!({"theme": theme_name}))),
             "git-node-stroke-terminal",
         )
         .expect("direct GitGraph Node stroke must satisfy RequirePortable");
@@ -3162,7 +3169,8 @@ fn gitgraph_node_stroke_preserves_state_fill_across_themes_and_default_selectors
                     render_gitgraph_with_theme_and_engine(
                         source,
                         theme,
-                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        Engine::new()
+                            .with_site_config(PresentationConfig::from_value(config.clone())),
                         "git-node-stroke-selectors",
                     )
                 };
@@ -3447,7 +3455,7 @@ fn gitgraph_node_fill_and_stroke_do_not_certify_an_unsupported_font() {
                 json!({})
             };
             let engine =
-                || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+                || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
             let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
                 source,
                 &theme,
@@ -3523,7 +3531,7 @@ fn gitgraph_static_node_stroke_and_palette_keep_terminal_ownership_in_either_ord
             let rendered = render_gitgraph_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": theme_name, "themeVariables": {"useGradient": false}
                 }))),
                 "git-node-stroke-palette",
@@ -3647,7 +3655,7 @@ fn gitgraph_node_fill_and_stroke_are_independently_portable_in_the_same_rule() {
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {
                     "primaryBorderColor": "#abcdef",
                     "nodeBorder": "#abcdef",
@@ -3744,7 +3752,8 @@ fn gitgraph_node_fill_does_not_certify_an_unsupported_font_in_the_same_rule() {
         } else {
             json!({})
         };
-        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let engine =
+            || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
@@ -3869,7 +3878,7 @@ fn gitgraph_node_fill_preserves_independent_state_and_tag_owners() {
             let rendered = render_gitgraph_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                Engine::new().with_site_config(PresentationConfig::from_value(config)),
                 "git-node-fill",
             );
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -3936,7 +3945,8 @@ fn gitgraph_edge_fill_replaces_the_branch_line_config_without_changing_other_sur
                     let rendered = render_gitgraph_with_theme_and_engine(
                         TWO_BRANCHES,
                         &gitgraph_edge_rules_theme([rule]),
-                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        Engine::new()
+                            .with_site_config(PresentationConfig::from_value(config.clone())),
                         "git-edge-fill",
                     );
                     let mut legacy_config = config;
@@ -3944,7 +3954,8 @@ fn gitgraph_edge_fill_replaces_the_branch_line_config_without_changing_other_sur
                     let legacy = render_gitgraph_with_theme_and_engine(
                         TWO_BRANCHES,
                         &gitgraph_edge_rules_theme([]),
-                        Engine::new().with_site_config(MermaidConfig::from_value(legacy_config)),
+                        Engine::new()
+                            .with_site_config(PresentationConfig::from_value(legacy_config)),
                         "git-edge-fill",
                     );
                     assert_eq!(
@@ -3985,7 +3996,7 @@ fn gitgraph_edge_fill_preserves_its_config_owner_and_visible_branch_domain() {
             let rendered = render_gitgraph_with_theme_and_engine(
                 TWO_BRANCHES,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     json!({"theme": theme_name, "themeVariables": {key: "#abcdef"}}),
                 )),
                 "git-edge-fill-owner",
@@ -4030,7 +4041,7 @@ fn gitgraph_edge_fill_preserves_its_config_owner_and_visible_branch_domain() {
     let rendered = render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"gitGraph": {"showBranches": false}}),
         )),
         "git-edge-fill-hidden",
@@ -4157,7 +4168,8 @@ fn gitgraph_edge_fill_does_not_certify_unsupported_winners() {
         ),
     ] {
         let theme = gitgraph_edge_rules_theme([rule]);
-        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let engine =
+            || Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             TWO_BRANCHES,
             &theme,
@@ -4235,7 +4247,7 @@ fn gitgraph_edge_fill_partial_ordinals_preserve_best_effort_without_false_eviden
         let previous = render_gitgraph_with_theme_and_engine(
             TWO_BRANCHES,
             &gitgraph_edge_rules_theme([]),
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"themeVariables": {"commitLineColor": "#123456"}}),
             )),
             "git-partial-ordinal",

@@ -1371,7 +1371,7 @@ task2: event2: event3\n";
         let meta = ParseMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         for source in ["", "timeline"] {
@@ -1515,7 +1515,7 @@ task2: event2: event3\n";
         let meta = ParseMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let error =

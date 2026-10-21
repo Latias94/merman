@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::{Engine, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
 use serde::Deserialize;
 use tree_sitter::{Language, Node, Parser};
@@ -200,8 +200,11 @@ fn every_strict_valid_merman_fixture_has_a_clean_tree_sitter_tree() {
                 .context_for_fixture(&path)
                 .unwrap_or_else(|error| panic!("{} render context: {error}", path.display()));
             let contextual_engine = context.map(|context| {
-                Engine::new()
-                    .with_site_config(MermaidConfig::from_value(context.site_config_value()))
+                Engine::new().with_site_config(
+                    merman_core::presentation::PresentationConfig::from_value(
+                        context.site_config_value(),
+                    ),
+                )
             });
             let engine = contextual_engine.as_ref().unwrap_or(&default_engine);
 

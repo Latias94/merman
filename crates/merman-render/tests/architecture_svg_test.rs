@@ -6,7 +6,8 @@ type FamilyFixture = (
     merman_render::environment::RenderSession,
 );
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
@@ -468,7 +469,7 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
 
 #[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"themeVariables": {"lineColor": "#445566", "primaryBorderColor": "#778899", "archEdgeColor": "#010203", "archEdgeArrowColor": "#040506", "archEdgeWidth": 7, "archGroupBorderColor": "#070809", "archGroupBorderWidth": "6px"}}}%%
@@ -726,7 +727,7 @@ fn architecture_layout_caches_service_child_bounds() {
 
 #[test]
 fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_size() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "fontSize": "24px" },
         "architecture": { "fontSize": 16 }
     })));
@@ -770,7 +771,7 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
         prepare_architecture_with_theme_and_environment(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "architecture": { "fontSize": 19 }
             }))),
             counting_architecture_environment(Arc::clone(&host)),
@@ -1148,7 +1149,7 @@ fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only
                 prepare_architecture_with_theme_and_environment(
                     source,
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
                     RenderEnvironment::deterministic(),
                 );
             let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
@@ -1305,7 +1306,7 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
         .unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
         )),
     )

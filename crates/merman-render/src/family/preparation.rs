@@ -23,7 +23,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
@@ -1503,7 +1503,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
             BuiltinFamilyArtifact::Usecase(prepare_pair(model, |model| {
                 crate::usecase::prepare_usecase_diagram(
                     model,
-                    meta.effective_config.as_value(),
+                    &meta.effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),

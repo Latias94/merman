@@ -538,12 +538,14 @@ impl RailroadSemanticSource {
     }
 
     fn into_compat_json(mut self, meta: &ParseMetadata) -> Result<Value> {
-        self.model.sanitize_common_db_fields(&meta.effective_config);
+        self.model
+            .sanitize_common_db_fields(meta.effective_config.as_config());
         render_model_to_compat_json(&self.model, meta)
     }
 
     fn into_render_model(mut self, meta: &ParseMetadata) -> RailroadDiagramRenderModel {
-        self.model.sanitize_common_db_fields(&meta.effective_config);
+        self.model
+            .sanitize_common_db_fields(meta.effective_config.as_config());
         self.model
     }
 }
@@ -3374,7 +3376,7 @@ mod tests {
         ParseMetadata {
             diagram_type: dialect.diagram_type().to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

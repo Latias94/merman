@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_theme_or_root_font_size_px;
 use crate::diagram_theme::{
@@ -31,14 +31,14 @@ impl TimelineTypographyThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         Self::resolve_with_text(theme, effective_config, None)
     }
 
     pub(crate) fn resolve_with_text(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         text_fill: Option<&str>,
     ) -> Self {
         let inherited_font_stack =
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn prepared_layout_preserves_independent_root_font_offset() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "fontSize": "18px", "themeVariables": {"fontSize": "24px"}
         }));
         let plan =

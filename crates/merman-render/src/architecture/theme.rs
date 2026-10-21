@@ -42,7 +42,7 @@ pub(crate) struct ArchitectureGroupThemePlan {
 impl ArchitectureGroupThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         group_count: usize,
         edge_count: usize,
         work_meter: &OperationWorkMeter,
@@ -283,7 +283,9 @@ pub(crate) struct ArchitectureThemeOutcome {
     pub(crate) text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
-fn mermaid_owns_group_stroke(effective_config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_group_stroke(
+    effective_config: &merman_core::presentation::PresentationConfig,
+) -> bool {
     if merman_core::__private::config_path_overrides_typed_default(
         effective_config,
         "themeVariables.archGroupBorderColor",

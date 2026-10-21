@@ -6,6 +6,7 @@ use crate::{
 };
 use merman_core::{
     EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
+    presentation::PresentationConfig,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -42,15 +43,15 @@ fn capture_document_diagram_for_test(
         .expect("a private analysis cancellation token cannot be cancelled")
 }
 
-fn detect_captured_config_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+fn detect_captured_config_fixture(source: &str, _config: &mut PresentationConfig) -> bool {
     source.trim_start().starts_with("captured-config-fixture")
 }
 
-fn detect_markdown_custom_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+fn detect_markdown_custom_fixture(source: &str, _config: &mut PresentationConfig) -> bool {
     source.trim_start().starts_with("markdown-custom-fixture")
 }
 
-fn panicking_detector(_source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
     panic!("detector fixture panic")
 }
 
@@ -200,7 +201,7 @@ fn custom_engine_uses_the_runtime_policy_owned_by_analysis_options() {
 #[test]
 fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
     let source = "erDiagram\nA ||--o{ B : owns\n";
-    let stale_engine = merman_core::Engine::new().with_site_config(MermaidConfig::from_value(
+    let stale_engine = merman_core::Engine::new().with_site_config(PresentationConfig::from_value(
         json!({ "layout": "elk", "theme": "dark" }),
     ));
 
@@ -1098,7 +1099,7 @@ fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
         meta: ParseMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: PresentationConfig::default(),
             title: None,
         },
         model: json!({

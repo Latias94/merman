@@ -4,10 +4,11 @@ use crate::resources::OperationWorkMeter;
 #[cfg(all(test, feature = "diagram-sequence"))]
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
+use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
     SequenceControlKind, SequenceDiagramRenderModel, SequenceMessage,
 };
-use merman_core::{MermaidConfig, OperationPhase};
+use merman_core::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -474,7 +475,7 @@ pub(crate) fn sequence_block_widths_for_render(
     model: &SequenceDiagramRenderModel,
     prepared: &SequencePreparedArtifact,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
 ) -> Result<FxHashMap<String, f64>> {
@@ -554,7 +555,7 @@ pub(crate) fn sequence_block_widths_for_render(
 pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     measurer: &dyn TextMeasurer,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
@@ -821,8 +822,9 @@ mod resource_tests {
         OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     };
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
+    use merman_core::presentation::PresentationConfig;
     use merman_core::{
-        Engine, MermaidConfig, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
+        Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
     };
     use rustc_hash::FxHashMap;
     use serde_json::json;
@@ -980,7 +982,7 @@ mod resource_tests {
         let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             None,
             &measurer,
             None,
@@ -1002,7 +1004,7 @@ mod resource_tests {
         prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             None,
             &measurer,
             None,
@@ -1022,7 +1024,7 @@ mod resource_tests {
         let expected_work = sequence_layout_work_units(&model).unwrap();
 
         let measurer = CountingTextMeasurer::default();
-        let effective_config = MermaidConfig::from_value(json!({}));
+        let effective_config = PresentationConfig::from_value(json!({}));
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
@@ -1096,7 +1098,7 @@ mod resource_tests {
         }
         source.push_str("end\n");
         let model = sequence_model(&source);
-        let effective_config = MermaidConfig::from_value(json!({}));
+        let effective_config = PresentationConfig::from_value(json!({}));
         let preparation_meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
@@ -1135,7 +1137,7 @@ mod resource_tests {
             &model,
             &prepared,
             &nodes_by_id,
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             &measurer,
             &work_meter,
         )

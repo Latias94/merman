@@ -3107,9 +3107,11 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let fixtures_dir = crate::cmd::fixtures_root().join(profile.fixture_dir);
         let out_dir = out_root.join(profile.fixture_dir);
         let engine = if profile.seeded_site_config {
-            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-                serde_json::json!({ "handDrawnSeed": 1 }),
-            ))
+            merman::Engine::new().with_site_config(
+                merman::presentation::PresentationConfig::from_value(
+                    serde_json::json!({ "handDrawnSeed": 1 }),
+                ),
+            )
         } else {
             merman::Engine::new()
         };

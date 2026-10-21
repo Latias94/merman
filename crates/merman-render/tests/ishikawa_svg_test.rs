@@ -1,7 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -723,10 +724,11 @@ fn ishikawa_theme_font_family_keeps_precedence_over_root_font_family() {
         ishikawa_typography_theme(ThemeTextStyle::default().with_font_stack(
             FontStack::single("IshikawaTyped").expect("valid Ishikawa typed font"),
         ));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontFamily": "IshikawaRootFont",
-        "themeVariables": { "fontFamily": "IshikawaThemeFont" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontFamily": "IshikawaRootFont",
+            "themeVariables": { "fontFamily": "IshikawaThemeFont" }
+        })));
     let rendered = render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, engine);
     let stylesheet = ishikawa_stylesheet(rendered.svg());
 
@@ -863,7 +865,7 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let config_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px !important" }
         }))),
     );
@@ -904,7 +906,7 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let root_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px"
         }))),
     );
@@ -942,13 +944,13 @@ fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
     let baseline = ishikawa_typography_theme(ThemeTextStyle::default());
     let root_small = ishikawa_layout_json_with_theme(
         &baseline,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "12px"
         }))),
     );
     let root_large = ishikawa_layout_json_with_theme(
         &baseline,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "48px"
         }))),
     );
@@ -991,7 +993,7 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_size = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px" }
         }))),
     );
@@ -1006,7 +1008,7 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_stack = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontFamily": "IshikawaConfigured" }
         }))),
     );
@@ -1062,7 +1064,7 @@ fn ishikawa_explicit_text_color_outranks_typed_text_fill() {
     );
 
     for look in ["classic", "handDrawn"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({ "themeVariables": { "textColor": "#fedcba" } }),
         ));
         let rendered = render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, engine);
@@ -1210,7 +1212,7 @@ fn ishikawa_text_palette_is_shadowed_by_the_config_owned_fill_domain() {
             let engine = if source_owner {
                 Engine::new()
             } else {
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
                 ))
             };

@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn inactive_consumers_do_not_require_a_synthetic_node_fact_map() {
         let model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = super::super::ClassTextThemePlan::resolve(None, &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -424,9 +424,10 @@ mod tests {
         for padding in [0, 1024, 4096] {
             let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
             let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
+                }));
             let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
             let defaults = typography.css_binding();
             let meter = crate::resources::OperationWorkMeter::new(
@@ -459,7 +460,7 @@ mod tests {
     #[test]
     fn explicit_source_values_equal_to_defaults_remain_owned() {
         let mut model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
         let defaults = typography.css_binding();
         model.classes.get_mut("A").unwrap().styles = vec![
@@ -492,7 +493,7 @@ mod tests {
     #[test]
     fn visual_preparation_requires_sealed_layout_facts_and_observes_cancellation() {
         let model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
@@ -556,7 +557,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         assert!(
             typography.seal_node_style_facts(std::collections::BTreeMap::from([(
@@ -615,7 +616,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

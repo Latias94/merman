@@ -939,7 +939,7 @@ fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
 #[test]
 fn pie_site_palette_slot_outranks_the_typed_default() {
     let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-        merman::MermaidConfig::from_value(serde_json::json!({
+        merman::presentation::PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"pie1": "#111827"}
         })),
     ));
@@ -1023,7 +1023,7 @@ fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
 #[test]
 fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
     let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-        merman::MermaidConfig::from_value(serde_json::json!({
+        merman::presentation::PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"primaryBorderColor": "#f97316"}
         })),
     ));

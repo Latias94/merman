@@ -1291,7 +1291,11 @@ fn parse_kanban_statement(
         if icon.text.is_empty() {
             return Ok(Ok(()));
         }
-        db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
+        db.decorate_last(
+            None,
+            Some(icon.text.clone()),
+            meta.effective_config.as_config(),
+        );
         facts.push_symbol(EditorSemanticSymbol::payload(
             icon.text,
             Some("kanban icon".to_string()),
@@ -1312,7 +1316,11 @@ fn parse_kanban_statement(
                 rest_start + 3 + leading + class_raw.len(),
             ),
         };
-        db.decorate_last(Some(class_name.text.clone()), None, &meta.effective_config);
+        db.decorate_last(
+            Some(class_name.text.clone()),
+            None,
+            meta.effective_config.as_config(),
+        );
         if !class_name.text.is_empty() {
             facts.push_directive_prefix(":::");
             facts.push_symbol(EditorSemanticSymbol::payload(
@@ -1365,7 +1373,7 @@ fn parse_kanban_statement(
         parsed.spec,
         parsed.span,
         shape_data,
-        &meta.effective_config,
+        meta.effective_config.as_config(),
     ) {
         return Ok(Err(error));
     }
@@ -1470,7 +1478,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
 
 fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
     KanbanDiagramRenderModel {
-        nodes: db.data_nodes_for_render(&meta.effective_config),
+        nodes: db.data_nodes_for_render(meta.effective_config.as_config()),
     }
 }
 
@@ -1483,7 +1491,10 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("sections".to_string(), kanban_sections_to_json(model));
     out.insert(
         "nodes".to_string(),
-        Value::Array(kanban_nodes_to_json(model, &meta.effective_config)),
+        Value::Array(kanban_nodes_to_json(
+            model,
+            meta.effective_config.as_config(),
+        )),
     );
     out.insert("edges".to_string(), Value::Array(Vec::new()));
     out.insert("other".to_string(), Value::Object(Map::new()));
@@ -1616,7 +1627,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "kanban".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -1631,10 +1642,11 @@ mod tests {
             "    :::highlight\r\n",
         );
         let mut meta = meta();
-        meta.effective_config = MermaidConfig::from_value(serde_json::json!({
-            "look": "handDrawn",
-            "theme": "forest"
-        }));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(serde_json::json!({
+                "look": "handDrawn",
+                "theme": "forest"
+            }));
         let expected_json = parse_kanban(text, &meta).unwrap();
         let expected_model = parse_kanban_model_for_render(text, &meta).unwrap();
 

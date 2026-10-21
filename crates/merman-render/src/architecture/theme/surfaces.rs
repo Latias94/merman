@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeTarget};
 use crate::family::FamilyThemeEvidence;
@@ -47,7 +47,7 @@ impl ArchitectureSurfaceThemePlan {
 
     pub(super) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let title_keys = theme
             .map(|theme| {
@@ -120,7 +120,7 @@ impl ArchitectureSurfaceThemePlan {
     }
 }
 
-fn mermaid_owns_arrow_fill(config: &MermaidConfig) -> bool {
+fn mermaid_owns_arrow_fill(config: &PresentationConfig) -> bool {
     if merman_core::__private::config_path_overrides_typed_default(
         config,
         ARCH_EDGE_ARROW_COLOR_PATH,

@@ -993,7 +993,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "architecture".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
@@ -1881,7 +1881,10 @@ group child(cloud)[Child] in root\n";
 
     #[test]
     fn architecture_combined_projection_honors_custom_registry_replacement() {
-        fn detect_architecture(code: &str, _config: &mut MermaidConfig) -> bool {
+        fn detect_architecture(
+            code: &str,
+            _config: &mut crate::presentation::PresentationConfig,
+        ) -> bool {
             code.starts_with("architecture-beta")
         }
 

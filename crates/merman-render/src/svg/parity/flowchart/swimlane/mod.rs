@@ -262,7 +262,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         FlowchartEdgePathCacheEntry,
     >,
     render_edges: &[super::render_input::FlowchartRenderEdge<'_>],
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     work_meter: &crate::resources::OperationWorkMeter,
     uses_elk_adapter_dom: bool,
 ) -> Result<()> {
@@ -508,7 +508,7 @@ mod tests {
         apply_line_hops_to_edge_geometries(
             &mut cache,
             &render_edges,
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &work_meter,
             false,
         )
@@ -566,9 +566,10 @@ mod tests {
                 let work_meter = crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
                 );
-                let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                    "elk": { "lineHops": mode }, "swimlane": { "lineHops": mode }
-                }));
+                let config =
+                    merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                        "elk": { "lineHops": mode }, "swimlane": { "lineHops": mode }
+                    }));
                 apply_line_hops_to_edge_geometries(
                     &mut cache,
                     &render_edges,
@@ -628,7 +629,7 @@ mod tests {
             render_edges[1].key,
             cache_entry("M-10,0L10,0", vec![point(-10.0, 0.0), point(10.0, 0.0)]),
         );
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "swimlane": { "lineHops": false }
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(

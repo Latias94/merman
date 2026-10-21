@@ -26,9 +26,8 @@ use crate::environment::{
 use crate::svg::SvgPipelinePreset;
 use crate::text::{TextMetrics, WrapMode};
 use merman_core::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
-use merman_core::{
-    CustomJsonProvenance, CustomJsonRenderModel, Engine, MermaidConfig, ParseOptions,
-};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
 use serde_json::{Value, json};
 
 fn custom_semantic_parser(
@@ -859,7 +858,7 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
 #[test]
 fn capability_plan_reports_the_authoritative_render_family() {
     let configured_swimlane = Engine::new().with_site_config(
-        merman_core::MermaidConfig::from_value(json!({ "layout": "swimlane" })),
+        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
     );
     let cases = [
         (
@@ -896,7 +895,7 @@ fn family_theme_plan_tracks_the_authoritative_family() {
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
     let configured_swimlane = Engine::new().with_site_config(
-        merman_core::MermaidConfig::from_value(json!({ "layout": "swimlane" })),
+        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
     );
     let cases = [
         (
@@ -942,9 +941,9 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
-    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-        json!({ "layout": "swimlane" }),
-    ));
+    let engine = Engine::new().with_site_config(
+        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
+    );
     let parsed = theme
         .install_parse_compatibility(engine)
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
@@ -1906,7 +1905,7 @@ fn flowchart_explicit_mermaid_config_owns_typed_node_paint_precedence() {
 
     for explicit_fill in ["#22c55e", "#ef4444"] {
         let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "themeVariables": {"mainBkg": explicit_fill}
             })),
         ));
@@ -2019,7 +2018,7 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
     assert!(!source.svg().contains("stroke-width:2.5px !important"));
 
     let configured = render(
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": {"strokeWidth": 4}
         }))),
         "flowchart LR\nA[Alpha]\n",
@@ -2306,7 +2305,7 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     );
 
     let configured = render(
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "look": "neo",
             "themeVariables": {"radius": 4}
         }))),
@@ -2448,7 +2447,7 @@ end
     for (origin, engine, source, expected_size) in [
         (
             "site",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "fontSize": 19,
                 "themeVariables": {
                     "fontFamily": "Excalifont,Xiaolai SC"
@@ -2459,7 +2458,7 @@ end
         ),
         (
             "source",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
             format!(
                 "%%{{init: {{\"fontSize\": 21, \"themeVariables\": {{\"fontFamily\": \"Excalifont,Xiaolai SC\"}}}}}}%%\n{SOURCE}"
             ),
@@ -2638,7 +2637,7 @@ fn flowchart_explicit_primary_color_owns_derived_main_background() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {"primaryColor": "#123456"}
         })),
@@ -3054,7 +3053,7 @@ A o-- B
 
     let configured = [
         render(
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -3067,7 +3066,7 @@ A o-- B
             SOURCE_CONFIG,
         ),
         render(
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"strokeWidth": 160}
             }))),
             DIAGRAM,
@@ -3976,8 +3975,8 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
     };
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new().with_site_config(MermaidConfig::from_value(
-                json!({
+            .install_parse_compatibility(Engine::new().with_site_config(
+                PresentationConfig::from_value(json!({
                     "secure": [
                         "secure",
                         "securityLevel",
@@ -3986,8 +3985,8 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
                         "suppressErrorRendering",
                         "maxEdges"
                     ]
-                }),
-            )))
+                })),
+            ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4048,7 +4047,7 @@ fn raw_theme_css_rejects_strict_output_when_typed_rules_are_not_applicable() {
     let source =
         "%%{init: {\"themeCSS\": \".node rect { fill: #f97316; }\"}}%%\nflowchart LR\nA[Alpha]\n";
     let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "secure": [
                 "secure",
                 "securityLevel",
@@ -5612,7 +5611,7 @@ fn flowchart_edge_source_and_explicit_line_color_own_typed_precedence() {
         ),
         (
             theme.install_parse_compatibility(Engine::new().with_site_config(
-                MermaidConfig::from_value(json!({
+                PresentationConfig::from_value(json!({
                     "theme": "base",
                     "themeVariables": {"lineColor": "#16a34a"}
                 })),
@@ -6115,14 +6114,14 @@ fn sequence_explicit_actor_line_color_owns_precedence_over_typed_lifeline_paint(
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"actorLineColor": "#22c55e"}
             }))),
             "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -6513,14 +6512,14 @@ fn sequence_explicit_signal_color_owns_precedence_over_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"signalColor": "#22c55e"}
             }))),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -6626,7 +6625,7 @@ fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"textColor": "#22c55e"}
             }))),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
@@ -6635,7 +6634,7 @@ fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
         ),
         (
             "init directive",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -7134,9 +7133,9 @@ fn sequence_explicit_activation_and_note_paints_own_precedence_over_typed_paints
             )
             .expect("compile Sequence paint theme");
         let parsed = theme
-            .install_parse_compatibility(Engine::new().with_site_config(MermaidConfig::from_value(
-                json!({"themeVariables": variables}),
-            )))
+            .install_parse_compatibility(Engine::new().with_site_config(
+                PresentationConfig::from_value(json!({"themeVariables": variables})),
+            ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -7209,7 +7208,7 @@ fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
         )
         .expect("compile Sequence actor stroke theme");
     let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "themeVariables": {"actorBorder": "#22c55e"}
         })),
     ));
@@ -7497,7 +7496,7 @@ fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
         )
         .expect("compile Sequence actor theme");
     let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "themeVariables": {"actorBkg": "#22c55e"}
         })),
     ));
@@ -7612,11 +7611,11 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
 
     let configured_parse = || {
         theme
-            .install_parse_compatibility(Engine::new().with_site_config(MermaidConfig::from_value(
-                json!({
+            .install_parse_compatibility(Engine::new().with_site_config(
+                PresentationConfig::from_value(json!({
                     "themeVariables": {"actorBkg": "#22c55e"}
-                }),
-            )))
+                })),
+            ))
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -8408,7 +8407,7 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
     for (origin, engine, source) in [
         (
             "site",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"fontFamily": "serif", "fontSize": 30}
             }))),
             source.to_string(),
@@ -8422,14 +8421,14 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
         ),
         (
             "site-root",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "serif", "fontSize": 30
             }))),
             source.to_string(),
         ),
         (
             "source-root",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
             format!("%%{{init: {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}%%\n{source}"),
         ),
     ] {
@@ -9953,7 +9952,7 @@ struct SwimlanePreparedMathRenderer {
 }
 
 impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
-    fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+    fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
         self.calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Some(r#"<span class="external-math">rendered</span>"#.to_owned())
@@ -9962,7 +9961,7 @@ impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
     fn measure_html_label(
         &self,
         _text: &str,
-        _config: &MermaidConfig,
+        _config: &PresentationConfig,
         _style: &crate::text::TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: WrapMode,
@@ -10483,7 +10482,7 @@ impl crate::math::MathRenderer for CountingMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::MermaidConfig,
+        _config: &merman_core::presentation::PresentationConfig,
     ) -> Option<String> {
         self.calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -11148,7 +11147,7 @@ impl crate::math::MathRenderer for MindmapMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::MermaidConfig,
+        _config: &merman_core::presentation::PresentationConfig,
     ) -> Option<String> {
         text.contains("$$")
             .then(|| "<strong>rendered-mindmap-math</strong>".to_string())
@@ -11157,7 +11156,7 @@ impl crate::math::MathRenderer for MindmapMathRenderer {
     fn measure_html_label(
         &self,
         text: &str,
-        _config: &merman_core::MermaidConfig,
+        _config: &merman_core::presentation::PresentationConfig,
         _style: &crate::text::TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: crate::text::WrapMode,
@@ -11250,7 +11249,7 @@ impl crate::math::MathRenderer for ClassMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::MermaidConfig,
+        _config: &merman_core::presentation::PresentationConfig,
     ) -> Option<String> {
         text.contains("$$")
             .then(|| "<div>rendered-class-math</div>".to_string())
@@ -11259,7 +11258,7 @@ impl crate::math::MathRenderer for ClassMathRenderer {
     fn measure_html_label(
         &self,
         text: &str,
-        _config: &merman_core::MermaidConfig,
+        _config: &merman_core::presentation::PresentationConfig,
         _style: &crate::text::TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: crate::text::WrapMode,
@@ -11770,12 +11769,12 @@ fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
 
 #[test]
 fn agentflow_layout_config_prioritizes_family_measurement_keys() {
-    let config = merman_core::MermaidConfig::from_value(json!({
+    let config = merman_core::presentation::PresentationConfig::from_value(json!({
         "agentflow": { "minNodeWidth": 180, "wrappingWidth": 240 },
         "flowchart": { "minNodeWidth": 90 }
     }));
     let projected = project_agentflow_flowchart_config(&config);
-    let number = |config: &merman_core::MermaidConfig, path: &str| {
+    let number = |config: &merman_core::presentation::PresentationConfig, path: &str| {
         config
             .as_value()
             .pointer(path)
@@ -11790,7 +11789,7 @@ fn agentflow_layout_config_prioritizes_family_measurement_keys() {
 #[test]
 fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
     for wrapping in [json!(0), json!(null), json!(false), json!("")] {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping },
             "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
         }));
@@ -11803,7 +11802,7 @@ fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
 #[test]
 fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings() {
     for family in [json!({}), json!(null)] {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "agentflow": family,
             "flowchart": {
                 "diagramPadding": 99, "titleTopMargin": 99, "useMaxWidth": false,
@@ -11830,7 +11829,7 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
         }
     }
     for value in [json!(null), json!(0)] {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "nodeSpacing": 90, "rankSpacing": 0,
             "agentflow": {
                 "diagramPadding": value, "titleTopMargin": value, "useMaxWidth": false,
@@ -11861,7 +11860,7 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
         "elk.box",
         "elk.rectpacking",
     ] {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "layout": layout,
             "nodeSpacing": 90, "rankSpacing": 110,
             "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},

@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::diagram_theme::ThemeTypographyProperty;
 use crate::text::TextStyle;
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,7 @@ impl SequenceRoleTypographyConfig {
 pub(crate) struct SequenceConfigView<'a> {
     effective_config: &'a Value,
     sequence_config: &'a Value,
-    config_provenance: Option<&'a MermaidConfig>,
+    config_provenance: Option<&'a PresentationConfig>,
 }
 
 impl<'a> SequenceConfigView<'a> {
@@ -82,7 +82,7 @@ impl<'a> SequenceConfigView<'a> {
         }
     }
 
-    pub(crate) fn from_mermaid_config(effective_config: &'a MermaidConfig) -> Self {
+    pub(crate) fn from_mermaid_config(effective_config: &'a PresentationConfig) -> Self {
         Self {
             effective_config: effective_config.as_value(),
             sequence_config: effective_config
@@ -475,7 +475,7 @@ mod tests {
     use serde_json::json;
 
     fn sequence_layout_settings(config: Value) -> SequenceLayoutSettings {
-        let effective_config = MermaidConfig::from_value(config);
+        let effective_config = PresentationConfig::from_value(config);
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -763,7 +763,7 @@ mod tests {
     #[test]
     fn sequence_role_typography_keeps_explicit_root_font_ownership_after_mirroring() {
         let metadata = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "Root Family",
             })))
             .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
@@ -785,7 +785,7 @@ mod tests {
     #[test]
     fn sequence_role_typography_keeps_theme_variable_ownership_separate_from_measurement() {
         let metadata = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "Root Family",
                 "themeVariables": {"fontFamily": "Theme Family"},
             })))
@@ -808,7 +808,7 @@ mod tests {
     #[test]
     fn sequence_role_typography_uses_generated_root_defaults_on_mermaid_compatibility_path() {
         let metadata = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "sequence": {
                     "actorFontFamily": "Actor Family",
                     "actorFontSize": 19,
@@ -843,7 +843,7 @@ mod tests {
     #[test]
     fn sequence_role_typography_keeps_explicit_role_ownership_for_typed_properties() {
         let metadata = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "sequence": {
                     "actorFontFamily": "Actor Family",
                     "actorFontSize": 19,

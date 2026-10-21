@@ -2572,7 +2572,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "agentflow".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -3245,7 +3245,8 @@ Group@{labelType: text}
     #[test]
     fn endpoint_expansion_obeys_the_secure_edge_limit() {
         let mut meta = meta();
-        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 3}));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 3}));
         let result = parse_agentflow_model_for_render_controlled(
             "agentflow-beta\na & b --> c & d",
             &meta,
@@ -3710,8 +3711,9 @@ a --> b
     fn click_callbacks_respect_security_and_directives_reject_unconsumed_content() {
         for (security, callback) in [("strict", false), ("loose", true)] {
             let mut metadata = meta();
-            metadata.effective_config =
-                MermaidConfig::from_value(json!({"securityLevel":security}));
+            metadata.effective_config = crate::presentation::PresentationConfig::from_value(
+                json!({"securityLevel":security}),
+            );
             let model = parse_agentflow_model_for_render_controlled(
                 "agentflow-beta\na\nclick a call test(\"one\", two) \"Run\"\nclick unknown \"https://example.com\"\n",
                 &metadata, &OperationControl::new(),

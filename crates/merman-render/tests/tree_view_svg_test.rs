@@ -1,9 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{
-    Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
-};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions, ParsedDiagramRender};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
     OrdinalSelector, Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -806,9 +805,10 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
             ThemeStylePatch::default().with_stroke(marker),
         ),
     ]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "securityLevel": "loose"
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        })));
     let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
         "treeView-beta\nRoot icon(folder)\n",
         &theme,
@@ -1203,7 +1203,7 @@ fn tree_view_security_levels_keep_inline_icon_dom() {
         ..Default::default()
     };
     let strict_svg = render_tree_view_svg_with_options(input, options.clone());
-    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let loose_engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
     let loose_svg = render_tree_view_svg_with_engine_and_environment(
@@ -1267,7 +1267,7 @@ App.tsx icon(logos:react)
     }"#;
     let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
     let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
-    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let loose_engine = Engine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
     let svg = render_tree_view_svg_with_engine_and_environment(

@@ -6,7 +6,8 @@ type FamilyFixture = (
     merman_render::environment::RenderSession,
 );
 
-use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -741,7 +742,7 @@ fn mindmap_site_font_family_outranks_typed_font_stack() {
     let rendered = render_mindmap_with_observed_font(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "fontFamily": "Site Mindmap Font" }
         }))),
         "mindmap-site-font",
@@ -817,7 +818,7 @@ fn mindmap_direct_edge_stroke_reaches_classic_hand_drawn_neo_and_redux_paths() {
             let rendered = render_mindmap_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                Engine::new().with_site_config(PresentationConfig::from_value(config)),
                 &format!("mindmap-edge-{case}-{look_case}"),
                 ThemePortabilityRequirement::RequirePortable,
             );
@@ -870,7 +871,7 @@ fn mindmap_direct_node_paint_owns_only_real_neo_redux_token_consumers() {
             let rendered = render_mindmap_with_theme_and_engine(
                 source,
                 &mindmap_node_paint_theme(fill, stroke, variant),
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": "redux",
                     "look": "neo"
                 }))),
@@ -947,7 +948,7 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             let fill = render_mindmap_with_theme_and_engine(
                 source,
                 &mindmap_node_fill_theme(paint.clone(), variant),
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": "redux",
                     "look": "neo"
                 }))),
@@ -969,7 +970,7 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             let stroke = render_mindmap_with_theme_and_engine(
                 source,
                 &mindmap_node_stroke_theme(paint, variant),
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": "redux",
                     "look": "neo"
                 }))),
@@ -998,7 +999,7 @@ fn mindmap_direct_node_stroke_keeps_redux_classic_root_label_fanout() {
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
         ),
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "classic"
         }))),
@@ -1025,7 +1026,7 @@ fn mindmap_direct_node_stroke_reaches_the_neo_root_overlay() {
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
         ),
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "neutral",
             "look": "neo",
             "themeVariables": { "useGradient": false }
@@ -1055,7 +1056,7 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
         CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
         None,
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "neutral",
         "look": "neo",
         "themeVariables": { "useGradient": false }
@@ -1114,7 +1115,7 @@ fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() 
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             None,
         ),
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "neutral",
             "look": "neo",
             "themeVariables": { "useGradient": true }
@@ -1138,7 +1139,7 @@ fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() 
 #[test]
 fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
     let source = "mindmap\n  Root\n    Child\n";
-    let site_config = MermaidConfig::from_value(json!({
+    let site_config = PresentationConfig::from_value(json!({
         "theme": "redux",
         "look": "neo",
         "themeVariables": { "useGradient": false }
@@ -1235,7 +1236,7 @@ fn mindmap_static_node_fill_remains_applied_when_an_ordinal_rule_wins_an_occurre
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": { "useGradient": false }
@@ -1277,7 +1278,7 @@ fn mindmap_later_static_node_fill_makes_an_ordinal_rule_not_applicable() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": { "useGradient": false }
@@ -1301,7 +1302,7 @@ fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
             CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
             None,
         ),
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {
@@ -1337,7 +1338,7 @@ fn mindmap_direct_node_paint_is_not_applicable_when_classic_has_no_token_consume
             CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
             None,
         ),
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "classic"
         }))),
@@ -1366,7 +1367,7 @@ fn mindmap_color_scale_ownership_suppresses_only_edges_using_that_slot() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First\n      First child\n    Second\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "cScale1": "#fedcba" }
         }))),
         "mindmap-edge-color-scale-owner",
@@ -1403,7 +1404,7 @@ fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": { "nodeBorder": "#fedcba" }
@@ -1441,7 +1442,7 @@ fn mindmap_line_color_does_not_claim_the_edge_terminal() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "lineColor": "#fedcba" }
         }))),
         "mindmap-edge-line-color",
@@ -1549,7 +1550,7 @@ fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
 #[test]
 fn mindmap_site_color_scale_slot_outranks_only_its_typed_palette_entry() {
     let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "cScale1": "#fedcba" }
     })));
     let rendered = render_mindmap_with_theme_and_engine(
@@ -1651,7 +1652,7 @@ fn mindmap_explicit_mermaid_color_scale_slot_outranks_the_typed_palette() {
 #[test]
 fn mindmap_derived_color_scale_slot_retains_source_ownership() {
     let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "base",
         "themeVariables": { "secondaryColor": "#00ff00" }
     })));
@@ -1703,7 +1704,7 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let classic = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "look": "classic",
             "themeVariables": { "useGradient": true }
         }))),
@@ -1728,7 +1729,7 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let neo = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "look": "neo",
             "themeVariables": { "useGradient": false }
         }))),
@@ -1762,7 +1763,7 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let gradient = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "look": "neo",
             "themeVariables": { "useGradient": true }
         }))),
@@ -1827,7 +1828,7 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
         let rendered = render_mindmap_with_theme_and_engine(
             "mindmap\n  Root\n    Child\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
             &diagram_id,
             ThemePortabilityRequirement::RequirePortable,
         );
@@ -1857,7 +1858,7 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
 #[test]
 fn mindmap_palette_fails_closed_when_the_section_css_is_outside_the_color_limit() {
     let theme = mindmap_node_palette_theme(&["#123456"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "THEME_COLOR_LIMIT": 1 }
     })));
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
@@ -1892,7 +1893,7 @@ fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile mixed direct and compatibility Mindmap theme");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "base"
     })));
     let rendered = render_mindmap_with_theme_and_engine(
@@ -1922,7 +1923,7 @@ fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
 #[test]
 fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
     let theme = mindmap_node_palette_theme(&["#123456"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeCSS": ".custom rect { fill: #22c55e; }"
     })));
     let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)

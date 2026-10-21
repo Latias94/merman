@@ -358,7 +358,7 @@ mod tests {
         crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
             resolved.as_ref(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,

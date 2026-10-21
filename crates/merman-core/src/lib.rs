@@ -37,6 +37,7 @@ pub mod models;
 pub mod operation;
 mod parse_pipeline;
 pub mod preprocess;
+pub mod presentation;
 pub mod resources;
 pub mod runtime;
 pub mod sanitize;
@@ -53,7 +54,7 @@ mod yaml_config;
 pub use compatibility_json::ManagedSemanticJson;
 pub use config::MermaidConfig;
 #[cfg(test)]
-use config::ThemeParseBinding;
+use config::presentation::ThemeParseBinding;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
@@ -87,6 +88,7 @@ pub use operation::{
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
+use presentation::PresentationConfig;
 pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 
 /// Workspace-internal compiled theme binding and Mermaid ownership evidence.
@@ -99,11 +101,13 @@ pub mod __private {
     use std::fmt;
     use std::sync::{Arc, OnceLock};
 
-    use crate::config::{
+    use crate::config::presentation::{
         FrozenThemeCompatibilityField, ThemeCompatibilityFieldKind as ConfigFieldKind,
         ThemeParseBinding, ThemeParseBindingError,
     };
-    use crate::{Engine, MermaidConfig, ParseMetadata, SiteConfigInitialization};
+    use crate::{
+        Engine, MermaidConfig, ParseMetadata, PresentationConfig, SiteConfigInitialization,
+    };
 
     /// Opaque normalized identity for one compiled theme's parse compatibility contract.
     #[derive(Clone, PartialEq, Eq)]
@@ -128,7 +132,7 @@ pub mod __private {
     pub struct ThemeCompatibilityPlan {
         recipe: ThemeCompatibilityRecipe,
         initialization: Arc<OnceLock<SiteConfigInitialization>>,
-        compatibility_config: MermaidConfig,
+        compatibility_config: PresentationConfig,
     }
 
     impl fmt::Debug for ThemeCompatibilityPlan {
@@ -150,7 +154,8 @@ pub mod __private {
                 recipe_identity,
                 compatibility_config,
             )?);
-            let compatibility_config = MermaidConfig::from_theme_parse_binding(recipe.0.clone());
+            let compatibility_config =
+                PresentationConfig::from_theme_parse_binding(recipe.0.clone());
             let initialization = Arc::new(OnceLock::new());
             Ok(Self {
                 recipe,
@@ -164,15 +169,17 @@ pub mod __private {
         }
     }
 
-    pub use crate::config::{ErPaintInput, ErPaintInputs, GitGraphPaintInput, GitGraphPaintInputs};
+    pub use crate::config::presentation::{
+        ErPaintInput, ErPaintInputs, GitGraphPaintInput, GitGraphPaintInputs,
+    };
 
     /// Returns frozen raw Mermaid paint authority for the selected GitGraph family.
-    pub fn gitgraph_paint_inputs(config: &MermaidConfig) -> Option<GitGraphPaintInputs> {
+    pub fn gitgraph_paint_inputs(config: &PresentationConfig) -> Option<GitGraphPaintInputs> {
         config.gitgraph_paint_inputs()
     }
 
     /// Returns frozen raw Mermaid paint authority for the selected ER family.
-    pub fn er_paint_inputs(config: &MermaidConfig) -> Option<ErPaintInputs> {
+    pub fn er_paint_inputs(config: &PresentationConfig) -> Option<ErPaintInputs> {
         config.er_paint_inputs()
     }
 
@@ -447,12 +454,15 @@ pub mod __private {
     }
 
     /// Reports whether surviving Mermaid input outranks a typed theme default at this path.
-    pub fn config_path_overrides_typed_default(config: &MermaidConfig, dotted_path: &str) -> bool {
+    pub fn config_path_overrides_typed_default(
+        config: &PresentationConfig,
+        dotted_path: &str,
+    ) -> bool {
         config.config_path_overrides_typed_default(dotted_path)
     }
 
     /// Reports whether site or source configuration explicitly owns this path.
-    pub fn explicit_config_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
+    pub fn explicit_config_owns_path(config: &PresentationConfig, dotted_path: &str) -> bool {
         config.explicit_config_owns_path(dotted_path)
     }
 
@@ -521,29 +531,29 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 
 #[derive(Clone)]
 struct SiteConfigInitialization {
-    site_config: MermaidConfig,
-    initialization_inputs: MermaidConfig,
-    default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
+    site_config: PresentationConfig,
+    initialization_inputs: PresentationConfig,
+    default_effective_config: std::result::Result<PresentationConfig, theme::ThemeResolutionError>,
 }
 
 impl SiteConfigInitialization {
-    fn for_pristine_install(&self, overrides: &MermaidConfig) -> Self {
+    fn for_pristine_install(&self, overrides: &PresentationConfig) -> Self {
         let mut initialized = self.clone();
         initialized
             .initialization_inputs
             .refresh_initialization_mutations_after(overrides);
         initialized
             .site_config
-            .refresh_initialization_mutations_after(&generated::default_site_config());
+            .refresh_initialization_mutations_after(&generated::default_presentation_config());
         if let Ok(effective) = &mut initialized.default_effective_config {
             effective.inherit_initialization_mutation_epochs(&initialized.site_config);
         }
         initialized
     }
 
-    fn new(theme_config: Option<MermaidConfig>, overrides: &MermaidConfig) -> Self {
-        let mut site_config = generated::default_site_config();
-        let mut initialization_inputs = MermaidConfig::empty_object();
+    fn new(theme_config: Option<PresentationConfig>, overrides: &PresentationConfig) -> Self {
+        let mut site_config = generated::default_presentation_config();
+        let mut initialization_inputs = PresentationConfig::empty_object();
         if let Some(theme_config) = theme_config {
             initialization_inputs.deep_merge(theme_config.as_value());
             merge_theme_compatibility_config(&mut site_config, theme_config);
@@ -560,15 +570,18 @@ impl SiteConfigInitialization {
 }
 
 fn build_default_effective_config(
-    site_config: &MermaidConfig,
-) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+    site_config: &PresentationConfig,
+) -> std::result::Result<PresentationConfig, theme::ThemeResolutionError> {
     let mut effective_config = site_config.clone();
     theme::apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
 }
 
-fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: MermaidConfig) {
-    config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+fn merge_site_config_override(
+    target: &mut PresentationConfig,
+    mut site_config: PresentationConfig,
+) {
+    site_config.mirror_legacy_font_family();
     // initialize() normalizes an unknown global theme before it becomes a user layer.
     // Scoped themes instead fall through during diagram appearance resolution.
     if site_config.as_value().get("theme").is_some_and(|value| {
@@ -595,8 +608,11 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
     }
 }
 
-fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config: MermaidConfig) {
-    config::mirror_legacy_font_family_into_theme_variables(&mut theme_config);
+fn merge_theme_compatibility_config(
+    target: &mut PresentationConfig,
+    mut theme_config: PresentationConfig,
+) {
+    theme_config.mirror_legacy_font_family();
     let before = target.clone();
     target.deep_merge(theme_config.as_value());
     theme_config.retain_theme_compatibility_paths_applied_after(target, &before);
@@ -604,12 +620,12 @@ fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config
 }
 
 fn generated_default_effective_config()
--> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+-> std::result::Result<PresentationConfig, theme::ThemeResolutionError> {
     static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
-        std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
+        std::result::Result<PresentationConfig, theme::ThemeResolutionError>,
     > = std::sync::OnceLock::new();
     DEFAULT_EFFECTIVE_CONFIG
-        .get_or_init(|| build_default_effective_config(&generated::default_site_config()))
+        .get_or_init(|| build_default_effective_config(&generated::default_presentation_config()))
         .clone()
 }
 
@@ -645,7 +661,7 @@ pub struct ParseMetadata {
     /// This mirrors Mermaid's `mermaidAPI.parse()` return shape.
     pub config: MermaidConfig,
     /// The effective config used for detection/parsing after applying site defaults.
-    pub effective_config: MermaidConfig,
+    pub effective_config: PresentationConfig,
     /// Sanitized Mermaid title from front-matter/directives, when present.
     pub title: Option<String>,
 }
@@ -673,17 +689,17 @@ pub struct Engine {
     registry: DetectorRegistry,
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
-    site_config: MermaidConfig,
-    site_config_overrides: MermaidConfig,
-    theme_compatibility_config: Option<MermaidConfig>,
-    initialization_inputs: MermaidConfig,
-    default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
+    site_config: PresentationConfig,
+    site_config_overrides: PresentationConfig,
+    theme_compatibility_config: Option<PresentationConfig>,
+    initialization_inputs: PresentationConfig,
+    default_effective_config: std::result::Result<PresentationConfig, theme::ThemeResolutionError>,
     runtime_policy: runtime::RuntimePolicy,
 }
 
 impl Default for Engine {
     fn default() -> Self {
-        let site_config = generated::default_site_config();
+        let site_config = generated::default_presentation_config();
         let default_effective_config = generated_default_effective_config();
 
         Self {
@@ -691,9 +707,9 @@ impl Default for Engine {
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
-            site_config_overrides: MermaidConfig::empty_object(),
+            site_config_overrides: PresentationConfig::empty_object(),
             theme_compatibility_config: None,
-            initialization_inputs: MermaidConfig::empty_object(),
+            initialization_inputs: PresentationConfig::empty_object(),
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -711,7 +727,7 @@ impl Engine {
         Ok(Self::new().with_runtime_policy(runtime::RuntimePolicy::try_native()?))
     }
 
-    pub(crate) fn default_effective_config(&self) -> Result<MermaidConfig> {
+    pub(crate) fn default_effective_config(&self) -> Result<PresentationConfig> {
         self.default_effective_config.clone().map_err(Error::from)
     }
 
@@ -772,7 +788,7 @@ impl Engine {
     }
 
     /// Applies site-level Mermaid config defaults.
-    pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+    pub fn with_site_config(mut self, site_config: PresentationConfig) -> Self {
         if site_config.is_empty_object() && !site_config.has_tracking_theme_compatibility() {
             return self;
         }
@@ -788,7 +804,8 @@ impl Engine {
     /// by another theme recipe.
     #[cfg(test)]
     pub(crate) fn with_theme_compatibility(mut self, binding: ThemeParseBinding) -> Self {
-        self.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(binding));
+        self.theme_compatibility_config =
+            Some(PresentationConfig::from_theme_parse_binding(binding));
         self.rebuild_site_config();
         self
     }
@@ -797,8 +814,8 @@ impl Engine {
     ///
     /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
     /// defaults without inheriting values from the engine's previous site config.
-    pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
-        self.site_config_overrides = MermaidConfig::empty_object();
+    pub fn with_exact_site_config(mut self, site_config: Option<PresentationConfig>) -> Self {
+        self.site_config_overrides = PresentationConfig::empty_object();
         if let Some(site_config) = site_config {
             merge_site_config_override(&mut self.site_config_overrides, site_config);
         }

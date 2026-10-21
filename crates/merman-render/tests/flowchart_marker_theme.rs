@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
@@ -37,18 +38,18 @@ fn compile(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
         .unwrap()
 }
 
-fn config(swimlane: bool, look: &str) -> MermaidConfig {
+fn config(swimlane: bool, look: &str) -> PresentationConfig {
     let mut value = json!({"htmlLabels": false, "look": look});
     if swimlane {
         value["layout"] = json!("swimlane");
     }
-    MermaidConfig::from_value(value)
+    PresentationConfig::from_value(value)
 }
 
 fn render(
     source: &str,
     theme: &DiagramTheme,
-    config: MermaidConfig,
+    config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
@@ -353,7 +354,7 @@ fn marker_config_ownership_uses_line_color_and_ignores_the_retired_arrowhead_sel
             let rendered = render(
                 POINT,
                 &theme,
-                MermaidConfig::from_value(value.clone()),
+                PresentationConfig::from_value(value.clone()),
                 ThemePortabilityRequirement::BestEffort,
             )
             .unwrap();
@@ -367,7 +368,7 @@ fn marker_config_ownership_uses_line_color_and_ignores_the_retired_arrowhead_sel
                 render(
                     POINT,
                     &theme,
-                    MermaidConfig::from_value(value),
+                    PresentationConfig::from_value(value),
                     ThemePortabilityRequirement::RequirePortable
                 )
                 .is_err(),
@@ -567,7 +568,7 @@ fn source_and_config_edge_owners_preserve_their_marker_behavior() {
             );
         }
     }
-    let cfg = MermaidConfig::from_value(
+    let cfg = PresentationConfig::from_value(
         json!({"htmlLabels":false,"themeVariables":{"lineColor":"#123456"}}),
     );
     let themed = render(

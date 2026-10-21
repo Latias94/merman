@@ -1174,7 +1174,9 @@ impl SemanticOperationConfig {
     fn materialize(self) -> SemanticOperationEngine {
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(site_config);
+            engine = engine.with_site_config(
+                merman::presentation::PresentationConfig::from_config(site_config),
+            );
         }
         SemanticOperationEngine {
             engine,

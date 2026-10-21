@@ -137,13 +137,13 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
 
 pub(crate) fn requires_math(
     model: &UsecaseDiagramRenderModel,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
 ) -> bool {
     if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
         return false;
     }
     let has_math = |(text, kind): (&str, UsecaseLabelType)| {
-        let sanitized = merman_core::sanitize::sanitize_text(text, config);
+        let sanitized = merman_core::sanitize::sanitize_text(text, config.as_config());
         crate::math::contains_delimited_math(&create_text_source(&sanitized, kind))
     };
     let mut labels = model
@@ -236,14 +236,15 @@ pub(crate) fn requires_math(
 
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramRenderModel,
-    effective_config: &Value,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
     work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
-    let css_binding = UsecaseCssBinding::new(effective_config);
+    let config_value = effective_config.as_value();
+    let css_binding = UsecaseCssBinding::new(config_value);
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
     let (mut nodes, mut edges) = measure::measure(
         model,
@@ -253,14 +254,14 @@ pub(crate) fn prepare_usecase_diagram(
         math_renderer,
         &mut work,
     )?;
-    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+    if crate::layout_backend::resolve_graph_layout(config_value).backend
         == crate::layout_backend::GraphLayoutBackend::Dagre
     {
         dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
     }
     let mut layout = layout::layout(
         model,
-        effective_config,
+        config_value,
         &nodes,
         &mut edges,
         &mut work,
@@ -268,7 +269,7 @@ pub(crate) fn prepare_usecase_diagram(
         operation_seed,
     )?;
     let edge_paths =
-        layout::prepare_edge_paths(&mut layout, &nodes, &edges, effective_config, &mut work)?;
+        layout::prepare_edge_paths(&mut layout, &nodes, &edges, config_value, &mut work)?;
     Ok(UsecasePreparedArtifact {
         css_binding,
         layout,

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::{config_f64_css_px, config_string};
 use crate::diagram_theme::{
@@ -96,7 +96,7 @@ pub(crate) struct GitGraphTypographyThemePlan {
 impl GitGraphTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -524,10 +524,10 @@ mod tests {
     use serde_json::json;
 
     fn typography_plan() -> GitGraphTypographyThemePlan {
-        typography_plan_with_config(MermaidConfig::default())
+        typography_plan_with_config(PresentationConfig::default())
     }
 
-    fn typography_plan_with_config(config: MermaidConfig) -> GitGraphTypographyThemePlan {
+    fn typography_plan_with_config(config: PresentationConfig) -> GitGraphTypographyThemePlan {
         let typography = ThemeTextStyle::default()
             .with_font_stack(FontStack::single("GitGraphReceipt").expect("valid font stack"))
             .with_font_size_px(23.0)
@@ -760,7 +760,7 @@ mod tests {
 
     #[test]
     fn receipt_accounts_for_base_dependent_and_unmeasurable_role_sizes() {
-        let inherited = typography_plan_with_config(MermaidConfig::from_value(json!({
+        let inherited = typography_plan_with_config(PresentationConfig::from_value(json!({
             "themeVariables": {
                 "commitLabelFontSize": "inherit",
                 "tagLabelFontSize": "150%"
@@ -793,7 +793,7 @@ mod tests {
             ))
         );
 
-        let unmeasurable = typography_plan_with_config(MermaidConfig::from_value(json!({
+        let unmeasurable = typography_plan_with_config(PresentationConfig::from_value(json!({
             "themeVariables": {
                 "commitLabelFontSize": "calc(10px + 1em)"
             }

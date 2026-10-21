@@ -220,7 +220,7 @@ fn render_resolved_icon_inner(
         BoundedSanitizeSink::new(reserved_svg_bytes, sanitizer_ceiling, request.work_meter);
     let sanitized = match merman_core::sanitize::sanitize_xhtml_with_sink(
         &raw_svg,
-        request.effective_config,
+        request.effective_config.as_config(),
         &sanitize_sink,
     ) {
         Ok(sanitized) => sanitized,
@@ -854,7 +854,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<String>, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -882,7 +882,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<Vec<String>>, usize, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -930,11 +930,11 @@ mod tests {
     #[test]
     fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
         let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
-        let expected = merman_core::sanitize::sanitize_xhtml(input, &config);
+        let expected = merman_core::sanitize::sanitize_xhtml(input, config.as_config());
         assert!(expected.contains(r#"target="_blank""#));
         assert!(expected.contains(r#"rel="noopener""#));
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -942,7 +942,7 @@ mod tests {
         assert_eq!(
             merman_core::sanitize::sanitize_xhtml_with_sink(
                 input,
-                &config,
+                config.as_config(),
                 &BoundedSanitizeSink::new(expected.len(), 4096, &meter),
             )
             .unwrap(),
@@ -951,7 +951,7 @@ mod tests {
         assert_eq!(
             merman_core::sanitize::sanitize_xhtml_with_sink(
                 input,
-                &config,
+                config.as_config(),
                 &BoundedSanitizeSink::new(expected.len() - 1, 4096, &meter),
             ),
             Err(SanitizeFailure::Output(
@@ -970,14 +970,14 @@ mod tests {
             Err(BoundedSanitizeError::AllocationFailed)
         );
 
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
         assert_eq!(
             merman_core::sanitize::sanitize_xhtml_with_sink(
                 "<b>ok</b>",
-                &config,
+                config.as_config(),
                 &InvalidUtf8Sink(BoundedSanitizeSink::new(4096, 4096, &meter)),
             ),
             Err(SanitizeFailure::InvalidUtf8Output)
@@ -988,14 +988,14 @@ mod tests {
     fn bounded_sanitizer_admits_parser_input_independently_of_output() {
         let input = "<script>removed</script><b>ok</b>";
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
         assert_eq!(
             merman_core::sanitize::sanitize_xhtml_with_sink(
                 input,
-                &config,
+                config.as_config(),
                 &BoundedSanitizeSink::new(4096, input.len() - 1, &meter),
             ),
             Err(SanitizeFailure::Output(
@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_charges_tree_storage_and_replays_cancellation() {
         let input = "<b>ok</b>";
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -1019,7 +1019,7 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let error = merman_core::sanitize::sanitize_xhtml_with_sink(
             input,
-            &config,
+            config.as_config(),
             &BoundedSanitizeSink::new(4096, 4096, &meter),
         )
         .expect_err("tree growth must be charged before it is retained");
@@ -1038,7 +1038,7 @@ mod tests {
         );
         let error = merman_core::sanitize::sanitize_xhtml_with_sink(
             input,
-            &config,
+            config.as_config(),
             &BoundedSanitizeSink::new(4096, 4096, &meter),
         )
         .expect_err("cancellation is observed inside HTML5 parsing");

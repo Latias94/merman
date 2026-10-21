@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
@@ -63,7 +64,7 @@ fn swimlane_cluster_ordinal_theme(ordinal: usize) -> DiagramTheme {
 fn try_render_swimlane_cluster(
     source: &str,
     theme: &DiagramTheme,
-    site_config: MermaidConfig,
+    site_config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
@@ -92,7 +93,7 @@ fn try_render_swimlane_cluster(
 fn render_swimlane_cluster(
     source: &str,
     theme: &DiagramTheme,
-    site_config: MermaidConfig,
+    site_config: PresentationConfig,
 ) -> family::RenderedFamilySvg {
     try_render_swimlane_cluster(
         source,
@@ -109,7 +110,7 @@ fn swimlane_cluster_ordinal_routes_follow_visible_lane_occurrences() {
     let rendered = try_render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &matching,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("render matching lane ordinal in best-effort mode");
@@ -122,7 +123,7 @@ fn swimlane_cluster_ordinal_routes_follow_visible_lane_occurrences() {
         try_render_swimlane_cluster(
             SWIMLANE_SOURCE,
             &matching,
-            MermaidConfig::from_value(json!({"layout": "swimlane"})),
+            PresentationConfig::from_value(json!({"layout": "swimlane"})),
             ThemePortabilityRequirement::RequirePortable,
         )
         .is_err(),
@@ -133,7 +134,7 @@ fn swimlane_cluster_ordinal_routes_follow_visible_lane_occurrences() {
     let rendered = try_render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &out_of_range,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("an out-of-range lane ordinal is not applicable");
@@ -193,7 +194,7 @@ fn swimlane_neo_non_palette_lane_stroke_has_the_matching_cluster_css_owner() {
         let rendered = render_swimlane_cluster(
             SWIMLANE_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "layout": "swimlane", "theme": "default", "look": "neo",
                 "themeVariables": variables
             })),
@@ -236,7 +237,7 @@ fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() 
         let rendered = render_swimlane_cluster(
             SWIMLANE_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "layout": "swimlane", "look": "neo", "theme": selected
             })),
         );
@@ -271,7 +272,7 @@ fn swimlane_non_palette_border_rule_preserves_authored_inline_and_class_stroke()
         let rendered = render_swimlane_cluster(
             &format!("{SWIMLANE_SOURCE}{authored}"),
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "layout": "swimlane", "look": "neo", "theme": "default"
             })),
         );
@@ -323,7 +324,7 @@ fn swimlane_cluster_paint_reaches_lane_shell_and_terminal_receipt() {
     let rendered = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
 
@@ -359,7 +360,7 @@ fn swimlane_cluster_paint_reaches_both_hand_drawn_lane_surfaces() {
     let rendered = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "layout": "swimlane",
             "look": "handDrawn",
             "handDrawnSeed": 7
@@ -397,7 +398,7 @@ fn swimlane_cluster_stroke_only_preserves_the_compatibility_lane_fill() {
     let rendered = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
     let stylesheet = stylesheet_text(&document);
@@ -434,7 +435,7 @@ fn swimlane_hand_drawn_cluster_stroke_does_not_claim_or_change_fill() {
     let rendered = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "layout": "swimlane",
             "look": "handDrawn",
             "handDrawnSeed": 7,
@@ -470,7 +471,7 @@ fn swimlane_cluster_source_and_config_owners_outrank_typed_paint_per_facet() {
     let source_owned = render_swimlane_cluster(
         "flowchart TD\nsubgraph Lane[Lane]\nA\nend\nclassDef source fill:#22c55e\nclass Lane source\n",
         &theme,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
     );
     let source_document =
         roxmltree::Document::parse(source_owned.svg()).expect("valid source-owned Swimlane SVG");
@@ -491,7 +492,7 @@ fn swimlane_cluster_source_and_config_owners_outrank_typed_paint_per_facet() {
     let config_owned = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "layout": "swimlane",
             "themeVariables": {"clusterBorder": "#334155"}
         })),
@@ -512,7 +513,7 @@ fn swimlane_cluster_source_and_config_owners_outrank_typed_paint_per_facet() {
     let config_fill_owned = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "layout": "swimlane",
             "themeVariables": {"clusterBkg": "#fef3c7"}
         })),
@@ -541,7 +542,7 @@ fn swimlane_cluster_transparent_paint_reaches_classic_lane_terminals() {
     let rendered = render_swimlane_cluster(
         SWIMLANE_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        PresentationConfig::from_value(json!({"layout": "swimlane"})),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
 
@@ -585,7 +586,7 @@ fn swimlane_cluster_explicit_default_paint_reaches_terminal_writers_and_evidence
         let rendered = render_swimlane_cluster(
             SWIMLANE_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({"layout": "swimlane"})),
+            PresentationConfig::from_value(json!({"layout": "swimlane"})),
         );
         let document = roxmltree::Document::parse(rendered.svg())
             .expect("valid explicitly default-themed Swimlane SVG");

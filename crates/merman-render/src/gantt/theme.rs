@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::gantt::GanttRenderTask;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -182,7 +182,7 @@ pub(crate) struct GanttTaskTheme {
 impl GanttTaskTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         tasks: &[GanttRenderTask],
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -807,7 +807,7 @@ impl GanttTaskTheme {
 
 fn resolve_gantt_warning_stroke(
     theme: &ResolvedDiagramTheme,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<GanttWarningStrokeResolution> {
     let style =
@@ -868,7 +868,7 @@ fn resolve_gantt_warning_stroke(
     })
 }
 
-fn gantt_config_font_family_css(config: &MermaidConfig) -> String {
+fn gantt_config_font_family_css(config: &PresentationConfig) -> String {
     let value = config
         .as_value()
         .get("gantt")
@@ -879,7 +879,7 @@ fn gantt_config_font_family_css(config: &MermaidConfig) -> String {
     value.unwrap_or_else(|| crate::config::config_font_family_css(config.as_value()))
 }
 
-fn gantt_config_owns_font_stack(config: &MermaidConfig) -> bool {
+fn gantt_config_owns_font_stack(config: &PresentationConfig) -> bool {
     [
         "gantt.fontFamily",
         "themeVariables.fontFamily",
@@ -899,7 +899,7 @@ struct GanttTypographyResolution {
 
 fn resolve_gantt_font_stack(
     theme: Option<&ResolvedDiagramTheme>,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
 ) -> GanttTypographyResolution {
     let configured_font = gantt_config_font_family_css(effective_config);
     let Some(theme) = theme else {
@@ -965,7 +965,7 @@ fn typed_radius(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -> (f6
 
 fn typed_fill_expectation(
     theme: &ResolvedDiagramTheme,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     state: GanttTaskBarState,
     style: &ResolvedThemeStyle,
 ) -> crate::Result<Option<GanttTaskFillExpectation>> {
@@ -1008,7 +1008,7 @@ fn typed_fill_expectation(
 
 fn typed_stroke_expectation(
     theme: &ResolvedDiagramTheme,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     state: GanttTaskBarState,
     style: &ResolvedThemeStyle,
 ) -> crate::Result<Option<GanttTaskStrokeExpectation>> {
@@ -1050,7 +1050,7 @@ fn typed_stroke_expectation(
 }
 
 fn gantt_text_fill_config_value(
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     path: &str,
 ) -> crate::Result<Box<str>> {
     effective_config
@@ -1063,7 +1063,7 @@ fn gantt_text_fill_config_value(
 
 fn resolve_gantt_text_fill(
     theme: &ResolvedDiagramTheme,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     style: &ResolvedThemeStyle,
 ) -> crate::Result<GanttTextFillResolution> {
     let Some(typed_fill) = resolve_direct_static_fill(
@@ -1630,7 +1630,7 @@ mod tests {
 
     #[test]
     fn prepared_binding_keeps_raw_mermaid_colors_and_layout_metrics() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "gantt": {"fontFamily": "Example Sans", "fontSize": "13", "sectionFontSize": 15},
             "themeVariables": {
                 "textColor": "var(--axis-color)",
@@ -1763,7 +1763,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::GANTT);
         let task_theme = GanttTaskTheme::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &[GanttRenderTask::default()],
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1801,7 +1801,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::GANTT);
         let task_theme = GanttTaskTheme::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &[GanttRenderTask::default()],
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1898,7 +1898,7 @@ mod tests {
         let task = GanttRenderTask::default();
         let task_theme = GanttTaskTheme::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &[task],
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -2002,7 +2002,7 @@ mod tests {
             ];
             let plan = GanttTaskTheme::resolve(
                 None,
-                &MermaidConfig::empty_object(),
+                &PresentationConfig::empty_object(),
                 &tasks,
                 &OperationWorkMeter::new(RenderResourcePolicy::default()),
             )
@@ -2127,7 +2127,7 @@ mod tests {
 
         let task_theme = GanttTaskTheme::resolve(
             Some(&resolved),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &[task],
             &work_meter,
         )

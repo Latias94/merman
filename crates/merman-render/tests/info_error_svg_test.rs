@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -527,7 +528,7 @@ fn info_text_palette_respects_static_fill_and_config_ownership() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile Info palette theme");
         let engine = if case == "config" {
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": { "textColor": "#123456" }
             })))
         } else {
@@ -617,9 +618,10 @@ fn info_explicit_default_text_fill_is_typed_and_verified() {
 fn info_config_text_color_outranks_typed_text_fill_per_property() {
     let family = InheritedTextFamily::Info;
     let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "textColor": "#abcdef" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#abcdef" }
+        })));
     let rendered = try_render_family(
         family,
         family.base_source(),
@@ -755,7 +757,7 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
         let cases = [
             (
                 "site-theme-variable",
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "themeVariables": { "fontFamily": "SiteVariableFont,serif" }
                 }))),
                 family.base_source().to_string(),
@@ -763,7 +765,7 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
             ),
             (
                 "site-root",
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "fontFamily": "SiteRootFont,monospace"
                 }))),
                 family.base_source().to_string(),
@@ -771,7 +773,7 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
             ),
             (
                 "source-theme-variable",
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "secure": []
                 }))),
                 source_theme_variable,
@@ -779,7 +781,7 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
             ),
             (
                 "source-root",
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "secure": []
                 }))),
                 source_root,
@@ -1058,7 +1060,7 @@ fn info_unsupported_fill_only_tracks_its_final_winning_facet() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
         let engine = if owner == "config" {
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
             ))
         } else {

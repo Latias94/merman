@@ -2,7 +2,8 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -225,12 +226,13 @@ requirementDiagram
 
 #[test]
 fn sequence_look_matrix_covers_css_theme_consumption() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "neo",
-        "themeVariables": {
-            "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
-        }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
+            }
+        })));
     let svg = render_svg_with_engine(
         "look-sequence",
         &engine,

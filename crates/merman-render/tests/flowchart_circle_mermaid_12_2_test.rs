@@ -3,7 +3,8 @@
 //! Mermaid 12.2 circle.ts, doubleCircle.ts and labelHelper's ignoreMinWidth contract.
 //! Source: 1fb7869866dd619168d840291c9c54b4f129758b.
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::{FlowchartLayout, LayoutNode};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -25,7 +26,7 @@ fn render(
 ) -> (FlowchartLayout, String, TextStyle) {
     render_source(
         "flowchart LR\nA((a)) --> B(((a))) --> R[a]\n",
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "layout": layout,
             "look": look,
             "handDrawnSeed": 1,
@@ -35,7 +36,7 @@ fn render(
     )
 }
 
-fn render_source(input: &str, config: MermaidConfig) -> (FlowchartLayout, String, TextStyle) {
+fn render_source(input: &str, config: PresentationConfig) -> (FlowchartLayout, String, TextStyle) {
     let parsed = Engine::new()
         .with_site_config(config)
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -282,14 +283,14 @@ fn hand_drawn_circle_fixture_preserves_pinned_rough_groups_and_ring_order() {
     let upstream = include_str!(
         "../../../fixtures/_family_local/mermaid-12-2/flowchart/local_mermaid_12_2_handdrawn_circle_min_width.upstream.svg"
     );
-    let (minimum, svg, _) = render_source(input, MermaidConfig::empty_object());
-    let (_, repeated, _) = render_source(input, MermaidConfig::empty_object());
+    let (minimum, svg, _) = render_source(input, PresentationConfig::empty_object());
+    let (_, repeated, _) = render_source(input, PresentationConfig::empty_object());
     assert_eq!(
         svg, repeated,
         "fixture seed is inherited by the render session"
     );
     let natural_input = input.replace("minNodeWidth: 180", "minNodeWidth: 0");
-    let (natural, _, _) = render_source(&natural_input, MermaidConfig::empty_object());
+    let (natural, _, _) = render_source(&natural_input, PresentationConfig::empty_object());
     for id in ["A", "B"] {
         assert_close(node(&minimum, id).width, node(&natural, id).width);
         assert_close(node(&minimum, id).height, node(&natural, id).height);
@@ -364,7 +365,7 @@ fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_re
     for source in ["flowchart LR\nA((a))\n", "flowchart LR\nA(((a)))\n"] {
         for (font_size, padding) in [(1e4, 16.0), (16.0, 1e4)] {
             let parsed = Engine::new()
-                .with_site_config(MermaidConfig::from_value(json!({
+                .with_site_config(PresentationConfig::from_value(json!({
                     "look": "handDrawn",
                     "handDrawnSeed": 1,
                     "htmlLabels": false,
@@ -400,7 +401,7 @@ fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_re
 
 #[test]
 fn hand_drawn_circles_with_no_stroke_omit_outline_without_changing_fill_seed_order() {
-    let config = MermaidConfig::from_value(json!({
+    let config = PresentationConfig::from_value(json!({
         "look": "handDrawn", "handDrawnSeed": 1, "htmlLabels": false,
     }));
     let source = "flowchart LR\nA((a))\nB(((a)))\n";

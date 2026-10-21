@@ -1206,7 +1206,7 @@ pub(crate) fn render_builtin_family_artifact(
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
     artifact: &crate::family::ArchitectureFamilyArtifact,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,

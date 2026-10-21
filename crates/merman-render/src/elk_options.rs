@@ -437,7 +437,8 @@ mod tests {
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn public_configuration_ignores_null_layer_bounds_before_elk_projection() {
-        use merman_core::{Engine, MermaidConfig, ParseOptions};
+        use merman_core::presentation::PresentationConfig;
+        use merman_core::{Engine, ParseOptions};
 
         // Mermaid 12 assignWithDepth.ts ignores null-valued object properties.
         // Its initialize, frontmatter, and init-directive routes therefore preserve
@@ -476,7 +477,7 @@ mod tests {
         ] {
             let source = format!("{prefix}flowchart TD\nA-->B\nA-->C\n");
             for exact in [false, true] {
-                let site = MermaidConfig::from_value(site.clone());
+                let site = PresentationConfig::from_value(site.clone());
                 let engine = if exact {
                     Engine::new().with_exact_site_config(Some(site))
                 } else {

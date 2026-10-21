@@ -41,7 +41,7 @@ pub(crate) struct FlowchartRenderConfig {
 
 pub(crate) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
     is_elk_layout: bool,
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
@@ -177,7 +177,7 @@ pub(crate) fn prepare_flowchart_render_config(
 }
 
 pub(crate) fn flowchart_node_label_fill_config_override(
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
 ) -> bool {
     const NODE_TEXT_COLOR: &str = "themeVariables.nodeTextColor";
     const PRIMARY_TEXT_COLOR: &str = "themeVariables.primaryTextColor";

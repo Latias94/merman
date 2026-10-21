@@ -87,7 +87,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     prepared: &crate::requirement::RequirementPreparedArtifact,
     model: &RequirementDiagramRenderModel,
     paint_theme: &crate::requirement::RequirementPaintThemePlan,
-    sanitize_config: &merman_core::MermaidConfig,
+    sanitize_config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -97,17 +97,23 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let label_measurements =
         prepared.label_measurements_for_render_with_typography(measurer, paint_theme.css());
 
-    fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
+    fn mermaid_markdown_to_html(
+        raw: &str,
+        sanitize_config: &merman_core::presentation::PresentationConfig,
+    ) -> String {
         let sanitized = requirement_label_source(raw, sanitize_config);
         crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
     }
 
-    fn requirement_label_source(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
+    fn requirement_label_source(
+        raw: &str,
+        sanitize_config: &merman_core::presentation::PresentationConfig,
+    ) -> String {
         let decoded = raw
             .replace("ﬂ°°", "&#")
             .replace("ﬂ°", "&")
             .replace("¶ß", ";");
-        merman_core::sanitize::sanitize_text(&decoded, sanitize_config)
+        merman_core::sanitize::sanitize_text(&decoded, sanitize_config.as_config())
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -1476,7 +1482,7 @@ mod tests {
                 "THEME_COLOR_LIMIT": 3
             }
         });
-        let core_config = merman_core::MermaidConfig::from_value(config.clone());
+        let core_config = merman_core::presentation::PresentationConfig::from_value(config.clone());
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1550,7 +1556,8 @@ mod tests {
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
-        let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+        let effective_config =
+            merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             model,
             effective_config.as_value(),
@@ -1570,7 +1577,7 @@ mod tests {
     fn render_prepared_requirement_for_test(
         prepared: &crate::requirement::RequirementPreparedArtifact,
         model: &RequirementDiagramRenderModel,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         diagram_title: Option<&str>,
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
@@ -1598,7 +1605,8 @@ mod tests {
 
     fn render_requirement_with_policy(policy: RenderResourcePolicy) -> crate::Result<String> {
         let model = prepared_requirement_model();
-        let effective_config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let effective_config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
@@ -1678,7 +1686,8 @@ mod tests {
     #[test]
     fn requirement_opaque_measurer_preserves_render_stage_label_measurements() {
         let model = prepared_requirement_model();
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = CountingRequirementMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
@@ -1716,7 +1725,8 @@ mod tests {
     #[test]
     fn requirement_routed_builtin_measurements_are_reused_during_svg_emission() {
         let model = prepared_requirement_model();
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let environment = RenderEnvironment::deterministic().with_resource_policy(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1749,13 +1759,15 @@ mod tests {
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_style_changes() {
         let model = prepared_requirement_model();
-        let prepare_config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
-        let render_config = merman_core::MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": {
-                "fontFamily": "Courier New",
-                "fontSize": "24px"
-            }
-        }));
+        let prepare_config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
+        let render_config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {
+                    "fontFamily": "Courier New",
+                    "fontSize": "24px"
+                }
+            }));
         let environment = RenderEnvironment::deterministic().with_resource_policy(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1786,10 +1798,12 @@ mod tests {
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_label_modes() {
         let model = prepared_requirement_model();
-        let prepare_config =
-            merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels":true}));
-        let render_config =
-            merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false}));
+        let prepare_config = merman_core::presentation::PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels":true}),
+        );
+        let render_config = merman_core::presentation::PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels":false}),
+        );
         let session = RenderEnvironment::deterministic()
             .with_resource_policy(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -1829,9 +1843,10 @@ mod tests {
         .to_string();
         let measurer = DeterministicTextMeasurer::default();
         for html_labels in [true, false] {
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "securityLevel": "strict", "htmlLabels": html_labels
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "securityLevel": "strict", "htmlLabels": html_labels
+                }));
             let prepared =
                 crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
                     &model,
@@ -1885,7 +1900,8 @@ mod tests {
                 dst: "requirement-a".to_string(),
             },
         ];
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
@@ -1945,7 +1961,8 @@ mod tests {
             ],
             ..empty_requirement_model()
         };
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
@@ -2074,7 +2091,8 @@ mod tests {
             }],
             ..empty_requirement_model()
         };
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
@@ -2201,7 +2219,8 @@ mod tests {
             }],
             ..empty_requirement_model()
         };
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
         let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,

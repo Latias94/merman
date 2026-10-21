@@ -16,11 +16,11 @@ use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceLayoutCheckpoints};
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessageKind,
 };
+use merman_core::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 pub(super) struct SequenceLayoutGraphContext<'a> {
@@ -53,7 +53,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_terminal_text_style: &'a TextStyle,
     pub(super) loop_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) typography: &'a super::SequenceTypographyPlan,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,

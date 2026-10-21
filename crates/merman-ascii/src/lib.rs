@@ -175,6 +175,7 @@ use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 #[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
+use merman_core::presentation::PresentationConfig;
 use merman_core::runtime::OperationContext;
 use merman_core::{MermaidConfig, ParseMetadata};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -269,7 +270,7 @@ impl AsciiRenderer {
         let metadata = ParseMetadata {
             diagram_type: model.kind().to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: PresentationConfig::default(),
             title: None,
         };
         self.render_report(

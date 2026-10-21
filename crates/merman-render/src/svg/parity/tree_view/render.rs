@@ -15,7 +15,7 @@ struct TreeViewNodeRenderContext<'a, 'id> {
     layout: &'a TreeViewDiagramLayout,
     diagram_id: SvgDiagramId<'id>,
     icon_registry: Option<&'a crate::svg::IconRegistry>,
-    effective_config: &'a merman_core::MermaidConfig,
+    effective_config: &'a merman_core::presentation::PresentationConfig,
     work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
@@ -23,7 +23,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
     theme: &TreeViewThemePlan,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("treeView");
@@ -314,7 +314,7 @@ fn tree_view_icon_svg(
     diagram_id: SvgDiagramId<'_>,
     node_id: i64,
     icon_registry: Option<&crate::svg::IconRegistry>,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<TreeViewRenderedIcon> {
     if let Some(body) = tree_view_icon_body(icon) {

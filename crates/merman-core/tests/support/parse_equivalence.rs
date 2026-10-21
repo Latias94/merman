@@ -33,8 +33,8 @@ fn assert_metadata(semantic: &ParseMetadata, typed: &ParseMetadata, source: &str
         "authored config: {source}"
     );
     assert_eq!(
-        managed_config(&semantic.effective_config),
-        managed_config(&typed.effective_config),
+        managed_config(semantic.effective_config.as_config()),
+        managed_config(typed.effective_config.as_config()),
         "effective config: {source}"
     );
 }

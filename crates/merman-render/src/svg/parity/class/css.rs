@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn class_css_propagates_writer_checkpoint_failure() {
-        let mermaid_config = merman_core::MermaidConfig::default();
+        let mermaid_config = merman_core::presentation::PresentationConfig::default();
         let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

@@ -1,6 +1,6 @@
 //! Fixed Mindmap visual inputs prepared before layout and consumed by SVG emission.
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::theme::{
     MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
@@ -38,7 +38,7 @@ pub(crate) struct MindmapCssBinding {
 }
 
 impl MindmapCssBinding {
-    pub(super) fn new(config: &MermaidConfig, plan: &MindmapNodePalettePlan) -> Self {
+    pub(super) fn new(config: &PresentationConfig, plan: &MindmapNodePalettePlan) -> Self {
         let raw = config.as_value();
         let token = |key: &str, fallback: &str| {
             config

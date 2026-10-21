@@ -3,7 +3,7 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeVariant,
 };
 use crate::resources::OperationWorkMeter;
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::SequenceNumberLabelThemeReceipt;
 
@@ -72,7 +72,7 @@ pub(crate) struct SequencePreparedTerminalTheme {
 impl SequencePreparedTerminalTheme {
     pub(super) fn resolve(
         model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -140,7 +140,7 @@ pub(crate) struct SequencePreparedNumberTheme {
 impl SequencePreparedNumberTheme {
     pub(super) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut prepared = Self {
@@ -256,7 +256,7 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let metadata = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            .with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"sequenceNumberColor": "#abcdef"}
             })))
             .parse_metadata_sync("sequenceDiagram\nautonumber\nAlice->>Bob: Hello")
@@ -286,7 +286,7 @@ mod tests {
 
         let typed = SequencePreparedNumberTheme::resolve(
             Some(&resolved),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &meter,
         )
         .unwrap();

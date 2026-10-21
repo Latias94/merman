@@ -1364,7 +1364,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "venn".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

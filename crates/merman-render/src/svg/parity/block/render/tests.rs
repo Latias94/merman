@@ -100,7 +100,7 @@ fn render_block_direct_with_edge_theme(
             .expect("SVG execution");
     let mut typography_theme = BlockTypographyThemePlan::resolve(
         None,
-        &merman_core::MermaidConfig::from_value(effective_config.clone()),
+        &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
     )
     .unwrap();
     typography_theme.prepare_class_definitions(&model.class_defs);
@@ -136,7 +136,7 @@ fn render_block_direct_with_edge_theme(
         &labels,
         &crate::block::BlockEdgePaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             model,
             &layout,
             execution.work_meter(),
@@ -144,7 +144,7 @@ fn render_block_direct_with_edge_theme(
         .expect("edge paint theme"),
         &crate::block::BlockMarkerPaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             model,
             &layout,
             execution.work_meter(),
@@ -152,7 +152,7 @@ fn render_block_direct_with_edge_theme(
         .expect("marker paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             &typography_theme.css_binding().edge_label_background,
             execution.work_meter(),
         )

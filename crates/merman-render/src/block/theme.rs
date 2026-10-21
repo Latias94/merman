@@ -29,7 +29,7 @@ pub(crate) struct BlockLabelBackgroundPlan(crate::family::EdgeLabelBackgroundPla
 impl BlockLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         configured: &str,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -74,7 +74,7 @@ pub(crate) struct BlockNodeLabelPaintPlan {
 impl BlockNodeLabelPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -335,7 +335,7 @@ impl BlockTypographyThemePlan {
     }
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
     ) -> crate::Result<Self> {
         let settings =
             super::config::BlockConfigView::new(effective_config.as_value()).layout_settings();
@@ -532,7 +532,7 @@ pub(crate) struct BlockNodePaintThemePlan {
 impl BlockNodePaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
@@ -893,11 +893,11 @@ fn observe_shell_style(
     }
 }
 
-fn mermaid_owns_node_stroke(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_node_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
 }
 
-fn mermaid_owns_node_fill(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_node_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
@@ -983,7 +983,7 @@ fn source_owns_property(
 mod tests {
     fn resolve_node_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -1010,7 +1010,7 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
         let plan = BlockTypographyThemePlan::resolve(
             Some(&resolved),
-            &merman_core::MermaidConfig::empty_object(),
+            &merman_core::presentation::PresentationConfig::empty_object(),
         )
         .unwrap();
         assert!(plan.typed_font_size_requested);
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[test]
     fn unthemed_typography_keeps_config_style_without_terminal_evidence() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"},
             "block": {"padding": 12}
@@ -1050,7 +1050,7 @@ mod tests {
         for (label, not_applicable) in [(" \n", true), ("Visible", false)] {
             let plan = BlockTypographyThemePlan::resolve(
                 Some(&resolved),
-                &merman_core::MermaidConfig::empty_object(),
+                &merman_core::presentation::PresentationConfig::empty_object(),
             )
             .unwrap();
             assert!(plan.observes_visible_labels());
@@ -1078,7 +1078,7 @@ mod tests {
             ))
             .unwrap();
         let theme = theme.resolve(crate::DiagramFamilyId::BLOCK);
-        let config = merman_core::MermaidConfig::empty_object();
+        let config = merman_core::presentation::PresentationConfig::empty_object();
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );

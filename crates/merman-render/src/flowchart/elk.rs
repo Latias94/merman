@@ -8,7 +8,7 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 #[cfg(test)]
 use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 use merman_layout_elk as elk;
@@ -66,7 +66,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
 #[cfg(test)]
 pub(crate) fn layout_flowchart_elk_typed(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
@@ -105,7 +105,7 @@ pub(crate) fn layout_flowchart_elk_typed(
 #[cfg(test)]
 pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
@@ -135,7 +135,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
     let mut work_control = ElkOperationWorkControl::new(execution.work_meter);
@@ -261,7 +261,7 @@ fn bind_flowchart_elk_transport_ids(
 #[cfg(test)]
 fn flowchart_layout_from_elk(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
 ) -> Result<FlowchartLayout> {
@@ -278,7 +278,7 @@ fn flowchart_layout_from_elk(
 fn flowchart_layout_from_elk_with_render_labels(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
 ) -> Result<FlowchartLayout> {
@@ -295,7 +295,7 @@ fn flowchart_layout_from_elk_with_render_labels(
 #[cfg(test)]
 fn flowchart_layout_from_elk_with_work_control(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
     work_control: Option<&mut ElkOperationWorkControl>,
@@ -313,7 +313,7 @@ fn flowchart_layout_from_elk_with_work_control(
 fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
     mut work_control: Option<&mut ElkOperationWorkControl>,
@@ -859,7 +859,7 @@ pub(crate) fn build_flowchart_elk_graph(
 #[cfg(test)]
 fn build_flowchart_elk_graph_from_semantic(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
@@ -876,7 +876,7 @@ fn build_flowchart_elk_graph_from_semantic(
 fn build_flowchart_elk_graph_with_render_labels(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
@@ -903,7 +903,7 @@ fn build_flowchart_elk_graph_with_render_labels(
 #[cfg(test)]
 fn build_flowchart_elk_graph_with_work_control(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: Option<&mut ElkOperationWorkControl>,
@@ -994,7 +994,7 @@ fn comparison_sort_work_units(
 fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1128,7 +1128,7 @@ fn project_collapsed_flowchart_model(
 fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1355,7 +1355,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
 #[derive(Clone, Copy)]
 struct ElkMeasureContext<'a> {
     model: FlowchartRenderModelRef<'a>,
-    effective_config: &'a MermaidConfig,
+    effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     cluster_label_base_style: &'a TextStyle,
@@ -1379,7 +1379,7 @@ fn canonical_subgraphs(model: &FlowchartModel) -> Vec<(usize, &FlowSubgraph)> {
 #[derive(Clone, Copy)]
 struct NodeMeasureContext<'a> {
     model: FlowchartRenderModelRef<'a>,
-    effective_config: &'a MermaidConfig,
+    effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     node_label_base_style: &'a TextStyle,
@@ -1395,7 +1395,7 @@ struct NodeMeasureContext<'a> {
 #[derive(Clone, Copy)]
 struct EdgeMeasureContext<'a> {
     model: FlowchartRenderModelRef<'a>,
-    effective_config: &'a MermaidConfig,
+    effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     edge_label_base_style: &'a TextStyle,
@@ -1940,7 +1940,7 @@ mod tests {
 
     fn build_flowchart_elk_graph(
         model: &FlowchartModel,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         measurer: &dyn TextMeasurer,
         math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     ) -> Result<elk::Graph> {
@@ -1965,14 +1965,14 @@ mod tests {
     struct FixedPreparedMathRenderer;
 
     impl MathRenderer for FixedPreparedMathRenderer {
-        fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
             Some("<svg><path d=\"M0 0h1\"/></svg>".to_owned())
         }
 
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -2023,7 +2023,7 @@ mod tests {
             .collect();
         let mut model = model(nodes, edges);
         model.direction = Some("LR".into());
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let graph = build_flowchart_elk_graph(&model, &config, &measurer, None).unwrap();
         assert!(
@@ -2079,7 +2079,7 @@ mod tests {
         let mut group = subgraph("Group".to_owned(), vec!["A".to_owned()]);
         group.title = "$$x$$".to_owned();
         model.subgraphs.push(group);
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "htmlLabels": true,
             "flowchart": {"htmlLabels": true, "wrappingWidth": 96}
         }));
@@ -2146,8 +2146,9 @@ C["$$x$$"] -->|"$$x$$"| D
             .iter()
             .position(|edge| edge.from == "C" && edge.to == "D")
             .unwrap();
-        let config =
-            MermaidConfig::from_value(json!({"htmlLabels":true, "flowchart":{"htmlLabels":true}}));
+        let config = PresentationConfig::from_value(
+            json!({"htmlLabels":true, "flowchart":{"htmlLabels":true}}),
+        );
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -2232,7 +2233,7 @@ C["$$x$$"] -->|"$$x$$"| D
             "Group".to_string(),
             vec!["A".to_string(), "B".to_string()],
         ));
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "htmlLabels": false,
             "flowchart": {"htmlLabels": false, "wrappingWidth": 96}
         }));
@@ -2331,7 +2332,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
             let layout = layout_flowchart_elk_typed(
                 &model,
-                &MermaidConfig::default(),
+                &PresentationConfig::default(),
                 &crate::text::DeterministicTextMeasurer::default(),
                 None,
             )
@@ -2521,7 +2522,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -2566,7 +2567,7 @@ C["$$x$$"] -->|"$$x$$"| D
             .push(subgraph("G".to_string(), vec!["A".to_string()]));
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -2612,7 +2613,7 @@ C["$$x$$"] -->|"$$x$$"| D
             let mut provider = provider.clone();
             provider.edges[0].labels[0].x = label_x;
             let projected =
-                flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, provider)
+                flowchart_layout_from_elk(&model, &PresentationConfig::default(), &graph, provider)
                     .unwrap();
             let group = projected.nodes.iter().find(|node| node.id == "G").unwrap();
             let cluster = projected
@@ -2670,7 +2671,7 @@ C["$$x$$"] -->|"$$x$$"| D
             });
             let original_route = layout.edges[0].points.clone();
             let projected =
-                flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, layout)
+                flowchart_layout_from_elk(&model, &PresentationConfig::default(), &graph, layout)
                     .unwrap();
             let target = &projected.nodes[1];
             let expected = if vertical {
@@ -2710,7 +2711,7 @@ C["$$x$$"] -->|"$$x$$"| D
                 }
                 let projected = flowchart_layout_from_elk(
                     &model,
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &graph,
                     ordered_layout,
                 )
@@ -2738,7 +2739,7 @@ C["$$x$$"] -->|"$$x$$"| D
                 layout.edges[0].points[1].y = 8.0;
             }
             let projected =
-                flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, layout)
+                flowchart_layout_from_elk(&model, &PresentationConfig::default(), &graph, layout)
                     .unwrap();
             assert_eq!((projected.nodes[1].x, projected.nodes[1].y), (20.0, 0.0));
         }
@@ -2780,7 +2781,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
     fn adapter_graph_and_work(
         model: &FlowchartModel,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
     ) -> (elk::Graph, usize) {
         let meter = Arc::new(OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -2824,7 +2825,7 @@ C["$$x$$"] -->|"$$x$$"| D
                     "G".into(),
                     vec!["A".into(), "B".into(), "C".into()],
                 ));
-                let config = MermaidConfig::from_value(serde_json::json!({
+                let config = PresentationConfig::from_value(serde_json::json!({
                     "elk": { "orientFeedbackEdges": enabled }
                 }));
                 let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2888,7 +2889,7 @@ C["$$x$$"] -->|"$$x$$"| D
             vec![edge("L-A-B", "A", "B", None)],
         );
         // Keep this threshold at the provider boundary, not the optional feedback pre-pass.
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "elk": { "orientFeedbackEdges": false }
         }));
         let (_, adapter_work) = adapter_graph_and_work(&model, &config);
@@ -2930,7 +2931,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
     #[test]
     fn flowchart_elk_adapter_work_is_linear_for_deep_edgeless_hierarchies() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let (_, work_16) = adapter_graph_and_work(&nested_model(16, None), &config);
         let (_, work_32) = adapter_graph_and_work(&nested_model(32, None), &config);
         let (_, work_48) = adapter_graph_and_work(&nested_model(48, None), &config);
@@ -2940,7 +2941,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
     #[test]
     fn flowchart_elk_first_cross_scope_edge_pays_linear_index_and_path_work() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let (_, local_16) = adapter_graph_and_work(&nested_model(16, Some("sibling")), &config);
         let (_, cross_16) = adapter_graph_and_work(&nested_model(16, Some("outside")), &config);
         let (_, local_32) = adapter_graph_and_work(&nested_model(32, Some("sibling")), &config);
@@ -2957,7 +2958,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
     #[test]
     fn flowchart_elk_cross_scope_work_has_no_depth_times_repeated_edge_term() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let work = |depth, edge_count| {
             adapter_graph_and_work(
                 &nested_model_with_repeated_cross_edges(depth, edge_count),
@@ -2994,7 +2995,7 @@ C["$$x$$"] -->|"$$x$$"| D
         let mut work_control = ElkOperationWorkControl::new(meter);
         let measured = flowchart_layout_from_elk_with_work_control(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &graph,
             layout,
             Some(&mut work_control),
@@ -3005,7 +3006,8 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let (model, graph, layout) = projection_fixture();
         let unmetered =
-            flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, layout).unwrap();
+            flowchart_layout_from_elk(&model, &PresentationConfig::default(), &graph, layout)
+                .unwrap();
         assert_eq!(
             serde_json::to_value(&measured).unwrap(),
             serde_json::to_value(&unmetered).unwrap()
@@ -3034,7 +3036,7 @@ C["$$x$$"] -->|"$$x$$"| D
         let mut work_control = ElkOperationWorkControl::new(meter);
         let error = flowchart_layout_from_elk_with_work_control(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &graph,
             layout,
             Some(&mut work_control),
@@ -3064,7 +3066,7 @@ C["$$x$$"] -->|"$$x$$"| D
         model.edges.push(second_source);
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3082,7 +3084,7 @@ C["$$x$$"] -->|"$$x$$"| D
         let mut work_control = ElkOperationWorkControl::new(meter);
         let error = flowchart_layout_from_elk_with_work_control(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &graph,
             layout,
             Some(&mut work_control),
@@ -3170,7 +3172,7 @@ C["$$x$$"] -->|"$$x$$"| D
     #[test]
     fn flowchart_elk_adapter_budget_gates_are_exact_and_rejections_do_not_advance() {
         let model = nested_model(8, Some("outside"));
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let (expected, exact_work) = adapter_graph_and_work(&model, &config);
         let policy = |limit| {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
@@ -3230,7 +3232,7 @@ C["$$x$$"] -->|"$$x$$"| D
         }
 
         let model = nested_model(1, None);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measurer = CountingMeasurer(std::cell::Cell::new(0));
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 1)
@@ -3263,7 +3265,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3303,7 +3305,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3329,7 +3331,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let error = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3373,7 +3375,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3424,7 +3426,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3484,7 +3486,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3628,7 +3630,7 @@ C["$$x$$"] -->|"$$x$$"| D
             ],
             vec![edge("L-A-B", "A", "B", None)],
         );
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "elk": {
                 "mergeEdges": true,
                 "layeringStrategy": "COFFMAN_GRAHAM",
@@ -3717,7 +3719,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let mut graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3746,7 +3748,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3764,7 +3766,7 @@ C["$$x$$"] -->|"$$x$$"| D
             ],
             vec![edge("L-A-B", "A", "B", None)],
         );
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "elk": {
                 "considerModelOrder": "NONE",
                 "cycleBreakingStrategy": "MODEL_ORDER",
@@ -3809,7 +3811,7 @@ C["$$x$$"] -->|"$$x$$"| D
                 edge("L-C-A", "C", "A", None),
             ],
         );
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "elk": {
                 "keepEntryNodeOnTop": true
             }
@@ -3852,7 +3854,7 @@ C["$$x$$"] -->|"$$x$$"| D
                                 declared.iter().map(|id| (*id).to_owned()).collect(),
                             ));
                         }
-                        let config = MermaidConfig::from_value(json!({
+                        let config = PresentationConfig::from_value(json!({
                             "elk": { "keepEntryNodeOnTop": enabled }
                         }));
                         let graph = build_flowchart_elk_graph(
@@ -3901,7 +3903,7 @@ C["$$x$$"] -->|"$$x$$"| D
             model
                 .subgraphs
                 .push(subgraph("group".to_string(), Vec::new()));
-            let config = MermaidConfig::from_value(json!({
+            let config = PresentationConfig::from_value(json!({
                 "elk": { "keepEntryNodeOnTop": true }
             }));
             let graph = build_flowchart_elk_graph(
@@ -3934,7 +3936,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3957,7 +3959,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -3983,7 +3985,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let layout = layout_flowchart_elk_typed(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -4069,7 +4071,7 @@ C["$$x$$"] -->|"$$x$$"| D
         );
         let graph = build_flowchart_elk_graph(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -4084,7 +4086,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let layout = layout_flowchart_elk_typed(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
@@ -4155,7 +4157,7 @@ C["$$x$$"] -->|"$$x$$"| D
 
         let layout = layout_flowchart_elk_typed(
             &model,
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,
         )

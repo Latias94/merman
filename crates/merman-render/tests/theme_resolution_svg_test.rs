@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -6,7 +7,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 fn render_with_font_only_theme(source: &str, diagram_id: &str) -> (String, String) {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "theme": "default",
         "themeVariables": {
             "fontFamily": "Inter, sans-serif"
@@ -20,7 +21,11 @@ fn render_with_font_only_theme(source: &str, diagram_id: &str) -> (String, Strin
     (c_scale, svg)
 }
 
-fn render_with_engine(engine: &Engine, source: &str, diagram_id: &str) -> (String, MermaidConfig) {
+fn render_with_engine(
+    engine: &Engine,
+    source: &str,
+    diagram_id: &str,
+) -> (String, PresentationConfig) {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse succeeds")
@@ -72,7 +77,7 @@ fn base_theme_source_and_host_overrides_reach_family_svg_styles() {
         for (mode, engine, source) in [
             (
                 "site",
-                Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                Engine::new().with_site_config(PresentationConfig::from_value(config.clone())),
                 body.to_string(),
             ),
             (
@@ -146,7 +151,7 @@ fn render_flowchart_label_weights(
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"htmlLabels": html_labels}),
         )),
     )
@@ -381,14 +386,14 @@ fn flowchart_html_label_weights_preserve_plain_source_and_reject_nested_class_wi
 fn partial_dark_xychart_title_override_preserves_the_rendered_palette() {
     let source = "xychart\n  title \"Sales\"\n  x-axis [A, B]\n  y-axis 0 --> 10\n  bar [2, 5]\n";
     let baseline_engine =
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme":"dark"})));
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({"theme":"dark"})));
     let (baseline_svg, baseline_config) =
         render_with_engine(&baseline_engine, source, "xychart-partial");
     let override_config =
         json!({"theme":"dark", "themeVariables":{"xyChart":{"titleColor":"#ff0000"}}});
     for (engine, source) in [
         (
-            Engine::new().with_site_config(MermaidConfig::from_value(override_config.clone())),
+            Engine::new().with_site_config(PresentationConfig::from_value(override_config.clone())),
             source.to_owned(),
         ),
         (
@@ -460,7 +465,7 @@ fn source_and_host_fonts_are_xml_encoded_once_at_the_stylesheet_boundary() {
             for (origin, engine, source, authored_font) in [
                 (
                     "host",
-                    Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                    Engine::new().with_site_config(PresentationConfig::from_value(config.clone())),
                     body.to_owned(),
                     expected.as_str(),
                 ),

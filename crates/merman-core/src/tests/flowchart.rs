@@ -1,3 +1,4 @@
+use crate::presentation::PresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
@@ -3100,7 +3101,7 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
-    let mut site = MermaidConfig::empty_object();
+    let mut site = PresentationConfig::empty_object();
     site.set_value("flowchart.inheritDir", json!(true));
     let engine = Engine::new().with_site_config(site);
     let text = "graph LR;subgraph TOP;A-->B;end;";
@@ -4925,7 +4926,7 @@ fn parse_diagram_flowchart_wide_flat_statements_preserve_node_and_edge_order() {
         source.push_str(&format!("a{index}-->b{index}\n"));
     }
     let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({"maxEdges": 512})))
+        .with_site_config(PresentationConfig::from_value(json!({"maxEdges": 512})))
         .parse_diagram_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();

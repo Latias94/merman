@@ -13,7 +13,7 @@ use crate::text::{
     TextMeasurer, TextStyle, WrapMode, is_ecmascript_whitespace,
     is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -24,7 +24,7 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) style: &'a TextStyle,
     pub(crate) max_width_px: Option<f64>,
     pub(crate) wrap_mode: WrapMode,
-    pub(crate) config: &'a MermaidConfig,
+    pub(crate) config: &'a PresentationConfig,
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
 
@@ -39,7 +39,7 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
 pub(crate) fn flowchart_node_label_min_width(
     raw_label: &str,
     layout_shape: Option<&str>,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
 ) -> f64 {
     use crate::flowchart::FlowchartShape;
 
@@ -647,7 +647,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     if request.wrap_mode == WrapMode::HtmlLike {
         let source =
             flowchart_label_html_source(request.raw_label, request.label_type, request.config);
-        let xhtml = merman_core::sanitize::sanitize_xhtml(&source, request.config);
+        let xhtml = merman_core::sanitize::sanitize_xhtml(&source, request.config.as_config());
         return flowchart_html_label_metrics_for_layout(request, &xhtml);
     }
     if request.label_type == "markdown" {
@@ -669,8 +669,8 @@ pub(crate) fn flowchart_label_metrics_for_layout(
 }
 
 pub(crate) fn flowchart_label_sanitize_config(
-    config: &MermaidConfig,
-) -> std::borrow::Cow<'_, MermaidConfig> {
+    config: &PresentationConfig,
+) -> std::borrow::Cow<'_, PresentationConfig> {
     if config.get_str("securityLevel").is_some() {
         return std::borrow::Cow::Borrowed(config);
     }
@@ -1499,7 +1499,7 @@ pub(crate) fn is_single_img_label(label: &str) -> bool {
 pub(crate) fn flowchart_label_html_source(
     label: &str,
     label_type: &str,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
 ) -> String {
     if flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
@@ -1607,7 +1607,7 @@ mod tests {
     ))]
     #[test]
     fn node_minimum_excludes_circles_fixed_symbols_assets_and_empty_labels() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "flowchart": { "minNodeWidth": 120.0 }
         }));
         assert_eq!(
@@ -1651,14 +1651,14 @@ mod tests {
     struct PreciseMathRenderer;
 
     impl MathRenderer for PreciseMathRenderer {
-        fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, text: &str, _config: &PresentationConfig) -> Option<String> {
             text.contains("$$").then(|| text.to_string())
         }
 
         fn measure_html_label(
             &self,
             text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -1717,7 +1717,7 @@ mod tests {
             style: &TextStyle::default(),
             max_width_px: Some(120.0),
             wrap_mode: WrapMode::HtmlLike,
-            config: &MermaidConfig::default(),
+            config: &PresentationConfig::default(),
             math_renderer: None,
         })
     }
@@ -1784,9 +1784,10 @@ mod tests {
 
     #[test]
     fn incomplete_image_tag_uses_final_plain_text_measurement() {
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "strict" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "strict" }));
         let html = flowchart_label_html_source("head<img", "html", &config);
-        let xhtml = merman_core::sanitize::sanitize_xhtml(&html, &config);
+        let xhtml = merman_core::sanitize::sanitize_xhtml(&html, config.as_config());
         let document = roxmltree::Document::parse(&xhtml)
             .expect("HTML5 recovery closes the paragraph after discarding the incomplete image");
         assert!(!document.descendants().any(|node| node.has_tag_name("img")));
@@ -1845,7 +1846,7 @@ mod tests {
 
     #[test]
     fn mixed_math_metrics_preserve_fragment_precision() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: &PreciseTextMeasurer,
@@ -1864,7 +1865,7 @@ mod tests {
 
     #[test]
     fn html_label_metrics_keep_nbsp_only_trailing_lines() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
@@ -1897,7 +1898,7 @@ mod tests {
     fn html_label_metrics_collapse_plain_paragraph_spaces_but_preserve_nbsp() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "A&nbsp;&nbsp;B  C   D",
@@ -1923,7 +1924,7 @@ mod tests {
     fn markdown_html_label_metrics_keep_the_browser_width_lattice() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "Label",
@@ -1943,7 +1944,7 @@ mod tests {
     fn markdown_html_raw_block_text_keeps_plain_measurement_precision() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "Hello\n  - l1\n  - l2",
@@ -1969,7 +1970,7 @@ mod tests {
             font_size: 14.0,
             ..TextStyle::default()
         };
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "markdownAutoWrap": true,
             "securityLevel": "strict"
         }));
@@ -2008,7 +2009,7 @@ mod tests {
                 text.chars().count() as f64 * advance
             });
         let style = TextStyle::default();
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "strict"
         }));
         let word = "abcdefghijklmnopqrstuvwx";
@@ -2039,7 +2040,7 @@ mod tests {
     fn markdown_html_entity_only_root_text_keeps_plain_measurement_precision() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "strict",
             "dompurifyConfig": { "FORBID_TAGS": ["p"] }
         }));
@@ -2062,7 +2063,7 @@ mod tests {
     fn markdown_html_entity_text_prevents_an_image_only_extra_line() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measure = |xhtml| {
             flowchart_html_label_metrics_for_layout(
                 FlowchartLabelMetricsRequest {
@@ -2086,7 +2087,7 @@ mod tests {
 
     #[test]
     fn non_markdown_html_metrics_share_create_text_explicit_line_breaks() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
@@ -2413,7 +2414,7 @@ mod tests {
 
     #[test]
     fn empty_flowchart_labels_have_zero_layout_metrics_in_both_render_modes() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let measurer = PreciseTextMeasurer;
 
@@ -2439,7 +2440,7 @@ mod tests {
 
     #[test]
     fn svg_label_metrics_apply_create_text_nbsp_rules_by_label_type() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,

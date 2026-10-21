@@ -14,7 +14,8 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
-use merman_core::{MermaidConfig, geom::Size};
+use merman_core::geom::Size;
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -1461,7 +1462,7 @@ fn extract_clusters_recursively(
 #[cfg(test)]
 pub(crate) fn layout_flowchart_typed(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
@@ -1479,7 +1480,7 @@ pub(crate) fn layout_flowchart_typed(
 #[cfg(test)]
 pub(crate) fn layout_flowchart_typed_with_work_meter(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
@@ -1509,7 +1510,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1536,7 +1537,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -2431,7 +2432,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
@@ -3460,7 +3461,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         cluster_padding: f64,
@@ -3691,7 +3692,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         title_total_margin: f64,

@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::quadrant_chart::{
     QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
 };
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -116,7 +116,7 @@ impl QuadrantChartPointFillExpectation {
 impl QuadrantChartPointThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         model: &QuadrantChartRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -914,7 +914,7 @@ mod tests {
             "classes": { "custom": { "color": "#abcdef", "radius": 7 } }
         }))
         .unwrap();
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -954,7 +954,7 @@ mod tests {
             "classes": { "custom": { "color": "#ffffff", "radius": 7,
                 "strokeColor": "currentColor", "strokeWidth": "0.25em" } }
         })).unwrap();
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let resolved = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

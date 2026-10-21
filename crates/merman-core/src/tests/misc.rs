@@ -1,5 +1,6 @@
 #[cfg(feature = "all-diagrams")]
 use crate::diagrams::xychart::{XyChartAxisRenderModel, XyChartPlotType};
+use crate::presentation::PresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::{Map, Value, json};
@@ -205,7 +206,7 @@ fn default_scoped_theme_calculates_with_source_variables() {
 #[test]
 fn host_scoped_theme_calculates_with_source_variables() {
     let metadata = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({
+        .with_site_config(PresentationConfig::from_value(json!({
             "theme": "default",
             "flowchart": {"theme": "base"}
         })))
@@ -233,7 +234,7 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
         ("default scoped theme", Engine::new()),
         (
             "host scoped theme",
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "theme": "default",
                 "flowchart": {"theme": "base"}
             }))),
@@ -249,7 +250,7 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
     }
 
     let metadata = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
+        .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})))
         .parse_metadata_sync(source)
         .expect("an ordinary source update retains initialized derivations");
     assert_eq!(
@@ -293,7 +294,7 @@ graph TD;A-->B;"##;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_theme_variables() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
@@ -596,7 +597,7 @@ graph TD;A-->B;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_fonts() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
@@ -714,7 +715,7 @@ fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
 #[test]
 fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = MermaidConfig::from_value(deep_config_value(
+    let site_config = PresentationConfig::from_value(deep_config_value(
         "sequence",
         DEPTH,
         Value::String("#112233".to_string()),
@@ -743,7 +744,7 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
 
 #[test]
 fn site_config_secure_keys_protect_effective_config_from_diagram_config() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "fontFamily": "site-font",
         "fontSize": 16,
         "securityLevel": "strict",
@@ -869,7 +870,7 @@ flowchart TD
 #[cfg(feature = "all-diagrams")]
 fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = MermaidConfig::from_value(deep_config_value(
+    let site_config = PresentationConfig::from_value(deep_config_value(
         "retainedConfig",
         DEPTH,
         Value::String("#556677".to_string()),
@@ -935,7 +936,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
 #[cfg(feature = "all-diagrams")]
 fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = MermaidConfig::from_value(deep_config_value(
+    let site_config = PresentationConfig::from_value(deep_config_value(
         "retainedConfig",
         DEPTH,
         Value::String("#778899".to_string()),
@@ -1955,7 +1956,7 @@ fn expected_custom_title_after_sanitization() -> &'static str {
     "<b>custom</b>"
 }
 
-fn detect_generic_custom(text: &str, _config: &mut MermaidConfig) -> bool {
+fn detect_generic_custom(text: &str, _config: &mut PresentationConfig) -> bool {
     text.trim_start().starts_with("generic-custom")
 }
 

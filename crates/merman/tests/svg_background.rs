@@ -11,7 +11,8 @@
 
 use merman::svg::{SvgOutputPolicy, SvgPipeline};
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 use serde_json::{Value, json};
 
@@ -30,7 +31,7 @@ const CASES: &[(&str, &str)] = &[
 
 fn render(source: &str, config: Value, pipeline: Option<SvgPipeline>) -> String {
     let output = Renderer::new()
-        .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(config)))
+        .with_engine(Engine::new().with_site_config(PresentationConfig::from_value(config)))
         .render(RenderRequest::svg(
             source,
             OperationControl::new(),

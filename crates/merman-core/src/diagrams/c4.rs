@@ -1921,7 +1921,7 @@ fn parse_c4_semantic_source(
     control: &OperationControl,
 ) -> OperationControlResult<C4ParseOutcome> {
     control.checkpoint()?;
-    let mut db = C4Db::new(&meta.effective_config);
+    let mut db = C4Db::new(meta.effective_config.as_config());
     let mut editor_facts = EditorSemanticFacts::new();
     let mut issues = Vec::new();
     let mut semantic_statements = Vec::new();
@@ -1943,7 +1943,7 @@ fn parse_c4_semantic_source(
         let start = line_start + line.len() - line.trim_start().len();
         let span = SourceSpan::new(start, start + header.len());
         if is_c4_header(header) {
-            db.set_c4_type(header, &meta.effective_config);
+            db.set_c4_type(header, meta.effective_config.as_config());
         } else {
             issues.push(c4_parse_issue(
                 Error::diagram_parse_exact(
@@ -2274,7 +2274,7 @@ fn apply_c4_semantic_statements(
         let parent_boundary = frame.parent_boundary.clone();
         match statement {
             C4SemanticStatement::SetTitle(title) => {
-                db.set_title(title, &meta.effective_config);
+                db.set_title(title, meta.effective_config.as_config());
             }
             C4SemanticStatement::SetAccDescription(description) => {
                 db.set_acc_description(description);
@@ -2497,7 +2497,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "c4".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }

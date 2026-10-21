@@ -2384,8 +2384,9 @@ mod catalog_tests {
         }
 
         let user_config = MermaidConfig::empty_object();
-        let mut defaulted_swimlane =
-            MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
+        let mut defaulted_swimlane = crate::presentation::PresentationConfig::from_value(
+            serde_json::json!({"layout": "dagre"}),
+        );
         crate::config::resolve_appearance(
             "swimlane",
             &user_config,
@@ -2396,12 +2397,13 @@ mod catalog_tests {
         );
         assert_eq!(defaulted_swimlane.get_str("layout"), Some("swimlane"));
         assert_eq!(
-            operation_family_id("swimlane", &defaulted_swimlane),
+            operation_family_id("swimlane", defaulted_swimlane.as_config()),
             Some(DiagramFamilyId::SWIMLANE)
         );
 
         let user_config = MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
-        let mut configured_flowchart = user_config.clone();
+        let mut configured_flowchart =
+            crate::presentation::PresentationConfig::from_config(user_config.clone());
         crate::config::resolve_appearance(
             "swimlane",
             &user_config,
@@ -2411,7 +2413,7 @@ mod catalog_tests {
             &mut configured_flowchart,
         );
         assert_eq!(
-            operation_family_id("swimlane", &configured_flowchart),
+            operation_family_id("swimlane", configured_flowchart.as_config()),
             Some(DiagramFamilyId::FLOWCHART)
         );
 

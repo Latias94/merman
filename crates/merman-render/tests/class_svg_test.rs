@@ -1,7 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
     EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontStack, GradientStop,
@@ -393,7 +394,7 @@ fn class_unlabeled_relations_complete_typed_typography_receipts_in_each_layout()
         ThemeTextStyle::default().with_font_stack(FontStack::single("ClassTyped").unwrap()),
     );
     for layout in ["elk", "dagre"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "layout": layout,
         })));
         let rendered = try_render_class_svg_with_theme_and_engine(
@@ -433,7 +434,7 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     let source = "classDiagram\n  class Alpha\n";
     let metadata = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme": "default", "look": "classic", "layout": "dagre"}),
         )),
     )
@@ -447,7 +448,7 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     let rendered = try_render_class_svg_with_theme_requirement(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme": "default", "look": "classic", "layout": "dagre"}),
         )),
         ThemePortabilityRequirement::BestEffort,
@@ -464,7 +465,7 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     try_render_class_svg_with_theme_and_engine(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme": "default", "look": "classic", "layout": "dagre"}),
         )),
     )
@@ -477,7 +478,7 @@ fn class_typed_font_size_outranks_root_layout_fallback() {
         .with_font_size_px(24.0)
         .expect("valid Class font size");
     let theme = class_typography_theme(typography);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "fontSize": 30
     })));
     let rendered =
@@ -575,7 +576,7 @@ fn class_explicit_theme_font_size_ownership_outranks_typed_font_size() {
         .with_font_size_px(24.0)
         .expect("valid Class font size");
     let theme = class_typography_theme(typography);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "fontSize": "30px" }
     })));
     let rendered =
@@ -668,7 +669,7 @@ fn class_explicit_font_family_ownership_outranks_typed_font_stack() {
         ThemeTextStyle::default()
             .with_font_stack(FontStack::single("ClassTyped").expect("valid Class typed font")),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
         "fontFamily": "ClassConfigOwned"
     })));
     let rendered =
@@ -1740,7 +1741,8 @@ fn class_direct_edge_scalar_reaches_relation_paths_and_only_their_referenced_mar
             let rendered = try_render_class_svg_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({ "look": look }))),
+                Engine::new()
+                    .with_site_config(PresentationConfig::from_value(json!({ "look": look }))),
             )
             .expect("render directly themed Class relations");
             let svg = rendered.svg();
@@ -1879,7 +1881,7 @@ fn class_direct_node_surfaces_reach_html_and_native_terminals() {
         let rendered = try_render_class_svg_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "htmlLabels": html_labels,
             }))),
         )
@@ -1952,7 +1954,7 @@ fn class_direct_node_surfaces_reach_html_and_native_terminals() {
     let resvg = try_render_class_svg_with_theme_and_engine(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "htmlLabels": true,
         }))),
     )
@@ -2452,7 +2454,7 @@ fn class_svg_labels_emit_the_structured_source_color_they_claim_owns_paint() {
     let rendered = try_render_class_svg_with_theme_and_engine(
         "classDiagram\n  class SourceOwned\n  style SourceOwned color:#cc0000\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "htmlLabels": false,
         }))),
     )
@@ -2493,7 +2495,7 @@ fn class_mixed_math_cannot_prove_an_inherited_typed_label_color() {
     let error = match try_render_class_svg_with_theme_environment(
         "classDiagram\n  class Formula[\"value: $$x^2$$\"]\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "htmlLabels": true,
         }))),
         ThemePortabilityRequirement::RequirePortable,
@@ -2520,7 +2522,7 @@ fn class_html_label_fill_ownership_is_property_local_and_visible_run_local() {
   class Mixed["<span style='color:#aa0000'>source-owned</span> inherited"]
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "htmlLabels": true,
             "securityLevel": "loose",
         }))),
@@ -2540,7 +2542,7 @@ fn class_html_label_fill_ownership_is_property_local_and_visible_run_local() {
   class Mixed["<span style='color:#aa0000'>source-owned</span> inherited"]
 "#,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "htmlLabels": true,
             "securityLevel": "loose",
         }))),
@@ -2716,7 +2718,7 @@ fn class_explicit_site_and_secure_source_line_color_outrank_typed_edge_stroke() 
             (
                 "site",
                 "classDiagram\n  A *-- B\n  note for A \"memo\"\n",
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "themeVariables": { "lineColor": "#abcdef" }
                 }))),
                 "#abcdef",
@@ -2783,8 +2785,9 @@ fn class_edge_scalar_reaches_attached_note_connectors() {
                     let rendered = try_render_class_svg_with_theme_and_engine(
                         source,
                         &theme,
-                        Engine::new()
-                            .with_site_config(MermaidConfig::from_value(json!({"look": look}))),
+                        Engine::new().with_site_config(PresentationConfig::from_value(
+                            json!({"look": look}),
+                        )),
                     )
                     .expect("typed Class note connector");
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2830,7 +2833,7 @@ note for X "outside"
         let rendered = try_render_class_svg_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"theme": "default", "look": "classic", "layout": "dagre"}),
             )),
         )
@@ -2869,7 +2872,7 @@ note for X "outside"
 #[test]
 fn class_note_connectors_preserve_legacy_line_color_consumption() {
     let svg = render_class_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": { "lineColor": "#123456" }
         }))),
         "classDiagram\nclass A\nnote for A \"memo\"\n",
@@ -3111,7 +3114,7 @@ click Class1 href "javascript:alert(1)" "tip" _self
     );
 
     let loose = render_class_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"classDiagram
@@ -3277,7 +3280,7 @@ fn class_and_er_elk_missing_sections_paint_clipped_linear_edges_and_centered_lab
 #[test]
 fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
     let svg = render_class_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r##"---
@@ -3996,7 +3999,7 @@ classDiagram
 #[test]
 fn class_svg_dagre_edge_labels_precede_terminals_in_edge_labels_group() {
     let svg = render_class_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": "dagre",
         }))),
         include_str!("../../../fixtures/class/stress_class_parallel_edges_and_cardinality_004.mmd"),
@@ -4151,7 +4154,7 @@ fn class_theme_background_reaches_both_html_and_svg_relation_labels() {
                 ThemeTarget::EdgeLabelBackground,
                 ThemeStylePatch::default().with_fill(CanvasPaint::solid("#020617").unwrap()),
             )]);
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "look": look, "htmlLabels": html_labels,
             })));
             let rendered = try_render_class_svg_with_theme_requirement(
@@ -4252,7 +4255,7 @@ fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
         for html_labels in [true, false] {
             let source = format!("%%{{init: {{\"htmlLabels\": {html_labels}}}}}%%\n{source}");
             let rendered = render_class_svg_from_text_with_engine(
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "look": look,
                     "htmlLabels": html_labels,
                 }))),
@@ -4314,7 +4317,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"theme": "default", "look": "classic", "layout": "dagre"}),
             )),
             ThemePortabilityRequirement::BestEffort,
@@ -4331,7 +4334,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
             try_render_class_svg_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     json!({"theme": "default", "look": "classic", "layout": "dagre"})
                 ))
             )
@@ -4343,7 +4346,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
     let rendered = try_render_class_svg_with_theme_requirement(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme": "default", "look": "classic", "layout": "dagre"}),
         )),
         ThemePortabilityRequirement::BestEffort,
@@ -4360,7 +4363,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         json!({"mainBkg": "#654321"}),
         json!({"primaryColor": "#654321"}),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "default", "look": "classic", "layout": "dagre", "themeVariables": theme_variables})));
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({"theme": "default", "look": "classic", "layout": "dagre", "themeVariables": theme_variables})));
         let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine).unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -4377,7 +4380,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         )
         .for_family(DiagramFamilyId::CLASS),
     ]);
-    let source_owned = Engine::new().with_site_config(MermaidConfig::from_value(
+    let source_owned = Engine::new().with_site_config(PresentationConfig::from_value(
         json!({"theme": "default", "look": "classic", "layout": "dagre", "themeVariables": {"mainBkg": "#654321"}}),
     ));
     assert!(try_render_class_svg_with_theme_and_engine(source, &mixed, source_owned).is_err());
@@ -4390,7 +4393,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
             try_render_class_svg_with_theme_and_engine(
                 &elk_source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                Engine::new().with_site_config(PresentationConfig::from_value(
                     json!({"theme": "default", "look": "classic", "layout": "dagre"})
                 ))
             )
@@ -4402,7 +4405,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         let rendered = try_render_class_svg_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"theme": "default", "look": "classic", "layout": "dagre"}),
             )),
         )
@@ -4597,7 +4600,7 @@ fn class_cluster_scalar_reaches_namespace_rectangles() {
                         let rendered = try_render_class_svg_with_theme_and_engine(
                             source,
                             &theme,
-                            Engine::new().with_site_config(MermaidConfig::from_value(
+                            Engine::new().with_site_config(PresentationConfig::from_value(
                                 json!({"look": look, "layout": "dagre"}),
                             )),
                         )
@@ -4662,7 +4665,7 @@ fn class_cluster_scalar_preserves_independent_and_derived_source_ownership() {
         let rendered = try_render_class_svg_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            Engine::new().with_site_config(PresentationConfig::from_value(config)),
         )
         .expect("source-owned namespace paint");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -4800,7 +4803,7 @@ fn class_extracted_namespace_receipts_follow_source_relations() {
     let source = "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA *-- B : inside\nclass X\nclass Y\nX <|-- Y : outside\n";
     for look in ["classic", "handDrawn"] {
         let engine = || {
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"theme": "default", "look": look, "layout": "dagre"}),
             ))
         };
@@ -4877,7 +4880,7 @@ fn class_native_namespace_and_interface_paint_reaches_text_terminals() {
             let rendered = try_render_class_svg_with_theme_and_engine(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                Engine::new().with_site_config(PresentationConfig::from_value(json!({
                     "htmlLabels": false,
                     "layout": layout,
                 }))),
@@ -4934,7 +4937,7 @@ fn class_namespace_title_scalar_has_a_direct_terminal() {
                         source,
                         &theme,
                         Engine::new()
-                            .with_site_config(MermaidConfig::from_value(json!({"look":look}))),
+                            .with_site_config(PresentationConfig::from_value(json!({"look":look}))),
                     )
                     .expect("typed Class namespace title scalar paint");
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -4981,7 +4984,7 @@ fn class_namespace_title_reconciles_absence_ownership_and_unsupported_siblings()
         ),
         (
             source,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            Engine::new().with_site_config(PresentationConfig::from_value(
                 json!({"themeVariables":{"titleColor":"#abcdef"}}),
             )),
         ),
@@ -5102,7 +5105,7 @@ fn class_namespace_title_preserves_derived_source_ownership() {
         let rendered = try_render_class_svg_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "theme": selected, "themeVariables": {variable: "#456789"}
             }))),
         )
@@ -5159,8 +5162,9 @@ fn class_namespace_math_title_cannot_prove_inherited_paint() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
     )]);
     let source = "classDiagram\nnamespace Formula[\"value: $$x^2$$\"] {\nclass A\n}\n";
-    let engine =
-        || Engine::new().with_site_config(MermaidConfig::from_value(json!({"htmlLabels":true})));
+    let engine = || {
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({"htmlLabels":true})))
+    };
     let environment = || RenderEnvironment::deterministic().with_compiled_math_renderer();
     let rendered = try_render_class_svg_with_theme_environment(
         source,
@@ -5224,7 +5228,7 @@ fn class_node_label_keeps_generic_text_author_order() {
                 let rendered = try_render_class_svg_with_theme_requirement(
                     "classDiagram\nclass Account {\n+String owner\n+close()\n}\n",
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    Engine::new().with_site_config(PresentationConfig::from_value(json!({
                         "htmlLabels": html_labels,
                     }))),
                     ThemePortabilityRequirement::BestEffort,
@@ -5269,8 +5273,9 @@ fn class_node_label_generic_text_ordinal_blocks_only_its_occurrence() {
     ]);
     let source = "classDiagram\nclass Alpha\nclass Beta\n";
     for html_labels in [false, true] {
-        let engine = Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels})));
+        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+            json!({"htmlLabels":html_labels}),
+        ));
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
@@ -5337,8 +5342,9 @@ fn class_node_label_generic_text_clear_and_transparent_mask_older_fill() {
             let rendered = try_render_class_svg_with_theme_requirement(
                 "classDiagram\nclass Account\n",
                 &theme,
-                Engine::new()
-                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                Engine::new().with_site_config(PresentationConfig::from_value(
+                    json!({"htmlLabels":html_labels}),
+                )),
                 ThemePortabilityRequirement::BestEffort,
             )
             .unwrap();
@@ -5387,8 +5393,9 @@ fn class_node_label_generic_text_precedence_preserves_source_paint() {
             let rendered = try_render_class_svg_with_theme_requirement(
                 "classDiagram\nclass Account\nstyle Account color:#cc0000\n",
                 &theme,
-                Engine::new()
-                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                Engine::new().with_site_config(PresentationConfig::from_value(
+                    json!({"htmlLabels":html_labels}),
+                )),
                 ThemePortabilityRequirement::BestEffort,
             )
             .unwrap();
@@ -5440,7 +5447,7 @@ note for Account "Audit note"
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            Engine::new().with_site_config(PresentationConfig::from_value(json!({
                 "htmlLabels": html_labels,
             }))),
             ThemePortabilityRequirement::RequirePortable,
@@ -5679,7 +5686,7 @@ fn class_generic_text_partially_shadowed_rule_keeps_its_winning_fill() {
                     "classDiagram\nclass Account\n"
                 };
                 let engine = || {
-                    Engine::new().with_site_config(MermaidConfig::from_value(
+                    Engine::new().with_site_config(PresentationConfig::from_value(
                         json!({"htmlLabels": html_labels}),
                     ))
                 };
@@ -6196,8 +6203,9 @@ fn class_node_background_fill_preserves_typed_label_paint() {
             let rendered = try_render_class_svg_with_theme_requirement(
                 "classDiagram\nclass Account\nstyle Account fill:#cc0000\n",
                 &theme,
-                Engine::new()
-                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                Engine::new().with_site_config(PresentationConfig::from_value(
+                    json!({"htmlLabels":html_labels}),
+                )),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .expect("node background does not own label text color");
@@ -6258,7 +6266,7 @@ fn class_svg_member_escape_normalization_matches_layout_and_visible_text() {
             for escape_count in [1, 2, 3, 4] {
                 let source = format!("classDiagram\nA : {}{suffix}\n", "\\".repeat(escape_count));
                 let parsed = Engine::new()
-                    .with_site_config(MermaidConfig::from_value(
+                    .with_site_config(PresentationConfig::from_value(
                         json!({"htmlLabels":false, "layout":layout}),
                     ))
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
@@ -6363,7 +6371,7 @@ fn class_svg_empty_note_does_not_claim_typed_text_fill_when_node_is_source_owned
                 &source,
                 &theme,
                 Engine::new()
-                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":false}))),
+                    .with_site_config(PresentationConfig::from_value(json!({"htmlLabels":false}))),
                 portability,
             )
             .unwrap();
@@ -6411,7 +6419,7 @@ fn class_svg_literal_title_keeps_typed_text_fill_for_markdown_empty_alias() {
     let rendered = try_render_class_svg_with_theme_and_engine(
         &source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({"htmlLabels":false}))),
+        Engine::new().with_site_config(PresentationConfig::from_value(json!({"htmlLabels":false}))),
     )
     .unwrap();
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -6496,7 +6504,7 @@ fn class_svg_empty_markdown_members_restore_source_row_for_layout_and_emission()
         for count in [1, 2, 3, 4] {
             let source = format!("classDiagram\nA : {}\n", "\\".repeat(count));
             let parsed = Engine::new()
-                .with_site_config(MermaidConfig::from_value(
+                .with_site_config(PresentationConfig::from_value(
                     json!({"htmlLabels":false,"layout":layout}),
                 ))
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())

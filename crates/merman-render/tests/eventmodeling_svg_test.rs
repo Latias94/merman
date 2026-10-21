@@ -1,7 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     OrdinalSelector, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
@@ -114,9 +115,10 @@ fn render_eventmodeling_with_theme_requirement_and_id(
 }
 
 fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::RenderedFamilySvg {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
+        })));
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
         .expect("parse Event Modeling author CSS fixture")
@@ -327,9 +329,10 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     let theme = eventmodeling_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "textColor": "#fedcba" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#fedcba" }
+        })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render site-owned Event Modeling text fill");
     let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
@@ -456,10 +459,11 @@ fn eventmodeling_theme_font_family_keeps_precedence_over_root_font_family() {
     let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontFamily": "EventRootFont",
-        "themeVariables": { "fontFamily": "EventThemeFont" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontFamily": "EventRootFont",
+            "themeVariables": { "fontFamily": "EventThemeFont" }
+        })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render config-owned Event Modeling font stack");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -545,10 +549,11 @@ fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
     let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontSize": "31px",
-        "themeVariables": { "fontSize": "22px" }
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontSize": "31px",
+            "themeVariables": { "fontSize": "22px" }
+        })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render Event Modeling split font-size configuration");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -562,9 +567,10 @@ fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_owner
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile empty Event Modeling theme");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "theme": "redux"
-    })));
+    let engine =
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "theme": "redux"
+        })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render Redux Event Modeling font size");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -604,7 +610,7 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let config_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px" }
         }))),
     )
@@ -625,7 +631,7 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let root_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px"
         }))),
     )
@@ -1023,7 +1029,7 @@ fn repair_u7_eventmodeling_source_text_color_owns_palette_fallback() {
     let rendered = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        Engine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
         )),
     )

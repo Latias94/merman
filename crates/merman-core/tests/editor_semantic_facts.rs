@@ -1,9 +1,8 @@
 #![cfg(feature = "all-diagrams")]
 
+use merman_core::presentation::PresentationConfig;
 use merman_core::time::CivilDate;
-use merman_core::{
-    EditorSemanticFacts, Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,
-};
+use merman_core::{EditorSemanticFacts, Engine, Error, SourceSpan, diagram_family_capabilities};
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeMap;
 use std::fs;
@@ -28,7 +27,7 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
     })
 }
 
-fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
+fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
     fixture_render_contexts()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -37,7 +36,7 @@ fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
                 path.display()
             )
         })
-        .map(|context| MermaidConfig::from_value(context.site_config_value()))
+        .map(|context| PresentationConfig::from_value(context.site_config_value()))
 }
 
 fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {

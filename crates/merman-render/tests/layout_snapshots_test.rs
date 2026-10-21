@@ -275,7 +275,11 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                     mmd_path.display()
                 )
             })
-            .map(|context| merman_core::MermaidConfig::from_value(context.site_config_value()));
+            .map(|context| {
+                merman_core::presentation::PresentationConfig::from_value(
+                    context.site_config_value(),
+                )
+            });
         let fixture_engine = match fixture_site_config {
             Some(site_config) => engine.clone().with_site_config(site_config),
             None => engine.clone(),

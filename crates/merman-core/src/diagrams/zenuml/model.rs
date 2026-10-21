@@ -462,7 +462,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "zenuml".into(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         let legacy = LegacyModelWire {

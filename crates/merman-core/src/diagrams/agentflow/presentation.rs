@@ -300,7 +300,7 @@ impl Parser<'_> {
                                 id.to_string(),
                                 crate::sanitize::sanitize_text(
                                     tooltip,
-                                    &self.meta.effective_config,
+                                    self.meta.effective_config.as_config(),
                                 ),
                             );
                         }
@@ -308,8 +308,10 @@ impl Parser<'_> {
                         if let Some(node) = self.presentation.nodes.get_mut(id) {
                             match &click.action {
                                 ClickAction::Link { href, target } => {
-                                    node.link =
-                                        crate::utils::format_url(href, &self.meta.effective_config);
+                                    node.link = crate::utils::format_url(
+                                        href,
+                                        self.meta.effective_config.as_config(),
+                                    );
                                     node.link_target = target.clone();
                                 }
                                 ClickAction::Callback => {

@@ -107,7 +107,7 @@ impl CynefinParseOutcome {
 
 pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(&meta.effective_config);
+    model.sanitize_common_db_fields(meta.effective_config.as_config());
 
     render_model_to_compat_json(&model, meta)
 }
@@ -124,7 +124,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         },
         first_error,
     } = construct_cynefin_parse_outcome_controlled(code, meta, control)?;
-    model.sanitize_common_db_fields(&meta.effective_config);
+    model.sanitize_common_db_fields(meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
@@ -169,7 +169,7 @@ pub(crate) fn parse_cynefin_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<CynefinDiagramRenderModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(&meta.effective_config);
+    model.sanitize_common_db_fields(meta.effective_config.as_config());
     Ok(model)
 }
 
@@ -184,7 +184,7 @@ pub(crate) fn parse_cynefin_model_for_render_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let mut model = source.model;
-    model.sanitize_common_db_fields(&meta.effective_config);
+    model.sanitize_common_db_fields(meta.effective_config.as_config());
     Ok(Ok(model))
 }
 
@@ -696,7 +696,7 @@ mod tests {
         crate::ParseMetadata {
             diagram_type: "cynefin".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -778,7 +778,7 @@ mod tests {
             &crate::ParseMetadata {
                 diagram_type: "cynefin".to_string(),
                 config: crate::MermaidConfig::empty_object(),
-                effective_config: crate::MermaidConfig::empty_object(),
+                effective_config: crate::presentation::PresentationConfig::empty_object(),
                 title: None,
             },
         );

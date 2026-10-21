@@ -3,6 +3,7 @@ use crate::common::{
     binding_diagnostic_details, binding_input_resource_policy, binding_site_config,
     no_diagram_error, runtime_policy_error, source_text,
 };
+use merman::presentation::PresentationConfig;
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     crate::execute_once_data("ascii", source, None, options_json)
@@ -89,7 +90,7 @@ impl AsciiOperationConfig {
         };
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(site_config);
+            engine = engine.with_site_config(PresentationConfig::from_config(site_config));
         }
         let renderer = merman::Renderer::new()
             .with_engine(engine)

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::RailroadStyle;
 use crate::diagram_theme::{
@@ -137,7 +137,7 @@ pub(crate) struct RailroadTypographyThemePlan {
 impl RailroadTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<Self, crate::resources::OperationWorkError> {
         let mut style = super::railroad_style(effective_config.as_value());
@@ -597,7 +597,7 @@ impl RailroadTypographyThemePlan {
     }
 }
 
-fn railroad_config_owns_font_stack(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_font_stack(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -608,11 +608,11 @@ fn railroad_config_owns_font_stack(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_font_size(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_font_size(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(config, ["railroad.fontSize", "themeVariables.fontSize"])
 }
 
-fn railroad_config_owns_title_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_title_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -623,11 +623,11 @@ fn railroad_config_owns_title_fill(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_text_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_text_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(config, ["themeVariables.textColor"])
 }
 
-fn railroad_config_owns_terminal_text_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_terminal_text_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -638,7 +638,7 @@ fn railroad_config_owns_terminal_text_fill(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_nonterminal_text_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_nonterminal_text_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -649,7 +649,7 @@ fn railroad_config_owns_nonterminal_text_fill(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_comment_text_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_comment_text_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -660,7 +660,7 @@ fn railroad_config_owns_comment_text_fill(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_rule_name_text_fill(config: &MermaidConfig) -> bool {
+fn railroad_config_owns_rule_name_text_fill(config: &PresentationConfig) -> bool {
     railroad_config_owns_any(
         config,
         [
@@ -671,7 +671,7 @@ fn railroad_config_owns_rule_name_text_fill(config: &MermaidConfig) -> bool {
     )
 }
 
-fn railroad_config_owns_any<const N: usize>(config: &MermaidConfig, paths: [&str; N]) -> bool {
+fn railroad_config_owns_any<const N: usize>(config: &PresentationConfig, paths: [&str; N]) -> bool {
     paths
         .into_iter()
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))

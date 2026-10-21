@@ -269,15 +269,16 @@ fn construct_packet_semantic_source_controlled(
         });
     }
 
-    let packet_result =
-        match validate_packet_bits_per_row(config_i64(&meta.effective_config, "packet.bitsPerRow"))
-        {
-            Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
-            Err(error) => Err(Error::diagram_parse_fallback(
-                meta.diagram_type.clone(),
-                error.to_string(),
-            )),
-        };
+    let packet_result = match validate_packet_bits_per_row(config_i64(
+        meta.effective_config.as_config(),
+        "packet.bitsPerRow",
+    )) {
+        Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
+        Err(error) => Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            error.to_string(),
+        )),
+    };
     let packet = match packet_result {
         Ok(packet) => packet,
         Err(error) => {
@@ -817,7 +818,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
 
@@ -830,7 +831,7 @@ mod tests {
     #[test]
     fn packet_typed_projection_matches_complete_compatibility_json() {
         let text = "packet\ntitle Header\n0-7: \"byte\"\n";
-        let effective_config = MermaidConfig::from_value(json!({
+        let effective_config = crate::presentation::PresentationConfig::from_value(json!({
             "packet": { "bitsPerRow": 16 },
             "theme": "forest"
         }));
@@ -856,7 +857,7 @@ mod tests {
             let meta = ParseMetadata {
                 diagram_type: "packet".to_string(),
                 config: MermaidConfig::empty_object(),
-                effective_config: MermaidConfig::from_value(json!({
+                effective_config: crate::presentation::PresentationConfig::from_value(json!({
                     "packet": { "bitsPerRow": 8, "bitOrder": bit_order }
                 })),
                 title: None,
@@ -879,7 +880,7 @@ mod tests {
         let meta = ParseMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
         for source in ["", "packet"] {

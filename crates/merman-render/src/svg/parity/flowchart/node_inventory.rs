@@ -248,7 +248,7 @@ impl FlowchartPreparedNodes {
         layout: FlowchartNodeLayoutView<'_>,
         svg_labels: &crate::flowchart::FlowchartSvgLabelSidecar,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
         render_config: &super::render_config::FlowchartRenderConfig,
         work: &std::sync::Arc<crate::resources::OperationWorkMeter>,

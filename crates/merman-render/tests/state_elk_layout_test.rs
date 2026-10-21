@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -7,7 +8,7 @@ use serde_json::{Value, json};
 
 fn render(source: &str, backend: &str) -> (Value, String) {
     let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({
+        .with_site_config(PresentationConfig::from_value(json!({
             "layout": backend, "htmlLabels": false, "look": "classic",
             "state": { "minNodeWidth": 180 },
         })))
@@ -286,7 +287,7 @@ fn state_elk_subpixel_label_width_changes_route_topology() {
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let parsed = Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "layout": "elk", "htmlLabels": true,
             })))
             .parse_diagram_for_render_model_sync(
@@ -400,7 +401,7 @@ fn state_elk_terminal_guard_preserves_browser_reserved_label_lane() {
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let render_with_straightening = |straighten: bool| {
         let parsed = Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+            .with_site_config(PresentationConfig::from_value(json!({
                 "layout": "elk", "htmlLabels": true, "elk": { "straightenEdges": straighten },
             })))
             .parse_diagram_for_render_model_sync(
@@ -581,7 +582,7 @@ fn state_elk_compound_routes_with_controlled_browser_measurements() {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({ "layout": "elk", "htmlLabels": true })))
+        .with_site_config(PresentationConfig::from_value(json!({ "layout": "elk", "htmlLabels": true })))
         .parse_diagram_for_render_model_sync(
             include_str!("../../../fixtures/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040.mmd"),
             ParseOptions::strict(),
@@ -730,7 +731,7 @@ fn state_elk_remaining_routes_with_controlled_browser_measurements() {
         ),
     ] {
         let parsed = Engine::new()
-            .with_site_config(MermaidConfig::from_value(
+            .with_site_config(PresentationConfig::from_value(
                 json!({"layout": "elk", "htmlLabels": true}),
             ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())

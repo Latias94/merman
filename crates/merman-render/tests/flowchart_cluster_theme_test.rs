@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
@@ -99,7 +100,7 @@ fn cluster_static_then_ordinal_theme() -> DiagramTheme {
 fn try_render(
     source: &str,
     theme: &DiagramTheme,
-    site_config: MermaidConfig,
+    site_config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
@@ -124,7 +125,7 @@ fn try_render(
         )
 }
 
-fn render_strict(source: &str, theme: &DiagramTheme, site_config: MermaidConfig) -> String {
+fn render_strict(source: &str, theme: &DiagramTheme, site_config: PresentationConfig) -> String {
     try_render(
         source,
         theme,
@@ -142,7 +143,7 @@ fn flowchart_cluster_ordinal_routes_follow_visible_terminal_occurrences() {
     let rendered = try_render(
         CLUSTER_SOURCE,
         &matching,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("render matching ordinal Cluster theme in best-effort mode");
@@ -155,7 +156,7 @@ fn flowchart_cluster_ordinal_routes_follow_visible_terminal_occurrences() {
         try_render(
             CLUSTER_SOURCE,
             &matching,
-            MermaidConfig::default(),
+            PresentationConfig::default(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .is_err(),
@@ -166,7 +167,7 @@ fn flowchart_cluster_ordinal_routes_follow_visible_terminal_occurrences() {
     let rendered = try_render(
         CLUSTER_SOURCE,
         &out_of_range,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("an out-of-range Cluster ordinal is not applicable");
@@ -183,7 +184,7 @@ fn flowchart_cluster_ordinal_winner_suppresses_the_shadowed_static_paint() {
     let rendered = try_render(
         CLUSTER_SOURCE,
         &theme,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("render mixed Cluster winner theme");
@@ -210,7 +211,7 @@ fn flowchart_cluster_typed_paint_reaches_classic_and_hand_drawn_writers() {
         let svg = render_strict(
             CLUSTER_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "look": look,
                 "handDrawnSeed": 7
             })),
@@ -250,7 +251,7 @@ fn flowchart_cluster_transparent_paint_is_terminal_and_portable() {
         let svg = render_strict(
             CLUSTER_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "look": look,
                 "handDrawnSeed": 7
             })),
@@ -299,7 +300,7 @@ fn flowchart_cluster_explicit_default_paint_reaches_terminal_writers_and_evidenc
             let rendered = try_render(
                 CLUSTER_SOURCE,
                 &theme,
-                MermaidConfig::from_value(json!({
+                PresentationConfig::from_value(json!({
                     "look": look,
                     "handDrawnSeed": 7
                 })),
@@ -359,7 +360,7 @@ fn flowchart_cluster_source_and_config_paint_override_typed_values_per_facet() {
     let class_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nclassDef source fill:#22c55e\nclass Group source\n",
         &theme,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
     );
     assert!(class_svg.contains("fill:#22c55e !important"));
     assert!(class_svg.contains("stroke:#2563eb !important"));
@@ -368,7 +369,7 @@ fn flowchart_cluster_source_and_config_paint_override_typed_values_per_facet() {
     let style_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nstyle Group stroke:#0f766e\n",
         &theme,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
     );
     assert!(style_svg.contains("fill:#ef4444 !important"));
     assert!(style_svg.contains("stroke:#0f766e !important"));
@@ -377,7 +378,7 @@ fn flowchart_cluster_source_and_config_paint_override_typed_values_per_facet() {
     let config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "themeVariables": {
                 "clusterBkg": "#f59e0b",
                 "clusterBorder": "#334155"
@@ -398,7 +399,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let class_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nclassDef source fill:#22c55e\nclass Group source\n",
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7
         })),
@@ -410,7 +411,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let style_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nstyle Group stroke:#0f766e\n",
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7
         })),
@@ -422,7 +423,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let fill_config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7,
             "themeVariables": {
@@ -437,7 +438,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let stroke_config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        MermaidConfig::from_value(json!({
+        PresentationConfig::from_value(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7,
             "themeVariables": {
@@ -462,7 +463,7 @@ fn swimlane_shared_renderer_does_not_consume_flowchart_only_cluster_paint() {
         let svg = render_strict(
             source,
             &theme,
-            MermaidConfig::from_value(json!({
+            PresentationConfig::from_value(json!({
                 "layout": "swimlane",
                 "look": look,
                 "handDrawnSeed": 7
@@ -483,7 +484,11 @@ fn flowchart_cluster_theme_is_not_applicable_without_a_cluster() {
         CanvasPaint::solid("#ef4444").expect("valid fill"),
         CanvasPaint::solid("#2563eb").expect("valid stroke"),
     );
-    let svg = render_strict("flowchart LR\nA --> B\n", &theme, MermaidConfig::default());
+    let svg = render_strict(
+        "flowchart LR\nA --> B\n",
+        &theme,
+        PresentationConfig::default(),
+    );
 
     assert!(!svg.contains("fill:#ef4444 !important"));
     assert!(!svg.contains("stroke:#2563eb !important"));
@@ -506,7 +511,7 @@ fn cluster_stroke_width_reaches_rect_and_rough_outline_with_source_precedence() 
                 let rendered = try_render(
                     &format!("{CLUSTER_SOURCE}{source_style}"),
                     &theme,
-                    MermaidConfig::from_value(json!({
+                    PresentationConfig::from_value(json!({
                         "layout": layout,
                         "look": look,
                         "flowchart": {"look": look},
@@ -580,7 +585,7 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
         let rendered = try_render(
             CLUSTER_SOURCE,
             &theme,
-            MermaidConfig::from_value(json!({"look": look, "flowchart": {"look": look}})),
+            PresentationConfig::from_value(json!({"look": look, "flowchart": {"look": look}})),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -593,7 +598,7 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
     let absent = try_render(
         "flowchart LR\nA --> B\n",
         &theme,
-        MermaidConfig::default(),
+        PresentationConfig::default(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
@@ -602,7 +607,7 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
     assert_eq!(evidence.not_applicable_count(), 1);
 
     let source = "agentflow-beta LR\nflow group[Group]\na[Alpha] --> b[Beta]\nend\n";
-    let config = MermaidConfig::from_value(json!({"look": "classic"}));
+    let config = PresentationConfig::from_value(json!({"look": "classic"}));
     let unrelated = try_render(
         source,
         &theme,

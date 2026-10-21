@@ -529,7 +529,7 @@ mod tests {
         ParseMetadata {
             diagram_type: "pie".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }

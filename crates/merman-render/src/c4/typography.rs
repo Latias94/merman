@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -69,7 +69,7 @@ pub(crate) struct C4TypographyThemeReceipt<'a> {
 impl C4TypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         title: Option<&str>,
         model: &merman_core::diagrams::c4::C4DiagramRenderModel,
     ) -> Self {
@@ -372,7 +372,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
 
     #[test]
     fn title_receipt_requires_matching_css_and_optional_title() {
@@ -417,7 +417,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::C4);
         let plan = C4TypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::empty_object(),
+            &PresentationConfig::empty_object(),
             Some("Context"),
             &serde_json::from_value(serde_json::json!({})).expect("empty C4 fixture"),
         );
@@ -436,7 +436,7 @@ mod tests {
             ]
         }))
         .expect("C4 actual-type fixture");
-        let config = MermaidConfig::from_value(serde_json::json!({"c4": {
+        let config = PresentationConfig::from_value(serde_json::json!({"c4": {
             "custom_typeFontFamily": "  Custom Sans ;  ", "custom_typeFontSize": "19",
             "custom_typeFontWeight": 600, "custom_type_bg_color": "var(--card)",
             "custom_type_border_color": "", "custom_type_font_color": 42,
