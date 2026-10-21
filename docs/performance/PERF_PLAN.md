@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 21 font-stack checkpoint](theme_font_stack_sharing_macos_2026-10-21.md) shares
+validated immutable compiled font lists instead of cloning their vectors and strings at each
+typed style resolution. Source CSS parsing keeps its transient Vec and the same validator;
+base/computed Clear semantics remain distinct. Across all 418 stable catalog cells, 356 improve
+and 62 are unchanged, with no four-metric regression; 350 themed cells strictly reduce count
+and bytes. Of 504 jointly stable site controls, 259 improve and 245 stay unchanged; 141 variable
+controls remain inconclusive. SVG/report/callback/error controls and all integration owners pass.
+The cold construction cost remains explicit, including the maximum stack's extra allocation,
+784 cumulative bytes, 528 peak-growth bytes and 16 retained bytes. This is warm ownership/work
+evidence, not release latency recovery. Next independently measure the frozen report-transport
+candidate, including its intentional extra report allocation, then refresh the public v0.9.0
+comparison. The formal 14/2/3 release classification remains unchanged.
+
 The [October 21 root-cause investigation](theme_regression_root_cause_macos_2026-10-21.md)
 pauses small allocation repairs and prioritizes newly introduced work against v0.9.0. Independent
 history audits and full-public-E2E diagnostic interventions identify the generated CSS/XML and
