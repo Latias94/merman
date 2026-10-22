@@ -10,8 +10,48 @@ See the [release index](../release/README.md) for published-version migrations.
 Use `Renderer::prepare_source(PrepareSourceRequest::new(source, control))` to create a
 `PreparedSource`, then `Renderer::render_prepared(&prepared, target, fresh_control)` for each
 output. The [redraw example](../../crates/merman/examples/redraw_prepared.rs) contains the complete
-request wiring. `SemanticArtifact::into_prepared_source()` transfers an already parsed semantic
-artifact into the same reusable owner and releases its original operation control.
+request wiring. `PresentationArtifact::into_prepared_source()` transfers an already parsed full
+presentation artifact into the same reusable owner and releases its original operation control.
+
+Canonical semantic inspection now uses `Renderer::parse_semantic()` or
+`RenderRequest::semantic()`. Its `SemanticArtifact` has canonical metadata and a
+`SemanticDiagramModel`, but no compatibility JSON or promotion to graphical output. Semantic
+and ordinary ASCII requests do not evaluate visual theme programs. An admitted invalid visual
+color can therefore succeed there while full presentation retains its original theme error.
+
+Replace the old format-neutral `prepare_semantic()` API with `prepare_presentation()` wherever
+the caller needs later graphical output or a reusable full source. Use
+`RenderRequest::presentation()` / `RenderOutput::Presentation` for an explicit full artifact.
+Select `compat-json` when calling `PresentationArtifact::compatibility_json()`; it implies
+`presentation`. `svg` selects presentation, not the facade's compatibility-JSON API.
+
+Configure canonical requests with `Renderer::with_semantic_parser(SemanticParser::new()
+.with_site_config(config))`. Full custom detectors and adapters remain explicitly full-only
+through `with_presentation_engine(MermaidEngine::new()...)`; they do not silently replace the
+canonical parser. `with_runtime_policy()` sets both operation routes. The old `Engine` and
+`ParseMetadata` aliases are removed; their full counterparts are `MermaidEngine` and
+`PresentationMetadata`.
+
+Without an explicitly installed full engine, presentation defaults inherit the canonical
+parser's host configuration and runtime. Replacing that parser also replaces those inherited
+defaults, even after an earlier full operation. An explicitly installed full engine retains its
+own configuration and adapters; `with_runtime_policy()` deliberately updates both routes.
+
+The remaining Rust source migrations are:
+
+| Former use | Current use |
+| --- | --- |
+| Full site configuration as `MermaidConfig` | `presentation::PresentationConfig::from_config(config)` for `MermaidEngine`; semantic parsers still accept `MermaidConfig` |
+| `merman_core::geom` | `merman_render::geom`; geometry belongs to rendering |
+| `ErrorDiagramRenderModel` | Canonical `diagrams::error_diagram::ErrorDiagramModel`, shared by semantic and full parsing |
+| Moving Journey, Timeline or Packet fields out of a full carrier | Move through the carrier's `semantic` field; borrowed field reads remain available |
+| ASCII entrypoints taking `RenderSemanticModel` | `render_parsed` / `render_parsed_report` on a `ParsedSemanticDiagram`, or the explicit borrowed `AsciiDiagram` and `AsciiSourceContext` entrypoints |
+| Custom full analyzer construction | Enable analysis `compat-json` and use `Analyzer::with_mermaid_engine`; ordinary analyzers remain canonical |
+
+`editor-facts` does not enable presentation. Default analysis/editor captures retain syntax,
+recovery, warnings and source-config evidence but no longer validate visual theme programs.
+Request full presentation when the host needs preview/theme validation. Core's `terminal-text`
+leaf is selected by terminal and diagnostic owners, independently of diagram selection.
 
 The snapshot freezes canonical semantics, effective configuration, parse options, the existing
 compiled theme binding, source size/model complexity, and the actual parse-time runtime context.

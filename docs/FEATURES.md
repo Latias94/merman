@@ -51,6 +51,16 @@ binary export to `svg`; the corresponding Web and CLI products make the same com
 their public workflow requires them. Those owner-specific compile combinations do not turn into
 global capability implications.
 
+Current Rust source builds also expose owner-local `presentation`, `compat-json`, and
+`editor-facts` features on the facade and core. These are projection boundaries, not new
+transport capability IDs. Defaults-off family selections and ASCII use canonical semantics;
+`svg` forwards `presentation`, while the facade's legacy JSON API requires explicit
+`compat-json`. Rich language tooling selects its required editor facts independently. See the
+[semantic/full migration](migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
+Core's `terminal-text` leaf owns shared terminal normalization and Unicode width helpers.
+ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not.
+
 The current development branch retires `complete-svg` and `complete-svg-elk`. Select output and
 layout leaves directly and add `math` only when needed. The facade defaults to
 `all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render

@@ -21,7 +21,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Render bounded terminal text | [`render_terminal.rs`](render_terminal.rs) | Selects Unicode or ASCII-only output explicitly. |
 | Emit a plain JSON report for an agent or log | [`render_agent_log.rs`](render_agent_log.rs) | Uses canonical report serialization and typed outcome handling. |
 | Apply a terminal host palette | [`terminal_palette.rs`](terminal_palette.rs) | Maps explicit RGB colors to terminal roles with TrueColor encoding. |
-| Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `Engine` without requiring SVG rendering. |
+| Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `SemanticParser` without presentation, JSON, or SVG. |
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
@@ -58,9 +58,9 @@ cargo run -p merman --features ascii --example render_terminal -- --ascii
 Inspect parser and layout results:
 
 ```sh
-cargo run -p merman --example inspect_semantics
+cargo run -p merman --no-default-features --features diagram-flowchart --example inspect_semantics
 cargo run -p merman --example inspect_layout
-cargo run -p merman --example deterministic_gantt
+cargo run -p merman --features compat-json --example deterministic_gantt
 ```
 
 Configure host defaults, compiled themes, and output policy:

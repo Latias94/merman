@@ -4,7 +4,9 @@
 
 Accepted. Identity/implementation availability and actionable editor suggestions are amended by
 [ADR-0091](0091-selectable-diagram-families.md); family-owned semantics and catalog ownership remain
-in force. The original decision below is retained as historical context.
+in force. Current API clauses also reflect the explicit semantic/presentation capability boundary;
+see the [migration reference](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+The original decision background, date and baseline below are retained as historical context.
 
 ## Date
 
@@ -74,25 +76,30 @@ suppression cannot turn the snapshot into a successful error-family model.
 Public family modules expose model and vocabulary types, not built-in parser entrypoints. Semantic
 JSON constructors, typed render-model constructors, combined semantic/editor constructors, and
 family-specific editor recovery functions are crate-private or narrower. External callers obtain
-built-in results only through `Engine`; editor consumers use `DiagramParseSnapshot` so metadata,
-the original semantic outcome, and recovery facts remain operation-owned.
+canonical built-in results through `SemanticParser`; default editor consumers use
+`SemanticDiagramSnapshot` under `editor-facts` so metadata, the original semantic outcome, and
+recovery facts remain operation-owned. Full presentation uses `MermaidEngine` and
+`PresentationMetadata` under `presentation`; the former `Engine` and `ParseMetadata` aliases
+are removed. Full compatibility snapshots use `DiagramParseSnapshot` only when `compat-json`
+and `editor-facts` are selected.
 
-`DiagramRegistry::insert` remains public for explicit custom parser overlays. Resolution is
-crate-private: a registry cannot hand an external caller a built-in parser function pointer, and
-the helper that executes a resolved parser from caller-supplied `ParseMetadata` is internal. Public
-capability discovery uses `supported_diagrams()` and `diagram_family_capabilities()` instead of
-parser lookup.
+`DiagramRegistry::insert` remains public under `compat-json` for explicit custom parser overlays.
+Resolution is crate-private: a registry cannot hand an external caller a built-in parser function
+pointer, and the helper that executes a resolved parser from caller-supplied
+`PresentationMetadata` is internal. Public capability discovery uses `supported_diagrams()` and
+`diagram_family_capabilities()` instead of parser lookup.
 
-Custom semantic overlays receive the operation's `OperationControl`. Their function signature
-returns `OperationControlResult<Result<Value>>`: the outer result is cooperative cancellation and the inner
-result is Mermaid parse success or failure. Implementations must checkpoint long-running loops.
-The non-cancellable `Engine` facades convert an unexpected outer cancellation into
+Custom compatibility JSON overlays receive the operation's `OperationControl`. Their function
+signature returns `OperationControlResult<Result<Value>>`: the outer result is cooperative
+cancellation and the inner result is Mermaid parse success or failure. Implementations must
+checkpoint long-running loops.
+The non-cancellable `MermaidEngine` facades convert an unexpected outer cancellation into
 `Error::OperationCancelled`; controlled snapshot facades preserve it in the outer result.
 
 This is an intentional API break. The former per-family `parse_*`, typed parser,
 `*_model_for_render`, and `*_editor_facts` entrypoints have no deprecated aliases. Tests that need
 family-local evidence consume the combined construction; public integration tests consume the
-`Engine` snapshot or render-model facade.
+`SemanticParser` snapshot or the explicit `MermaidEngine` presentation facade.
 
 ### Editor behavior uses parser facts only
 
@@ -125,10 +132,18 @@ This payload version is unrelated to LSP document revision numbers, Mermaid ids 
 headless operation. Successful built-in rendering remains typed from family semantic construction
 through layout and SVG.
 
-At the low-level boundary, `FamilyRenderArtifact` owns the matching semantic model, layout, parse
-metadata, and render session. The semantic/layout pair is opaque and cannot be independently
-recombined. Compatibility layout JSON is projected from this artifact. SVG rendering consumes the
-artifact, so a prepared result cannot be reused with a different family layout.
+`Renderer::parse_semantic` returns a lean `SemanticArtifact` with `SemanticMetadata` and a
+canonical `SemanticDiagramModel`. Semantic and ordinary ASCII requests use `with_semantic_parser`
+and do not evaluate visual theme programs. Default editor/analysis snapshots follow that same
+boundary and do not produce visual theme color or evaluation-limit diagnostics. Full configuration
+and custom adapters belong to `with_presentation_engine`; `MermaidEngine::with_site_config` accepts
+`merman::presentation::PresentationConfig`.
+
+At the low-level boundary, `FamilyRenderArtifact<'_>` borrows the matching semantic model and
+presentation metadata from its parse owner, and owns the typed layout and render session. The
+semantic/layout pair is opaque and cannot be independently recombined. Compatibility layout JSON
+is projected from this artifact. SVG rendering consumes the artifact, so a prepared result cannot
+be reused with a different family layout.
 
 The built-in error diagram keeps its dedicated typed path. A custom semantic parser may return an
 explicit custom JSON model, but it is non-renderable unless a future renderer capability is
@@ -138,9 +153,13 @@ families.
 The old public `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, and
 per-family pass-through SVG wrappers are not compatibility layers. They are removed. Applications
 should use `Renderer`, `RenderRequest`, and `RenderTarget`; callers that need admission or metadata
-before choosing an output use `Renderer::prepare_semantic` and consume the returned
-`SemanticArtifact`. Direct `merman-render` users use `family::prepare` and retain the operation's
-`RenderSession`.
+before choosing a graphical output use `Renderer::prepare_presentation` and consume the returned
+`PresentationArtifact`. A lean `SemanticArtifact` cannot be promoted to graphical output.
+Reusable full parsing uses `prepare_source` or `PresentationArtifact::into_prepared_source`;
+Mermaid-compatible JSON requires explicit `compat-json`. Direct `merman-render` users use
+`family::prepare(&parsed, ...)` and retain the parse owner and operation's `RenderSession`.
+Current call-site migration is documented in the
+[host integration migration](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 
 ### The operation owns its render environment
 
