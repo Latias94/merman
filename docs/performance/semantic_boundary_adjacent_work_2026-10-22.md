@@ -484,3 +484,44 @@ activity remains possible, and historical inconclusive observations remain uncha
 The final root retains `u3-json-parse-confirmation-audit.json`, SHA-256
 `62e222b8fbd25b948b0257b3380d1815db3aba828de7e040fd2ea467a00a70ae`, and the raw
 `timing-u3/compatibility_json_parse.{json,md,log}` files.
+
+## Renewed U3 E2E remains inconclusive (2026-10-23)
+
+The final registered U3 group completed with five `confirmed_non_regression` rows and one
+`inconclusive` State row. It exited 3 with zero contract failures. The U3 schedule is now
+complete: 23 controls confirm non-regression and one does not. This does not admit U3 performance;
+48 U4/integrated controls remain unexecuted.
+
+Both runners completed all eight A/A calibration pairs on all six fixtures. State's base
+calibration was stable, but head failed `identity_log_within_margin`,
+`identity_absolute_within_margin` and `order_absolute_within_margin`. Its head A/A identity
+interval was -93.956 to +12.038 us, with a log-ratio interval of -0.113472 to +0.014686;
+the absolute order-effect interval was -78.460 to +37.477 us. These exceed the registered
+50 us and log(1.1) calibration boundaries. The State row retains matched exact SVG output
+identity, but has no fresh confirmation pairs, means or effect bounds. It establishes neither
+a regression nor non-regression.
+
+The unchanged calibration policy scheduled ten fresh balanced AB/BA pairs for each stable
+fixture. Their required counts were eight; State's calibration-derived count was ten. The
+shared schedule is fixed from calibration, not an extension after inspecting confirmation.
+Every stable row completed that ten-pair schedule with identical preflight/postflight outputs,
+divisor one and verified post-sampling source, fixtures, discovery and frozen executables.
+
+| E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 477.041 us | 470.080 us | Confirmed non-regression | 10 |
+| State medium | Not admitted | Not admitted | Inconclusive: head A/A unstable | 0 |
+| Class medium | 1,081.990 us | 1,071.860 us | Confirmed non-regression | 10 |
+| ER medium | 678.544 us | 669.829 us | Confirmed non-regression | 10 |
+| Pie medium | 37.636 us | 35.883 us | Confirmed non-regression | 10 |
+| Flowchart medium | 1,823.720 us | 1,821.790 us | Confirmed non-regression | 10 |
+
+All five mirrored improvement outcomes are `confirmed_non_improvement`; State's is absent.
+No retry, additional samples, dropped row, threshold change or speedup claim follows. The fixed
+queue continued to U4 discovery. Concurrent unrelated host work remains possible; no causal
+explanation for State's calibration noise is established here.
+
+The final root retains `u3-e2e-confirmation-audit.json`, SHA-256
+`05e80b089396f465fe68fcc0c112d6bd7a2c6c5063b97d471e334479302cdf3c`, and the raw
+`timing-u3/end_to_end.{json,md,log}` files. The renewed inconclusive row and historical
+inconclusive observations both remain unadmitted.
