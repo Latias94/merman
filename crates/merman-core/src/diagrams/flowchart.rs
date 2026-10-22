@@ -396,18 +396,29 @@ pub(crate) fn parse_semantic_model_controlled(
 ) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     #[cfg(feature = "editor-facts")]
     if editor_demand.needs_recovery() {
-        return construct_flowchart_captured_semantic_model_controlled(
+        let mut construction = construct_flowchart_captured_semantic_model_controlled(
             code,
             meta,
             editor_demand,
             control,
-        );
+        )?;
+        if let Ok(model) = &mut construction.model {
+            model.sanitize_common_db_fields(&meta.semantic_config);
+        }
+        control.checkpoint()?;
+        return Ok(construction);
     }
     let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
     let model = match source {
-        Ok(source) => source.into_model_controlled(meta, control)?,
+        Ok(source) => source
+            .into_model_controlled(meta, control)?
+            .map(|mut model| {
+                model.sanitize_common_db_fields(&meta.semantic_config);
+                model
+            }),
         Err(error) => Err(error),
     };
+    control.checkpoint()?;
     Ok(crate::family::SemanticConstruction {
         model,
         #[cfg(feature = "editor-facts")]

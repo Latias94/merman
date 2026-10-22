@@ -283,3 +283,94 @@ fn semantic_request_matches_full_parser_shared_success_failure_and_recovery_outc
         }
     }
 }
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn semantic_flowchart_accessibility_preserves_common_db_normalization() {
+    for diagram_type in ["flowchart-v2", "swimlane"] {
+        if diagram_type == "swimlane" && !cfg!(feature = "diagram-swimlane") {
+            continue;
+        }
+        for security_level in ["strict", "loose"] {
+            let config = MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": security_level,
+            }));
+            let parser = SemanticParser::new().with_site_config(config.clone());
+            let source = "flowchart TD\naccTitle: <script>alert(1)</script>Safe\naccDescr {First\n    Second\n}\nA-->B\n";
+            let known = parser
+                .parse_diagram_with_type_sync(diagram_type, source)
+                .unwrap();
+            let SemanticDiagramModel::Flowchart(model) = known.model else {
+                panic!("expected canonical Flowchart semantics");
+            };
+            assert!(
+                model
+                    .acc_descr
+                    .as_deref()
+                    .unwrap()
+                    .contains("First\nSecond")
+            );
+            if security_level == "strict" {
+                assert!(!model.acc_title.as_deref().unwrap().contains("<script>"));
+            }
+            let expected = serde_json::to_value(&model).unwrap();
+            #[cfg(feature = "presentation")]
+            {
+                let full = merman_core::MermaidEngine::new().with_site_config(
+                    merman_core::presentation::PresentationConfig::from_config(config),
+                );
+                let parsed = full
+                    .parse_diagram_for_render_model_with_type_sync(
+                        diagram_type,
+                        source,
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let merman_core::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+                    panic!("expected shared Flowchart semantics");
+                };
+                assert_eq!(serde_json::to_value(model).unwrap(), expected);
+            }
+            if diagram_type == "flowchart-v2" {
+                let detected = parser.parse_diagram_sync(source).unwrap();
+                let SemanticDiagramModel::Flowchart(model) = detected.model else {
+                    panic!("expected detected Flowchart semantics");
+                };
+                assert_eq!(serde_json::to_value(model).unwrap(), expected);
+            }
+            #[cfg(feature = "editor-facts")]
+            {
+                let rich = parser.capture_diagram_snapshot_with_type_sync(diagram_type, source);
+                let merman_core::SemanticSnapshotCapture::Snapshot(snapshot) = rich else {
+                    panic!("accessibility input must produce a semantic snapshot");
+                };
+                let merman_core::SemanticParseOutcome::Parsed(SemanticDiagramModel::Flowchart(
+                    model,
+                )) = snapshot.outcome()
+                else {
+                    panic!("expected captured Flowchart semantics");
+                };
+                assert_eq!(serde_json::to_value(model).unwrap(), expected);
+                if diagram_type == "flowchart-v2" {
+                    let recovery = parser
+                        .capture_diagram_recovery_snapshot_controlled_sync(
+                            source,
+                            &OperationControl::new(),
+                        )
+                        .unwrap();
+                    let merman_core::SemanticSnapshotCapture::Snapshot(snapshot) = recovery else {
+                        panic!("accessibility input must produce a recovery snapshot");
+                    };
+                    let merman_core::SemanticParseOutcome::Parsed(SemanticDiagramModel::Flowchart(
+                        model,
+                    )) = snapshot.outcome()
+                    else {
+                        panic!("expected recovery Flowchart semantics");
+                    };
+                    assert_eq!(serde_json::to_value(model).unwrap(), expected);
+                }
+            }
+        }
+    }
+}
