@@ -35,11 +35,12 @@ impl BindingEngine {
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
-        let source = self.render.prepare_source(source, control.clone())?;
+        let render = self.render_engine();
+        let source = render.prepare_source(source, control.clone())?;
         let (options, base_options) = self
             .base_options
             .prepared_output_defaults(&self.artifact_contract)?;
-        let runtime_policy = self.render.runtime_policy();
+        let runtime_policy = render.runtime_policy();
         let defaults = RenderOperationConfig::compile(
             &options,
             runtime_policy.clone(),

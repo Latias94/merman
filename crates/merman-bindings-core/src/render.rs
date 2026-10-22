@@ -5,6 +5,11 @@ use crate::common::parse_options;
 use crate::common::{BindingError, BindingOptions, source_text};
 use request::RenderRequestPlan;
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static RENDER_ENGINE_MATERIALIZATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     execute_once_data("svg", source, options_json)
 }
@@ -165,6 +170,8 @@ impl RenderOperationConfig {
     }
 
     pub(crate) fn materialize(self, services: &crate::BindingEngineServices) -> CachedRenderEngine {
+        #[cfg(test)]
+        RENDER_ENGINE_MATERIALIZATIONS.with(|count| count.set(count.get() + 1));
         CachedRenderEngine {
             plan: self.plan.materialize(services),
         }
