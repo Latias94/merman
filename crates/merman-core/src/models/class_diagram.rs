@@ -56,6 +56,34 @@ impl ClassDiagramModel {
         })
     }
 
+    /// Borrows the Class graph after the caller admits each topology construction step.
+    ///
+    /// The callback runs before requested collection slots, copied/generated UTF-8 bytes, and
+    /// actual traversal or collision steps. Units bound construction work and requested storage;
+    /// they are not allocator byte measurements. Rejection stops construction immediately.
+    /// Zero-unit boundary calls let the caller replay an already-recorded terminal error.
+    /// The ordinary and full parser paths use the same constructor with no-op admission.
+    #[doc(hidden)]
+    pub fn topology_with_admission<E>(
+        &self,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+        mut admit_work: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<ClassTopologyView<'_>, E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        Ok(ClassTopologyView {
+            model: self,
+            topology: Cow::Owned(ClassTopology::new_with_admission(
+                self,
+                config,
+                control,
+                &mut admit_work,
+            )?),
+        })
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -83,55 +111,96 @@ impl ClassTopology {
         config: &crate::MermaidConfig,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Self> {
+        Self::new_with_admission(model, config, control, &mut |_| Ok(()))
+    }
+
+    fn new_with_admission<E>(
+        model: &ClassDiagramModel,
+        config: &crate::MermaidConfig,
+        control: &crate::OperationControl,
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<Self, E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
         use std::collections::BTreeSet;
 
-        control.checkpoint()?;
+        Self::admit(control, admit_work, 0)?;
         let prefix = crate::diagrams::class::MERMAID_DOM_ID_PREFIX;
+        Self::admit(control, admit_work, model.namespaces.len())?;
         let mut namespace_dom_ids = IndexMap::with_capacity(model.namespaces.len());
         for (ordinal, id) in model.namespaces.keys().enumerate() {
-            control.checkpoint()?;
-            namespace_dom_ids.insert(id.clone(), format!("{prefix}{id}-{ordinal}"));
+            Self::admit(control, admit_work, 1)?;
+            let key = Self::copy_text(id, control, admit_work)?;
+            Self::admit(control, admit_work, prefix.len())?;
+            Self::admit(control, admit_work, id.len())?;
+            Self::admit(control, admit_work, 1 + Self::decimal_digits(ordinal))?;
+            namespace_dom_ids.insert(key, format!("{prefix}{id}-{ordinal}"));
         }
         let hierarchical = config
             .get_bool("class.hierarchicalNamespaces")
             .unwrap_or(true);
-        let parent = |id: Option<&str>| -> crate::OperationControlResult<Option<String>> {
-            if hierarchical {
-                return Ok(id.map(str::to_string));
-            }
-            Self::explicit_ancestor(&model.namespaces, id, control)
-        };
+        Self::admit(control, admit_work, model.classes.len())?;
         let mut class_parents = IndexMap::with_capacity(model.classes.len());
         for (id, class) in &model.classes {
-            control.checkpoint()?;
-            class_parents.insert(id.clone(), parent(class.parent.as_deref())?);
+            Self::admit(control, admit_work, 1)?;
+            class_parents.insert(
+                Self::copy_text(id, control, admit_work)?,
+                Self::project_parent(
+                    &model.namespaces,
+                    class.parent.as_deref(),
+                    hierarchical,
+                    control,
+                    admit_work,
+                )?,
+            );
         }
+        Self::admit(control, admit_work, model.notes.len())?;
         let mut note_parents = Vec::with_capacity(model.notes.len());
         for note in &model.notes {
-            control.checkpoint()?;
-            note_parents.push(parent(note.parent.as_deref())?);
+            Self::admit(control, admit_work, 1)?;
+            note_parents.push(Self::project_parent(
+                &model.namespaces,
+                note.parent.as_deref(),
+                hierarchical,
+                control,
+                admit_work,
+            )?);
         }
         let mut namespaces = if hierarchical {
+            Self::admit(control, admit_work, model.namespaces.len())?;
             IndexMap::with_capacity(model.namespaces.len())
         } else {
             IndexMap::new()
         };
         for (key, namespace) in &model.namespaces {
-            control.checkpoint()?;
+            Self::admit(control, admit_work, 1)?;
             if hierarchical || namespace.explicit {
+                if !hierarchical {
+                    Self::admit(control, admit_work, 1)?;
+                    namespaces.reserve(1);
+                }
                 namespaces.insert(
-                    key.clone(),
+                    Self::copy_text(key, control, admit_work)?,
                     Namespace {
-                        id: namespace.id.clone(),
-                        label: if hierarchical {
-                            namespace.label.clone()
-                        } else {
-                            namespace.id.clone()
-                        },
+                        id: Self::copy_text(&namespace.id, control, admit_work)?,
+                        label: Self::copy_text(
+                            if hierarchical {
+                                &namespace.label
+                            } else {
+                                &namespace.id
+                            },
+                            control,
+                            admit_work,
+                        )?,
                         class_ids: Vec::new(),
                         note_ids: Vec::new(),
                         parent: if hierarchical {
-                            namespace.parent.clone()
+                            namespace
+                                .parent
+                                .as_deref()
+                                .map(|id| Self::copy_text(id, control, admit_work))
+                                .transpose()?
                         } else {
                             None
                         },
@@ -148,22 +217,40 @@ impl ClassTopology {
                 .keys()
                 .chain(namespaces.keys().filter_map(|id| namespace_dom_ids.get(id)))
             {
-                control.checkpoint()?;
-                occupied.insert(id.clone());
+                Self::admit(control, admit_work, 1)?;
+                if !occupied.contains(id) {
+                    Self::admit(control, admit_work, 1)?;
+                    occupied.insert(Self::copy_text(id, control, admit_work)?);
+                }
             }
         }
+        Self::admit(control, admit_work, model.notes.len())?;
         let mut note_ids = Vec::with_capacity(model.notes.len());
         for ordinal in 0..model.notes.len() {
-            control.checkpoint()?;
-            note_ids.push(Self::unique_id("note", ordinal, &mut occupied, control)?);
+            Self::admit(control, admit_work, 1)?;
+            note_ids.push(Self::unique_id(
+                "note",
+                ordinal,
+                &mut occupied,
+                control,
+                admit_work,
+            )?);
         }
         let mut interface_id_remaps = BTreeMap::new();
+        Self::admit(control, admit_work, model.interfaces.len())?;
         let mut interface_ids = Vec::with_capacity(model.interfaces.len());
         for (ordinal, interface) in model.interfaces.iter().enumerate() {
-            control.checkpoint()?;
-            let id = Self::unique_id("interface", ordinal, &mut occupied, control)?;
+            Self::admit(control, admit_work, 1)?;
+            let id = Self::unique_id("interface", ordinal, &mut occupied, control, admit_work)?;
             if id != interface.id {
-                interface_id_remaps.insert(interface.id.clone(), id.clone());
+                Self::admit(control, admit_work, 1)?;
+                if !interface_id_remaps.contains_key(&interface.id) {
+                    Self::admit(control, admit_work, 1)?;
+                }
+                interface_id_remaps.insert(
+                    Self::copy_text(&interface.id, control, admit_work)?,
+                    Self::copy_text(&id, control, admit_work)?,
+                );
             }
             interface_ids.push(id);
         }
@@ -178,24 +265,24 @@ impl ClassTopology {
             interface_id_remaps,
         };
         for (id, parent) in &projection.class_parents {
-            control.checkpoint()?;
+            Self::admit(control, admit_work, 1)?;
             if let Some(namespace) = parent
                 .as_deref()
                 .and_then(|id| projection.namespaces.get_mut(id))
             {
-                namespace.class_ids.push(id.clone());
+                Self::push_namespace_member(&mut namespace.class_ids, id, control, admit_work)?;
             }
         }
         for (id, parent) in projection.note_ids.iter().zip(&projection.note_parents) {
-            control.checkpoint()?;
+            Self::admit(control, admit_work, 1)?;
             if let Some(namespace) = parent
                 .as_deref()
                 .and_then(|id| projection.namespaces.get_mut(id))
             {
-                namespace.note_ids.push(id.clone());
+                Self::push_namespace_member(&mut namespace.note_ids, id, control, admit_work)?;
             }
         }
-        control.checkpoint()?;
+        Self::admit(control, admit_work, 0)?;
         Ok(projection)
     }
 
@@ -258,41 +345,111 @@ impl ClassTopology {
         )
     }
 
-    fn explicit_ancestor(
+    fn admit<E>(
+        control: &crate::OperationControl,
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+        units: usize,
+    ) -> Result<(), E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        control.checkpoint()?;
+        admit_work(units)
+    }
+
+    fn copy_text<E>(
+        text: &str,
+        control: &crate::OperationControl,
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<String, E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        Self::admit(control, admit_work, text.len())?;
+        Ok(text.to_owned())
+    }
+
+    fn decimal_digits(value: usize) -> usize {
+        value.checked_ilog10().map_or(1, |power| power as usize + 1)
+    }
+
+    fn push_namespace_member<E>(
+        members: &mut Vec<String>,
+        id: &str,
+        control: &crate::OperationControl,
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        if members.len() == members.capacity() {
+            // Admit geometric growth rather than reallocating for every namespace member.
+            let additional = members.capacity().max(4);
+            Self::admit(control, admit_work, additional)?;
+            members.reserve_exact(additional);
+        }
+        members.push(Self::copy_text(id, control, admit_work)?);
+        Ok(())
+    }
+
+    fn project_parent<E>(
         namespaces: &IndexMap<String, Namespace>,
         id: Option<&str>,
+        hierarchical: bool,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<Option<String>> {
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<Option<String>, E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        if hierarchical {
+            return id
+                .map(|id| Self::copy_text(id, control, admit_work))
+                .transpose();
+        }
         let mut current = id;
         for _ in 0..namespaces.len() {
-            control.checkpoint()?;
             let Some(id) = current else { return Ok(None) };
+            Self::admit(control, admit_work, 1)?;
             let Some(namespace) = namespaces.get(id) else {
                 return Ok(None);
             };
             if namespace.explicit {
-                return Ok(Some(id.to_string()));
+                return Ok(Some(Self::copy_text(id, control, admit_work)?));
             }
             current = namespace.parent.as_deref();
         }
         Ok(None)
     }
 
-    fn unique_id(
+    fn unique_id<E>(
         prefix: &str,
         ordinal: usize,
         occupied: &mut std::collections::BTreeSet<String>,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<String> {
+        admit_work: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<String, E>
+    where
+        E: From<crate::OperationCancelled>,
+    {
+        Self::admit(control, admit_work, prefix.len())?;
+        Self::admit(control, admit_work, Self::decimal_digits(ordinal))?;
         let base = format!("{prefix}{ordinal}");
-        if occupied.insert(base.clone()) {
+        Self::admit(control, admit_work, 1)?;
+        if !occupied.contains(&base) {
+            Self::admit(control, admit_work, 1)?;
+            occupied.insert(Self::copy_text(&base, control, admit_work)?);
             return Ok(base);
         }
         let mut disambiguator = 1usize;
         loop {
-            control.checkpoint()?;
+            Self::admit(control, admit_work, base.len())?;
+            Self::admit(control, admit_work, 1 + Self::decimal_digits(disambiguator))?;
             let candidate = format!("{base}${disambiguator}");
-            if occupied.insert(candidate.clone()) {
+            Self::admit(control, admit_work, 1)?;
+            if !occupied.contains(&candidate) {
+                Self::admit(control, admit_work, 1)?;
+                occupied.insert(Self::copy_text(&candidate, control, admit_work)?);
                 return Ok(candidate);
             }
             disambiguator = disambiguator.saturating_add(1);
@@ -337,6 +494,294 @@ fn flat_class_topology_does_not_reserve_slots_for_implicit_namespaces() {
         .unwrap();
     assert_eq!(topology.namespaces().len(), 0);
     assert_eq!(topology.topology.namespaces.capacity(), 0);
+}
+
+#[cfg(test)]
+mod topology_admission_tests {
+    use super::{ClassDiagramModel, ClassTopology, Namespace};
+    use indexmap::IndexMap;
+    use std::collections::BTreeSet;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum AdmissionError {
+        Limit { used: usize, requested: usize },
+        Cancelled(crate::OperationCancelled),
+    }
+
+    impl From<crate::OperationCancelled> for AdmissionError {
+        fn from(error: crate::OperationCancelled) -> Self {
+            Self::Cancelled(error)
+        }
+    }
+
+    struct Meter {
+        used: usize,
+        limit: usize,
+    }
+
+    impl Meter {
+        fn new(limit: usize) -> Self {
+            Self { used: 0, limit }
+        }
+
+        fn admit(&mut self, requested: usize) -> Result<(), AdmissionError> {
+            let next = self.used.checked_add(requested);
+            match next {
+                Some(next) if next <= self.limit => {
+                    self.used = next;
+                    Ok(())
+                }
+                _ => Err(AdmissionError::Limit {
+                    used: self.used,
+                    requested,
+                }),
+            }
+        }
+    }
+
+    fn model(source: &str) -> ClassDiagramModel {
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let crate::SemanticDiagramModel::Class(model) = parsed.model else {
+            panic!("expected a canonical Class model");
+        };
+        model
+    }
+
+    #[test]
+    fn topology_admission_rejects_the_first_requested_reservation() {
+        let model = model("classDiagram\nnamespace A.B {\nclass Service\n}\n");
+        let original = model.clone();
+        let mut meter = Meter::new(model.namespaces.len() - 1);
+        let mut requests = Vec::new();
+        let result = model.topology_with_admission(
+            &crate::MermaidConfig::empty_object(),
+            &crate::OperationControl::new(),
+            |units| {
+                requests.push(units);
+                meter.admit(units)
+            },
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            AdmissionError::Limit {
+                used: 0,
+                requested: model.namespaces.len(),
+            }
+        );
+        assert_eq!(requests, [0, model.namespaces.len()]);
+        assert_eq!(model, original);
+    }
+
+    #[test]
+    fn topology_admission_rejects_namespace_member_growth_before_reserving() {
+        for initial_capacity in [0, 4] {
+            let mut members = Vec::with_capacity(initial_capacity);
+            while members.len() < members.capacity() {
+                members.push("existing".to_owned());
+            }
+            let original = members.clone();
+            let capacity = members.capacity();
+            let requested = capacity.max(4);
+            let mut meter = Meter::new(requested - 1);
+            let result = ClassTopology::push_namespace_member(
+                &mut members,
+                "next",
+                &crate::OperationControl::new(),
+                &mut |units| meter.admit(units),
+            );
+            assert_eq!(result, Err(AdmissionError::Limit { used: 0, requested }));
+            assert_eq!(members, original);
+            assert_eq!(members.capacity(), capacity);
+        }
+    }
+
+    #[test]
+    fn topology_admission_accepts_exact_work_and_rejects_one_less() {
+        let model = model(
+            "classDiagram\nnamespace A.B {\nclass Service\nnote \"namespace note\"\n}\n\
+             class note0\nclass interface0\nIService ()-- Service\n",
+        );
+        for hierarchical in [false, true] {
+            let mut config = crate::MermaidConfig::empty_object();
+            config.set_value("class.hierarchicalNamespaces", hierarchical.into());
+            let ordinary = model
+                .topology(&config, &crate::OperationControl::new())
+                .unwrap();
+            let mut meter = Meter::new(usize::MAX);
+            let admitted = model
+                .topology_with_admission(&config, &crate::OperationControl::new(), |units| {
+                    meter.admit(units)
+                })
+                .unwrap();
+            assert_eq!(admitted.topology, ordinary.topology);
+            assert!(std::ptr::eq(admitted.model(), &model));
+            assert_eq!(admitted.notes().next().unwrap().id, "note0$1");
+            assert_eq!(admitted.interfaces().next().unwrap().id, "interface0$1");
+            assert_eq!(admitted.namespace("A.B").unwrap().route_id, "classId-A.B-1");
+            let exact = meter.used;
+            let mut meter = Meter::new(exact);
+            assert!(
+                model
+                    .topology_with_admission(&config, &crate::OperationControl::new(), |units| {
+                        meter.admit(units)
+                    })
+                    .is_ok()
+            );
+            assert_eq!(meter.used, exact);
+            let mut meter = Meter::new(exact - 1);
+            assert!(matches!(
+                model.topology_with_admission(&config, &crate::OperationControl::new(), |units| {
+                    meter.admit(units)
+                }),
+                Err(AdmissionError::Limit { .. })
+            ));
+            assert_eq!(model.notes[0].id, "note0");
+            assert_eq!(model.interfaces[0].id, "interface0");
+        }
+    }
+
+    #[test]
+    fn topology_admission_charges_only_visited_ancestors() {
+        let mut namespaces = IndexMap::new();
+        for (id, parent) in [
+            ("A", None),
+            ("B", Some("A")),
+            ("C", Some("B")),
+            ("D", Some("C")),
+        ] {
+            namespaces.insert(
+                id.to_owned(),
+                Namespace {
+                    id: id.to_owned(),
+                    label: id.to_owned(),
+                    class_ids: Vec::new(),
+                    note_ids: Vec::new(),
+                    parent: parent.map(str::to_owned),
+                    explicit: id == "A" || id == "D",
+                },
+            );
+        }
+        let mut short = Meter::new(2);
+        assert_eq!(
+            ClassTopology::project_parent(
+                &namespaces,
+                Some("D"),
+                false,
+                &crate::OperationControl::new(),
+                &mut |units| short.admit(units),
+            )
+            .unwrap()
+            .as_deref(),
+            Some("D")
+        );
+        assert_eq!(short.used, 2);
+        namespaces["D"].explicit = false;
+        let mut long = Meter::new(5);
+        assert_eq!(
+            ClassTopology::project_parent(
+                &namespaces,
+                Some("D"),
+                false,
+                &crate::OperationControl::new(),
+                &mut |units| long.admit(units),
+            )
+            .unwrap()
+            .as_deref(),
+            Some("A")
+        );
+        assert_eq!(long.used - short.used, 3);
+        let mut meter = Meter::new(4);
+        assert_eq!(
+            ClassTopology::project_parent(
+                &namespaces,
+                Some("D"),
+                false,
+                &crate::OperationControl::new(),
+                &mut |units| meter.admit(units),
+            ),
+            Err(AdmissionError::Limit {
+                used: 4,
+                requested: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn topology_admission_charges_actual_collision_candidates_and_utf8_bytes() {
+        let control = crate::OperationControl::new();
+        let mut short = Meter::new(12);
+        let mut occupied = BTreeSet::new();
+        assert_eq!(
+            ClassTopology::unique_id("note", 0, &mut occupied, &control, &mut |units| {
+                short.admit(units)
+            })
+            .unwrap(),
+            "note0"
+        );
+        assert_eq!(short.used, 12);
+        let original: BTreeSet<_> = ["note0".to_owned(), "note0$1".to_owned()].into();
+        let mut occupied = original.clone();
+        let mut long = Meter::new(30);
+        assert_eq!(
+            ClassTopology::unique_id("note", 0, &mut occupied, &control, &mut |units| {
+                long.admit(units)
+            })
+            .unwrap(),
+            "note0$2"
+        );
+        assert_eq!(long.used, 30);
+        let mut occupied = original.clone();
+        let mut meter = Meter::new(long.used - 1);
+        assert_eq!(
+            ClassTopology::unique_id("note", 0, &mut occupied, &control, &mut |units| {
+                meter.admit(units)
+            }),
+            Err(AdmissionError::Limit {
+                used: 23,
+                requested: 7,
+            })
+        );
+        assert_eq!(occupied, original);
+        let mut meter = Meter::new(5);
+        assert_eq!(
+            ClassTopology::copy_text("\u{6570}\u{636e}", &control, &mut |units| meter
+                .admit(units)),
+            Err(AdmissionError::Limit {
+                used: 0,
+                requested: 6,
+            })
+        );
+        for value in [0, 9, 10, 99, 100, usize::MAX] {
+            assert_eq!(
+                ClassTopology::decimal_digits(value),
+                value.to_string().len()
+            );
+        }
+    }
+
+    #[test]
+    fn topology_admission_checks_cancellation_before_each_callback() {
+        let model = model("classDiagram\nnamespace A.B {\nclass Service\n}\n");
+        let original = model.clone();
+        for successful_checkpoints in [0, 1, 7] {
+            let control = crate::OperationControl::new();
+            control.cancel_after_checkpoints(successful_checkpoints);
+            let mut callbacks = 0;
+            let result = model.topology_with_admission(
+                &crate::MermaidConfig::empty_object(),
+                &control,
+                |_| -> Result<(), AdmissionError> {
+                    callbacks += 1;
+                    Ok(())
+                },
+            );
+            assert!(matches!(result, Err(AdmissionError::Cancelled(_))));
+            assert_eq!(callbacks, successful_checkpoints);
+            assert_eq!(model, original);
+        }
+    }
 }
 
 /// A canonical Class graph borrowed together with its privately paired topology.

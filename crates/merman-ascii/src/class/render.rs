@@ -3330,12 +3330,15 @@ mod tests {
             let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
                 panic!("expected a canonical Class model");
             };
+            let control = merman_core::OperationControl::new();
+            let topology_resources = ResourceContext::new(unbounded_policy())
+                .controlled(control.clone(), merman_core::OperationPhase::Semantic);
             let topology = model
-                .topology(
-                    &parsed.metadata.semantic_config,
-                    &merman_core::OperationControl::new(),
-                )
+                .topology_with_admission(&parsed.metadata.semantic_config, &control, |units| {
+                    topology_resources.charge_layout_work(units)
+                })
                 .expect("canonical Class topology should build");
+            assert!(topology_resources.layout_work_used() > 0);
             assert!(std::ptr::eq(topology.model(), model));
             for (id, class) in topology.classes() {
                 assert!(std::ptr::eq(class.node, &model.classes[id]));
@@ -3361,6 +3364,75 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn canonical_class_topology_uses_exact_ascii_work_admission() {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync(
+                "classDiagram\nnamespace A.B {\nclass C\n}\nclass note0\nnote for C \"Note\"\n",
+            )
+            .unwrap();
+        let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+            panic!("expected a canonical Class model");
+        };
+        let control = merman_core::OperationControl::new();
+        let measured = ResourceContext::new(unbounded_policy())
+            .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+        model
+            .topology_with_admission(&parsed.metadata.semantic_config, &control, |units| {
+                measured.charge_layout_work(units)
+            })
+            .unwrap();
+        let required = measured.layout_work_used();
+        assert!(required > 0);
+        for limit in [required, required - 1] {
+            let policy = unbounded_policy()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let control = merman_core::OperationControl::new();
+            let resources = ResourceContext::new(policy)
+                .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+            let result = model.topology_with_admission(
+                &parsed.metadata.semantic_config,
+                &control,
+                |units| resources.charge_layout_work(units),
+            );
+            if limit == required {
+                assert!(result.is_ok());
+                assert_eq!(resources.layout_work_used(), required);
+            } else {
+                let error = result.unwrap_err();
+                assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+                assert_eq!(resources.checkpoint().unwrap_err(), error);
+                assert!(resources.layout_work_used() <= limit);
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_class_topology_replays_first_ascii_terminal_before_cancellation() {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync("classDiagram\nclass C\n")
+            .unwrap();
+        let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+            panic!("expected a canonical Class model");
+        };
+        let policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let control = merman_core::OperationControl::new();
+        let resources = ResourceContext::new(policy)
+            .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+        let first = resources.charge_layout_work(2).unwrap_err();
+        control.cancel();
+        let replayed = model
+            .topology_with_admission(&parsed.metadata.semantic_config, &control, |units| {
+                resources.charge_layout_work(units)
+            })
+            .unwrap_err();
+        assert_eq!(replayed, first);
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]
