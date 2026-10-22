@@ -525,3 +525,43 @@ The final root retains `u3-e2e-confirmation-audit.json`, SHA-256
 `05e80b089396f465fe68fcc0c112d6bd7a2c6c5063b97d471e334479302cdf3c`, and the raw
 `timing-u3/end_to_end.{json,md,log}` files. The renewed inconclusive row and historical
 inconclusive observations both remain unadmitted.
+
+## Renewed U4 warm-parse confirmation (2026-10-23)
+
+U4 discovery rebuilt and froze both clean adjacent sources, f676075658a86769fd2d55fdc1fbc42803c7707c
+and 78c0625d14ebfa447d2320d543ca08744bd86ab2. All six fixtures have identical input bytes and
+matched consumed typed output. The pipeline, JSON identity helper, corpus, preflight contract
+and lockfile are identical between these sources. The retained base executable SHA-256 is
+`324230b8e61ca3031a955bd7248f08ca04d3b295d32fd0d04fa445b909926d80`; head is
+`8a314bf1b1ba09f08a7b21e680b69d98ccabb28ddb9471f85a4c6c7288db66f3`.
+
+The registered U4 warm full-parse group then completed with six `confirmed_non_regression`
+rows, zero contract failures and zero inconclusive rows. Each runner passed eight A/A pairs;
+every fixture completed eight fresh balanced AB/BA pairs under the unchanged generic_v2
+protocol, thresholds and budget. Divisor one, output/preflight/postflight identity, clean
+sources, fixture bytes, frozen executables and discovery retention were checked after sampling.
+
+| Warm full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 135.058 us | 139.911 us | Confirmed non-regression | 8 |
+| State medium | 152.407 us | 151.465 us | Confirmed non-regression | 8 |
+| Class medium | 201.380 us | 203.230 us | Confirmed non-regression | 8 |
+| ER medium | 131.505 us | 132.868 us | Confirmed non-regression | 8 |
+| Pie medium | 5.419 us | 5.496 us | Confirmed non-regression | 8 |
+| Flowchart medium | 356.565 us | 357.520 us | Confirmed non-regression | 8 |
+
+The small positive means on five controls are retained; the registered material-regression
+contract still classifies them as non-regressions. All mirrored improvement results are
+`confirmed_non_improvement`, so no speedup is admitted. These are adjacent full-operation
+controls, not semantic-only timing or timing of the later private cfg cleanup.
+
+Across the completed U3 and U4 warm groups, 29 controls confirm non-regression and one U3 State
+E2E control remains inconclusive. Eighteen U4 and 24 integrated rows remain without terminal
+classifications. The U3 result is unchanged, U4 is incomplete and whole-plan performance
+acceptance remains unproven. Concurrent unrelated host work remains possible.
+
+The final root retains `u4-discovery-audit.json`, SHA-256
+`b99da2da58cea3f0ea291a982e50e593a7e9d68044a42d6bda3ee8a3273f03c5`, and
+`u4-parse-confirmation-audit.json`, SHA-256
+`103c0382f02e0f0d3bce3095f839d3dc93c6f50f5bb4a81af7f793f2c26d72d4`. Raw discovery,
+parse reports/logs, registrations and executable copies remain under `timing-u4/`.
