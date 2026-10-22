@@ -7,90 +7,74 @@ use crate::safe_text::{
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
 };
 use merman_core::diagrams::gantt::{
-    GanttDiagramModel, GanttTask, GanttTaskEndConstraint, GanttTaskStartConstraint,
+    GanttTask, GanttTaskEndConstraint, GanttTaskStartConstraint, GanttTerminalTaskView,
+    GanttTerminalView,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-#[derive(Clone, Copy)]
-pub(crate) struct GanttTaskView<'a> {
-    semantic: &'a GanttTask,
-    render_end_ms: Option<i64>,
-}
-
-impl<'a> GanttTaskView<'a> {
-    pub(crate) const fn new(semantic: &'a GanttTask, render_end_ms: Option<i64>) -> Self {
-        Self {
-            semantic,
-            render_end_ms,
-        }
-    }
-}
-
-pub(super) fn render_gantt_diagram<Task>(
-    model: &GanttDiagramModel<Task>,
-    display_mode: &str,
-    task_view: fn(&Task) -> GanttTaskView<'_>,
+pub(super) fn render_gantt_diagram(
+    model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    let metadata = model.metadata();
     let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let task_index = admit_then_materialize_gantt_structure(
         model,
-        task_view,
         document.resources_mut(),
-        |admission, resources| GanttTaskIndex::materialize(model, task_view, admission, resources),
+        |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
     )?;
     execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
-    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
-    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
-    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
-    if !model.date_format.is_empty() {
-        push_document_field(&mut document, "dateFormat", &model.date_format)?;
+    push_optional_document_field(&mut document, "title", metadata.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", metadata.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", metadata.acc_descr.as_deref())?;
+    if !metadata.date_format.is_empty() {
+        push_document_field(&mut document, "dateFormat", metadata.date_format)?;
     }
-    if !model.axis_format.is_empty() {
-        push_document_field(&mut document, "axisFormat", &model.axis_format)?;
+    if !metadata.axis_format.is_empty() {
+        push_document_field(&mut document, "axisFormat", metadata.axis_format)?;
     }
 
-    if let Some(tick_interval) = model.tick_interval.as_deref() {
+    if let Some(tick_interval) = metadata.tick_interval.as_deref() {
         push_document_field(&mut document, "tickInterval", tick_interval)?;
     }
-    if !model.today_marker.is_empty() {
-        push_document_field(&mut document, "todayMarker", &model.today_marker)?;
+    if !metadata.today_marker.is_empty() {
+        push_document_field(&mut document, "todayMarker", metadata.today_marker)?;
     }
-    if !model.includes.is_empty() {
+    if !metadata.includes.is_empty() {
         push_document_list(
             &mut document,
             "includes",
-            model.includes.iter().map(String::as_str),
+            metadata.includes.iter().map(String::as_str),
         )?;
     }
-    if !model.excludes.is_empty() {
+    if !metadata.excludes.is_empty() {
         push_document_list(
             &mut document,
             "excludes",
-            model.excludes.iter().map(String::as_str),
+            metadata.excludes.iter().map(String::as_str),
         )?;
     }
-    if model.inclusive_end_dates {
+    if metadata.inclusive_end_dates {
         document.push_line("inclusiveEndDates: true")?;
     }
-    if !display_mode.is_empty() {
-        push_document_field(&mut document, "displayMode", display_mode)?;
+    if !metadata.display_mode.is_empty() {
+        push_document_field(&mut document, "displayMode", metadata.display_mode)?;
     }
-    if model.top_axis {
+    if metadata.top_axis {
         document.push_line("topAxis: true")?;
     }
-    if !model.weekday.is_empty() && model.weekday != "sunday" {
-        push_document_field(&mut document, "weekday", &model.weekday)?;
+    if !metadata.weekday.is_empty() && metadata.weekday != "sunday" {
+        push_document_field(&mut document, "weekday", metadata.weekday)?;
     }
-    if !model.weekend.is_empty() && model.weekend != "saturday" {
-        push_document_field(&mut document, "weekend", &model.weekend)?;
+    if !metadata.weekend.is_empty() && metadata.weekend != "saturday" {
+        push_document_field(&mut document, "weekend", metadata.weekend)?;
     }
 
     if let Some(task_index) = task_index {
@@ -98,12 +82,17 @@ pub(super) fn render_gantt_diagram<Task>(
             orphan_section_order,
             tasks_by_section,
         } = task_index;
-        for (section_index, section) in model.sections.iter().enumerate() {
+        for (section_index, section) in metadata.sections.iter().enumerate() {
             document.resources_mut().checkpoint()?;
             push_section(&mut document, section)?;
             if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Declared(section_index)) {
                 for task in tasks {
-                    push_task(&mut document, task_view(task), local_time_zone, execution)?;
+                    push_task(
+                        &mut document,
+                        indexed_task(model, *task)?,
+                        local_time_zone,
+                        execution,
+                    )?;
                 }
             }
         }
@@ -115,14 +104,18 @@ pub(super) fn render_gantt_diagram<Task>(
             push_section(&mut document, section)?;
             if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Orphan(section)) {
                 for task in tasks {
-                    push_task(&mut document, task_view(task), local_time_zone, execution)?;
+                    push_task(
+                        &mut document,
+                        indexed_task(model, *task)?,
+                        local_time_zone,
+                        execution,
+                    )?;
                 }
             }
         }
     } else {
         let mut current_section: Option<&str> = None;
-        for task in &model.tasks {
-            let task = task_view(task);
+        for task in model.tasks() {
             let semantic = task.semantic;
             if current_section != Some(semantic.section.as_str()) {
                 current_section = Some(semantic.section.as_str());
@@ -143,17 +136,14 @@ struct GanttStructureAdmission {
 }
 
 impl GanttStructureAdmission {
-    fn preflight<Task>(
-        model: &GanttDiagramModel<Task>,
-        task_view: fn(&Task) -> GanttTaskView<'_>,
-        resources: &ResourceContext,
-    ) -> Result<Self> {
-        let task_capacity = model.tasks.len();
-        let grouped = !model.sections.is_empty();
+    fn preflight(model: GanttTerminalView<'_>, resources: &ResourceContext) -> Result<Self> {
+        let metadata = model.metadata();
+        let task_capacity = model.tasks().len();
+        let grouped = !metadata.sections.is_empty();
 
         // The declared-section lookup contains exactly one entry per authored occurrence. Orphan
         // sections are owned separately by the per-task grouped index.
-        let section_lookup_capacity = if grouped { model.sections.len() } else { 0 };
+        let section_lookup_capacity = if grouped { metadata.sections.len() } else { 0 };
         let allocation_work = if grouped {
             let grouped_task_slots = resources.checked_work_mul(task_capacity, 3)?;
             let indexed_task_slots =
@@ -166,11 +156,11 @@ impl GanttStructureAdmission {
 
         // Hashing borrowed identifiers is allocation-free, but preflight their terminal-safety
         // work before any input-sized container is allocated.
-        for section in &model.sections {
+        for section in metadata.sections {
             charge_text_layout(resources, section)?;
         }
-        for task in &model.tasks {
-            let task = task_view(task).semantic;
+        for task in model.tasks() {
+            let task = task.semantic;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, &task.id)?;
             charge_text_layout(resources, &task.section)?;
@@ -181,7 +171,7 @@ impl GanttStructureAdmission {
                 });
             }
             if let Some(section_index) = task.section_index
-                && model.sections.get(section_index).map(String::as_str)
+                && metadata.sections.get(section_index).map(String::as_str)
                     != Some(task.section.as_str())
             {
                 return Err(invalid_task_section_occurrence());
@@ -208,18 +198,18 @@ enum DeclaredSectionMatch {
     Ambiguous,
 }
 
-struct GanttTaskIndex<'model, Task> {
+struct GanttTaskIndex<'model> {
     orphan_section_order: Vec<&'model str>,
-    tasks_by_section: HashMap<GanttSectionKey<'model>, Vec<&'model Task>>,
+    tasks_by_section: HashMap<GanttSectionKey<'model>, Vec<usize>>,
 }
 
-impl<'model, Task> GanttTaskIndex<'model, Task> {
+impl<'model> GanttTaskIndex<'model> {
     fn materialize(
-        model: &'model GanttDiagramModel<Task>,
-        task_view: fn(&Task) -> GanttTaskView<'_>,
+        model: GanttTerminalView<'model>,
         admission: GanttStructureAdmission,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
+        let metadata = model.metadata();
         resources.checkpoint()?;
         let mut task_ids = HashSet::new();
         task_ids
@@ -250,7 +240,7 @@ impl<'model, Task> GanttTaskIndex<'model, Task> {
             declared_sections
                 .try_reserve(admission.section_lookup_capacity)
                 .map_err(|_| layout_allocation_error())?;
-            for (section_index, section) in model.sections.iter().enumerate() {
+            for (section_index, section) in metadata.sections.iter().enumerate() {
                 resources.checkpoint()?;
                 match declared_sections.entry(section.as_str()) {
                     Entry::Occupied(mut entry) => {
@@ -263,8 +253,8 @@ impl<'model, Task> GanttTaskIndex<'model, Task> {
             }
         }
 
-        for task in &model.tasks {
-            let semantic = task_view(task).semantic;
+        for (task_index, task) in model.tasks().enumerate() {
+            let semantic = task.semantic;
             resources.checkpoint()?;
             if !task_ids.insert(semantic.id.as_str()) {
                 return Err(crate::error::AsciiError::UnsupportedFeature {
@@ -280,7 +270,7 @@ impl<'model, Task> GanttTaskIndex<'model, Task> {
             };
             let section_key = match semantic.section_index {
                 Some(section_index)
-                    if model.sections.get(section_index).map(String::as_str)
+                    if metadata.sections.get(section_index).map(String::as_str)
                         == Some(semantic.section.as_str()) =>
                 {
                     GanttSectionKey::Declared(section_index)
@@ -309,7 +299,7 @@ impl<'model, Task> GanttTaskIndex<'model, Task> {
             tasks
                 .try_reserve(1)
                 .map_err(|_| layout_allocation_error())?;
-            tasks.push(task);
+            tasks.push(task_index);
         }
 
         resources.checkpoint()?;
@@ -331,14 +321,13 @@ fn ambiguous_task_section_occurrence() -> crate::error::AsciiError {
     }
 }
 
-fn admit_then_materialize_gantt_structure<Task, T>(
-    model: &GanttDiagramModel<Task>,
-    task_view: fn(&Task) -> GanttTaskView<'_>,
+fn admit_then_materialize_gantt_structure<T>(
+    model: GanttTerminalView<'_>,
     resources: &ResourceContext,
     materialize: impl FnOnce(GanttStructureAdmission, &ResourceContext) -> Result<T>,
 ) -> Result<T> {
     resources.transaction(|resources| {
-        let admission = GanttStructureAdmission::preflight(model, task_view, resources)?;
+        let admission = GanttStructureAdmission::preflight(model, resources)?;
         materialize(admission, resources)
     })
 }
@@ -347,9 +336,18 @@ fn push_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()
     push_document_field(document, "section", section)
 }
 
+fn indexed_task<'a>(
+    model: GanttTerminalView<'a>,
+    index: usize,
+) -> Result<GanttTerminalTaskView<'a>> {
+    model
+        .task(index)
+        .ok_or_else(invalid_task_section_occurrence)
+}
+
 fn push_task(
     document: &mut BudgetedTextDocument,
-    task: GanttTaskView<'_>,
+    task: GanttTerminalTaskView<'_>,
     local_time_zone: &merman_core::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -517,10 +515,6 @@ mod tests {
     use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
-    fn full_task_view(task: &GanttRenderTask) -> GanttTaskView<'_> {
-        GanttTaskView::new(&task.semantic, task.render_end_ms)
-    }
-
     fn direct_model() -> GanttDiagramRenderModel {
         let mut model = GanttDiagramRenderModel::default();
         model.sections = vec!["Build".to_string(), "Ship".to_string()];
@@ -587,22 +581,14 @@ mod tests {
                 assert_eq!(canonical.render_end_ms, full.semantic.render_end_ms);
             }
             let actual = render_gantt_diagram(
-                model,
-                canonical
-                    .metadata
-                    .semantic_config
-                    .get_str("gantt.displayMode")
-                    .unwrap_or_default(),
-                |task| GanttTaskView::new(task, task.render_end_ms),
+                GanttTerminalView::from_model(model, &canonical.metadata.semantic_config),
                 &options,
                 &merman_core::time::LocalTimeZone::utc(),
                 AsciiExecution::for_test(&policy),
             )
             .expect("canonical Gantt terminal output");
             let expected = render_gantt_diagram(
-                &full.model,
-                &full.display_mode,
-                full_task_view,
+                GanttTerminalView::from_render(full),
                 &options,
                 &merman_core::time::LocalTimeZone::utc(),
                 AsciiExecution::for_test(&policy),
@@ -642,12 +628,15 @@ mod tests {
         let resources = ResourceContext::new(policy);
         let materialized = Cell::new(false);
         let index = admit_then_materialize_gantt_structure(
-            &model.model,
-            full_task_view,
+            GanttTerminalView::from_render(&model),
             &resources,
             |admission, resources| {
                 materialized.set(true);
-                GanttTaskIndex::materialize(&model.model, full_task_view, admission, resources)
+                GanttTaskIndex::materialize(
+                    GanttTerminalView::from_render(&model),
+                    admission,
+                    resources,
+                )
             },
         )
         .expect("exact Gantt admission work should permit materialization");
@@ -668,13 +657,16 @@ mod tests {
         let resources = ResourceContext::new(policy);
         let materialized = Cell::new(false);
         let error = admit_then_materialize_gantt_structure(
-            &model.model,
-            full_task_view,
+            GanttTerminalView::from_render(&model),
             &resources,
             |admission, resources| {
                 materialized.set(true);
-                GanttTaskIndex::materialize(&model.model, full_task_view, admission, resources)
-                    .map(|_| ())
+                GanttTaskIndex::materialize(
+                    GanttTerminalView::from_render(&model),
+                    admission,
+                    resources,
+                )
+                .map(|_| ())
             },
         )
         .expect_err("max-minus-one Gantt admission work should fail before materialization");
@@ -704,12 +696,15 @@ mod tests {
             .expect("prior ledger usage should fit");
 
         let error = admit_then_materialize_gantt_structure(
-            &model.model,
-            full_task_view,
+            GanttTerminalView::from_render(&model),
             &resources,
             |admission, resources| {
-                GanttTaskIndex::materialize(&model.model, full_task_view, admission, resources)
-                    .map(|_| ())
+                GanttTaskIndex::materialize(
+                    GanttTerminalView::from_render(&model),
+                    admission,
+                    resources,
+                )
+                .map(|_| ())
             },
         )
         .expect_err("duplicate ids should reject index materialization");
@@ -743,12 +738,15 @@ mod tests {
         let materialized = Cell::new(false);
 
         let error = match admit_then_materialize_gantt_structure(
-            &model.model,
-            full_task_view,
+            GanttTerminalView::from_render(&model),
             &resources,
             |admission, resources| {
                 materialized.set(true);
-                GanttTaskIndex::materialize(&model.model, full_task_view, admission, resources)
+                GanttTaskIndex::materialize(
+                    GanttTerminalView::from_render(&model),
+                    admission,
+                    resources,
+                )
             },
         ) {
             Ok(_) => panic!("an explicit occurrence requires a declared section"),
@@ -773,13 +771,16 @@ mod tests {
         let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
 
         let error = admit_then_materialize_gantt_structure(
-            &model.model,
-            full_task_view,
+            GanttTerminalView::from_render(&model),
             &controlled,
             |admission, resources| {
                 control.cancel();
-                GanttTaskIndex::materialize(&model.model, full_task_view, admission, resources)
-                    .map(|_| ())
+                GanttTaskIndex::materialize(
+                    GanttTerminalView::from_render(&model),
+                    admission,
+                    resources,
+                )
+                .map(|_| ())
             },
         )
         .expect_err("materialization should observe cancellation at its first checkpoint");

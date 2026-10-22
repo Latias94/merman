@@ -8,13 +8,13 @@ use crate::safe_text::{
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
 };
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
+use merman_core::diagrams::journey::{JourneyDiagramModel, JourneyTask};
 use std::cmp::Ordering;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub(super) fn render_journey_diagram(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -65,7 +65,7 @@ pub(super) fn render_journey_diagram(
     document.finish_with_execution(execution)
 }
 
-impl SectionedTextTask for JourneyRenderTask {
+impl SectionedTextTask for JourneyTask {
     fn section_label(&self) -> &str {
         &self.section
     }
@@ -77,7 +77,7 @@ impl SectionedTextTask for JourneyRenderTask {
 
 fn push_orphan_tasks(
     document: &mut BudgetedTextDocument,
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     section_plan: &SectionedTextPlan,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -111,7 +111,7 @@ fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Re
 }
 
 fn collect_actors<'a>(
-    tasks: &'a [JourneyRenderTask],
+    tasks: &'a [JourneyTask],
     resources: &ResourceContext,
 ) -> Result<Vec<&'a str>> {
     admit_then_materialize_journey_actors(tasks, resources, |admission, resources| {
@@ -125,7 +125,7 @@ struct JourneyActorAdmission {
 }
 
 impl JourneyActorAdmission {
-    fn preflight(tasks: &[JourneyRenderTask], resources: &ResourceContext) -> Result<Self> {
+    fn preflight(tasks: &[JourneyTask], resources: &ResourceContext) -> Result<Self> {
         let mut actor_capacity = 0usize;
         let mut max_actor_bytes = 0usize;
         let mut replay_work = 0usize;
@@ -154,7 +154,7 @@ impl JourneyActorAdmission {
 
     fn materialize<'a>(
         self,
-        tasks: &'a [JourneyRenderTask],
+        tasks: &'a [JourneyTask],
         resources: &ResourceContext,
     ) -> Result<Vec<&'a str>> {
         resources.checkpoint()?;
@@ -180,7 +180,7 @@ impl JourneyActorAdmission {
 }
 
 fn admit_then_materialize_journey_actors<T>(
-    tasks: &[JourneyRenderTask],
+    tasks: &[JourneyTask],
     resources: &ResourceContext,
     materialize: impl FnOnce(JourneyActorAdmission, &ResourceContext) -> Result<T>,
 ) -> Result<T> {
@@ -334,7 +334,7 @@ fn layout_allocation_error() -> AsciiError {
 
 fn push_task(
     document: &mut BudgetedTextDocument,
-    task: &JourneyRenderTask,
+    task: &JourneyTask,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -362,8 +362,45 @@ mod tests {
     use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
-    fn actor_tasks() -> Vec<JourneyRenderTask> {
-        vec![JourneyRenderTask {
+    #[test]
+    fn canonical_journey_borrows_full_tasks_and_preserves_complete_terminal_output() {
+        use merman_core::{
+            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+        };
+
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        for source in [
+            "journey\ntitle Shopping\naccTitle: Accessible\naccDescr: Complete journey\nsection Buy\nChoose: 5: Alice, Bob\nsection Buy\nPay: bad: Bob\n",
+            "journey\nTask: 0: Alice\n",
+            "journey\nsection Empty\nsection Empty\n",
+        ] {
+            let canonical = SemanticParser::new().parse_diagram_sync(source).unwrap();
+            let SemanticDiagramModel::Journey(model) = &canonical.model else {
+                panic!("Journey model")
+            };
+            let full = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Journey(full) = full.model() else {
+                panic!("Journey model")
+            };
+            assert!(std::ptr::eq(
+                full.tasks.as_ptr(),
+                full.semantic.tasks.as_ptr()
+            ));
+            let actual =
+                render_journey_diagram(model, &options, AsciiExecution::for_test(&policy)).unwrap();
+            let expected =
+                render_journey_diagram(&full.semantic, &options, AsciiExecution::for_test(&policy))
+                    .unwrap();
+            assert_eq!(actual, expected, "{source}");
+        }
+    }
+
+    fn actor_tasks() -> Vec<JourneyTask> {
+        vec![JourneyTask {
             score: 0,
             score_is_nan: false,
             people: vec!["Bob".to_string(), "Alice".to_string(), "Bob".to_string()],

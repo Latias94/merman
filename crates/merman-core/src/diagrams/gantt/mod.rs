@@ -13,6 +13,11 @@ mod date;
 mod datetime;
 mod model;
 mod parse;
+mod terminal;
+
+pub use terminal::{
+    GanttTerminalMetadata, GanttTerminalTaskIter, GanttTerminalTaskView, GanttTerminalView,
+};
 
 use date::*;
 use datetime::*;

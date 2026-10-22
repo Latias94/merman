@@ -6,14 +6,12 @@ use crate::safe_text::{
     push_wrapped_field,
 };
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
-use merman_core::diagrams::timeline::{
-    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
-};
+use merman_core::diagrams::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub(super) fn render_timeline_diagram(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -52,7 +50,7 @@ pub(super) fn render_timeline_diagram(
     document.finish_with_execution(execution)
 }
 
-impl SectionedTextTask for TimelineRenderTask {
+impl SectionedTextTask for TimelineTask {
     fn section_label(&self) -> &str {
         &self.section
     }
@@ -64,7 +62,7 @@ impl SectionedTextTask for TimelineRenderTask {
 
 fn push_orphan_tasks(
     document: &mut BudgetedTextDocument,
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     section_plan: &SectionedTextPlan,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -99,7 +97,7 @@ fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Re
 
 fn push_task(
     document: &mut BudgetedTextDocument,
-    task: &TimelineRenderTask,
+    task: &TimelineTask,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -118,4 +116,51 @@ fn push_task(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+
+    #[test]
+    fn canonical_timeline_matches_full_direction_sections_and_events() {
+        use merman_core::{
+            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+        };
+
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        for source in [
+            "timeline\ntitle History\naccTitle: Accessible\naccDescr: Complete timeline\nsection Era\n2025 : Start : Build\nsection Era\n2026 : Ship\n",
+            "timeline TD\n2026 : Released\n",
+            "timeline\nsection Empty\nsection Empty\n",
+        ] {
+            let canonical = SemanticParser::new().parse_diagram_sync(source).unwrap();
+            let SemanticDiagramModel::Timeline(model) = &canonical.model else {
+                panic!("Timeline model")
+            };
+            let full = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Timeline(full) = full.model() else {
+                panic!("Timeline model")
+            };
+            assert!(std::ptr::eq(
+                full.tasks.as_ptr(),
+                full.semantic.tasks.as_ptr()
+            ));
+            let actual =
+                render_timeline_diagram(model, &options, AsciiExecution::for_test(&policy))
+                    .unwrap();
+            let expected = render_timeline_diagram(
+                &full.semantic,
+                &options,
+                AsciiExecution::for_test(&policy),
+            )
+            .unwrap();
+            assert_eq!(actual, expected, "{source}");
+        }
+    }
 }

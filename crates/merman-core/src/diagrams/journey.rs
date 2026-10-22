@@ -85,22 +85,84 @@ impl JourneyDiagramModel {
 }
 
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Serialize, Default)]
+#[serde(transparent)]
 pub struct JourneyDiagramRenderModel {
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub sections: Vec<String>,
-    #[serde(default)]
-    pub tasks: Vec<JourneyRenderTask>,
-    #[serde(default)]
-    pub actors: Vec<String>,
+    pub semantic: JourneyDiagramModel,
     #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for JourneyDiagramRenderModel {
+    type Target = JourneyDiagramModel;
+
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for JourneyDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl<'de> serde::Deserialize<'de> for JourneyDiagramRenderModel {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            title: Option<String>,
+            #[serde(rename = "accTitle")]
+            acc_title: Option<String>,
+            #[serde(rename = "accDescr")]
+            acc_descr: Option<String>,
+            #[serde(default)]
+            sections: Vec<String>,
+            #[serde(default)]
+            tasks: Vec<JourneyTask>,
+            #[serde(default)]
+            actors: Vec<String>,
+        }
+        let wire = <Wire as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self {
+            semantic: JourneyDiagramModel {
+                title: wire.title,
+                acc_title: wire.acc_title,
+                acc_descr: wire.acc_descr,
+                sections: wire.sections,
+                tasks: wire.tasks,
+                actors: wire.actors,
+            },
+            #[cfg(feature = "compat-json")]
+            compatibility_output: CompatibilityOutputState::Model,
+        })
+    }
+}
+#[cfg(all(test, feature = "presentation"))]
+mod terminal_wire_tests {
+    use super::*;
+
+    #[test]
+    fn full_wire_stays_flat_and_preserves_collection_defaults() {
+        let full: JourneyDiagramRenderModel =
+            serde_json::from_value(serde_json::json!({"title": "Retained"})).unwrap();
+        let expected = serde_json::json!({"title": "Retained", "accTitle": null, "accDescr": null, "sections": [], "tasks": [], "actors": []});
+        assert_eq!(serde_json::to_value(&full).unwrap(), expected);
+        assert_eq!(serde_json::to_value(&full.semantic).unwrap(), expected);
+        assert!(
+            serde_json::from_value::<JourneyDiagramModel>(serde_json::json!({"title": "Retained"}))
+                .is_err()
+        );
+        let roundtrip: JourneyDiagramRenderModel =
+            serde_json::from_value(expected.clone()).unwrap();
+        assert_eq!(serde_json::to_value(roundtrip).unwrap(), expected);
+    }
 }
 
 #[cfg(feature = "compat-json")]
@@ -114,9 +176,7 @@ enum CompatibilityOutputState {
 #[cfg(feature = "presentation")]
 impl JourneyDiagramRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+        self.semantic.sanitize_common_db_fields(config);
     }
 }
 
@@ -207,12 +267,7 @@ struct JourneySemanticSource {
 impl JourneySemanticSource {
     fn into_render_model(self) -> JourneyDiagramRenderModel {
         JourneyDiagramRenderModel {
-            title: self.model.title,
-            acc_title: self.model.acc_title,
-            acc_descr: self.model.acc_descr,
-            sections: self.model.sections,
-            tasks: self.model.tasks,
-            actors: self.model.actors,
+            semantic: self.model,
             #[cfg(feature = "compat-json")]
             compatibility_output: self.compatibility_output,
         }

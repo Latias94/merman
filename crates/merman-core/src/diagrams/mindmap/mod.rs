@@ -3,6 +3,7 @@ mod display;
 mod parse;
 #[cfg(feature = "presentation")]
 mod render_model;
+mod terminal;
 mod utils;
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -30,6 +31,9 @@ pub use render_model::{
 #[cfg(feature = "compat-json")]
 pub(crate) use render_model::{
     render_model_to_compat_json, render_model_to_compat_json_controlled,
+};
+pub use terminal::{
+    MindmapTerminalEdge, MindmapTerminalNode, MindmapTerminalNodeId, MindmapTerminalView,
 };
 
 const NODE_TYPE_DEFAULT: i32 = 0;

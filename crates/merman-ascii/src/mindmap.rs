@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 
 mod view;
 pub(super) use view::MindmapView;
-use view::{NodeId, NodeView};
+use view::{NodeId, NodeView, charge_node_id};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -141,7 +141,7 @@ fn render_mindmap_with_resources(
                         is_root,
                         inherited_section,
                     } = frame;
-                    let node = model.node(node_index);
+                    let node = model.node(node_index)?;
                     let is_cycle = visiting.contains(&node.id);
                     let branch = if is_root {
                         String::new()
@@ -226,7 +226,7 @@ fn index_nodes<'a>(
         .map_err(|_| layout_allocation_error())?;
     for (index, node) in model.nodes().enumerate() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
-        node.id.charge_text(resources)?;
+        charge_node_id(node.id, resources)?;
         charge_text_layout(resources, node.node_id)?;
         if out.insert(node.id, index).is_some() {
             return Err(AsciiError::UnsupportedFeature {
@@ -271,8 +271,8 @@ fn build_children_map<'a>(
         .try_reserve(edge_count)
         .map_err(|_| layout_allocation_error())?;
     model.visit_edges(resources, execution, |edge| {
-        edge.start.charge_text(resources)?;
-        edge.end.charge_text(resources)?;
+        charge_node_id(edge.start, resources)?;
+        charge_node_id(edge.end, resources)?;
         if !nodes_by_id.contains_key(&edge.start) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "mindmap",
@@ -354,7 +354,7 @@ fn root_ids<'a>(
         .try_reserve(edge_count)
         .map_err(|_| layout_allocation_error())?;
     model.visit_edges(resources, execution, |edge| {
-        edge.end.charge_text(resources)?;
+        charge_node_id(edge.end, resources)?;
         incoming.insert(edge.end);
         Ok(())
     })?;
@@ -363,7 +363,7 @@ fn root_ids<'a>(
     for node in model.nodes() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
-        node.id.charge_text(resources)?;
+        charge_node_id(node.id, resources)?;
         if !incoming.contains(&node.id) {
             roots
                 .try_reserve(1)

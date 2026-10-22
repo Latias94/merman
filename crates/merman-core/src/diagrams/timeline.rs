@@ -85,22 +85,86 @@ impl TimelineDiagramModel {
 }
 
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Serialize, Default)]
+#[serde(transparent)]
 pub struct TimelineDiagramRenderModel {
-    #[serde(default)]
-    pub direction: TimelineDirection,
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub sections: Vec<String>,
-    #[serde(default)]
-    pub tasks: Vec<TimelineRenderTask>,
+    pub semantic: TimelineDiagramModel,
     #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for TimelineDiagramRenderModel {
+    type Target = TimelineDiagramModel;
+
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for TimelineDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl<'de> serde::Deserialize<'de> for TimelineDiagramRenderModel {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            #[serde(default)]
+            direction: TimelineDirection,
+            title: Option<String>,
+            #[serde(rename = "accTitle")]
+            acc_title: Option<String>,
+            #[serde(rename = "accDescr")]
+            acc_descr: Option<String>,
+            #[serde(default)]
+            sections: Vec<String>,
+            #[serde(default)]
+            tasks: Vec<TimelineTask>,
+        }
+        let wire = <Wire as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self {
+            semantic: TimelineDiagramModel {
+                direction: wire.direction,
+                title: wire.title,
+                acc_title: wire.acc_title,
+                acc_descr: wire.acc_descr,
+                sections: wire.sections,
+                tasks: wire.tasks,
+            },
+            #[cfg(feature = "compat-json")]
+            compatibility_output: CompatibilityOutputState::Model,
+        })
+    }
+}
+#[cfg(all(test, feature = "presentation"))]
+mod terminal_wire_tests {
+    use super::*;
+
+    #[test]
+    fn full_wire_stays_flat_and_preserves_collection_defaults() {
+        let full: TimelineDiagramRenderModel =
+            serde_json::from_value(serde_json::json!({"title": "Retained"})).unwrap();
+        let expected = serde_json::json!({"direction": "LR", "title": "Retained", "accTitle": null, "accDescr": null, "sections": [], "tasks": []});
+        assert_eq!(serde_json::to_value(&full).unwrap(), expected);
+        assert_eq!(serde_json::to_value(&full.semantic).unwrap(), expected);
+        assert!(
+            serde_json::from_value::<TimelineDiagramModel>(
+                serde_json::json!({"title": "Retained"})
+            )
+            .is_err()
+        );
+        let roundtrip: TimelineDiagramRenderModel =
+            serde_json::from_value(expected.clone()).unwrap();
+        assert_eq!(serde_json::to_value(roundtrip).unwrap(), expected);
+    }
 }
 
 #[cfg(feature = "compat-json")]
@@ -114,9 +178,7 @@ enum CompatibilityOutputState {
 #[cfg(feature = "presentation")]
 impl TimelineDiagramRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+        self.semantic.sanitize_common_db_fields(config);
     }
 }
 
@@ -179,12 +241,7 @@ struct TimelineSemanticSource {
 impl TimelineSemanticSource {
     fn into_render_model(self) -> TimelineDiagramRenderModel {
         TimelineDiagramRenderModel {
-            direction: self.model.direction,
-            title: self.model.title,
-            acc_title: self.model.acc_title,
-            acc_descr: self.model.acc_descr,
-            sections: self.model.sections,
-            tasks: self.model.tasks,
+            semantic: self.model,
             #[cfg(feature = "compat-json")]
             compatibility_output: self.compatibility_output,
         }

@@ -82,6 +82,95 @@ pub struct KanbanNodeModel {
     pub metadata: Option<crate::json_value::ManagedJson>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum KanbanTerminalBacking<'a> {
+    Canonical(&'a KanbanDiagramModel),
+    #[cfg(feature = "presentation")]
+    Full(&'a KanbanDiagramRenderModel),
+}
+
+/// Borrows the admitted board without constructing dimensions or copying its cards.
+#[derive(Debug, Clone, Copy)]
+pub struct KanbanTerminalView<'a>(KanbanTerminalBacking<'a>);
+
+impl<'a> KanbanTerminalView<'a> {
+    pub fn from_model(model: &'a KanbanDiagramModel) -> Self {
+        Self(KanbanTerminalBacking::Canonical(model))
+    }
+
+    #[cfg(feature = "presentation")]
+    pub fn from_render(model: &'a KanbanDiagramRenderModel) -> Self {
+        Self(KanbanTerminalBacking::Full(model))
+    }
+
+    pub fn nodes(self) -> impl ExactSizeIterator<Item = KanbanTerminalNode<'a>> {
+        let count = match self.0 {
+            KanbanTerminalBacking::Canonical(model) => model.nodes.len(),
+            #[cfg(feature = "presentation")]
+            KanbanTerminalBacking::Full(model) => model.nodes.len(),
+        };
+        (0..count).map(move |index| self.node_at(index))
+    }
+
+    fn node_at(self, index: usize) -> KanbanTerminalNode<'a> {
+        match self.0 {
+            KanbanTerminalBacking::Canonical(model) => {
+                let node = &model.nodes[index];
+                KanbanTerminalNode {
+                    id: &node.id,
+                    label: &node.label,
+                    is_group: node.is_group,
+                    parent_id: node.parent_id.as_deref(),
+                    ticket: node.ticket.as_deref(),
+                    priority: node.priority.as_deref(),
+                    assigned: node.assigned.as_deref(),
+                    icon: node.icon.as_deref(),
+                    authored: Some(node),
+                }
+            }
+            #[cfg(feature = "presentation")]
+            KanbanTerminalBacking::Full(model) => {
+                let node = &model.nodes[index];
+                KanbanTerminalNode {
+                    id: &node.id,
+                    label: &node.label,
+                    is_group: node.is_group,
+                    parent_id: node.parent_id.as_deref(),
+                    ticket: node.ticket.as_deref(),
+                    priority: node.priority.as_deref(),
+                    assigned: node.assigned.as_deref(),
+                    icon: node.icon.as_deref(),
+                    authored: None,
+                }
+            }
+        }
+    }
+
+    pub fn node(self, index: usize) -> Option<KanbanTerminalNode<'a>> {
+        (index < self.nodes().len()).then(|| self.node_at(index))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct KanbanTerminalNode<'a> {
+    pub id: &'a str,
+    pub label: &'a str,
+    pub is_group: bool,
+    pub parent_id: Option<&'a str>,
+    pub ticket: Option<&'a str>,
+    pub priority: Option<&'a str>,
+    pub assigned: Option<&'a str>,
+    pub icon: Option<&'a str>,
+    authored: Option<&'a KanbanNodeModel>,
+}
+
+impl<'a> KanbanTerminalNode<'a> {
+    /// Returns all original canonical card fields, including unknown authored metadata.
+    pub fn authored(self) -> Option<&'a KanbanNodeModel> {
+        self.authored
+    }
+}
+
 #[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

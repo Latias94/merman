@@ -64,16 +64,54 @@ impl PacketDiagramModel {
 
 #[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(transparent)]
 pub struct PacketDiagramRenderModel {
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    pub packet: Vec<Vec<PacketRenderBlock>>,
+    pub semantic: PacketDiagramModel,
     #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for PacketDiagramRenderModel {
+    type Target = PacketDiagramModel;
+
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for PacketDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod terminal_wire_tests {
+    use super::*;
+
+    #[test]
+    fn full_wire_stays_flat_and_requires_packet_rows() {
+        let full: PacketDiagramRenderModel =
+            serde_json::from_value(serde_json::json!({"title": "Retained", "packet": []})).unwrap();
+        let expected = serde_json::json!({"title": "Retained", "accTitle": null, "accDescr": null, "packet": []});
+        assert_eq!(serde_json::to_value(&full).unwrap(), expected);
+        assert_eq!(serde_json::to_value(&full.semantic).unwrap(), expected);
+        assert!(
+            serde_json::from_value::<PacketDiagramModel>(serde_json::json!({"title": "Retained"}))
+                .is_err()
+        );
+        assert!(
+            serde_json::from_value::<PacketDiagramRenderModel>(
+                serde_json::json!({"title": "Retained"})
+            )
+            .is_err()
+        );
+        let roundtrip: PacketDiagramRenderModel = serde_json::from_value(expected.clone()).unwrap();
+        assert_eq!(serde_json::to_value(roundtrip).unwrap(), expected);
+    }
 }
 
 #[cfg(feature = "compat-json")]
@@ -95,9 +133,7 @@ impl PacketDiagramRenderModel {
     }
 
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+        self.semantic.sanitize_common_db_fields(config);
     }
 }
 
@@ -105,10 +141,7 @@ impl PacketDiagramRenderModel {
 impl PacketDiagramRenderModel {
     fn from_semantic_model(model: PacketDiagramModel) -> Self {
         Self {
-            title: model.title,
-            acc_title: model.acc_title,
-            acc_descr: model.acc_descr,
-            packet: model.packet,
+            semantic: model,
             #[cfg(feature = "compat-json")]
             compatibility_output: CompatibilityOutputState::Model,
         }

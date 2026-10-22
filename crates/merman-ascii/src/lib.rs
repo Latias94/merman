@@ -664,9 +664,7 @@ fn render_gantt_model(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     gantt::render_gantt_diagram(
-        &model.model,
-        &model.display_mode,
-        |task| gantt::GanttTaskView::new(&task.semantic, task.render_end_ms),
+        merman_core::diagrams::gantt::GanttTerminalView::from_render(model),
         options,
         local_time_zone,
         *execution,
@@ -700,7 +698,11 @@ fn render_kanban_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    kanban::render_kanban_diagram(model, options, *execution)
+    kanban::render_kanban_diagram(
+        merman_core::diagrams::kanban::KanbanTerminalView::from_render(model),
+        options,
+        *execution,
+    )
 }
 
 #[cfg(feature = "diagram-mindmap")]
@@ -710,7 +712,11 @@ fn render_mindmap_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    mindmap::render_mindmap_diagram(model, options, *execution)
+    mindmap::render_mindmap_diagram(
+        merman_core::diagrams::mindmap::MindmapTerminalView::from_render(model),
+        options,
+        *execution,
+    )
 }
 
 #[cfg(feature = "diagram-packet")]
