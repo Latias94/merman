@@ -12,9 +12,13 @@ The standard CLI release is defined by the `cli-release` entry in
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
-The `0.9.1` release and current source use the same capabilities for their default feature list,
-including `layout-elk`; both standard binaries therefore include the EPL-2.0 ELK closure and
-its notice/source obligations. The published `0.8.0-alpha.7` default and archives include
+Current source defaults and the official archive both include `layout-elk`, its EPL-2.0
+closure, and the corresponding notice/source obligations. They differ in math support:
+`cli-release` and cargo-dist select `math` explicitly, while current source defaults omit it.
+Source installations can opt in with `cargo install merman-cli --features math`; see the
+[math capability decision](../adr/0097-explicit-math-capability.md).
+Published releases retain their version-specific feature contract. The published
+`0.8.0-alpha.7` default and archives include
 the Rustdoc authoring command. Custom source builds can omit ELK or Rustdoc by disabling defaults
 and selecting the required individual features.
 
@@ -75,7 +79,7 @@ document and no mixed diagnostic text.
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | The target `0.9.0` default includes ELK and Rustdoc. |
+| `cargo install merman-cli` | crates.io source | No | Current source defaults include ELK and Rustdoc; math requires `--features math`. Published versions retain their own defaults. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Inspect the selected formula; owner validation checks required assets | External stable registry |
 | Scoop | Verified Windows x86_64 archive | No | Published in Scoop's main bucket; its manifest governs the selected version |
@@ -180,6 +184,13 @@ https://github.com/Latias94/merman/releases/download/v<VERSION>/merman-cli-<TARG
 The metadata disables cargo-binstall's third-party QuickInstall strategy. If an official archive
 is absent, cargo-binstall falls back to `cargo install` instead of silently substituting an
 uncontrolled binary. Do not disable the `compile` strategy.
+
+For current source, that fallback uses the math-free Cargo defaults rather than the official
+archive's explicit `cli-release` selection. Use `cargo install merman-cli --features math`
+when a source installation needs formula rendering. Nix and the documented Homebrew source
+recipe select the release features explicitly; the container copies the verified archive
+binary and therefore keeps its capabilities. The selected external Homebrew formula or
+bottle remains governed by its own version-scoped validation.
 
 Linux ARM64 uses the same generic `pkg-url`, `pkg-fmt`, and `bin-dir` templates as
 the other Unix targets; only Windows keeps an override. The admission record for that target is

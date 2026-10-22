@@ -3,7 +3,8 @@
 ## Status
 
 Accepted for the development branch on 2026-10-22. This successor amends the capability and API
-clauses of [ADR-0071](0071-editor-parser-semantic-seam.md),
+clauses of [ADR-0005](0005-configuration-strategy.md),
+[ADR-0071](0071-editor-parser-semantic-seam.md),
 [ADR-0073](0073-family-owned-diagram-architecture.md), and
 [ADR-0096](0096-prepared-source-output-ownership.md). Their family ownership, parser recovery,
 source mapping, and output lifecycle decisions remain in force.
