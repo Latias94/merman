@@ -427,3 +427,32 @@ The parent evidence root's `u3-parse-confirmation-audit.json` checks the complet
 schedule, unchanged contract and output/fixture/discovery identities; its SHA-256 is
 `adf9790743e74da5328491af6427fe94c21437c45bf3d775f0864ce59ab0fcba`.
 Concurrent unrelated project work remains possible; this is not an uncontended-host claim.
+
+## Renewed U3 cold-engine confirmation (2026-10-23)
+
+The registered `parse_cold_engine` group also completed with six
+`confirmed_non_regression` rows, zero contract failures and zero inconclusive rows. Each row
+passed stable eight-pair A/A calibration on both runners and eight fresh balanced AB/BA
+confirmation pairs under the unchanged protocol above. Output identities, logical-operation
+divisor one, preflight/postflight, clean source files, fixture bytes, frozen executables and
+discovery retention were checked after sampling. This lane constructs a fresh full engine per
+iteration within a reused process; it does not measure process cold start.
+
+| Cold-engine full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 156.353 us | 149.594 us | Confirmed non-regression | 8 |
+| State medium | 172.861 us | 162.385 us | Confirmed non-regression | 8 |
+| Class medium | 230.589 us | 208.920 us | Confirmed non-regression | 8 |
+| ER medium | 147.435 us | 142.469 us | Confirmed non-regression | 8 |
+| Pie medium | 11.550 us | 10.613 us | Confirmed non-regression | 8 |
+| Flowchart medium | 369.214 us | 364.423 us | Confirmed non-regression | 8 |
+
+Every mirrored improvement result is `confirmed_non_improvement`. The warm and cold groups
+now supply 12 of the 72 registered non-regression controls. The remaining 12 U3 JSON/E2E rows
+and 48 U4/integrated rows are open; no speedup, complete U3 performance admission, or whole-plan
+completion follows. Historical inconclusive results remain unchanged.
+
+The final evidence root retains `u3-cold-parse-confirmation-audit.json`, SHA-256
+`d6e0da49e758f4545899a9d3ea96ca5fff531465ffab5c36c25ff7abb0873cc4`, and the raw
+`timing-u3/parse_cold_engine.{json,md,log}` files. Concurrent unrelated host activity remains
+possible.
