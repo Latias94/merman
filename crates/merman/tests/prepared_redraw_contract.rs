@@ -118,17 +118,19 @@ fn the_same_snapshot_uses_each_outputs_actual_host_font_metrics() {
 
     for width in [40.0, 160.0, 40.0] {
         let calls = Arc::new(AtomicUsize::new(0));
-        let mut request = SvgRequest::default();
-        request.environment = merman::SvgEnvironment::deterministic().with_text_measurement_policy(
-            merman::svg::TextMeasurementPolicy::host_display(
-                identity.clone(),
-                Arc::new(FontMetrics {
-                    width,
-                    calls: Arc::clone(&calls),
-                }),
-                merman::svg::TextMeasurementPhase::ALL,
+        let request = SvgRequest {
+            environment: merman::SvgEnvironment::deterministic().with_text_measurement_policy(
+                merman::svg::TextMeasurementPolicy::host_display(
+                    identity.clone(),
+                    Arc::new(FontMetrics {
+                        width,
+                        calls: Arc::clone(&calls),
+                    }),
+                    merman::svg::TextMeasurementPhase::ALL,
+                ),
             ),
-        );
+            ..Default::default()
+        };
         let output = layout(&renderer, &prepared, request);
         assert!(calls.load(Ordering::SeqCst) > 0);
         let node = output.layout()["layout"]["FlowchartV2"]["nodes"]

@@ -196,8 +196,8 @@ fn class_dom_decl_order_index(dom_id: &str) -> usize {
 pub(crate) fn class_namespace_ids_in_decl_order(model: &ClassDiagramModel) -> Vec<&str> {
     let mut namespaces: Vec<_> = model.namespaces().map(|(_, namespace)| namespace).collect();
     namespaces.sort_by(|lhs, rhs| {
-        class_dom_decl_order_index(&lhs.dom_id)
-            .cmp(&class_dom_decl_order_index(&rhs.dom_id))
+        class_dom_decl_order_index(lhs.dom_id)
+            .cmp(&class_dom_decl_order_index(rhs.dom_id))
             .then_with(|| lhs.id.cmp(&rhs.id))
     });
     namespaces

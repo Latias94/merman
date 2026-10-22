@@ -77,6 +77,7 @@ fn terminal_line_width(line: &str, profile: TerminalWidthProfile) -> usize {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn parse_model(source: &str) -> RenderSemanticModel {
     Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())

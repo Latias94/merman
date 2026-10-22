@@ -679,7 +679,7 @@ fn bench_layout(c: &mut Criterion) {
                 || (data, environment.begin_session().expect("render session")),
                 |(parsed, session)| {
                     let artifact =
-                        merman_render::family::prepare(&parsed, &layout, session).expect("layout");
+                        merman_render::family::prepare(parsed, &layout, session).expect("layout");
                     black_box(artifact);
                 },
                 BatchSize::SmallInput,

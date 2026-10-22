@@ -37,7 +37,7 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 #[non_exhaustive]
 pub enum AsciiDiagram<'a> {
     #[cfg(feature = "diagram-class")]
-    Class(merman_core::models::class_diagram::ClassTopologyView<'a>),
+    Class(Box<merman_core::models::class_diagram::ClassTopologyView<'a>>),
     #[cfg(feature = "diagram-er")]
     Er(&'a merman_core::diagrams::er::ErDiagramModel),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -93,11 +93,11 @@ impl<'a> AsciiDiagram<'a> {
                     crate::resource::AsciiResourceLimitId::MaxOutputBytes,
                     authored.text_bytes,
                 )?;
-                Self::Class(model.topology_with_admission(
+                Self::Class(Box::new(model.topology_with_admission(
                     source.semantic_config,
                     &execution.cloned_control(),
                     |units| resources.charge_layout_work(units),
-                )?)
+                )?))
             }
             #[cfg(feature = "diagram-er")]
             SemanticDiagramModel::Er(model) => Self::Er(model),

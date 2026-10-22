@@ -114,11 +114,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
                 .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
-    let rough_seed = class_rough_seed(
-        &ctx.hand_drawn_seed,
-        ctx.diagram_id.semantic_str(),
-        &note.id,
-    );
+    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id.semantic_str(), note.id);
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,

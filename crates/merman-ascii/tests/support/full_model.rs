@@ -4,7 +4,7 @@ use merman_core::{ParseMetadata, RenderSemanticModel};
 pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
     match model {
         #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(model) => AsciiDiagram::Class(model.topology_view()),
+        RenderSemanticModel::Class(model) => AsciiDiagram::Class(Box::new(model.topology_view())),
         #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(model) => AsciiDiagram::Er(model),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

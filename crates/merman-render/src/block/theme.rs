@@ -1124,9 +1124,11 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // Empty fragments preserve the earlier source, just as the terminal writer does.
-            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
-            fragment.id = "A".to_string();
-            fragment.block_type = "na".to_string();
+            let fragment = merman_core::diagrams::block::BlockNodeRenderModel {
+                id: "A".to_string(),
+                block_type: "na".to_string(),
+                ..Default::default()
+            };
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
@@ -1135,11 +1137,13 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
-            fragment.id = "A".to_string();
-            fragment.block_type = "na".to_string();
-            fragment.styles = vec!["stroke:#00bb00".to_string()];
-            fragment.classes = vec!["unowned".to_string()];
+            let fragment = merman_core::diagrams::block::BlockNodeRenderModel {
+                id: "A".to_string(),
+                block_type: "na".to_string(),
+                styles: vec!["stroke:#00bb00".to_string()],
+                classes: vec!["unowned".to_string()],
+                ..Default::default()
+            };
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();

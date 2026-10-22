@@ -2091,8 +2091,7 @@ mod tests {
             .expect("positive output limit");
         let execution = AsciiExecution::for_test(&policy);
         let error = serialize_bounded_json(&vec![""; 512], execution)
-            .err()
-            .expect("the streaming output budget should reject container amplification");
+            .expect_err("the streaming output budget should reject container amplification");
 
         assert!(matches!(
             error,

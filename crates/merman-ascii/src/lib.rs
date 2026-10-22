@@ -304,9 +304,9 @@ impl AsciiRenderer {
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
         let requested_policies = self.options.resolve_policies();
-        let capability = capability::capability_for_diagram_type(&metadata.diagram_type);
+        let capability = capability::capability_for_diagram_type(metadata.diagram_type);
         execution.checkpoint(merman_core::OperationPhase::Admission)?;
-        validate_local_handler(&metadata.diagram_type)?;
+        validate_local_handler(metadata.diagram_type)?;
         layout_selection::validate_viewport(self.options.layout_profile, viewport)?;
         validate_primary_request(capability, &requested_policies)?;
         validate_fallback_request(capability, &requested_policies, viewport)?;
@@ -348,7 +348,7 @@ impl AsciiRenderer {
         execution: operation::AsciiExecution<'_>,
         selected: layout_selection::SelectedLayout,
     ) -> Result<AsciiOutput> {
-        let capability = capability::capability_for_diagram_type(&metadata.diagram_type);
+        let capability = capability::capability_for_diagram_type(metadata.diagram_type);
         let policies = self
             .options
             .with_layout_profile(selected.profile)

@@ -237,7 +237,7 @@ pub(super) fn render_class_node_shell_open(
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     out.push('-');
-    super::super::util::escape_attr_into(out, &node.dom_id);
+    super::super::util::escape_attr_into(out, node.dom_id);
     out.push('"');
     if link.is_none() {
         out.push_str(r#" data-look=""#);
@@ -280,7 +280,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
     let rough_seed = class_rough_seed(
         &ctx.hand_drawn_seed,
         ctx.diagram_id.semantic_str(),
-        &node.dom_id,
+        node.dom_id,
     );
     let hand_drawn = ctx.look == "handDrawn";
     out.push_str(r#"<g class="basic label-container outer-path">"#);
