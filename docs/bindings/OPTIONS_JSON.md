@@ -599,7 +599,7 @@ update requests rather than relying on an alias.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `environment.text_measurement` | string | `deterministic` | The only built-in value is `deterministic`; install a host callback through the engine service API when the final display stack should own geometry. |
-| `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
+| `environment.math_renderer` | string | `ratex` when the artifact selects `math`; otherwise `none` | `none` explicitly disables math. `ratex` requires the artifact's `math` capability. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
 Move them to `environment.text_measurement` and `environment.math_renderer`, respectively.
@@ -732,7 +732,7 @@ the closed public fixture manifest and an adjacent typed rejection boundary:
 
 ```sh
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
-  --example layout_work_calibration --features svg,layout-cytoscape,layout-elk,math
+  --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-elk,math
 
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \

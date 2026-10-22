@@ -18,8 +18,9 @@ the existing missing-capability error when math is unavailable, preserving famil
 behavior. No network, JavaScript or literal-output fallback is introduced. Transport-owned
 catalogs continue to constrain operations even if Cargo unifies a wider dependency feature set.
 
-These clauses supersede the math-bearing facade/aggregate rules in ADR-0076/0085/0088/0089 and the Web
-math recipe in ADR-0079. ELK selection and its EPL-2.0 notices/provenance remain unchanged.
+These clauses supersede the math-bearing facade/aggregate rules in ADR-0076/0085/0088/0089/0091,
+the original Rustdoc default in ADR-0087, and the Web math recipe in ADR-0079.
+ELK selection and its EPL-2.0 notices/provenance remain unchanged.
 Installed `0.9.1` products and dated performance receipts retain their original capability sets.
 
 Consumers replace `complete-svg` with `svg,layout-cytoscape,math`, or `complete-svg-elk` with
