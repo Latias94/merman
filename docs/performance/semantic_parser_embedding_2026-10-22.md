@@ -133,3 +133,83 @@ identity checks, 37-family package smoke and DOM safety. The Chromium desktop mo
 suite passed 10/10. `final-host-integration-receipt.json` freezes the seven resumed Dart/Web
 steps and five Web input manifests. The earlier strict run remains exit 1 at its historical
 stale-WASM failure; these current scoped passes do not rewrite that terminal result.
+
+## Corrected final-source measurements (2026-10-23)
+
+Independent completion review found missing common-DB accessibility normalization in lean
+Flowchart/Swimlane and eager full-engine initialization in binding analysis/ASCII construction.
+Commits `732438a8a` and `0ae3496d4` correct these behaviors; `1cf3bf137` explicitly selects
+the Tree-sitter conformance oracle's compatibility capability. All 429 scoped Rust tests,
+owning all-target/all-feature Clippy and formatting passed. The corrected product source is
+`f0365e6a4948c4baff2f16adb735e0f143ee38c6`, including the associated documentation commits.
+
+The final sides were rebuilt from that committed source. The frozen U1 binaries above were
+reused without rebuilding: semantic probe observations and SVG probe source bytes are unchanged.
+Toolchain, profiles, capability selection, corpus identities and consumed outputs match the
+corresponding baseline receipts. Corrected final external dependency packages/features match
+the previously inspected final closures; the SVG control also matches the U1 external closure.
+
+| Isolated consumer | Frozen U1 bytes | Corrected final bytes | Reduction |
+| --- | ---: | ---: | ---: |
+| Three-family canonical semantics, stripped | 2,843,648 | 2,126,336 | 717,312 bytes (25.2251%) |
+| Same-capability SVG, delivered | 13,202,944 | 13,158,400 | 44,544 bytes (0.3374%) |
+
+These replace the earlier final-size values for current-source admission. The earlier source
+measurements remain valid historical observations. The three consumed semantic outputs and
+three SVG outputs remain byte-identical to the corresponding U1 outputs. The same scope limits
+apply: these are isolated Windows/MSVC size controls, not latency or all-family output claims.
+
+Corrected raw artifacts and receipts are retained at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/final-f0365e6a4-20261023/`.
+
+| Corrected receipt | SHA-256 |
+| --- | --- |
+| `semantic-size-final/receipt.json` | `d75cc7a03c8f0d893a0783e9634c0b4c10f85757786cb6a8954c1d940f1a68cf` |
+| `svg-size-final/receipt.json` | `052d4cebc9e3fae7f50cf9d62e1effc1ad5e58824a25f3c91ed01bad1590ae2e` |
+| `semantic-size-comparison.json` | `a12cdae7a195c276b45e296306d92d448835538bcd2f530e44799a0ca8a0b1bc` |
+| `svg-size-comparison.json` | `46894581622078a350c6357c1fcef1d2cf2d57ab4a27d249d148cabab2831451` |
+
+The new installed-host/archive queue and registered public-operation timing remain separate
+obligations. No whole-plan completion is inferred from these size passes or from the earlier
+installed artifacts that predate the correctness fixes.
+
+The corrected Node N-API Windows and Node-WASM packages subsequently passed assembly,
+verification, tarball creation, offline installation and their public installed-package smoke.
+Each installed backend exercised 30 SVG renders, 26 JSON operations, 44 support queries and
+saved-recipe exchange through three fresh processes. Corrected Typst 0.15.1 package smoke
+compiled 23 fixtures with nine expected failures; all 110 package/runtime files were retained.
+Windows GNU native packaging and Dart 3.11.6 ABI 3, real capability/error/service smoke and
+theme authoring also passed. The real native smoke includes required-math rejection. A frozen
+copy of the tested DLL is retained outside Cargo targets. This remains standalone Dart/native
+host evidence, not actual Flutter UI or other-platform runtime coverage.
+
+| Corrected host receipt | SHA-256 |
+| --- | --- |
+| `node-installed-verification.json` | `6ab909e601daffb1de2d9fe6b620d86c62c15799d8de44075359ff593e173106` |
+| `typst-retained-files.json` | `0d65e0d426d426699703585f06ba16a60b67fe5c12195cc3fdf9c66d1b9a7216` |
+| `dart-host-verification.json` | `bce57bd77760d52e258c973b62f9fc8d2de4f716689f95fab96d3cf92437331c` |
+
+Corrected Web full, analysis, render, editor and ASCII packages also passed their five-package
+build and source-input verification, 37-family smoke matrix, required-math rejection and DOM
+safety smoke. The Chromium mounted-diagram suite passed all ten tests. The 447 retained
+package and source-input files are copied outside Cargo targets;
+`web-host-verification.json` has SHA-256
+`3ee7c89efddfbef27ef141cd56da5f77c0c96157c5f01f147e7c983cdfad924e`.
+This supplies scoped recovery of the historical stale-WASM mount failure without rewriting
+that strict command's exit status.
+
+The corrected 27-step integration queue then completed successfully. cargo-dist 0.32.0 built
+the local Windows/MSVC CLI archive, the existing release archive verifier executed its binary,
+and the exact retained ZIP advertised `math` and rendered the required `$$x^2$$` formula through
+RaTeX. The SVG contains 36,883 bytes and no literal formula delimiters. This is local archive
+preflight, not a publication or a claim about another platform.
+
+| Archive receipt or artifact | SHA-256 |
+| --- | --- |
+| `final-integration-receipt.json` | `25a9d0a04e9a399db5276c6c21cf1f4cd945e509529f3e73096afb08a61aca3f` |
+| `merman-cli-x86_64-pc-windows-msvc.zip` | `dd1347e1641fc63e831736d43d463ca9d3a81a9f5c620e8e49a20e5ec714a9f7` |
+| `cli-archive-math-receipt.json` | `227d36412a7ed7fc610084285e4b0bde1e8fe2c7171eb9fc984e3526a1db9648` |
+
+Registered U3/U4/integrated timing controls are now running with unchanged thresholds,
+protocol and sample caps. No renewed latency classification or whole-plan admission follows
+from the completed artifact queue.
