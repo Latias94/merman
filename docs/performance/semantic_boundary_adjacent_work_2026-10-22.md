@@ -565,3 +565,32 @@ The final root retains `u4-discovery-audit.json`, SHA-256
 `u4-parse-confirmation-audit.json`, SHA-256
 `103c0382f02e0f0d3bce3095f839d3dc93c6f50f5bb4a81af7f793f2c26d72d4`. Raw discovery,
 parse reports/logs, registrations and executable copies remain under `timing-u4/`.
+
+## Renewed U4 cold-engine confirmation (2026-10-23)
+
+The registered U4 `parse_cold_engine` group completed with six `confirmed_non_regression`
+rows, zero contract failures and zero inconclusive rows. Both frozen runners passed eight
+A/A pairs; all fixtures then completed eight fresh balanced AB/BA pairs under the unchanged
+protocol and budget. The parent checked every pair/order, divisor one, output/preflight/postflight
+identity, clean sources, fixture bytes, frozen executables and discovery retention.
+This lane constructs a fresh full engine per iteration inside a reused process, not a cold process.
+
+| Cold-engine full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 147.960 us | 146.705 us | Confirmed non-regression | 8 |
+| State medium | 161.018 us | 158.206 us | Confirmed non-regression | 8 |
+| Class medium | 209.639 us | 208.056 us | Confirmed non-regression | 8 |
+| ER medium | 140.139 us | 137.833 us | Confirmed non-regression | 8 |
+| Pie medium | 10.635 us | 10.727 us | Confirmed non-regression | 8 |
+| Flowchart medium | 361.877 us | 372.050 us | Confirmed non-regression | 8 |
+
+All mirrored improvement outcomes are `confirmed_non_improvement`. Positive Pie and Flowchart
+means are retained; the registered materiality contract still confirms non-regression. No
+speedup follows. U4 now supplies 12 confirmed controls, with 12 JSON/E2E rows still without
+terminal classification. Across all groups, 35 confirm non-regression, one U3 State E2E remains
+inconclusive and 36 U4/integrated rows remain open. Whole-plan performance is unproven.
+
+The final root retains `u4-cold-parse-confirmation-audit.json`, SHA-256
+`2184da6ad3ec5120670a10eb4dfd1d804289ef929c5f4a34d2dbcbb35c1ff7be`, and the raw
+`timing-u4/parse_cold_engine.{json,md,log}` files. Original protocols/caps and the U3
+inconclusive result remain unchanged; concurrent unrelated host activity is possible.
