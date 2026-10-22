@@ -15,7 +15,7 @@ use super::{
 use crate::Result;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::sequence::{
-    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
 };
 use merman_core::presentation::PresentationConfig;
 use std::collections::HashMap;
@@ -33,7 +33,7 @@ pub(crate) struct SequenceBlockLabelBoxMetrics {
 
 impl SequenceBlockLabelBoxMetrics {
     pub(crate) fn resolve(
-        model: &SequenceDiagramRenderModel,
+        model: &SequenceDiagramModel,
         configured_width: f64,
         configured_height: f64,
         text_margin: f64,
@@ -121,7 +121,7 @@ impl SequenceBlockLabelBoxMetrics {
 
 #[derive(Clone, Copy)]
 pub(super) struct BlockStepPlanContext<'a> {
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_widths: &'a [f64],

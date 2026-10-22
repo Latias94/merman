@@ -5,7 +5,7 @@ use merman_ascii::{
     TerminalWidthProfile,
 };
 use merman_core::diagrams::sequence::{
-    SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
 use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
@@ -43,7 +43,7 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
 }
 
 fn render_sequence_model(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     options: &AsciiRenderOptions,
 ) -> merman_ascii::Result<String> {
     render_model(&RenderSemanticModel::Sequence(model.clone()), options)
@@ -64,7 +64,7 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
-fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
+fn parse_sequence_render_model(input: &str) -> SequenceDiagramModel {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("sequence diagram should parse")
@@ -178,7 +178,7 @@ fn cjk_test_width(input: &str) -> usize {
         .sum()
 }
 
-fn basic_sequence_model() -> SequenceDiagramRenderModel {
+fn basic_sequence_model() -> SequenceDiagramModel {
     let mut actors = BTreeMap::new();
     actors.insert(
         "A".to_string(),
@@ -192,7 +192,7 @@ fn basic_sequence_model() -> SequenceDiagramRenderModel {
         },
     );
 
-    SequenceDiagramRenderModel {
+    SequenceDiagramModel {
         acc_title: None,
         acc_descr: None,
         title: None,
@@ -207,7 +207,7 @@ fn basic_sequence_model() -> SequenceDiagramRenderModel {
     }
 }
 
-fn add_sequence_participant(model: &mut SequenceDiagramRenderModel, id: &str) {
+fn add_sequence_participant(model: &mut SequenceDiagramModel, id: &str) {
     model.actor_order.push(id.to_string());
     model.actors.insert(
         id.to_string(),
@@ -222,7 +222,7 @@ fn add_sequence_participant(model: &mut SequenceDiagramRenderModel, id: &str) {
     );
 }
 
-fn assert_unsupported_sequence_model(model: SequenceDiagramRenderModel, feature: &'static str) {
+fn assert_unsupported_sequence_model(model: SequenceDiagramModel, feature: &'static str) {
     let err = render_model(
         &RenderSemanticModel::Sequence(model),
         &AsciiRenderOptions::unicode(),

@@ -4,7 +4,7 @@ use crate::Result;
 use crate::geom::Box2;
 use crate::model::{LayoutEdge, LayoutNode};
 use merman_core::diagrams::sequence::{
-    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };
 use std::collections::HashMap;
@@ -76,7 +76,7 @@ pub(super) struct ClosedSequenceRect {
 }
 
 pub(super) struct SequenceRectStackBoundsContext<'a> {
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
     pub(super) edges: &'a [LayoutEdge],

@@ -1,6 +1,6 @@
 use super::{SequenceLayoutCheckpoints, sequence_activation_start_x};
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub(crate) struct SequencePreparedActivationGeometry {
 }
 impl SequencePreparedActivationGeometry {
     pub(super) fn prepare(
-        model: &SequenceDiagramRenderModel,
+        model: &SequenceDiagramModel,
         nodes: &[LayoutNode],
         edges: &[LayoutEdge],
         activation_width: f64,

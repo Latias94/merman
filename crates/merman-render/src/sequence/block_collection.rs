@@ -3,7 +3,7 @@ use super::block_geometry::SequenceBlockGeometry;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use merman_core::diagrams::sequence::{
-    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };
 use rustc_hash::FxHashMap;
@@ -159,7 +159,7 @@ impl<'a> BlockStackEntry<'a> {
 }
 
 pub(crate) fn collect_sequence_blocks<'a>(
-    model: &'a SequenceDiagramRenderModel,
+    model: &'a SequenceDiagramModel,
     actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
@@ -182,7 +182,7 @@ pub(crate) fn collect_sequence_blocks<'a>(
 }
 
 fn collect_sequence_blocks_with<'a>(
-    model: &'a SequenceDiagramRenderModel,
+    model: &'a SequenceDiagramModel,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     mut message_geometry: impl FnMut(&'a SequenceMessage) -> SequenceBlockGeometry<'a>,
     checkpoints: SequenceOperationCheckpoints<'_>,
@@ -471,7 +471,7 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::sequence::block_geometry::SequenceBlockGeometry;
     use merman_core::diagrams::sequence::{
-        SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
+        SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
     };
     use rustc_hash::FxHashMap;
     use std::collections::BTreeMap;
@@ -499,8 +499,8 @@ mod tests {
         }
     }
 
-    fn model(messages: Vec<SequenceMessage>) -> SequenceDiagramRenderModel {
-        SequenceDiagramRenderModel {
+    fn model(messages: Vec<SequenceMessage>) -> SequenceDiagramModel {
+        SequenceDiagramModel {
             acc_title: None,
             acc_descr: None,
             title: None,

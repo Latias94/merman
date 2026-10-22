@@ -71,6 +71,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!(
             "  cargo nextest run --workspace --features merman/compat-json,merman/editor-facts"
         );
+        println!(
+            "  cargo test -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc"
+        );
         println!("  cargo test -p merman-render --doc");
         println!("  cargo test -p merman --doc --features svg");
         println!(
@@ -245,6 +248,22 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     )?;
 
     println!("\n== architecture compile-fail contracts ==");
+    let mut lean_doctest_cmd = Command::new("cargo");
+    lean_doctest_cmd
+        .args([
+            "test",
+            "-p",
+            "merman-core",
+            "--no-default-features",
+            "--features",
+            "diagram-flowchart,diagram-sequence,diagram-state",
+            "--doc",
+        ])
+        .current_dir(&workspace_root);
+    run_checked(
+        "isolated lean core compile-fail contracts",
+        &mut lean_doctest_cmd,
+    )?;
     for (what, package, features) in [
         ("cargo test -p merman-render --doc", "merman-render", None),
         (

@@ -44,6 +44,7 @@ The remaining Rust source migrations are:
 | Full site configuration as `MermaidConfig` | `presentation::PresentationConfig::from_config(config)` for `MermaidEngine`; semantic parsers still accept `MermaidConfig` |
 | `merman_core::geom` | `merman_render::geom`; geometry belongs to rendering |
 | `ErrorDiagramRenderModel` | Canonical `diagrams::error_diagram::ErrorDiagramModel`, shared by semantic and full parsing |
+| `SequenceDiagramRenderModel` | Canonical `diagrams::sequence::SequenceDiagramModel`, shared by semantic and full parsing |
 | Moving Journey, Timeline or Packet fields out of a full carrier | Move through the carrier's `semantic` field; borrowed field reads remain available |
 | ASCII entrypoints taking `RenderSemanticModel` | `render_parsed` / `render_parsed_report` on a `ParsedSemanticDiagram`, or the explicit borrowed `AsciiDiagram` and `AsciiSourceContext` entrypoints |
 | Custom full analyzer construction | Enable analysis `compat-json` and use `Analyzer::with_mermaid_engine`; ordinary analyzers remain canonical |

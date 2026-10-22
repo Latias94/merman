@@ -2627,7 +2627,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Sequence(
         Box<
             FamilyPair<
-                &'parsed diagrams::sequence::SequenceDiagramRenderModel,
+                &'parsed diagrams::sequence::SequenceDiagramModel,
                 crate::sequence::SequencePreparedArtifact,
             >,
         >,

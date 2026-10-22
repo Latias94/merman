@@ -396,7 +396,7 @@ pub enum RenderSemanticModel {
     #[cfg(feature = "diagram-state")]
     State(crate::diagrams::state::StateDiagramRenderModel),
     #[cfg(feature = "diagram-sequence")]
-    Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    Sequence(crate::diagrams::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-zenuml")]
     Zenuml(crate::diagrams::zenuml::ZenumlDiagramRenderModel),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -673,7 +673,7 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-sequence")]
     impl_builtin_render_semantic!(
-        crate::diagrams::sequence::SequenceDiagramRenderModel,
+        crate::diagrams::sequence::SequenceDiagramModel,
         crate::diagrams::sequence::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-zenuml")]

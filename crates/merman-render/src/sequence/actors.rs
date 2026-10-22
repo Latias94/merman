@@ -12,13 +12,13 @@ use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::sequence::SequenceActor;
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::SequenceDiagramModel;
 use merman_core::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
 
 use super::metrics::measure_svg_like_with_html_br;
 pub(super) struct SequenceActorLayoutPlanContext<'a> {
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) actor_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
@@ -54,7 +54,7 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
 }
 
 pub(super) struct SequenceActorLifecycleContext<'a> {
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_base_heights: &'a [f64],
     pub(super) actor_height: f64,

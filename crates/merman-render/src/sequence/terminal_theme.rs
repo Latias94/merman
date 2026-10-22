@@ -71,7 +71,7 @@ pub(crate) struct SequencePreparedTerminalTheme {
 
 impl SequencePreparedTerminalTheme {
     pub(super) fn resolve(
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
         config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,

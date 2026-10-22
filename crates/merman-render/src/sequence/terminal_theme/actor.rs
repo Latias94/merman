@@ -22,7 +22,7 @@ impl SequencePreparedActorTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         sanitize_config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<SequencePreparedActorTheme> {
         use crate::diagram_theme::{

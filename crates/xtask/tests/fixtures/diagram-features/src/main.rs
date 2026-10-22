@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 
 #[cfg(feature = "omitted-sequence")]
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::SequenceDiagramModel;
 
 fn expected(name: &str) -> BTreeSet<String> {
     std::env::var(name)

@@ -759,7 +759,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
     ) -> Result<SequenceComplexity, ResourceLimitExceeded> {
         self.input
             .check_sequence_complexity(model)
@@ -1319,7 +1319,7 @@ impl OperationWorkMeter {
     #[cfg(feature = "diagram-sequence")]
     pub(crate) fn preflight_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
         operation_phase: OperationPhase,
     ) -> Result<SequenceComplexity, OperationWorkError> {
         self.resource_checkpoint(operation_phase)?;

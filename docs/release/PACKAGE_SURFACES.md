@@ -14,9 +14,10 @@ The development baseline selects Mermaid `12.2.0`, retaining parser `2.0.1` and 
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-The separate development theme refactor changes Options JSON to schema `3` and Web transport to
-API `6`. Those contracts and Mermaid `12.2.0` behavior are unreleased; package version metadata in
-the current checkout does not identify the published `v0.9.1` source or its artifacts.
+The development baseline uses Options JSON schema `3` and Web transport API `8`, including
+prepared sources and mounted diagrams. Those contracts and Mermaid `12.2.0` behavior are
+unreleased; package version metadata in the current checkout does not identify the published
+`v0.9.1` source or its artifacts.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
@@ -161,16 +162,20 @@ package exports only `.` and contains exactly one owned WASM artifact at
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts, and math. |
+| `@mermanjs/web` | `web-full` | Browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | Public complete SVG-only renderer with Cytoscape, ELK, and math. |
+| `@mermanjs/web-render` | `web-render` | SVG-only renderer with Cytoscape and ELK layouts. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
 the artifact's typed missing-capability behavior; consumers should not infer support from package
 names or Cargo features.
+
+The generic browser packages omit math. Required math labels return the typed missing-capability
+error with id `math`; custom source builds can select the positive `math` feature explicitly.
+See the [Rust embedding and capability guide](../rendering/RUST_EMBEDDING.md).
 
 Release builds pack every public member into one verified artifact group. The manifest records the
 release version, source commit, target dist-tag, package/profile identity, tarball hash and npm
@@ -225,7 +230,7 @@ differ:
 | Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
 | Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
-| Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
+| Browser packages | package-specific | `web-full` and `web-render` omit math; dedicated packages own analysis, editor, and ASCII workflows. Custom source builds can opt into math. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
 Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU

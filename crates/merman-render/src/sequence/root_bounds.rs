@@ -7,14 +7,14 @@ use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_w
 use crate::Result;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use merman_core::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) is_neo: bool,
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],

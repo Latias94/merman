@@ -5,9 +5,7 @@ use crate::resources::OperationWorkMeter;
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
 use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{
-    SequenceControlKind, SequenceDiagramRenderModel, SequenceMessage,
-};
+use merman_core::diagrams::sequence::{SequenceControlKind, SequenceDiagramModel, SequenceMessage};
 use merman_core::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -340,7 +338,7 @@ fn sequence_message_text_work_units(message: &SequenceMessage) -> Option<usize> 
 }
 
 fn sequence_text_work_units_controlled(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     diagram_title: Option<&str>,
     checkpoints: SequenceLayoutCheckpoints<'_>,
 ) -> Result<Option<usize>> {
@@ -403,7 +401,7 @@ fn sequence_text_work_units_controlled(
 }
 
 #[cfg(all(test, feature = "diagram-sequence"))]
-fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> Option<usize> {
+fn sequence_layout_work_units(model: &SequenceDiagramModel) -> Option<usize> {
     let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
     sequence_layout_work_units_controlled(model, None, SequenceLayoutCheckpoints::new(&meter))
         .ok()
@@ -411,7 +409,7 @@ fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> Option<usiz
 }
 
 fn sequence_layout_work_units_controlled(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     diagram_title: Option<&str>,
     checkpoints: SequenceLayoutCheckpoints<'_>,
 ) -> Result<Option<usize>> {
@@ -472,7 +470,7 @@ pub(crate) fn sequence_block_label_wrap_width(block_width: f64, wrap_padding: f6
 }
 
 pub(crate) fn sequence_block_widths_for_render(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     prepared: &SequencePreparedArtifact,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     effective_config: &PresentationConfig,
@@ -553,7 +551,7 @@ pub(crate) fn sequence_block_widths_for_render(
     reason = "Prepared rendering keeps theme, text, math, and work inputs explicit"
 )]
 pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &PresentationConfig,
     resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
@@ -873,7 +871,7 @@ mod resource_tests {
         }
     }
 
-    fn sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramRenderModel {
+    fn sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()

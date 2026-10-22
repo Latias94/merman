@@ -97,9 +97,6 @@ pub use model::{
     SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
     SequenceNotePlacement, SequenceSignalSemantics,
 };
-// Transitional alias while full-render consumers migrate to the canonical model name.
-#[cfg(feature = "presentation")]
-pub use model::SequenceDiagramModel as SequenceDiagramRenderModel;
 
 #[cfg(test)]
 mod tests {
