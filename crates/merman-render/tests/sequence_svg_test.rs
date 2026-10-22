@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,
@@ -175,7 +175,7 @@ fn render_sequence_with_environment(
     environment: &RenderEnvironment,
 ) -> SequenceRenderObservation {
     let session = environment.begin_session().expect("begin Sequence session");
-    let parsed = parse_sequence_for_render(&Engine::new(), source);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), source);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
@@ -196,7 +196,7 @@ fn try_render_sequence_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Sequence resource-bound session");
-    let parsed = parse_sequence_for_render(&Engine::new(), source);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), source);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
@@ -485,7 +485,7 @@ fn render_prepared_sequence_after_release(
     release: Receiver<()>,
 ) -> SequenceRenderObservation {
     let session = environment.begin_session().expect("begin Sequence session");
-    let parsed = parse_sequence_for_render(&Engine::new(), source);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), source);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
@@ -510,7 +510,7 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
-fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender {
+fn parse_sequence_for_render(engine: &MermaidEngine, text: &str) -> ParsedDiagramRender {
     engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -646,7 +646,7 @@ fn layout_sequence_from_environment(
     text: &str,
     environment: &RenderEnvironment,
 ) -> SequenceDiagramLayout {
-    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), text);
     let session = environment.begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("typed Sequence layout");
@@ -774,7 +774,7 @@ fn render_sequence_svg_from_fixture_with_options(
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), &text);
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Sequence artifact");
 
@@ -792,7 +792,7 @@ fn sequence_layout_json_from_fixture(fixture: &str) -> merman_core::ManagedSeman
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), &text);
 
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Sequence artifact")
@@ -805,7 +805,7 @@ fn render_sequence_svg_from_text(text: &str) -> String {
 }
 
 fn render_sequence_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
@@ -821,7 +821,7 @@ fn render_sequence_svg_from_text_with_options(text: &str, options: &SvgRenderOpt
         .to_string()
 }
 
-fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+fn render_sequence_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
@@ -907,7 +907,7 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
             .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .unwrap();
-        let parsed = parse_sequence_for_render(&Engine::new(), text);
+        let parsed = parse_sequence_for_render(&MermaidEngine::new(), text);
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
         artifact
@@ -1082,7 +1082,7 @@ link Alice: Script @ javascript:alert(1)
     );
 
     let loose = render_sequence_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"sequenceDiagram
@@ -1107,7 +1107,7 @@ fn render_sequence_svg_with_theme_variables(
         .begin_session()
         .unwrap();
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": theme_variables,
         })));
     let parsed = parse_sequence_for_render(&engine, text);
@@ -1128,7 +1128,7 @@ fn sequence_activation_svg_width_preserves_json_number_only_input() {
         (serde_json::json!(0.25), 1.0),
         (serde_json::json!(4), 4.0),
     ] {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"sequence": {"activationWidth": input}}),
         ));
         let parsed =
@@ -1173,7 +1173,7 @@ fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
             }
 
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let parsed = parse_sequence_for_render(&Engine::new(), &source);
+            let parsed = parse_sequence_for_render(&MermaidEngine::new(), &source);
             let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
                 .expect("prepare Sequence artifact");
             let rendered = artifact
@@ -1206,7 +1206,7 @@ fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
 fn sequence_builtin_route_reuses_self_and_multiline_message_bounds() {
     let dimension_calls = |source: &str| {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let parsed = parse_sequence_for_render(&Engine::new(), source);
+        let parsed = parse_sequence_for_render(&MermaidEngine::new(), source);
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
         let rendered = artifact
@@ -1262,7 +1262,8 @@ end
 #[test]
 fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emission() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
+    let parsed =
+        parse_sequence_for_render(&MermaidEngine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
@@ -1832,8 +1833,8 @@ fn sequence_control_labels_follow_look_height_margin_and_font() {
         ("neo", -5.0, 5.0, 10.0),
         ("classic", -5.0, 5.0, -5.0),
     ] {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "look": look,
                 "fontSize": 22,
                 "sequence": {
@@ -1841,7 +1842,8 @@ fn sequence_control_labels_follow_look_height_margin_and_font() {
                     "labelBoxWidth": 96,
                     "boxTextMargin": margin
                 }
-            })));
+            }),
+        ));
         let svg = render_sequence_svg_from_text_with_engine(engine, source);
         let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
         let controls = document
@@ -1940,7 +1942,7 @@ fn sequence_control_titles_use_resolved_message_font_weight() {
         ),
     ] {
         let svg = render_sequence_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(config.clone())),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config.clone())),
             source,
         );
         let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
@@ -2029,7 +2031,8 @@ fn sequence_diagram_title_expands_the_root_for_typed_base_font_size() {
             ),
         )
         .expect("compile large Sequence base typography");
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -2078,10 +2081,11 @@ fn sequence_classic_block_root_width_replays_upstream_bounds_insert_lifecycle() 
         )
         .expect("fixture");
         // Keep this bounds-insertion regression independent of Neo marker spacing.
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "sequence": { "look": "classic" }
-            })));
+            }),
+        ));
         let svg = render_sequence_svg_from_text_with_engine(engine, &text);
         let (view_box, max_width) = root_view_box_and_max_width(&svg);
         assert_eq!(
@@ -2271,10 +2275,11 @@ fn sequence_reverse_message_align_uses_the_normalized_message_interval() {
     let source = "sequenceDiagram\nparticipant A\nparticipant B\nB->>A: reverse\n";
     let wrap_padding = 17.0;
     let render_with_align = |align: &str| {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "sequence": { "messageAlign": align, "wrapPadding": wrap_padding }
-            })));
+            }),
+        ));
         render_sequence_svg_from_text_with_engine(engine, source)
     };
     let message_position = |svg: &str| {
@@ -2488,7 +2493,7 @@ fn sequence_classic_nested_opt_wraps_from_source_block_width() {
     // Classic retains the source block width used by this deterministic wrapping oracle.
     // Neo shortens message bounds before calculateLoopBounds derives that width.
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "sequence": { "look": "classic" }
         })));
     let svg = render_sequence_svg_from_text_with_engine(engine, &text);
@@ -2685,10 +2690,11 @@ A->>B: Filled"#,
 #[test]
 fn sequence_headless_strokes_follow_mermaid_neo_endpoint_spacing() {
     for (look, dotted_offset) in [("classic", 0.0), ("neo", 3.0)] {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "look": look
-            })));
+            }),
+        ));
         let svg = render_sequence_svg_from_text_with_engine(
             engine,
             r#"sequenceDiagram
@@ -2841,7 +2847,7 @@ end"#;
         let theme = sequence_role_paint_theme(fill, stroke);
         let parsed = merman_render::__private::install_parse_compatibility(
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"look":"classic"}),
             )),
         )
@@ -2963,7 +2969,7 @@ fn render_sequence_paint_owner_case(
         .unwrap_or_else(|error| panic!("compile {origin} Sequence {case} {property}: {error}"));
     let (engine, source) = if origin == "site" {
         (
-            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
             source.to_owned(),
         )
     } else {
@@ -3295,7 +3301,7 @@ Alice->>Bob: Message
             let config = serde_json::json!({"themeVariables": theme_variables});
             let (engine, source) = if origin == "site" {
                 (
-                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                     SOURCE.to_string(),
                 )
             } else {
@@ -3468,7 +3474,7 @@ end
             let config = serde_json::json!({"themeVariables": theme_variables});
             let (engine, source) = if origin == "site" {
                 (
-                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                     SOURCE.to_string(),
                 )
             } else {
@@ -3840,7 +3846,7 @@ end"#;
             );
             let (baseline_engine, baseline_source) = if origin == "site" {
                 (
-                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                     SOURCE.to_owned(),
                 )
             } else {
@@ -3978,11 +3984,12 @@ end"#;
                 )),
             )
             .unwrap_or_else(|error| panic!("compile Neutral site text {case} theme: {error}"));
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "theme": "neutral",
                 "themeVariables": { "text": MERMAID_COLOR },
-            })));
+            }),
+        ));
         let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("parse Neutral site text {case} source: {error}"))
@@ -4118,10 +4125,11 @@ fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
                 ),
             )
             .unwrap_or_else(|error| panic!("compile Sequence {case} math theme: {error}"));
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap_or_else(|error| panic!("parse Sequence {case} math source: {error}"))
-            .unwrap_or_else(|| panic!("detect Sequence {case} math source"));
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("parse Sequence {case} math source: {error}"))
+                .unwrap_or_else(|| panic!("detect Sequence {case} math source"));
         let session = RenderEnvironment::deterministic()
             .with_compiled_math_renderer()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4230,13 +4238,14 @@ fn sequence_math_css_colors_reach_browser_and_native_glyphs() {
                 )),
             )
             .unwrap();
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(
-                "sequenceDiagram\nA->>B: $$x^2$$\n",
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nA->>B: $$x^2$$\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
         let session = RenderEnvironment::deterministic()
             .with_compiled_math_renderer()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -4283,13 +4292,15 @@ fn sequence_math_notes_keep_note_style_inside_control_frames() {
                 }))
                 .unwrap();
             let engine = if typed {
-                Engine::new()
+                MermaidEngine::new()
             } else {
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "theme": "base",
-                    "themeVariables": {"loopTextColor":"#ff0000", "noteTextColor":"#00ff00"},
-                    "sequence": {"loopFontSize": 14, "noteFontSize": 27}
-                })))
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "theme": "base",
+                        "themeVariables": {"loopTextColor":"#ff0000", "noteTextColor":"#00ff00"},
+                        "sequence": {"loopFontSize": 14, "noteFontSize": 27}
+                    }),
+                ))
             };
             let mut source = String::from("sequenceDiagram\nparticipant A\nparticipant B\n");
             if let Some(block) = block {
@@ -4350,7 +4361,7 @@ fn sequence_math_notes_keep_note_style_inside_control_frames() {
 #[test]
 fn sequence_explicit_config_typography_reaches_measurement_and_terminal_writers() {
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Courier New",
             "fontSize": 23,
             "fontWeight": 700,
@@ -4458,7 +4469,7 @@ end"#;
 #[test]
 fn sequence_cssom_rejected_root_font_keeps_measurement_and_terminal_ownership_separate() {
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"fontFamily": "Excalifont"},
         })));
     let source = r#"sequenceDiagram
@@ -4690,7 +4701,8 @@ fn sequence_typed_message_css_escapes_the_diagram_id_selector() {
             ),
         )
         .expect("compile Sequence Message theme");
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
@@ -4743,7 +4755,8 @@ Bob-->>Alice: Second"#;
         ("transparent", CanvasPaint::Transparent, "transparent"),
     ] {
         let theme = sequence_number_label_theme(fill);
-        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let engine =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
         let parsed = engine
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse themed Sequence autonumber source")
@@ -4804,7 +4817,8 @@ fn sequence_number_label_is_not_applicable_without_autonumber() {
     let theme = sequence_number_label_theme(
         CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
     );
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
@@ -4855,7 +4869,8 @@ fn sequence_number_label_unsupported_selectors_fail_closed() {
                 ThemeRuleSet::default().with_rule(rule.for_family(DiagramFamilyId::SEQUENCE)),
             ))
             .unwrap_or_else(|error| panic!("compile {case} Sequence number theme: {error}"));
-        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let engine =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
         let parsed = engine
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
@@ -4912,13 +4927,16 @@ fn sequence_number_label_does_not_emit_a_superseded_direct_fill() {
             ),
         )
         .expect("compile mixed Sequence number theme");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse mixed Sequence number source")
-        .expect("detect mixed Sequence number source");
+    let parsed = merman_render::__private::install_parse_compatibility(
+        &theme,
+        MermaidEngine::new(),
+    )
+    .parse_diagram_for_render_model_sync(
+        "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+        ParseOptions::strict(),
+    )
+    .expect("parse mixed Sequence number source")
+    .expect("detect mixed Sequence number source");
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin mixed Sequence number session");
@@ -4978,7 +4996,8 @@ fn sequence_clear_typography_uses_the_computed_family_base_everywhere() {
 participant Alice
 participant Bob
 Alice->>Bob: Clear Message"#;
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
     let measurement_identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("sequence-computed-clear-typography").expect("valid profile id"),
@@ -5069,7 +5088,8 @@ Bob->>Carol: Connect
 option Retry later
 Carol-->>Bob: Retry
 end"#;
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
     let measurement_identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("sequence-loop-control-label-box").expect("valid profile id"),
@@ -5237,10 +5257,11 @@ fn sequence_explicit_default_role_typography_remains_a_portability_residual() {
         )
         .expect("compile explicit-default Sequence ActorLabel theme");
     let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse explicit-default Sequence source")
-        .expect("detect explicit-default Sequence source");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse explicit-default Sequence source")
+            .expect("detect explicit-default Sequence source");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -5282,10 +5303,11 @@ fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
         .expect("compile mixed Sequence Lifeline theme");
     let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
 
-    let canonical_8 = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse mixed Sequence Lifeline source")
-        .expect("detect mixed Sequence Lifeline source");
+    let canonical_8 =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse mixed Sequence Lifeline source")
+            .expect("detect mixed Sequence Lifeline source");
     let rendered = family::prepare(
         &canonical_8,
         &LayoutOptions::default(),
@@ -5302,10 +5324,11 @@ fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
         rendered.svg()
     );
 
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse strict mixed Sequence Lifeline source")
-        .expect("detect strict mixed Sequence Lifeline source");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse strict mixed Sequence Lifeline source")
+            .expect("detect strict mixed Sequence Lifeline source");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -5751,7 +5774,7 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
         .join("upstream_html_demos_sequence_sequence_diagram_demos_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), &text);
     assert_eq!(
         parsed.metadata().title.as_deref(),
         Some("With forced menus")
@@ -5916,7 +5939,7 @@ Note right of B: $$x^2$$
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), text);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
@@ -5955,7 +5978,7 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let parsed = parse_sequence_for_render(&MermaidEngine::new(), &text);
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
     let rendered = artifact
@@ -5977,8 +6000,8 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
 }
 
 // Isolate typed effects and geometry from Mermaid's built-in Neo shadow and palette.
-fn classic_sequence_engine() -> Engine {
-    Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+fn classic_sequence_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "look": "classic",
         "theme": "default"
     })))
@@ -5987,7 +6010,7 @@ fn classic_sequence_engine() -> Engine {
 fn try_render_sequence_theme_request(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -6011,7 +6034,7 @@ fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
             serde_json::json!({}),
             serde_json::json!({"textColor":"#345678", "titleColor":"#876543"}),
         ] {
-            let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"look":look, "handDrawnSeed":42, "themeVariables":variables}),
             ));
             let render = |theme: &DiagramTheme, portability| {
@@ -6131,7 +6154,7 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6145,7 +6168,7 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
             try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_ok(),
@@ -6220,7 +6243,7 @@ fn sequence_role_fill_coverage_reconciles_generic_text_without_hiding_other_face
         let rendered = try_render_sequence_theme_request(
             &source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6235,7 +6258,7 @@ fn sequence_role_fill_coverage_reconciles_generic_text_without_hiding_other_face
             try_render_sequence_theme_request(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_ok(),
@@ -6359,7 +6382,7 @@ fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes()
         let rendered = try_render_sequence_theme_request(
             &source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6371,7 +6394,7 @@ fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes()
             try_render_sequence_theme_request(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_err(),
@@ -6405,7 +6428,7 @@ fn sequence_actor_geometry_keeps_unsupported_siblings_and_ordinals_visible() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6437,7 +6460,7 @@ fn sequence_actor_geometry_source_width_suppresses_only_that_facet_for_special_g
     let rendered = try_render_sequence_theme_request(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
@@ -6463,9 +6486,11 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
         let rendered = try_render_sequence_theme_request(
             include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "look": "classic"
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "look": "classic"
+                }),
+            )),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6620,7 +6645,7 @@ fn sequence_actor_geometry_wide_strokes_expand_viewport_without_moving_actors() 
             try_render_sequence_theme_request(
                 "sequenceDiagram\nA->>B: Hello",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap()
@@ -6754,7 +6779,7 @@ fn sequence_shadows_reject_unhandled_actor_geometry_and_nonzero_spread() {
                 ThemeRuleSet::default(),
             ))
             .unwrap();
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"strokeWidth":width}}),
         ));
         let rendered = try_render_sequence_theme_request(
@@ -6810,7 +6835,7 @@ fn sequence_shadows_reject_unhandled_actor_geometry_and_nonzero_spread() {
             try_render_sequence_theme_request(
                 "sequenceDiagram\nA->>B: Hello\nNote over A,B: Note",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_err()
@@ -6830,7 +6855,7 @@ fn sequence_actor_shadow_viewport_contains_actual_regions_and_source_strokes() {
         let rendered = try_render_sequence_theme_request(
             "sequenceDiagram\nA->>B: Hello",
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"strokeWidth":width}}),
             )),
             ThemePortabilityRequirement::RequirePortable,
@@ -6896,7 +6921,7 @@ fn sequence_actor_shadow_preserves_ordinal_residuals_and_resource_admission() {
         let result = try_render_sequence_theme_request(
             "sequenceDiagram\nA->>B: Hello",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(
@@ -6922,7 +6947,7 @@ fn sequence_actor_shadow_preserves_ordinal_residuals_and_resource_admission() {
     let error = try_render_sequence_theme_request(
         "sequenceDiagram\nA->>B: Hello",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .err()
@@ -6953,7 +6978,7 @@ fn sequence_message_width_reaches_lines_and_self_paths_without_changing_dash_sem
             let rendered = try_render_sequence_theme_request(
                 "sequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .expect("static Message width must reach every concrete line/path");
@@ -7017,14 +7042,14 @@ fn sequence_message_width_preserves_clear_and_unsupported_selector_outcomes() {
     let base = try_render_sequence_theme_request(
         source,
         &baseline,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
     let restored = try_render_sequence_theme_request(
         source,
         &cleared,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
@@ -7067,7 +7092,7 @@ fn sequence_message_width_preserves_clear_and_unsupported_selector_outcomes() {
             try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_ok(),
@@ -7098,7 +7123,7 @@ fn sequence_message_width_contains_actual_paths_and_markers_without_layout_margi
                 let rendered = try_render_sequence_theme_request(
                     &source,
                     &theme,
-                    Engine::new(),
+                    MermaidEngine::new(),
                     ThemePortabilityRequirement::RequirePortable,
                 )
                 .unwrap();
@@ -7320,7 +7345,7 @@ fn sequence_message_shadow_preserves_unsupported_selectors_and_filter_budget() {
         let result = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(result.is_ok(), succeeds, "{:?}", result.as_ref().err());
@@ -7342,7 +7367,7 @@ fn sequence_message_shadow_preserves_unsupported_selectors_and_filter_budget() {
     let error = try_render_sequence_theme_request(
         "sequenceDiagram\nA->>B: Hello",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .err()
@@ -7378,7 +7403,7 @@ fn sequence_note_geometry_shadow_and_clear_reach_rect_terminals() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"sequence":{"diagramMarginX":0,"diagramMarginY":0}}),
             )),
             ThemePortabilityRequirement::RequirePortable,
@@ -7474,7 +7499,7 @@ fn sequence_note_geometry_clear_source_paint_and_unsupported_facets() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
         let rendered = try_render_sequence_theme_request(source, &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"noteBkgColor":"#123456","noteBorderColor":"#654321","strokeWidth":200}}))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"noteBkgColor":"#123456","noteBorderColor":"#654321","strokeWidth":200}}))),
             ThemePortabilityRequirement::RequirePortable).unwrap();
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let note = doc
@@ -7511,7 +7536,7 @@ fn sequence_note_geometry_clear_source_paint_and_unsupported_facets() {
             try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_err()
@@ -7733,7 +7758,7 @@ fn sequence_note_label_effect_final_output_and_region_budgets_remain_authoritati
             .begin_session_with_theme(&theme)
             .unwrap();
         let parsed = parse_sequence_for_render(
-            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            &merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new()),
             source,
         );
         family::prepare(&parsed, &LayoutOptions::default(), session).and_then(|artifact| {
@@ -7771,7 +7796,7 @@ fn sequence_note_label_effect_final_output_and_region_budgets_remain_authoritati
     let error = try_render_sequence_theme_request(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .err()
@@ -7801,7 +7826,7 @@ fn sequence_note_label_math_glow_remains_incomplete_and_clear_is_consumed() {
             .begin_session_with_theme(&theme)
             .unwrap();
         let parsed = parse_sequence_for_render(
-            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            &merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new()),
             "sequenceDiagram\nNote over A,B: Ordinary\nNote over A,B: $$x^2$$",
         );
         let result =
@@ -8014,7 +8039,10 @@ fn sequence_loop_label_math_effects_remain_incomplete_but_clear_is_consumed() {
                 .begin_session_with_theme(&theme)
                 .unwrap();
             let parsed = parse_sequence_for_render(
-                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                &merman_render::__private::install_parse_compatibility(
+                    &theme,
+                    MermaidEngine::new(),
+                ),
                 source,
             );
             let result =
@@ -8210,7 +8238,7 @@ fn sequence_actor_label_effect_rules_retain_unsupported_facets_and_selectors() {
         let result = try_render_sequence_theme_request(
             "sequenceDiagram\nA->>B: Work",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(
@@ -8242,7 +8270,10 @@ fn sequence_actor_label_math_glow_is_incomplete_and_clear_preserves_fallback() {
                 .begin_session_with_theme(&theme)
                 .unwrap();
             let parsed = parse_sequence_for_render(
-                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                &merman_render::__private::install_parse_compatibility(
+                    &theme,
+                    MermaidEngine::new(),
+                ),
                 &format!("sequenceDiagram\n{declaration}\nA->>B: Work"),
             );
             let result =
@@ -8279,7 +8310,7 @@ fn sequence_activation_geometry_and_effects_reach_nested_terminals() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -8308,7 +8339,7 @@ fn sequence_activation_geometry_and_effects_reach_nested_terminals() {
             let baseline = try_render_sequence_theme_request(
                 source,
                 &plain,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -8338,7 +8369,7 @@ fn sequence_lifeline_effects_reach_all_actor_shapes_and_clear_restores_baseline(
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -8358,7 +8389,7 @@ fn sequence_lifeline_effects_reach_all_actor_shapes_and_clear_restores_baseline(
             let baseline = try_render_sequence_theme_request(
                 source,
                 &plain,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -8447,7 +8478,7 @@ fn sequence_control_frame_effect_reaches_each_line_and_separator() {
     let rendered = try_render_sequence_theme_request(
         "sequenceDiagram\nparticipant A\nparticipant B\nalt First\nA->>B: One\nelse Second\nB-->>A: Two\nend",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     ).expect("control frame effect must reach the actual lines");
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -8514,7 +8545,7 @@ fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
                 let rendered = try_render_sequence_theme_request(
                     &input,
                     &theme,
-                    Engine::new().with_site_config(PresentationConfig::from_value(
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                         serde_json::json!({"look":"classic"}),
                     )),
                     ThemePortabilityRequirement::BestEffort,
@@ -8583,10 +8614,11 @@ fn sequence_neo_control_keyword_clear_overrides_builtin_shadow() {
                 ),
             )
             .unwrap();
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "look":"neo", "theme":"redux", "themeVariables":{"dropShadow":"url(#drop-shadow)"}
-            })));
+            }),
+        ));
         let rendered = try_render_sequence_theme_request(
             "sequenceDiagram\nparticipant A\nparticipant B\nloop Work\nA->>B: Request\nend",
             &theme,
@@ -8662,7 +8694,7 @@ fn sequence_control_unsupported_siblings_remain_residual() {
             try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_err(),
@@ -8744,11 +8776,12 @@ fn sequence_neo_shadow_and_participant_paints_are_scoped_and_look_specific() {
         ("neo", "default", "#FFFFFF"),
         ("classic", "redux", ""),
     ] {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "look": look,
                 "theme": theme
-            })));
+            }),
+        ));
         let svg = render_sequence_svg_from_text_with_engine(
             engine,
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: hello\nactivate Bob\nNote over Bob: note\nBob-->>Alice: done\ndeactivate Bob\n",
@@ -8811,7 +8844,7 @@ fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
             .join("participant_types.mmd"),
     )
     .unwrap();
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"look": "neo"}),
     ));
     let svg = render_sequence_svg_from_text_with_engine(engine, &source);
@@ -8870,7 +8903,7 @@ fn sequence_actor_glyphs_follow_overlays_and_precede_messages_and_popups() {
                 let source = format!(
                     "sequenceDiagram\nparticipant A@{{ \"type\": \"{actor_type}\" }}\nparticipant B\nlinks B: {{\"Docs\": \"https://example.com\"}}\nNote over A: overlay\nloop repeat\nA->>B: ping\nend"
                 );
-                let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({
                         "look": look,
                         "sequence": {"mirrorActors": mirror_actors, "forceMenus": true}
@@ -8939,7 +8972,7 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
                 serde_json::json!(["#110000", "#220000", "#330000"]),
                 serde_json::json!([]),
             ] {
-                let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({
                         "look": look,
                         "theme": theme,
@@ -9018,7 +9051,7 @@ fn sequence_popup_text_uses_resolved_actor_font_style() {
         ),
     ] {
         let svg = render_sequence_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
             source,
         );
         let doc = roxmltree::Document::parse(&svg).expect("Sequence popup SVG");
@@ -9049,7 +9082,7 @@ fn sequence_popup_inherits_actor_rect_height_position_width_and_corner_radius() 
     for look in ["classic", "neo"] {
         for theme in ["default", "redux-color"] {
             for mirror_actors in [false, true] {
-                let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({
                         "look": look,
                         "theme": theme,
@@ -9139,7 +9172,7 @@ fn sequence_actor_labels_and_popups_share_resolved_weight() {
             "sequence": {"actorFontWeight": 700, "forceMenus": true}
         });
         let svg = render_sequence_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(config.clone())),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config.clone())),
             source,
         );
         let doc = roxmltree::Document::parse(&svg).expect("Sequence SVG");

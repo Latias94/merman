@@ -1,6 +1,6 @@
 use base64::Engine as _;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -12,8 +12,8 @@ const SOURCE: &str =
     "mindmap\n  root((Root))\n    left[Left branch]\n      leaf[Leaf]\n    right[Right branch]\n";
 
 fn render(layout: &str) -> (MindmapDiagramLayout, String) {
-    let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(json!({ "layout": layout })));
+    let engine = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(json!({ "layout": layout })));
     let parsed = engine
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Mindmap")

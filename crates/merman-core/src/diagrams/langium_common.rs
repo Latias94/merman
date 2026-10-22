@@ -503,7 +503,7 @@ mod tests {
     #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     use crate::{Error, Result};
     #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
-    use crate::{MermaidConfig, ParseMetadata};
+    use crate::{MermaidConfig, PresentationMetadata};
     #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
     use serde_json::Value;
 
@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
-    type JsonParser = fn(&str, &ParseMetadata) -> Result<Value>;
+    type JsonParser = fn(&str, &PresentationMetadata) -> Result<Value>;
     #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
     struct FamilyCase {
         id: &'static str,
@@ -839,8 +839,8 @@ mod tests {
     }
 
     #[cfg(all(feature = "all-diagrams", feature = "presentation"))]
-    fn metadata(id: &str) -> ParseMetadata {
-        ParseMetadata {
+    fn metadata(id: &str) -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: id.to_string(),
             config: MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),

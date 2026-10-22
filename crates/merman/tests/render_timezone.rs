@@ -10,8 +10,9 @@
 use std::process::Command;
 
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderSemanticModel,
-    Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy, time::CivilDate,
+    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest,
+    RenderSemanticModel, Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy,
+    time::CivilDate,
 };
 #[cfg(feature = "ascii")]
 use merman::{
@@ -70,7 +71,7 @@ fn assert_new_york_winter_semantics() {
         .with_runtime_policy(runtime_policy.clone())
         .with_parse_options(ParseOptions::strict());
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_runtime_policy(runtime_policy.clone())
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Gantt")
@@ -80,7 +81,7 @@ fn assert_new_york_winter_semantics() {
     };
     assert_eq!(model.tasks[0].start_ms, 1_768_453_200_000);
 
-    let gap = Engine::new()
+    let gap = MermaidEngine::new()
         .with_runtime_policy(runtime_policy)
         .parse_diagram_for_render_model_sync(GAP_SOURCE, ParseOptions::strict())
         .expect("parse DST gap Gantt")
@@ -143,7 +144,9 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
     let context = runtime_policy
         .begin_operation()
         .expect("capture New York operation context");
-    let ascii_model = merman::render::ascii_diagram_from_full(&RenderSemanticModel::Gantt(model));
+    let ascii_model = merman::ascii::AsciiDiagram::Gantt(
+        merman::diagrams::gantt::GanttTerminalView::from_render(&model),
+    );
     let rendered = AsciiRenderer::new(AsciiRenderOptions::ascii())
         .expect("ASCII options should validate")
         .render_model(

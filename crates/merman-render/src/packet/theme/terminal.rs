@@ -300,7 +300,7 @@ mod tests {
             let work_meter = OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
-            let metadata = merman_core::Engine::new()
+            let metadata = merman_core::MermaidEngine::new()
                 .with_site_config(PresentationConfig::from_value(config))
                 .parse_metadata_sync("packet\n0-7: Header")
                 .expect("parse Packet terminal ownership");

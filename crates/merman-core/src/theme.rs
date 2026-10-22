@@ -2929,7 +2929,7 @@ mod tests {
                 })),
             )
             .unwrap();
-            let parsed = crate::Engine::new()
+            let parsed = crate::MermaidEngine::new()
                 .with_theme_compatibility(binding)
                 .parse_metadata_sync("sequenceDiagram\nA->>B: Hello")
                 .expect("parse initialized compatibility through the public operation");
@@ -3065,7 +3065,7 @@ mod tests {
 
     #[test]
     fn source_theme_materialization_merges_array_sources_without_object_coercion() {
-        let materialized = crate::Engine::new()
+        let materialized = crate::MermaidEngine::new()
             .parse_metadata_sync(
                 "%%{init: {\"theme\": \"base\", \"themeVariables\": [{\"primaryColor\": \"#123456\"}, {\"secondaryColor\": \"#654321\"}]}}%%\nflowchart TD\nA-->B",
             )
@@ -3711,7 +3711,7 @@ mod tests {
                 site["theme"] = json!(theme);
             }
             let engine =
-                crate::Engine::new().with_site_config(PresentationConfig::from_value(site));
+                crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(site));
             let initialized = engine
                 .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
                 .expect("parse initialized Sequence theme");
@@ -3775,17 +3775,17 @@ Alice->>Bob: Hello
                 });
                 let (engine, source) = if origin == "site" {
                     (
-                        crate::Engine::new()
+                        crate::MermaidEngine::new()
                             .with_site_config(PresentationConfig::from_value(config)),
                         SOURCE.to_string(),
                     )
                 } else {
                     (
-                        crate::Engine::new().with_site_config(PresentationConfig::from_value(
-                            json!({
+                        crate::MermaidEngine::new().with_site_config(
+                            PresentationConfig::from_value(json!({
                                 "secure": []
-                            }),
-                        )),
+                            })),
+                        ),
                         format!("%%{{init: {config}}}%%\n{SOURCE}"),
                     )
                 };
@@ -3838,14 +3838,17 @@ Alice->>Bob: Hello
             });
             let (engine, source) = if origin == "site" {
                 (
-                    crate::Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    crate::MermaidEngine::new()
+                        .with_site_config(PresentationConfig::from_value(config)),
                     SOURCE.to_string(),
                 )
             } else {
                 (
-                    crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
-                        "secure": []
-                    }))),
+                    crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                        json!({
+                            "secure": []
+                        }),
+                    )),
                     format!("%%{{init: {config}}}%%\n{SOURCE}"),
                 )
             };
@@ -4133,17 +4136,17 @@ Alice->>Bob: Hello
                 });
                 let (engine, source) = if origin == "site" {
                     (
-                        crate::Engine::new()
+                        crate::MermaidEngine::new()
                             .with_site_config(PresentationConfig::from_value(config)),
                         SOURCE.to_string(),
                     )
                 } else {
                     (
-                        crate::Engine::new().with_site_config(PresentationConfig::from_value(
-                            json!({
+                        crate::MermaidEngine::new().with_site_config(
+                            PresentationConfig::from_value(json!({
                                 "secure": []
-                            }),
-                        )),
+                            })),
+                        ),
                         format!("%%{{init: {config}}}%%\n{SOURCE}"),
                     )
                 };
@@ -4626,7 +4629,7 @@ Alice->>Bob: Hello
 
     #[test]
     fn neutral_site_text_owns_unconditional_sequence_derivations() {
-        let metadata = crate::Engine::new()
+        let metadata = crate::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "theme": "neutral",
                 "themeVariables": { "text": "#56789a" }
@@ -4662,7 +4665,7 @@ Alice->>Bob: Hello
 
     #[test]
     fn dark_site_main_contrast_owns_unconditional_state_and_sequence_derivations() {
-        let metadata = crate::Engine::new()
+        let metadata = crate::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": { "mainContrastColor": "#456789" }
@@ -5646,10 +5649,11 @@ Alice->>Bob: Hello
             ))
         ));
 
-        let engine = crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "base",
-            "themeVariables": { "primaryColor": "not-a-color" }
-        })));
+        let engine =
+            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": { "primaryColor": "not-a-color" }
+            })));
         assert!(matches!(
             engine.parse_metadata_sync("flowchart TD\n  A"),
             Err(crate::Error::ThemeColor(
@@ -5660,16 +5664,17 @@ Alice->>Bob: Hello
 
     #[test]
     fn invalid_frontmatter_theme_color_fails_at_parse_operation_boundary() {
-        let engine = crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "secure": [
-                "secure",
-                "securityLevel",
-                "startOnLoad",
-                "maxTextSize",
-                "suppressErrorRendering",
-                "maxEdges"
-            ]
-        })));
+        let engine =
+            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+                "secure": [
+                    "secure",
+                    "securityLevel",
+                    "startOnLoad",
+                    "maxTextSize",
+                    "suppressErrorRendering",
+                    "maxEdges"
+                ]
+            })));
         let source = r#"---
 config:
   theme: base
@@ -5833,10 +5838,11 @@ flowchart TD
             assert_eq!(config.as_value(), &before);
         }
 
-        let engine = crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": "dark",
-            "themeVariables": { "THEME_COLOR_LIMIT": 65 }
-        })));
+        let engine =
+            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+                "theme": "dark",
+                "themeVariables": { "THEME_COLOR_LIMIT": 65 }
+            })));
         assert!(matches!(
             engine.parse_metadata_sync("flowchart TD\n  A"),
             Err(crate::Error::ThemeEvaluationLimit(
@@ -5851,7 +5857,7 @@ flowchart TD
 
     #[test]
     fn staged_object_dependencies_remain_field_local() {
-        let metadata = crate::Engine::new()
+        let metadata = crate::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": { "background": "#123456" }

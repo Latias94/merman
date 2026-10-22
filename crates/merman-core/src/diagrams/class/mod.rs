@@ -41,7 +41,7 @@ pub(crate) use lexer::{LexError, Tok};
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &crate::models::class_diagram::ClassDiagram,
-    meta: &crate::ParseMetadata,
+    meta: &crate::PresentationMetadata,
 ) -> crate::Result<serde_json::Value> {
     let mut value =
         serde_json::to_value(model).expect("Class typed model must remain JSON-serializable");

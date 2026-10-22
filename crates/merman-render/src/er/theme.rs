@@ -1420,7 +1420,7 @@ mod tests {
             ),
         ] {
             let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(site),
                 ))
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
@@ -1470,7 +1470,7 @@ mod tests {
             ),
         ] {
             let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(
                         serde_json::json!({"themeVariables": variables}),
                     ),

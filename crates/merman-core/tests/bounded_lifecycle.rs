@@ -2,7 +2,7 @@
 
 #[cfg(feature = "editor-facts")]
 use merman_core::EditorSemanticCompleteness;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -43,7 +43,7 @@ fn json_container_depth(value: &Value) -> usize {
     maximum
 }
 
-fn accepted(engine: &Engine, source: &str, diagram_type: &str) {
+fn accepted(engine: &MermaidEngine, source: &str, diagram_type: &str) {
     println!("diagram_type={diagram_type} source_bytes={}", source.len());
     marker("parse", "begin");
     let parsed = engine
@@ -125,7 +125,7 @@ fn accepted(engine: &Engine, source: &str, diagram_type: &str) {
     marker("compatibility-parse-drop", "done");
 }
 
-fn rejected(engine: &Engine, source: &str, message: &str) {
+fn rejected(engine: &MermaidEngine, source: &str, message: &str) {
     marker("parse", "begin");
     let error = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -153,7 +153,7 @@ fn railroad_source(dialect: &str, depth: usize, empty: bool, malformed: bool) ->
     )
 }
 
-fn railroad_groups(engine: &Engine) {
+fn railroad_groups(engine: &MermaidEngine) {
     for dialect in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
         println!("scenario=group-boundary dialect={dialect}");
         accepted(
@@ -185,7 +185,7 @@ fn railroad_groups(engine: &Engine) {
     }
 }
 
-fn railroad_postfix(engine: &Engine) {
+fn railroad_postfix(engine: &MermaidEngine) {
     for operator in ['?', '*', '+'] {
         for count in [LOCAL_DEPTH, LOCAL_DEPTH + 1, 5_000] {
             println!("scenario=postfix operator={operator} count={count}");
@@ -217,7 +217,7 @@ fn railroad_postfix(engine: &Engine) {
     }
 }
 
-fn zenuml_blocks(engine: &Engine) {
+fn zenuml_blocks(engine: &MermaidEngine) {
     let source = format!(
         "zenuml\n{}A.call()\n{}",
         "opt {\n".repeat(LOCAL_DEPTH),
@@ -237,7 +237,7 @@ fn zenuml_blocks(engine: &Engine) {
     );
 }
 
-fn zenuml_expressions(engine: &Engine) {
+fn zenuml_expressions(engine: &MermaidEngine) {
     for depth in [LOCAL_DEPTH, LOCAL_DEPTH + 1] {
         for expression in [
             format!("{}x", "!".repeat(depth)),
@@ -260,7 +260,7 @@ fn zenuml_expressions(engine: &Engine) {
 }
 
 #[cfg(feature = "test-support")]
-fn zenuml_projection_cancellation(engine: &Engine) {
+fn zenuml_projection_cancellation(engine: &MermaidEngine) {
     use merman_core::diagrams::zenuml::ZenumlStatementKind;
 
     let source = format!(
@@ -322,7 +322,7 @@ fn zenuml_projection_cancellation(engine: &Engine) {
     marker("drop", "done");
 }
 
-fn tree_view(engine: &Engine) {
+fn tree_view(engine: &MermaidEngine) {
     let mut source = String::from("treeView-beta\n");
     for depth in 0..LOCAL_DEPTH {
         writeln!(source, "{}\"n{depth}\"", " ".repeat(depth)).unwrap();
@@ -332,7 +332,7 @@ fn tree_view(engine: &Engine) {
     rejected(engine, &source, "treeView nesting depth exceeds 256");
 }
 
-fn usecase_json(engine: &Engine) {
+fn usecase_json(engine: &MermaidEngine) {
     for depth in [126, 127, 128, 300] {
         for scalar in ["1", "1e309"] {
             println!("scenario=usecase-json depth={depth} scalar={scalar}");
@@ -359,7 +359,7 @@ fn run_worker(case: &str) {
             "release"
         }
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     match case {
         "railroad-groups" => railroad_groups(&engine),
         "railroad-postfix" => railroad_postfix(&engine),

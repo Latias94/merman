@@ -1,13 +1,13 @@
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::{OperationControl, OperationControlResult, ParseMetadata, Result};
+use crate::{OperationControl, OperationControlResult, PresentationMetadata, Result};
 
 use super::model::SequenceDiagramModel;
 use super::parse::{construct_sequence_semantic_source, sequence_wrap_enabled_from_config};
 
 pub(crate) fn parse_sequence_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<SequenceDiagramModel>> {
     let construction = construct_sequence_semantic_source(

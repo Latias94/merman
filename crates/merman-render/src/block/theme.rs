@@ -1102,7 +1102,7 @@ mod tests {
             } else {
                 "block\nA[\"Alpha\"]\nstyle A fill:#bb0000\n"
             };
-            let parsed = merman_core::Engine::new()
+            let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .expect("parse Block source ownership fixture")
                 .expect("detect Block source ownership fixture");

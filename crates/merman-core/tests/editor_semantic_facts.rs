@@ -6,7 +6,7 @@ use merman_core::presentation::PresentationConfig;
 use merman_core::time::CivilDate;
 #[cfg(feature = "editor-facts")]
 use merman_core::{EditorSemanticFacts, diagram_family_capabilities};
-use merman_core::{Engine, Error, SourceSpan};
+use merman_core::{Error, MermaidEngine, SourceSpan};
 #[cfg(feature = "editor-facts")]
 use merman_fixture_render_context::RenderContextCatalog;
 #[cfg(feature = "editor-facts")]
@@ -53,7 +53,7 @@ fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
 }
 
 #[cfg(feature = "editor-facts")]
-fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
+fn engine_for_fixture(base: &MermaidEngine, path: &Path) -> MermaidEngine {
     match fixture_site_config_for_path(path) {
         Some(site_config) => base.clone().with_site_config(site_config),
         None => base.clone(),
@@ -135,7 +135,7 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
         .iter()
         .map(|capability| (capability.diagram_type, capability.has_editor_parser))
         .collect::<BTreeMap<_, _>>();
-    let base = Engine::new()
+    let base = MermaidEngine::new()
         .with_fixed_today(Some(
             CivilDate::new(2026, 2, 15).expect("valid fixed fixture date"),
         ))
@@ -429,7 +429,7 @@ fn flowchart_percent_spans_survive_unicode_frontmatter_directives_comments_and_c
         "%% deleted 中文😀\r\n",
         "flowchart TD\r\n",
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     // Both complete sources were observed through the pinned Mermaid public oracle. The same
     // original-byte boundaries apply to successful symbols and to the retained failure facts.
     for (body, should_parse, names) in [
@@ -533,7 +533,7 @@ fn flowchart_invalid_header_direction_recovers_complete_value_and_following_node
         "---\r\n",
         "%% deleted 中文😀\r\n",
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (header, direction_value, value_start) in [
         ("flowchart LR%", "LR%", 10),
         ("flowchart 错误%", "错误%", 10),

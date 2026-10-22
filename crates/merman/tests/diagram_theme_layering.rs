@@ -2,7 +2,7 @@
 
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
     presentation::PresentationConfig,
 };
 use serde_json::{Value, json};
@@ -61,16 +61,18 @@ fn capability_plan(
 
 #[test]
 fn site_config_overrides_theme_mermaid_compatibility() {
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
-        "theme": "forest",
-        "darkMode": false,
-        "look": "handDrawn",
-        "themeVariables": {
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+        config(json!({
+            "theme": "forest",
             "darkMode": false,
-            "lineColor": "#123456"
-        },
-        "flowchart": { "defaultRenderer": "dagre" },
-    }))));
+            "look": "handDrawn",
+            "themeVariables": {
+                "darkMode": false,
+                "lineColor": "#123456"
+            },
+            "flowchart": { "defaultRenderer": "dagre" },
+        })),
+    ));
 
     let effective = effective_config(&renderer, SOURCE, SvgRequest::default(), Some(one_dark()));
     assert_eq!(effective["theme"], "forest");
@@ -100,10 +102,12 @@ fn source_config_remains_the_final_nonsecure_mermaid_layer() {
     let source = r##"%%{init: {"theme": "neutral", "sequence": {"actorMargin": 88}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
-        "theme": "dark",
-        "sequence": { "actorMargin": 64 },
-    }))));
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+        config(json!({
+            "theme": "dark",
+            "sequence": { "actorMargin": 64 },
+        })),
+    ));
 
     let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
     assert_eq!(effective["theme"], "neutral");
@@ -115,10 +119,12 @@ fn layout_projection_materializes_scoped_theme_with_source_variables() {
     let source = r##"%%{init: {"themeVariables": {"primaryColor": "#123456"}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
-        "theme": "default",
-        "sequence": {"theme": "base"}
-    }))));
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+        config(json!({
+            "theme": "default",
+            "sequence": {"theme": "base"}
+        })),
+    ));
 
     let effective = effective_config(&renderer, source, SvgRequest::default(), None);
     assert_eq!(effective["theme"], "base");
@@ -131,10 +137,12 @@ fn source_config_cannot_override_secure_site_values() {
     let source = r##"%%{init: {"themeVariables": {"lineColor": "#abcdef"}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
-        "secure": ["secure", "securityLevel", "themeVariables"],
-        "themeVariables": { "lineColor": "#123456" },
-    }))));
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+        config(json!({
+            "secure": ["secure", "securityLevel", "themeVariables"],
+            "themeVariables": { "lineColor": "#123456" },
+        })),
+    ));
 
     let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
     assert_eq!(effective["themeVariables"]["lineColor"], "#123456");

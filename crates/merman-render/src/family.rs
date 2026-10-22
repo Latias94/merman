@@ -73,8 +73,8 @@ use merman_core::diagrams;
 #[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{
-    BuiltinRenderSemantic, DiagramFamilyId, ManagedSemanticJson, ParseMetadata,
-    ParsedDiagramRender, RenderSemanticModel,
+    BuiltinRenderSemantic, DiagramFamilyId, ManagedSemanticJson, ParsedDiagramRender,
+    PresentationMetadata, RenderSemanticModel,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -1270,7 +1270,7 @@ impl ResolvedFamilyStylePlan {
         Ok(())
     }
 
-    fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
+    fn observe_compatibility(&mut self, metadata: &merman_core::PresentationMetadata) {
         self.mermaid_compatibility_residual_count =
             merman_core::__private::theme_parse_mermaid_residual_count(metadata);
         #[cfg(feature = "diagram-packet")]
@@ -1614,7 +1614,7 @@ impl FamilyRenderContext {
         )
     }
 
-    fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
+    fn observe_compatibility(&mut self, metadata: &merman_core::PresentationMetadata) {
         self.style_plan.observe_compatibility(metadata);
     }
 
@@ -1697,7 +1697,7 @@ where
 {
     fn compatibility_json(
         &self,
-        metadata: &ParseMetadata,
+        metadata: &PresentationMetadata,
         control: &merman_core::OperationControl,
     ) -> Result<ManagedSemanticJson> {
         self.semantic
@@ -2167,15 +2167,14 @@ impl<'parsed> RailroadFamilyArtifact<'parsed> {
 
 #[derive(Debug)]
 pub(crate) struct ErrorFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramModel, ErrorDiagramLayout>,
     typography_theme: crate::error::ErrorTypographyThemePlan,
 }
 
 impl<'parsed> ErrorFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>
-    {
+    ) -> &FamilyPair<&'parsed diagrams::error_diagram::ErrorDiagramModel, ErrorDiagramLayout> {
         &self.pair
     }
 
@@ -3031,7 +3030,7 @@ impl BuiltinFamilyArtifact<'_> {
 
     fn compatibility_json(
         &self,
-        metadata: &ParseMetadata,
+        metadata: &PresentationMetadata,
         control: &merman_core::OperationControl,
     ) -> Result<ManagedSemanticJson> {
         let control = control.for_phase(OperationPhase::Semantic);
@@ -3197,7 +3196,7 @@ impl BuiltinFamilyArtifact<'_> {
 }
 
 pub struct FamilyRenderArtifact<'parsed> {
-    metadata: &'parsed ParseMetadata,
+    metadata: &'parsed PresentationMetadata,
     family: BuiltinFamilyArtifact<'parsed>,
     required_capabilities: Vec<RenderCapability>,
     context: FamilyRenderContext,
@@ -3327,7 +3326,7 @@ pub struct RenderedFamilySvg {
     prepared_math_evidence_valid: bool,
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
-    metadata: ParseMetadata,
+    metadata: PresentationMetadata,
     required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
@@ -3387,7 +3386,7 @@ impl RenderedFamilySvg {
         &self.svg
     }
 
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         &self.metadata
     }
 
@@ -3728,7 +3727,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     }
 
     fn new(
-        metadata: &'parsed ParseMetadata,
+        metadata: &'parsed PresentationMetadata,
         family: BuiltinFamilyArtifact<'parsed>,
         context: FamilyRenderContext,
     ) -> Result<Self> {
@@ -3750,7 +3749,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         })
     }
 
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         self.metadata
     }
 
@@ -4063,7 +4062,7 @@ fn project_agentflow_flowchart_config(
     let root = config.as_value();
     let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);
     // Agentflow's renderer owns the root viewport. Defaults here mirror its `??`
-    // expressions; normal Engine configuration already includes schema defaults.
+    // expressions; normal MermaidEngine configuration already includes schema defaults.
     // Overwrite even absent family values so unrelated Flowchart settings cannot leak in.
     for (key, fallback) in [
         ("diagramPadding", serde_json::json!(8)),

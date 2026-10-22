@@ -1071,7 +1071,7 @@ mod tests {
     use serde_json::{Value, json};
 
     fn effective_config(site_config: Value) -> PresentationConfig {
-        merman_core::Engine::new()
+        merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(site_config))
             .parse_metadata_sync("mindmap\n  root\n    child\n")
             .expect("parse Mindmap config fixture")

@@ -16,7 +16,7 @@ use crate::{DiagramWarningFact, ManagedSemanticJson};
 use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
-use crate::{MermaidConfig, ParseMetadata};
+use crate::{MermaidConfig, PresentationMetadata};
 use serde::Serialize;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
@@ -76,13 +76,13 @@ impl<M> SemanticConstruction<M> {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<CombinedSemanticParse>;
 
 #[cfg(feature = "compat-json")]
 pub(crate) type WarningSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<WarningSemanticParse>;
+    fn(code: &str, meta: &PresentationMetadata) -> Result<WarningSemanticParse>;
 
 /// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
 #[cfg(feature = "compat-json")]
@@ -351,7 +351,7 @@ impl CombinedSemanticParse {
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
     use crate::{
-        EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata,
+        EditorSemanticFacts, Error, OperationControl, OperationControlResult, PresentationMetadata,
     };
     use serde_json::Value;
 
@@ -367,7 +367,7 @@ pub(crate) mod test_support {
     pub(crate) fn editor_facts(
         parser: CombinedSemanticParser,
         code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
     ) -> EditorSemanticFacts {
         parser(code, meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
@@ -896,6 +896,8 @@ struct FamilyVariantIdentity {
 #[derive(Clone, Copy, Default)]
 struct FamilyImplementation {
     canonical: Option<CanonicalSemanticParser>,
+    #[cfg(feature = "editor-facts")]
+    canonical_editor_facts: bool,
     #[cfg(feature = "compat-json")]
     semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
     #[cfg(feature = "compat-json")]
@@ -939,7 +941,14 @@ impl FamilyImplementation {
         }
     }
     fn has_editor_parser(&self) -> bool {
-        cfg!(feature = "editor-facts") && (self.canonical.is_some() || self.has_combined_parser())
+        #[cfg(feature = "editor-facts")]
+        {
+            (self.canonical.is_some() && self.canonical_editor_facts) || self.has_combined_parser()
+        }
+        #[cfg(not(feature = "editor-facts"))]
+        {
+            false
+        }
     }
     fn has_render_parser(&self) -> bool {
         #[cfg(feature = "presentation")]
@@ -1058,6 +1067,7 @@ macro_rules! variant {
         detector: $detector:expr,
         $(detector_effect: $detector_effect:expr,)?
         $(canonical: $canonical:expr,)?
+        $(canonical_editor_facts: $canonical_editor_facts:expr,)?
         semantic: $semantic:expr,
         $(warning_semantic: $warning_semantic:expr,)?
         combined: $combined:expr,
@@ -1083,6 +1093,8 @@ macro_rules! variant {
                 {
                     FamilyImplementation {
                         canonical: variant!(@canonical $($canonical)?),
+                        #[cfg(feature = "editor-facts")]
+                        canonical_editor_facts: variant!(@canonical_editor_facts $($canonical_editor_facts)?),
                         #[cfg(feature = "compat-json")]
                         semantic: $semantic,
                         #[cfg(feature = "compat-json")]
@@ -1097,6 +1109,8 @@ macro_rules! variant {
                 {
                     FamilyImplementation {
                         canonical: None,
+                        #[cfg(feature = "editor-facts")]
+                        canonical_editor_facts: false,
                         #[cfg(feature = "compat-json")]
                         semantic: None,
                         #[cfg(feature = "compat-json")]
@@ -1118,6 +1132,8 @@ macro_rules! variant {
     };
     (@canonical) => { None };
     (@canonical $canonical:expr) => { Some($canonical) };
+    (@canonical_editor_facts) => { true };
+    (@canonical_editor_facts $canonical_editor_facts:expr) => { $canonical_editor_facts };
     (@warning_semantic) => {
         None
     };
@@ -1287,6 +1303,8 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "error",
     catalog_order: 0,
     detector: Some(ordered(0, crate::detect::detector_error)),
+    canonical: crate::diagrams::error_diagram::canonical_error,
+    canonical_editor_facts: false,
     semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
     combined: None,
     typed: Some(ordered(38, render_error)),

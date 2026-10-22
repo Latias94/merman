@@ -654,9 +654,9 @@ mod tests {
     #[test]
     fn parse_projection_terminals_precede_facts_and_allow_fresh_operations() {
         use crate::parse_pipeline::{ParsePipeline, ParseTiming};
-        use crate::{Engine, ParseOptions, ParsedEditorFacts};
+        use crate::{MermaidEngine, ParseOptions, ParsedEditorFacts};
 
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         for (diagram_type, source) in [
             ("sequence", "sequenceDiagram\nAlice->>Bob: Hello\n"),
             (
@@ -774,9 +774,11 @@ mod tests {
     ))]
     #[test]
     fn sequence_editor_capture_deadline_interrupts_facts_and_recovers() {
-        use crate::{DiagramParseOutcome, EditorSemanticCompleteness, Engine, ParsedEditorFacts};
+        use crate::{
+            DiagramParseOutcome, EditorSemanticCompleteness, MermaidEngine, ParsedEditorFacts,
+        };
 
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let source = format!("sequenceDiagram\n{}", "Alice->>Bob: Hello\n".repeat(1_024));
         crate::editor::test_work::reset();
         crate::diagrams::sequence::reset_sequence_syntax_construction_count();
@@ -852,10 +854,10 @@ mod tests {
     fn state_editor_capture_deadline_bounds_event_drain_and_recovers() {
         use crate::{
             DiagramParseOutcome, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
-            EditorSemanticRole, Engine, ParsedEditorFacts, SourceSpan,
+            EditorSemanticRole, MermaidEngine, ParsedEditorFacts, SourceSpan,
         };
 
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let source = format!(
             "stateDiagram-v2\n{}",
             "Idle --> Running: starts\n".repeat(1_024)
@@ -949,11 +951,11 @@ mod tests {
     #[test]
     fn state_editor_capture_deadline_bounds_single_token_id_list() {
         use crate::{
-            DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticRole, Engine,
+            DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticRole, MermaidEngine,
             ParsedEditorFacts, SourceSpan,
         };
 
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let ids = (0..1_024)
             .map(|index| format!("S{index}"))
             .collect::<Vec<_>>();

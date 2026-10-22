@@ -121,10 +121,10 @@ pub(crate) fn render_error_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::error_diagram::ErrorDiagramRenderModel;
+    use merman_core::diagrams::error_diagram::ErrorDiagramModel;
 
     fn render_message_with_viewport(message: Option<&str>) -> (String, f64) {
-        let model = ErrorDiagramRenderModel {
+        let model = ErrorDiagramModel {
             diagram_type: "error".to_string(),
             error_message: message.map(str::to_string),
         };

@@ -397,10 +397,10 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     fn shared_anchor_model() -> SequenceDiagramModel {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 concat!(
                     "sequenceDiagram\n",

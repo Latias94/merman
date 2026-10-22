@@ -1734,7 +1734,7 @@ mod tests {
     use merman_core::diagrams::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
     };
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
 
     #[test]
@@ -2012,7 +2012,7 @@ mod tests {
 
     #[test]
     fn model_preflight_observes_cancellation_before_latching_its_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
             .expect("the controlled fixture should parse")
             .expect("the controlled fixture should produce a render model");
@@ -2402,7 +2402,7 @@ mod tests {
 
     #[test]
     fn zenuml_complexity_includes_inline_decorations() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nA->[rocket]B.call()\n",
                 ParseOptions::strict(),
@@ -2425,7 +2425,7 @@ mod tests {
 
     #[test]
     fn zenuml_uses_the_shared_model_budget() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nA.call() {\n  if(ok) {\n    if(inner) {\n      B.work()\n    }\n  }\n}\n",
                 ParseOptions::strict(),

@@ -93,7 +93,7 @@ default = []
 
 [dependencies]
 dugong = { workspace = true, optional = true }
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["terminal-text"] }
 serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true

@@ -874,7 +874,7 @@ mod tests {
 
     #[test]
     fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();

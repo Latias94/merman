@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::strip_line_ending;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -63,7 +63,9 @@ impl IshikawaDiagramModel {
 struct FlatNode {
     raw_level: usize,
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
 }
 
@@ -94,7 +96,7 @@ impl IshikawaSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_ishikawa(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_semantic_model_controlled(
@@ -109,7 +111,7 @@ pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_ishikawa_semantic_source_controlled(
@@ -140,7 +142,7 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &IshikawaDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -149,7 +151,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &IshikawaDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Value>> {
     let root = match model.project_root_controlled(control)? {
@@ -251,7 +253,7 @@ impl IshikawaDiagramModel {
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<IshikawaDiagramModel> {
     Ok(construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
@@ -265,7 +267,7 @@ pub(crate) fn parse_ishikawa_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_ishikawa_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<IshikawaDiagramModel>> {
     let construction = construct_ishikawa_semantic_source_controlled(
@@ -354,10 +356,10 @@ struct IshikawaHeader {
     root: Option<FlatNode>,
 }
 
-#[cfg(feature = "presentation")]
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_ishikawa_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
     construct_ishikawa_semantic_source_controlled(
         code,
@@ -490,14 +492,19 @@ fn parse_ishikawa_header_line(
         if text.is_empty() {
             return Ok(IshikawaHeader { root: None });
         }
+        #[cfg(feature = "editor-facts")]
         let rel = rest.len().saturating_sub(rest.trim_start().len());
+        #[cfg(feature = "editor-facts")]
         let start = line_start + trimmed_start + header.len() + rel;
+        #[cfg(feature = "editor-facts")]
         let end = start + text.len();
         return Ok(IshikawaHeader {
             root: Some(FlatNode {
                 raw_level: 0,
                 text: text.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(line_start, line_start + line.len()),
+                #[cfg(feature = "editor-facts")]
                 selection: SourceSpan::new(start, end),
             }),
         });
@@ -525,13 +532,18 @@ fn parse_ishikawa_node_line(line: &str, line_start: usize, diagram_type: &str) -
         ));
     }
 
+    #[cfg(feature = "editor-facts")]
     let rel = body.len().saturating_sub(body.trim_start().len());
+    #[cfg(feature = "editor-facts")]
     let start = line_start + indent + rel;
+    #[cfg(feature = "editor-facts")]
     let end = start + text.len();
     Ok(FlatNode {
         raw_level: indent,
         text: text.to_string(),
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan::new(line_start, line_start + line.len()),
+        #[cfg(feature = "editor-facts")]
         selection: SourceSpan::new(start, end),
     })
 }
@@ -620,14 +632,14 @@ mod tests {
         EditorSemanticRole,
     };
     use crate::{
-        Engine, ManagedSemanticJson, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
-        SourceSpan,
+        ManagedSemanticJson, MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind,
+        PresentationMetadata, SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "ishikawa".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -677,7 +689,7 @@ mod tests {
             "diagrams::ishikawa::tests::ishikawa_deep_clone_drop_export_child",
             || {
                 let source = deep_ishikawa_source(5_000);
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, crate::ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -696,7 +708,7 @@ mod tests {
                 drop(parsed.clone());
                 drop(parsed);
                 assert!(
-                    Engine::new()
+                    MermaidEngine::new()
                         .parse_diagram_sync(
                             "ishikawa Root\n Cause\n",
                             crate::ParseOptions::strict()
@@ -945,7 +957,7 @@ Cause B
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_ishikawa_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"ishikawa-beta
     Problem
 Cause A
@@ -999,7 +1011,7 @@ Cause A
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_ishikawa_editor_facts_support_inline_root() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "ishikawa Problem\n  Cause\n";
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("ishikawa", text)

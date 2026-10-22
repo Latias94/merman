@@ -1,5 +1,5 @@
 use merman_ascii::{AsciiDiagram, AsciiSourceContext};
-use merman_core::{ParseMetadata, RenderSemanticModel};
+use merman_core::{PresentationMetadata, RenderSemanticModel};
 
 pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
     match model {
@@ -46,7 +46,7 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
     }
 }
 
-pub(crate) fn source(metadata: &ParseMetadata) -> AsciiSourceContext<'_> {
+pub(crate) fn source(metadata: &PresentationMetadata) -> AsciiSourceContext<'_> {
     AsciiSourceContext {
         diagram_type: &metadata.diagram_type,
         config: &metadata.config,

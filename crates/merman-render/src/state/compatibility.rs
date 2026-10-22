@@ -1395,7 +1395,7 @@ mod tests {
 
     #[test]
     fn gradient_source_ownership_only_reaches_enabled_gradient_terminals() {
-        let mut config = merman_core::Engine::new()
+        let mut config = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "gradientStart": "#123456" },
             })))

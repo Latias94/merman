@@ -26,7 +26,7 @@ fn with_context<T>(
         "flowchart LR\nsubgraph S[Outer]\n A@{{ {}, label: \"Test\" }}\nend\n",
         declaration(shape)
     );
-    let parsed = merman_core::Engine::new()
+    let parsed = merman_core::MermaidEngine::new()
         .with_site_config(merman_core::presentation::PresentationConfig::from_value(
             serde_json::json!({"look":look,"handDrawnSeed":seed,"flowchart":{"htmlLabels":false}}),
         ))

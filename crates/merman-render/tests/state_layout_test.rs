@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -51,7 +51,7 @@ fn layout_state_from_text(text: &str) -> StateDiagramLayout {
     layout_state_from_text_with_options(text, ParseOptions::default())
 }
 
-fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagramLayout {
+fn layout_state_from_text_with_engine(engine: MermaidEngine, text: &str) -> StateDiagramLayout {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -79,7 +79,7 @@ fn layout_state_from_text_with_options_and_policy(
     parse_options: ParseOptions,
     resource_policy: RenderResourcePolicy,
 ) -> StateDiagramLayout {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, parse_options)
         .expect("parse ok")
         .expect("diagram detected");
@@ -98,7 +98,7 @@ fn state_parse_for_render_model_handles_deep_composite_chain() {
     const DEPTH: usize = 1500;
     let text = deep_state_composite_chain(DEPTH);
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -255,7 +255,7 @@ fn state_layout_reflows_at_the_expanded_html_min_content_width() {
         .join("stress_state_font_size_precedence_071.mmd");
     let text = std::fs::read_to_string(path).expect("font-size precedence fixture");
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": [
                 "secure",
                 "securityLevel",

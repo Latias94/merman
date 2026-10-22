@@ -6,7 +6,7 @@ use super::utils::{
     strip_inline_comment,
 };
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -77,7 +77,7 @@ pub(crate) fn parse_mindmap_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_mindmap(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model =
         parse_mindmap_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -87,7 +87,7 @@ pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -126,7 +126,7 @@ pub(crate) fn parse_mindmap_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_mindmap_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<MindmapDiagramRenderModel> {
     parse_mindmap_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -135,7 +135,7 @@ pub(crate) fn parse_mindmap_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_mindmap_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<MindmapDiagramRenderModel>> {
     match construct_mindmap_semantic_source_controlled(
@@ -923,7 +923,7 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full = ParseMetadata {
+            let full = PresentationMetadata {
                 diagram_type: "mindmap".to_string(),
                 config: crate::MermaidConfig::empty_object(),
                 effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -960,7 +960,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn typed_and_json_paths_skip_editor_projection() {
-        let full = ParseMetadata {
+        let full = PresentationMetadata {
             diagram_type: "mindmap".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

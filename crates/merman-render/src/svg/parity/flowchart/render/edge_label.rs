@@ -1233,9 +1233,9 @@ mod tests {
             FlowchartEdgeKey, FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner,
             FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
         };
-        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA loop@-->|retained loop label| A\n",
                 ParseOptions::strict(),

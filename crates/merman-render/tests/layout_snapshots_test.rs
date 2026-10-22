@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_config;
 use merman_core::time::CivilDate;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
 use merman_render::LayoutOptions;
 use merman_render::family;
@@ -247,7 +247,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
     );
 
     // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-    let engine = Engine::new()
+    let engine = MermaidEngine::new()
         .with_site_config(legacy_init_theme_compat_config())
         .with_runtime_policy(runtime_policy);
     let layout_opts = LayoutOptions::default();

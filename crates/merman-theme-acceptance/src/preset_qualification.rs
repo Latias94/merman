@@ -10,8 +10,8 @@ use merman::svg::{
     ThemeRecipeFingerprint, theme_preset_descriptors,
 };
 use merman::{
-    DiagramFamilyId, Engine, OperationControl, RenderArtifactKind, RenderOutput, RenderRequest,
-    Renderer, TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus,
+    DiagramFamilyId, MermaidEngine, OperationControl, RenderArtifactKind, RenderOutput,
+    RenderRequest, Renderer, TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -389,8 +389,9 @@ fn execute_preset(
         font_catalog_fingerprint: *theme.report().font_catalog_fingerprint().as_bytes(),
         observations: Vec::with_capacity(specs.len() * 2),
     };
-    let renderer =
-        Renderer::new().with_engine(Engine::new().with_site_config(preset_qualification_config()));
+    let renderer = Renderer::new().with_presentation_engine(
+        MermaidEngine::new().with_site_config(preset_qualification_config()),
+    );
     for &spec in specs {
         let output = renderer
             .render(
@@ -529,8 +530,9 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(ThemePreset::Spotless)
             .unwrap();
-        let renderer = Renderer::new()
-            .with_engine(Engine::new().with_site_config(preset_qualification_config()));
+        let renderer = Renderer::new().with_presentation_engine(
+            MermaidEngine::new().with_site_config(preset_qualification_config()),
+        );
         for spec in [FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC] {
             let RenderOutput::Document(Some(document)) = renderer
                 .render(

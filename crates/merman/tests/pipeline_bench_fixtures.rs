@@ -41,7 +41,7 @@ fn pipeline_json_identity_ignores_only_object_member_order() {
 #[cfg(feature = "diagram-state")]
 #[test]
 fn pipeline_state_identity_preserves_repeated_parse_values() {
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     let projections = (0..8)
         .map(|_| {
             let parsed = engine
@@ -122,7 +122,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
     fixtures.sort();
     assert!(!fixtures.is_empty(), "no pipeline bench fixtures found");
 
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     let parse_options = merman_core::ParseOptions::strict();
     let layout = merman::svg::LayoutOptions::headless_svg_defaults();
     let environment = merman::SvgEnvironment::deterministic()
@@ -161,7 +161,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             ..Default::default()
         };
         let renderer = merman::Renderer::new()
-            .with_engine(engine.clone())
+            .with_presentation_engine(engine.clone())
             .with_resource_policy(merman_core::resources::InputResourcePolicy::for_profile(
                 merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
             ));

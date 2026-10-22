@@ -564,7 +564,7 @@ mod tests {
                 )),
             )
             .unwrap();
-        let engine = theme.install_parse_compatibility(merman_core::Engine::new());
+        let engine = theme.install_parse_compatibility(merman_core::MermaidEngine::new());
         for source in [
             #[cfg(feature = "diagram-block")]
             "block\nA --> B",

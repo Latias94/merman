@@ -3,7 +3,7 @@ use crate::environment::RenderEnvironment;
 use crate::family;
 use crate::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use serde_json::json;
 
 #[test]
@@ -35,7 +35,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
             })
         }
     }
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_site_config(PresentationConfig::from_value(
             json!({"layout":"dagre", "htmlLabels":true}),
         ))
@@ -62,7 +62,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
 
     // Markdown <br/> splits math delimiters; unlike a plain label it must not
     // acquire a math requirement or invoke the backend on a literal fragment.
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_site_config(PresentationConfig::from_value(
             json!({"layout":"dagre", "htmlLabels":true}),
         ))

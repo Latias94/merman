@@ -101,7 +101,7 @@ fn xml_sensitive_font_keeps_the_strict_standalone_font_admission_reason() {
 #[test]
 fn all_38_family_fixtures_preserve_logical_font_css_after_xml_decoding() {
     use merman::svg::SvgPipeline;
-    use merman::{Engine, ParseOptions, SvgEnvironment, SvgRequest};
+    use merman::{MermaidEngine, ParseOptions, SvgEnvironment, SvgRequest};
     use merman_render::diagram_theme::{
         DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
@@ -262,7 +262,7 @@ fn all_38_family_fixtures_preserve_logical_font_css_after_xml_decoding() {
         ),
     ];
     assert_eq!(fixtures.len(), 38);
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let renderer = Renderer::new();
     let mut failures = Vec::new();
     for (name, source) in fixtures {

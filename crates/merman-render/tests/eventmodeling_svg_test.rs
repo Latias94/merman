@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     OrdinalSelector, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
@@ -64,7 +64,7 @@ fn eventmodeling_stylesheet(svg: &str) -> String {
 fn render_eventmodeling_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     render_eventmodeling_with_theme_requirement(
         source,
@@ -77,7 +77,7 @@ fn render_eventmodeling_with_theme(
 fn render_eventmodeling_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     render_eventmodeling_with_theme_requirement_and_id(
@@ -92,7 +92,7 @@ fn render_eventmodeling_with_theme_requirement(
 fn render_eventmodeling_with_theme_requirement_and_id(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
@@ -116,7 +116,7 @@ fn render_eventmodeling_with_theme_requirement_and_id(
 
 fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::RenderedFamilySvg {
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
         })));
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -142,7 +142,7 @@ fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::Rend
 }
 
 fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Value {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
         .expect("parse themed Event Modeling layout")
         .expect("detect themed Event Modeling layout");
@@ -235,7 +235,7 @@ fn try_render_eventmodeling_svg_with_resource_policy(
     source: &str,
     policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Event Modeling resource-bound fixture")
         .expect("detect Event Modeling diagram");
@@ -306,8 +306,9 @@ fn eventmodeling_typed_text_fill_reaches_svg_and_xhtml_terminals() {
 
     for (fill, expected) in cases {
         let theme = eventmodeling_text_fill_theme(fill);
-        let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
-            .expect("render strict portable Event Modeling text fill");
+        let rendered =
+            render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
+                .expect("render strict portable Event Modeling text fill");
         let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
         assert_eq!(fill, expected);
@@ -330,7 +331,7 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
         CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
     );
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "textColor": "#fedcba" }
         })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
@@ -393,10 +394,12 @@ fn eventmodeling_browser_text_cascade() {
         .compile(DiagramThemeSpec::new())
         .expect("compile baseline Event Modeling theme");
     let typed_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
-    let baseline = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &empty_theme, Engine::new())
-        .expect("render browser Event Modeling baseline");
-    let typed = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &typed_theme, Engine::new())
-        .expect("render browser Event Modeling typed text");
+    let baseline =
+        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &empty_theme, MermaidEngine::new())
+            .expect("render browser Event Modeling baseline");
+    let typed =
+        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &typed_theme, MermaidEngine::new())
+            .expect("render browser Event Modeling typed text");
     let author_css = render_eventmodeling_with_raw_theme_css(&empty_theme);
     let typed_author_css = render_eventmodeling_with_raw_theme_css(&typed_theme);
     let fixtures = serde_json::json!([
@@ -439,7 +442,7 @@ fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt
     let expected_font = font_stack.as_css().to_string();
     let theme =
         eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
         .expect("render typed Event Modeling font stack");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
 
@@ -460,7 +463,7 @@ fn eventmodeling_theme_font_family_keeps_precedence_over_root_font_family() {
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "EventRootFont",
             "themeVariables": { "fontFamily": "EventThemeFont" }
         })));
@@ -485,7 +488,7 @@ fn eventmodeling_typed_font_size_reaches_css_and_strict_receipt() {
             .with_font_size_px(24.0)
             .expect("valid Event Modeling font size"),
     );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
         .expect("render typed Event Modeling font size");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
     assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
@@ -514,7 +517,7 @@ fn eventmodeling_styles_are_scoped_per_inline_svg() {
     let rendered_a = render_eventmodeling_with_theme_requirement_and_id(
         source,
         &theme_a,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         "event-a",
     )
@@ -522,7 +525,7 @@ fn eventmodeling_styles_are_scoped_per_inline_svg() {
     let rendered_b = render_eventmodeling_with_theme_requirement_and_id(
         source,
         &theme_b,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         "event-b",
     )
@@ -550,7 +553,7 @@ fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px",
             "themeVariables": { "fontSize": "22px" }
         })));
@@ -568,7 +571,7 @@ fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_owner
         .compile(DiagramThemeSpec::new())
         .expect("compile empty Event Modeling theme");
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "redux"
         })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
@@ -587,7 +590,7 @@ fn eventmodeling_mixed_typography_is_direct_and_portable() {
         .with_font_size_px(24.0)
         .expect("valid mixed Event Modeling font size");
     let theme = eventmodeling_typography_theme(typography);
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
         .expect("render mixed Event Modeling typography");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
     assert!(stylesheet.contains("EventModelingMixed"));
@@ -610,7 +613,7 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let config_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px" }
         }))),
     )
@@ -631,7 +634,7 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let root_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px"
         }))),
     )
@@ -676,7 +679,7 @@ fn eventmodeling_font_size_is_not_applicable_without_visible_text_terminals() {
             .with_font_size_px(24.0)
             .expect("valid Event Modeling font size"),
     );
-    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, MermaidEngine::new())
         .expect("render empty Event Modeling typography domain");
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
 
@@ -698,7 +701,7 @@ fn eventmodeling_unsupported_typography_sibling_keeps_direct_font_size() {
     let rendered = render_eventmodeling_with_theme_requirement(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders unsupported Event Modeling typography");
@@ -736,7 +739,7 @@ fn eventmodeling_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
             ),
         )
         .expect("compile Event Modeling text fill and ordinal palette theme");
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
         .expect("typed Event Modeling text fill must shadow the unsupported palette");
     let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
@@ -758,7 +761,7 @@ fn eventmodeling_empty_terminal_domain_marks_text_fill_not_applicable() {
     let theme = eventmodeling_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
     );
-    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, Engine::new())
+    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, MermaidEngine::new())
         .expect("render empty Event Modeling terminal domain");
     let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
@@ -793,10 +796,11 @@ fn eventmodeling_ordinal_text_fill_fails_closed() {
             ),
         )
         .expect("compile ordinal Event Modeling text fill theme");
-    let error = match render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new()) {
-        Ok(_) => panic!("unsupported Event Modeling ordinal text fill must fail closed"),
-        Err(error) => error,
-    };
+    let error =
+        match render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()) {
+            Ok(_) => panic!("unsupported Event Modeling ordinal text fill must fail closed"),
+            Err(error) => error,
+        };
 
     assert_eq!(
         error.unverified_family_theme(),
@@ -871,7 +875,7 @@ accDescr {
 }
 tf 01 event Start
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse eventmodeling")
         .expect("detect eventmodeling");
@@ -905,7 +909,7 @@ tf 01 event Start
 fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() {
     let input =
         include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -954,7 +958,7 @@ fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() 
 #[test]
 fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations() {
     let source = "eventmodeling\ntf 01 ui UI\ntf 02 cmd Command\ntf 03 evt Event\nrf 04 rmo ReadModel ->> 03\nrf 05 ui OtherUI\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1008,7 +1012,7 @@ fn repair_u7_eventmodeling_unmatched_text_variant_is_not_applicable() {
         )
         .unwrap();
     let rendered =
-        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new()).unwrap();
+        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()).unwrap();
     assert!(!rendered.svg().contains("#abcdef"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
@@ -1029,7 +1033,7 @@ fn repair_u7_eventmodeling_source_text_color_owns_palette_fallback() {
     let rendered = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
         )),
     )
@@ -1061,12 +1065,14 @@ fn repair_u7_eventmodeling_matched_unsupported_variant_remains_residual() {
     let rendered = render_eventmodeling_with_theme_requirement(
         THEME_TEXT_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
-    assert!(render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new()).is_err());
+    assert!(
+        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()).is_err()
+    );
 }

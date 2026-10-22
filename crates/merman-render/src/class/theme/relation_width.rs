@@ -135,7 +135,7 @@ mod tests {
             .style_with_work_meter(ThemeTarget::Edge, ThemeVariant::Default, None, &meter)
             .unwrap();
         for (token, expected_width) in [("calculated", None), ("0.5em", None), ("2px", Some(2.0))] {
-            let config = merman_core::Engine::new()
+            let config = merman_core::MermaidEngine::new()
                 .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({
                         "themeVariables": {"strokeWidth": token}

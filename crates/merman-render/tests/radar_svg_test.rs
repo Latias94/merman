@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -52,7 +52,7 @@ fn radar_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
 fn render_radar_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -70,7 +70,7 @@ fn render_radar_with_theme_requirement(
 fn render_radar_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     render_radar_with_theme_requirement(
         source,
@@ -202,7 +202,7 @@ fn radar_typed_title_fill_reaches_the_title_terminal() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\ntitle Themed radar\naxis A,B,C\ncurve Current{3,4,2}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
 
     let stylesheet = radar_stylesheet(rendered.svg());
@@ -254,11 +254,11 @@ fn radar_default_title_fill_preserves_winners_and_configuration_owners() {
                         "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n"
                     };
                     let engine = if config_owner {
-                        Engine::new().with_site_config(PresentationConfig::from_value(
+                        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                             serde_json::json!({"themeVariables":{"titleColor":"#445566"}}),
                         ))
                     } else {
-                        Engine::new()
+                        MermaidEngine::new()
                     };
                     let rendered = render_radar_with_theme_and_engine(source, &theme, engine);
                     if title_present {
@@ -305,7 +305,7 @@ fn radar_mixed_typography_is_direct_and_portable() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\ntitle Mixed radar\naxis A,B,C\ncurve Current{3,4,2}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
 
     let stylesheet = radar_stylesheet(rendered.svg());
@@ -331,7 +331,7 @@ fn radar_digit_leading_font_family_is_quoted_and_portable() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\ntitle Quoted radar\naxis A,B,C\ncurve Current{3,4,2}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
 
     let stylesheet = radar_stylesheet(rendered.svg());
@@ -353,16 +353,20 @@ fn radar_typography_config_ownership_is_property_local() {
     for (source, engine, expected_font) in [
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontFamily": "RadarThemeOwner" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "fontFamily": "RadarThemeOwner" }
+                }),
+            )),
             "RadarThemeOwner",
         ),
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "fontFamily": "RadarRootOwner"
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "fontFamily": "RadarRootOwner"
+                }),
+            )),
             "RadarRootOwner",
         ),
         (
@@ -394,9 +398,11 @@ fn radar_typography_config_ownership_is_property_local() {
     for (source, engine, expected_size, typed_applies) in [
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontSize": "22px" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "fontSize": "22px" }
+                }),
+            )),
             "22px",
             false,
         ),
@@ -411,9 +417,11 @@ fn radar_typography_config_ownership_is_property_local() {
         ),
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "fontSize": "31px"
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "fontSize": "31px"
+                }),
+            )),
             "24px",
             true,
         ),
@@ -447,7 +455,7 @@ fn radar_unsupported_typography_sibling_keeps_independent_direct_properties() {
     let rendered = render_radar_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders unsupported Radar typography");
@@ -464,7 +472,7 @@ fn radar_unsupported_typography_sibling_keeps_independent_direct_properties() {
     let error = match render_radar_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     ) {
         Ok(_) => panic!("RequirePortable must reject unsupported Radar typography"),
@@ -486,7 +494,7 @@ fn radar_base_font_size_is_not_applicable_without_a_visual_title() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\naccTitle: Accessible only\naxis A,B,C\ncurve VisibleLegend{3,4,2}\n",
         &size_theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let stylesheet = radar_stylesheet(rendered.svg());
     assert!(rendered.svg().contains(">Accessible only</title>"));
@@ -512,7 +520,7 @@ fn radar_direct_font_stack_is_not_limited_by_the_retired_bridge_patch_ceiling() 
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let stylesheet = radar_stylesheet(rendered.svg());
 
@@ -529,7 +537,7 @@ fn radar_series_palette_reaches_curve_and_legend_terminal_css() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let svg = rendered.svg();
 
@@ -556,7 +564,7 @@ fn radar_series_palette_supports_transparent_paint_and_cycles() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\ncurve Three{2,3,1}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let svg = rendered.svg();
 
@@ -574,18 +582,22 @@ fn radar_explicit_color_scale_slot_outranks_the_typed_series_palette() {
     let cases = [
         (
             "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "cScale0": "#fedcba" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "cScale0": "#fedcba" }
+                }),
+            )),
         ),
         (
             concat!(
                 "%%{init: {\"themeVariables\": {\"cScale0\": \"#fedcba\"}}}%%\n",
                 "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\n",
             ),
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "secure": []
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "secure": []
+                }),
+            )),
         ),
     ];
 
@@ -610,7 +622,7 @@ fn radar_series_palette_is_applied_without_a_visible_legend() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\nshowLegend false\naxis A,B,C\ncurve One{1,2,3}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
 
     assert!(
@@ -628,8 +640,11 @@ fn radar_series_palette_is_applied_without_a_visible_legend() {
 #[test]
 fn radar_series_palette_is_not_applicable_without_curves() {
     let theme = radar_series_palette_theme(&["#123456"]);
-    let rendered =
-        render_radar_with_theme_and_engine("radar-beta\naxis A,B,C\n", &theme, Engine::new());
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\naxis A,B,C\n",
+        &theme,
+        MermaidEngine::new(),
+    );
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -648,10 +663,11 @@ fn radar_series_palette_fails_closed_beyond_the_twelve_slot_surface() {
         .join("\n");
     let source = format!("radar-beta\naxis A,B,C\n{curves}\n");
 
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-        .expect("parse oversized themed Radar")
-        .expect("detect oversized themed Radar");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect("parse oversized themed Radar")
+            .expect("detect oversized themed Radar");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -674,7 +690,7 @@ fn radar_series_palette_fails_closed_beyond_the_twelve_slot_surface() {
 fn radar_series_palette_fails_closed_for_a_non_twelve_theme_color_limit() {
     let theme = radar_series_palette_theme(&["#123456"]);
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "THEME_COLOR_LIMIT": 2 }
         })));
     let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
@@ -730,7 +746,7 @@ fn radar_axis_static_paint_reaches_terminal_without_bridge() {
                 let rendered = render_radar_with_theme_and_engine(
                     "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
                     &theme,
-                    Engine::new(),
+                    MermaidEngine::new(),
                 );
                 let stylesheet = radar_stylesheet(rendered.svg());
                 assert!(
@@ -783,7 +799,7 @@ fn radar_axis_stroke_priority_is_independent_of_rule_grouping() {
         let rendered = render_radar_with_theme_and_engine(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
         assert!(radar_stylesheet(rendered.svg()).contains(".radarAxisLine{stroke:#abcdef;"));
         assert!(!radar_stylesheet(rendered.svg()).contains("#123456"));
@@ -807,7 +823,7 @@ fn radar_axis_unsupported_stroke_width_remains_residual_in_mixed_and_split_rules
         let rendered = render_radar_with_theme_requirement(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -821,7 +837,7 @@ fn radar_axis_unsupported_stroke_width_remains_residual_in_mixed_and_split_rules
         let error = match render_radar_with_theme_requirement(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         ) {
             Ok(_) => panic!("unsupported axis width must reject strict rendering"),
@@ -862,7 +878,7 @@ fn radar_axis_configuration_owns_only_its_color_channel() {
         let rendered = render_radar_with_theme_and_engine(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let css = radar_stylesheet(rendered.svg());
         assert!(
@@ -907,7 +923,7 @@ fn radar_static_axis_stroke_overrides_ordinal_palette_in_strict_mode() {
     let rendered = render_radar_with_theme_and_engine(
         "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     assert!(radar_stylesheet(rendered.svg()).contains(".radarAxisLine{stroke:#123456;"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -946,7 +962,7 @@ fn radar_text_static_fill_reaches_labels_and_title_without_bridge() {
                 .compile(radar_text_fill_spec(paint, variant))
                 .unwrap();
             let rendered =
-                render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, Engine::new());
+                render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, MermaidEngine::new());
             let css = radar_stylesheet(rendered.svg());
             assert!(
                 css.split_once('}')
@@ -1014,7 +1030,7 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         let rendered = render_radar_with_theme_and_engine(
             RADAR_TEXT_SOURCE,
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let css = radar_stylesheet(rendered.svg());
         assert!(
@@ -1040,7 +1056,7 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
     let source = format!(
         "%%{{init: {{\"theme\": \"base\", \"themeVariables\": {{\"textColor\": \"#abcdef\"}}}}}}%%\n{RADAR_TEXT_SOURCE}"
     );
-    let rendered = render_radar_with_theme_and_engine(&source, &theme, Engine::new());
+    let rendered = render_radar_with_theme_and_engine(&source, &theme, MermaidEngine::new());
     let css = radar_stylesheet(rendered.svg());
     assert!(css.split_once('}').unwrap().0.ends_with("fill:#abcdef;"));
     assert!(css.contains(".radarTitle{font-size:16px;color:rgb(8.5000000002, 5.7500000001, 0);fill:rgb(8.5000000002, 5.7500000001, 0);"));
@@ -1057,7 +1073,8 @@ fn radar_explicit_title_fill_overrides_only_the_text_title_fallback() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
     )
     .for_family(DiagramFamilyId::RADAR)]);
-    let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, Engine::new());
+    let rendered =
+        render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, MermaidEngine::new());
     let css = radar_stylesheet(rendered.svg());
     assert!(css.split_once('}').unwrap().0.ends_with("fill:#123456;"));
     assert!(css.contains(".radarTitle{font-size:16px;color:#abcdef;fill:#abcdef;"));
@@ -1077,7 +1094,7 @@ fn radar_clear_title_fill_blocks_text_fallback_but_not_label_paint() {
     let rendered = render_radar_with_theme_requirement(
         RADAR_TEXT_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();
@@ -1091,7 +1108,7 @@ fn radar_clear_title_fill_blocks_text_fallback_but_not_label_paint() {
         render_radar_with_theme_requirement(
             RADAR_TEXT_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable
         )
         .is_err()
@@ -1113,7 +1130,7 @@ fn radar_text_ordinal_uses_all_visible_occurrences_and_preserves_residuals() {
         let rendered = render_radar_with_theme_requirement(
             RADAR_TEXT_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -1134,7 +1151,7 @@ fn radar_text_ordinal_uses_all_visible_occurrences_and_preserves_residuals() {
             render_radar_with_theme_requirement(
                 RADAR_TEXT_SOURCE,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_ok(),
@@ -1165,7 +1182,7 @@ fn radar_text_unsupported_sibling_is_not_certified_by_an_applied_fill() {
         let rendered = render_radar_with_theme_requirement(
             RADAR_TEXT_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -1183,7 +1200,7 @@ fn radar_text_unsupported_sibling_is_not_certified_by_an_applied_fill() {
             render_radar_with_theme_requirement(
                 RADAR_TEXT_SOURCE,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable
             )
             .is_err()
@@ -1201,7 +1218,8 @@ fn radar_text_title_fallback_overrides_an_unused_title_palette() {
     let theme = DiagramThemeCompiler::new()
         .compile(spec.with_styles(styles))
         .unwrap();
-    let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, Engine::new());
+    let rendered =
+        render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, MermaidEngine::new());
     assert!(
         radar_stylesheet(rendered.svg())
             .contains(".radarTitle{font-size:16px;color:#123456;fill:#123456;")
@@ -1222,7 +1240,7 @@ fn radar_non_fill_title_rule_does_not_capture_the_text_fallback() {
     let rendered = render_radar_with_theme_requirement(
         RADAR_TEXT_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();

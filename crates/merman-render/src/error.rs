@@ -368,7 +368,7 @@ pub(crate) fn wrap_error_message(message: &str) -> Vec<String> {
 }
 
 pub(crate) fn layout_error_diagram_typed(
-    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
+    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramModel,
     typography_theme: &ErrorTypographyThemePlan,
 ) -> Result<ErrorDiagramLayout> {
     let viewbox_width = typography_theme.viewport_width_px();
@@ -434,7 +434,7 @@ mod tests {
         let config = PresentationConfig::default();
         let typography_theme = ErrorTypographyThemePlan::resolve(None, &config, &measurer);
         let layout = layout_error_diagram_typed(
-            &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel {
+            &merman_core::diagrams::error_diagram::ErrorDiagramModel {
                 diagram_type: "error".to_string(),
                 error_message: None,
             },

@@ -10,7 +10,7 @@ use crate::OperationControlResult;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "compat-json")]
-use crate::{OperationControl, ParseMetadata, Result};
+use crate::{OperationControl, PresentationMetadata, Result};
 
 use super::model::SequenceDiagramModel;
 #[cfg(feature = "compat-json")]
@@ -95,13 +95,13 @@ const SEQUENCE_CONSTANTS: SequenceConstants = SequenceConstants {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SequenceDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(model.to_compat_json(&meta.diagram_type))
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_sequence(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(meta.effective_config.as_config()),
@@ -118,7 +118,7 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_sequence_semantic_source(

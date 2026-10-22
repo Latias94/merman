@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn parse_diagram_state_v2_alias_and_colon_description() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -46,7 +46,7 @@ namedState1:Small State 1"#,
 
 #[test]
 fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -64,7 +64,7 @@ fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_ecmascript_unicode_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
         for newline in ["\n", "\r\n"] {
             let text = format!(
@@ -87,7 +87,7 @@ fn parse_diagram_state_v2_accepts_ecmascript_unicode_whitespace() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_unicode_whitespace_in_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\ndirection\u{3000}LR\nA --> B\n";
 
     let res = engine
@@ -99,7 +99,7 @@ fn parse_diagram_state_v2_accepts_unicode_whitespace_in_direction() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_unicode_whitespace_before_composite_block() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "stateDiagram-v2\nstate\u{3000}外部\u{3000}\n\u{3000}{\n用户\u{3000}-->\u{3000}完成\n}\n";
     let res = engine
@@ -118,7 +118,7 @@ fn parse_diagram_state_v2_accepts_unicode_whitespace_before_composite_block() {
 
 #[test]
 fn parse_diagram_state_v2_preserves_colons_in_transition_labels() {
-    let res = block_on(Engine::new().parse_diagram(
+    let res = block_on(MermaidEngine::new().parse_diagram(
         r#"stateDiagram-v2
 Active --> Deleted: DELETE /users/:id"#,
         ParseOptions::default(),
@@ -131,7 +131,7 @@ Active --> Deleted: DELETE /users/:id"#,
 
 #[test]
 fn parse_diagram_state_v2_groups_and_unsafe_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -179,7 +179,7 @@ __proto__ --> [*]"#,
 
 #[test]
 fn parse_diagram_state_v2_tracks_explicit_composite_direction() {
-    let res = block_on(Engine::new().parse_diagram(
+    let res = block_on(MermaidEngine::new().parse_diagram(
         r#"stateDiagram-v2
 state Implicit {
   A
@@ -215,7 +215,7 @@ fn parse_state_render_model_preserves_alias_trailing_description() {
     let input = r#"stateDiagram-v2
 state "Display label" as S1: Trailing description
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -235,7 +235,7 @@ state "Display label" as S1: Trailing description
     );
     assert_eq!(node.shape, "rectWithTitle");
 
-    let parsed = block_on(Engine::new().parse_diagram(input, ParseOptions::strict()))
+    let parsed = block_on(MermaidEngine::new().parse_diagram(input, ParseOptions::strict()))
         .unwrap()
         .unwrap();
     let json_node = parsed.model["nodes"]
@@ -255,7 +255,7 @@ state "Display label" as S1: Trailing description
 
 #[test]
 fn parse_state_render_model_tracks_explicit_composite_direction() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"stateDiagram-v2
 state Implicit {
@@ -291,7 +291,7 @@ state Explicit {
 
 #[test]
 fn parse_diagram_state_rejects_same_line_multi_word_composite_state_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 state Invalid Name {
   Idle
@@ -340,7 +340,7 @@ state Invalid Name {
 
 #[test]
 fn parse_diagram_state_keeps_newline_composite_block_compatibility() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 state Valid
@@ -358,7 +358,7 @@ state Valid
 
 #[test]
 fn parse_diagram_state_v2_classdef_class_and_shorthand() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -419,7 +419,7 @@ class a,b,c, d, e exampleStyleClass"#,
 
 #[test]
 fn parse_diagram_state_v2_style_statement_sets_node_styles_and_ignores_comments() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -465,7 +465,7 @@ slow  --> fast
 
 #[test]
 fn parse_diagram_state_v2_click_and_href_store_links() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -521,7 +521,7 @@ click S3 href "jav&#x61;script:alert(1)""#,
 
 #[test]
 fn parse_diagram_state_v2_repeated_clicks_preserve_declaration_order() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -550,7 +550,7 @@ click S1 "https://example.com/last" "Last""#,
 
 #[test]
 fn typed_state_links_preserve_declaration_order_and_empty_tooltips() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"stateDiagram-v2
 S1
@@ -589,7 +589,7 @@ click S2 href "https://example.com/omitted"
 
 #[test]
 fn parse_diagram_state_v2_note_right_of_and_block_note() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -637,7 +637,7 @@ note "This is a floating note" as N1"#,
 
 #[test]
 fn parse_diagram_state_note_closes_only_on_a_dedicated_end_note_line() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 State1
 note right of State1
@@ -667,7 +667,7 @@ State1 --> State2"#;
 
 #[test]
 fn parse_diagram_state_v2_getdata_edges_and_note_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -702,7 +702,7 @@ note left of A : note text"#,
 
 #[test]
 fn parse_diagram_state_v2_uses_neo_arrow_type_when_look_is_neo() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"%%{init: {"look": "neo"}}%%
@@ -721,7 +721,7 @@ A --> B: hello"#,
 
 #[test]
 fn parse_diagram_state_v2_sanitizes_edge_labels_like_mermaid_common() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 A --> B: hello<script>alert(1)</script>world"#,
@@ -734,7 +734,7 @@ A --> B: hello<script>alert(1)</script>world"#,
 
 #[test]
 fn parse_diagram_state_v2_getdata_dom_id_counter_and_note_padding_match_mermaid() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -768,7 +768,7 @@ note right of A : note text"#,
 
 #[test]
 fn parse_diagram_state_v2_keeps_multiple_note_groups_distinct() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 A
@@ -820,7 +820,7 @@ fn deep_state_composite_chain(depth: usize) -> String {
 fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
     const DEPTH: usize = 1200;
     let input = deep_state_composite_chain(DEPTH);
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let parsed = block_on(engine.parse_diagram(&input, ParseOptions::strict()))
         .expect("parse ok")
@@ -844,7 +844,7 @@ fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
 
 #[test]
 fn state_family_entrypoints_construct_one_lexical_event_tape() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
         "state \"Waiting\" as Idle\n",
@@ -953,7 +953,7 @@ fn state_family_entrypoints_construct_one_lexical_event_tape() {
 
 #[test]
 fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
         "accTitle: Lifecycle\n",
@@ -1004,7 +1004,7 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
 
 #[test]
 fn state_typed_render_model_projects_exact_compatibility_json() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
         "direction LR\n",
@@ -1043,7 +1043,7 @@ fn state_typed_render_model_projects_exact_compatibility_json() {
 
 #[test]
 fn parse_state_editor_facts_preserve_parser_state_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 [*] --> Idle
 Idle --> Running
@@ -1246,7 +1246,7 @@ click Running "https://example.com/run" "Run details""#;
 
 #[test]
 fn parse_state_editor_facts_record_expected_syntax_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "stateDiagram-v2\n",
         "state \"Small State\" as namedState\n",
@@ -1372,7 +1372,7 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
 
 #[test]
 fn state_relations_create_only_the_first_implicit_entity_occurrence() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "stateDiagram-v2\n",
         "Future --> Known\n",
@@ -1418,7 +1418,7 @@ fn state_relations_create_only_the_first_implicit_entity_occurrence() {
 
 #[test]
 fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for line_ending in ["\n", "\r", "\r\n"] {
         let text = ["stateDiagram-v2", "classDef", "Active --> Idle", ""].join(line_ending);
@@ -1438,7 +1438,7 @@ fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() 
 
 #[test]
 fn parse_state_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
     crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
@@ -1524,7 +1524,7 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
 
 #[test]
 fn state_group_description_failure_retains_requested_facts_without_discarded_editor_work() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "stateDiagram-v2\nstate Group {\nChild\n}\n",
         "Group: first\nGroup: second\n",
@@ -1580,7 +1580,7 @@ fn state_group_description_failure_retains_requested_facts_without_discarded_edi
 
 #[test]
 fn parse_state_editor_facts_stop_after_non_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\nstate {\nIdle --> Running\n";
     crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
@@ -1628,7 +1628,7 @@ fn assert_expected_syntax_covers(
 
 #[test]
 fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for source in [
         "stateDiagram-v2\ndirection\n",
         "stateDiagram-v2\ndirection --> Done\n",
@@ -1658,7 +1658,7 @@ fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
 
 #[test]
 fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for statement in [
         r#"click A href "https://example.test/direction LR""#,
         r#"click A "https://example.test" "direction LR""#,
@@ -1686,7 +1686,7 @@ fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
 
 #[test]
 fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (statement, kind, id, field, value) in [
         (
             r#"state "direction LR" as Inner"#,
@@ -1741,7 +1741,7 @@ fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
 
 #[test]
 fn parse_state_editor_struct_state_label_preserves_entity_selection() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "stateDiagram-v2\nstate Outer {\nstate \"direction LR\" as Inner\n}\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
@@ -1761,7 +1761,7 @@ fn parse_state_editor_struct_state_label_preserves_entity_selection() {
 
 #[test]
 fn parse_diagram_state_initial_direction_uses_raw_cursor() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for prefix in ["  ", "\t", "\u{00a0}", "\u{feff}"] {
         for statement in [
             r#"click A href "direction LR""#,
@@ -1813,7 +1813,7 @@ fn parse_diagram_state_initial_direction_uses_raw_cursor() {
 
 #[test]
 fn parse_diagram_state_struct_whitespace_and_comments_precede_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source =
         "stateDiagram-v2\nstate Outer {\n  # direction LR\n  state \"direction LR\" as Inner\n}\n";
     let parsed = engine
@@ -1826,7 +1826,7 @@ fn parse_diagram_state_struct_whitespace_and_comments_precede_direction() {
 
 #[test]
 fn parse_diagram_state_accessibility_requires_complete_prefix() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["accTitle", "accDescr"] {
         let source = format!("stateDiagram-v2\n{name}\n");
         let parsed = engine
@@ -1872,7 +1872,7 @@ fn parse_diagram_state_accessibility_requires_complete_prefix() {
 
 #[test]
 fn parse_diagram_state_accessibility_multiline_uses_ecmascript_trim() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (body, expected) in [
         ("\u{feff}Heading\u{feff}", "Heading"),
         ("\u{0085}Heading\u{0085}", "\u{0085}Heading\u{0085}"),
@@ -1888,7 +1888,7 @@ fn parse_diagram_state_accessibility_multiline_uses_ecmascript_trim() {
 
 #[test]
 fn parse_diagram_state_unterminated_accessibility_block_keeps_eof_assignment() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "stateDiagram-v2\naccDescr: previous\naccDescr { unclosed\n";
     let parsed = engine
         .parse_diagram_sync(source, ParseOptions::default())

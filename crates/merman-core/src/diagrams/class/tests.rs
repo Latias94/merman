@@ -1,8 +1,8 @@
 use super::*;
-use crate::{MermaidConfig, ParseMetadata};
+use crate::{MermaidConfig, PresentationMetadata};
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "classDiagram".to_string(),
         config: MermaidConfig::default(),
         effective_config: crate::presentation::PresentationConfig::default(),

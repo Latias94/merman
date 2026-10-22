@@ -708,7 +708,7 @@ mod source_typography_tests {
     #[test]
     fn cluster_terminal_uses_first_source_owner_and_releases_retained_paint() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nflowchart LR\nclassDef first fill:#112233,font-size:19px\nclassDef last fill:#aabbcc,font-size:27px\nsubgraph Shared[First]\nA\nend\nclass Shared first\nsubgraph Shared[Last]\nB\nend\n",
                 merman_core::ParseOptions::default(),
@@ -809,7 +809,7 @@ mod source_typography_tests {
     #[test]
     fn disabled_svg_label_preparation_still_enforces_retained_font_limit() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[Label]\nstyle A font-family:CallerFont,font-size:23px",
                 merman_core::ParseOptions::default(),

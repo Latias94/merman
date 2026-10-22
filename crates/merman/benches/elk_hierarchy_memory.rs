@@ -3,8 +3,8 @@ mod allocator;
 
 use allocator::CountingSystemAllocator;
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderTarget, Renderer,
-    SvgRequest,
+    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderTarget,
+    Renderer, SvgRequest,
 };
 use merman::{runtime::RuntimePolicy, svg::SvgRenderOptions};
 use serde::{Deserialize, Serialize};
@@ -486,11 +486,11 @@ fn render_hierarchy(
     // into the SVG target therefore keeps parse, ELK layout, emission, and postprocessing within
     // one operation rather than creating a hidden replacement session.
     let output = renderer
-        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .render(RenderRequest::presentation(source, OperationControl::new()))
         .map_err(|error| {
             ProbeError::new(format!("flowchart semantic preparation failed: {error}"))
         })?;
-    let RenderOutput::Semantic(Some(semantic)) = output else {
+    let RenderOutput::Presentation(Some(semantic)) = output else {
         return Err(ProbeError::new(
             "flowchart semantic preparation returned no diagram",
         ));
@@ -535,8 +535,8 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     let depth = hierarchy_depth(request.scale)?;
     let source = build_flowchart(depth)?;
     let renderer = Renderer::new()
-        .with_engine(
-            Engine::new()
+        .with_presentation_engine(
+            MermaidEngine::new()
                 .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
         )
         .with_parse_options(ParseOptions::strict());

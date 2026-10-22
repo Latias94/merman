@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -11,7 +11,7 @@ const NESTED_MIXED_UPSTREAM_SVG: &str =
     include_str!("../../../fixtures/upstream-svgs/swimlane/local_nested_mixed_lane_security.svg");
 
 fn render_swimlane_with_layout(source: &str, diagram_id: &str) -> (String, SwimlaneLayout) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
         .expect("detect swimlane");

@@ -435,7 +435,9 @@ impl<'input> Lexer<'input> {
                     start,
                     Tok::DirectionStmt(DirectionStatementToken {
                         direction: String::new(),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         selection,
+                        #[cfg(any(test, feature = "editor-facts"))]
                         recovery_error: Some(error),
                     }),
                     statement_end,
@@ -448,7 +450,9 @@ impl<'input> Lexer<'input> {
             start,
             Tok::DirectionStmt(DirectionStatementToken {
                 direction: dir.to_string(),
+                #[cfg(any(test, feature = "editor-facts"))]
                 selection,
+                #[cfg(any(test, feature = "editor-facts"))]
                 recovery_error: None,
             }),
             statement_end,
@@ -706,7 +710,9 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "classDef".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
+        let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
@@ -755,7 +761,9 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "class".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
+        let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
@@ -871,6 +879,7 @@ impl<'input> Lexer<'input> {
                             ),
                             #[cfg(feature = "editor-facts")]
                             interaction_evidence: FlowchartClickEditorEvidence::default(),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             recovery_error: Some(error),
                         }),
                         end,
@@ -1117,6 +1126,7 @@ impl<'input> Lexer<'input> {
         struct StartLinkMatch {
             family: LinkFamily,
             operator: String,
+            #[cfg(feature = "editor-facts")]
             operator_span: SourceSpan,
             match_end: usize,
         }
@@ -1360,6 +1370,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Normal,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1369,6 +1380,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Thick,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1378,6 +1390,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Dotted,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1600,6 +1613,7 @@ impl<'input> Lexer<'input> {
                             PartialNodeLabelRecovery {
                                 #[cfg(feature = "editor-facts")]
                                 trigger_span: Some(SourceSpan::new(start, content_start)),
+                                #[cfg(any(test, feature = "editor-facts"))]
                                 error: LexError::with_span(
                                     "Unterminated node label (missing `/]` or `\\]`)",
                                     SourceSpan::new(start, token_end),
@@ -1667,6 +1681,7 @@ impl<'input> Lexer<'input> {
                             PartialNodeLabelRecovery {
                                 #[cfg(feature = "editor-facts")]
                                 trigger_span: Some(SourceSpan::new(start, content_start)),
+                                #[cfg(any(test, feature = "editor-facts"))]
                                 error: LexError::with_span(
                                     "Unterminated node label (missing `/]` or `\\]`)",
                                     SourceSpan::new(start, token_end),
@@ -1770,6 +1785,7 @@ impl<'input> Lexer<'input> {
                     PartialNodeLabelRecovery {
                         #[cfg(feature = "editor-facts")]
                         trigger_span: Some(SourceSpan::new(start, content_start)),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         error: LexError::with_span(
                             format!("Unterminated node label (missing `{close}`)"),
                             SourceSpan::new(start, token_end),
@@ -1838,6 +1854,7 @@ impl<'input> Lexer<'input> {
                         PartialNodeLabelRecovery {
                             #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `]`)",
                                 SourceSpan::new(start, token_end),
@@ -1892,6 +1909,7 @@ impl<'input> Lexer<'input> {
                         PartialNodeLabelRecovery {
                             #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `}`)",
                                 SourceSpan::new(start, token_end),
@@ -1946,6 +1964,7 @@ impl<'input> Lexer<'input> {
                         PartialNodeLabelRecovery {
                             #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `)`)",
                                 SourceSpan::new(start, token_end),
@@ -1998,6 +2017,7 @@ fn build_node_label_token_from_raw(
         text: labeled_text_with_spans(input, text, token_span, raw_span),
         #[cfg(feature = "editor-facts")]
         trigger_span,
+        #[cfg(any(test, feature = "editor-facts"))]
         recovery_error: None,
     }))
 }
@@ -2005,6 +2025,7 @@ fn build_node_label_token_from_raw(
 struct PartialNodeLabelRecovery {
     #[cfg(feature = "editor-facts")]
     trigger_span: Option<SourceSpan>,
+    #[cfg(any(test, feature = "editor-facts"))]
     error: LexError,
 }
 
@@ -2015,7 +2036,7 @@ fn build_partial_node_label_token_from_raw(
     _content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
-    recovery: PartialNodeLabelRecovery,
+    _recovery: PartialNodeLabelRecovery,
 ) -> Tok {
     let (text, kind) = parse_label_text(raw);
     Tok::NodeLabel(NodeLabelToken {
@@ -2032,8 +2053,9 @@ fn build_partial_node_label_token_from_raw(
             raw_span,
         ),
         #[cfg(feature = "editor-facts")]
-        trigger_span: recovery.trigger_span,
-        recovery_error: Some(recovery.error),
+        trigger_span: _recovery.trigger_span,
+        #[cfg(any(test, feature = "editor-facts"))]
+        recovery_error: Some(_recovery.error),
     })
 }
 

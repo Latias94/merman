@@ -96,7 +96,7 @@ fn railroad_repeat_bound_serde_preserves_finite_and_infinite_states() {
 
 #[test]
 fn parse_railroad_ir_rules_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"railroad-beta
 title "Simple Grammar"
 rule = sequence(terminal("a"), nonterminal("other"), zeroOrMore(special("anything"))) ;
@@ -178,7 +178,7 @@ other = terminal("b") ;
 
 #[test]
 fn parse_railroad_ebnf_choice_optional_repetition_and_special_sequence() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(
             r#"railroad-ebnf-beta
@@ -216,7 +216,7 @@ rule ::= "a" | [ other ] , { ? special ? } ;
 
 #[test]
 fn parse_railroad_abnf_repetition_optional_numval_and_comments() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(
             r#"railroad-abnf-beta
@@ -258,7 +258,7 @@ fn parse_railroad_abnf_matches_javascript_repeat_number_semantics() {
 rule = 9007199254740991"a" / 9007199254740992"b" / 9007199254740993"c" / 18446744073709551615*"d" / 18446744073709551616*"e" / *3"f" / 2*"g" / *"h" / 5*2"i" / *1"j" / {huge}"k" / 00000000000000000002*00000000000000000003"l" / {huge}*1"m" / 1*{huge}"n" ;
 "#
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(&source, ParseOptions::strict())
         .unwrap()
         .expect("all valid ABNF repetition bounds should parse");
@@ -327,7 +327,7 @@ rule = 9007199254740991"a" / 9007199254740992"b" / 9007199254740993"c" / 1844674
 
 #[test]
 fn parse_railroad_peg_repetitions_keep_ordinary_json_shape() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(
             "railroad-peg-beta\nrule <- zero* one+ ;\n",
             ParseOptions::strict(),
@@ -359,7 +359,7 @@ fn parse_railroad_peg_repetitions_keep_ordinary_json_shape() {
 
 #[test]
 fn parse_railroad_peg_prefix_suffix_any_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"railroad-peg-beta
 rule <- &"a" !"b" . other? ;
 "#;
@@ -396,7 +396,7 @@ rule <- &"a" !"b" . other? ;
 
 #[test]
 fn parse_railroad_variants_expose_typed_render_models() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (diagram_type, source) in [
         ("railroad", "railroad-beta\nrule = terminal(\"a\") ;\n"),
         ("railroadEbnf", "railroad-ebnf-beta\nrule = \"a\" ;\n"),
@@ -420,7 +420,7 @@ fn parse_railroad_variants_expose_typed_render_models() {
 
 #[test]
 fn railroad_detection_is_case_insensitive_but_semantic_headers_are_exact() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (expected_type, source) in [
         ("railroad", "RAILROAD-BETA\nrule = terminal(\"a\") ;\n"),
         ("railroadEbnf", "RAILROAD-EBNF-BETA\nrule = \"a\" ;\n"),
@@ -444,7 +444,7 @@ fn railroad_detection_is_case_insensitive_but_semantic_headers_are_exact() {
 fn railroad_constructed_depth_counts_postfix_groups_and_collection_nodes() {
     use crate::diagrams::railroad::RailroadAstNode;
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let limit = MAX_DIAGRAM_NESTING_DEPTH;
     let cases = [
         (

@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "editor-facts")]
@@ -194,21 +194,25 @@ enum TextIdKind {
 #[derive(Debug, Clone)]
 struct VennFieldSpan {
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
 }
 
 struct VennCursor<'a> {
     input: &'a str,
+    #[cfg(feature = "editor-facts")]
     line_start: usize,
     pos: usize,
 }
 
 impl<'a> VennCursor<'a> {
-    fn new(input: &'a str, line_start: usize) -> Self {
+    fn new(input: &'a str, _line_start: usize) -> Self {
         Self {
             input,
-            line_start,
+            #[cfg(feature = "editor-facts")]
+            line_start: _line_start,
             pos: 0,
         }
     }
@@ -226,12 +230,14 @@ impl<'a> VennCursor<'a> {
             .sum::<usize>();
     }
 
+    #[cfg(feature = "editor-facts")]
     fn abs_start(&self) -> usize {
         self.line_start + self.pos
     }
 
     fn take_identifier_like(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
         self.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         let rest = self.remaining();
 
@@ -240,7 +246,9 @@ impl<'a> VennCursor<'a> {
             self.pos += consumed;
             return Ok(VennFieldSpan {
                 text: normalize_text(&value),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(token_start, token_start + consumed),
+                #[cfg(feature = "editor-facts")]
                 selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
             });
         }
@@ -252,13 +260,16 @@ impl<'a> VennCursor<'a> {
         self.pos += consumed;
         Ok(VennFieldSpan {
             text: value.to_string(),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(token_start, token_start + consumed),
+            #[cfg(feature = "editor-facts")]
             selection: SourceSpan::new(token_start, token_start + consumed),
         })
     }
 
     fn take_bare_identifier(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
         self.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         let rest = self.remaining();
         let Some((value, after)) = parse_bare_identifier_token(rest) else {
@@ -268,13 +279,16 @@ impl<'a> VennCursor<'a> {
         self.pos += consumed;
         Ok(VennFieldSpan {
             text: value.to_string(),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(token_start, token_start + consumed),
+            #[cfg(feature = "editor-facts")]
             selection: SourceSpan::new(token_start, token_start + consumed),
         })
     }
 
     fn take_text_id(&mut self, diagram_type: &str) -> Result<(VennFieldSpan, TextIdKind)> {
         self.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         let rest = self.remaining();
 
@@ -284,7 +298,9 @@ impl<'a> VennCursor<'a> {
             return Ok((
                 VennFieldSpan {
                     text: normalize_text(&value),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(token_start, token_start + consumed),
+                    #[cfg(feature = "editor-facts")]
                     selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
                 },
                 TextIdKind::IdentifierOrString,
@@ -297,7 +313,9 @@ impl<'a> VennCursor<'a> {
             return Ok((
                 VennFieldSpan {
                     text: value,
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(token_start, token_start + consumed),
+                    #[cfg(feature = "editor-facts")]
                     selection: SourceSpan::new(token_start, token_start + consumed),
                 },
                 TextIdKind::Numeric,
@@ -314,6 +332,7 @@ impl<'a> VennCursor<'a> {
             return Ok(None);
         };
 
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         if let Some(rest) = rest.strip_prefix('"') {
             let Some(end) = rest.find("\"]") else {
@@ -327,7 +346,9 @@ impl<'a> VennCursor<'a> {
             }
             return Ok(Some(VennFieldSpan {
                 text,
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(token_start, token_start + consumed),
+                #[cfg(feature = "editor-facts")]
                 selection: SourceSpan::new(token_start + 2, token_start + 2 + end),
             }));
         }
@@ -345,15 +366,20 @@ impl<'a> VennCursor<'a> {
         if text.is_empty() {
             return Ok(None);
         }
+        #[cfg(feature = "editor-facts")]
         let leading = raw.len() - raw.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let trailing = raw.len() - raw.trim_end().len();
+        #[cfg(feature = "editor-facts")]
         let selection = SourceSpan::new(
             token_start + 1 + leading,
             token_start + 1 + raw.len() - trailing,
         );
         Ok(Some(VennFieldSpan {
             text,
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(token_start, token_start + consumed),
+            #[cfg(feature = "editor-facts")]
             selection,
         }))
     }
@@ -366,6 +392,7 @@ impl<'a> VennCursor<'a> {
 
         self.pos += 1;
         self.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         let rest = self.remaining();
         let Some((value, after)) = parse_numeric_token(rest) else {
@@ -375,7 +402,9 @@ impl<'a> VennCursor<'a> {
         self.pos += consumed;
         Ok(Some(VennFieldSpan {
             text: value,
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(token_start, token_start + consumed),
+            #[cfg(feature = "editor-facts")]
             selection: SourceSpan::new(token_start, token_start + consumed),
         }))
     }
@@ -388,12 +417,17 @@ impl<'a> VennCursor<'a> {
             return None;
         }
 
+        #[cfg(feature = "editor-facts")]
         let leading = rest.len() - rest.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let trailing = rest.len() - trimmed.len();
+        #[cfg(feature = "editor-facts")]
         let span_start = self.abs_start() + leading;
+        #[cfg(feature = "editor-facts")]
         let span_end = self.abs_start() + rest.len() - trailing;
         self.pos = self.input.len();
 
+        #[cfg(feature = "editor-facts")]
         let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
         {
             SourceSpan::new(span_start + 1, span_end - 1)
@@ -403,13 +437,16 @@ impl<'a> VennCursor<'a> {
 
         Some(VennFieldSpan {
             text: normalize_text(trimmed),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(span_start, span_end),
+            #[cfg(feature = "editor-facts")]
             selection,
         })
     }
 
     fn take_style_value(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
         self.skip_ws();
+        #[cfg(feature = "editor-facts")]
         let token_start = self.abs_start();
         let rest = self.remaining();
         let (raw, _after_raw) = take_style_value_segment(rest);
@@ -418,8 +455,11 @@ impl<'a> VennCursor<'a> {
             return Err(parse_error(diagram_type, "expected style value"));
         }
 
+        #[cfg(feature = "editor-facts")]
         let leading = raw.len() - raw.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let span_start = token_start + leading;
+        #[cfg(feature = "editor-facts")]
         let span_end = span_start + trimmed.len();
         self.pos += raw.len();
         let text = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
@@ -428,6 +468,7 @@ impl<'a> VennCursor<'a> {
             style_value_tokens(trimmed, diagram_type)?.join(" ")
         };
 
+        #[cfg(feature = "editor-facts")]
         let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
         {
             SourceSpan::new(span_start + 1, span_end - 1)
@@ -437,7 +478,9 @@ impl<'a> VennCursor<'a> {
 
         Ok(VennFieldSpan {
             text,
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(span_start, span_end),
+            #[cfg(feature = "editor-facts")]
             selection,
         })
     }
@@ -467,7 +510,7 @@ impl<'a> VennCursor<'a> {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_venn(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = parse_venn_semantic_source(code, meta)?;
     render_model_to_compat_json(&source.model, meta)
 }
@@ -476,7 +519,7 @@ pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let VennParseOutcome {
@@ -512,7 +555,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_venn_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<VennDiagramRenderModel> {
     Ok(parse_venn_semantic_source(code, meta)?.model)
 }
@@ -520,7 +563,7 @@ pub(crate) fn parse_venn_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_venn_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<VennDiagramRenderModel>> {
     let outcome = construct_venn_parse_outcome_controlled(
@@ -536,7 +579,7 @@ pub(crate) fn parse_venn_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &VennDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({
         "type": meta.diagram_type,
@@ -550,7 +593,10 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSemanticSource> {
+fn parse_venn_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<VennSemanticSource> {
     construct_venn_parse_outcome_controlled(
         code,
         &meta.diagram_type,
@@ -673,6 +719,7 @@ fn construct_venn_parse_outcome_controlled(
                     diagram_type,
                 )
             {
+                #[cfg(feature = "editor-facts")]
                 let message = venn_error_message(&error);
                 recover_venn_error(
                     diagram_type,
@@ -694,6 +741,7 @@ fn construct_venn_parse_outcome_controlled(
             parse_venn_statement_facts(stripped, line_start, &mut state, diagram_type)
         {
             let indent = leading_indent_len(stripped);
+            #[cfg(feature = "editor-facts")]
             let message = venn_error_message(&error);
             recover_venn_error(
                 diagram_type,
@@ -808,13 +856,13 @@ fn parse_venn_statement_facts(
             facts.push_directive_prefix("title");
         }
         let mut cursor = VennCursor::new(rest, statement_start + "title".len());
-        let Some(payload) = cursor.take_remaining_payload() else {
+        let Some(_payload) = cursor.take_remaining_payload() else {
             return Err(parse_error(diagram_type, "expected title text"));
         };
         #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
-            &payload,
+            &_payload,
             "venn title",
             EditorSemanticKind::String,
         );
@@ -905,7 +953,9 @@ fn parse_venn_set_statement_facts(
             .map_err(|_| parse_error(diagram_type, "expected numeric"))?;
         Ok((identifier, label, size, size_value))
     })();
-    let (identifier, label, size, size_value) = parsed?;
+    let (identifier, label, _size, size_value) = parsed?;
+    #[cfg(feature = "editor-facts")]
+    let size = _size;
 
     #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.rich_editor_facts() {
@@ -921,8 +971,8 @@ fn parse_venn_set_statement_facts(
         "venn set",
         EditorSemanticKind::Namespace,
     );
+    #[cfg(feature = "editor-facts")]
     if let Some(label) = label.as_ref() {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             label,
@@ -930,8 +980,8 @@ fn parse_venn_set_statement_facts(
             EditorSemanticKind::String,
         );
     }
+    #[cfg(feature = "editor-facts")]
     if let Some(size) = size.as_ref() {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             size,
@@ -973,7 +1023,9 @@ fn parse_venn_union_statement_facts(
             .map_err(|_| parse_error(diagram_type, "expected numeric"))?;
         Ok((identifiers, label, size, size_value))
     })();
-    let (identifiers, label, size, size_value) = parsed?;
+    let (identifiers, label, _size, size_value) = parsed?;
+    #[cfg(feature = "editor-facts")]
+    let size = _size;
 
     let identifier_values = identifiers
         .iter()
@@ -981,6 +1033,7 @@ fn parse_venn_union_statement_facts(
         .collect::<Vec<_>>();
     state.validate_union_identifiers(&identifier_values, diagram_type)?;
 
+    #[cfg(feature = "editor-facts")]
     let list_span = venn_list_span(&identifiers);
     #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.rich_editor_facts() {
@@ -989,8 +1042,8 @@ fn parse_venn_union_statement_facts(
             list_span,
         ));
     }
+    #[cfg(feature = "editor-facts")]
     for identifier in &identifiers {
-        #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
             state.rich_editor_facts(),
             identifier,
@@ -999,8 +1052,8 @@ fn parse_venn_union_statement_facts(
         );
     }
 
+    #[cfg(feature = "editor-facts")]
     if let Some(label) = label.as_ref() {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             label,
@@ -1008,8 +1061,8 @@ fn parse_venn_union_statement_facts(
             EditorSemanticKind::String,
         );
     }
+    #[cfg(feature = "editor-facts")]
     if let Some(size) = size.as_ref() {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             size,
@@ -1060,9 +1113,10 @@ fn parse_venn_text_statement_facts(
         }
         Ok((explicit_sets, set_fields, identifier, label))
     })();
-    let (explicit_sets, set_fields, identifier, label) = parsed?;
+    let (explicit_sets, _set_fields, identifier, label) = parsed?;
 
-    if let Some(sets) = set_fields {
+    #[cfg(feature = "editor-facts")]
+    if let Some(sets) = _set_fields {
         let list_span = venn_list_span(&sets);
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = state.rich_editor_facts() {
@@ -1096,8 +1150,8 @@ fn parse_venn_text_statement_facts(
         "venn text node",
         EditorSemanticKind::Namespace,
     );
+    #[cfg(feature = "editor-facts")]
     if let Some(label) = label.as_ref() {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             label,
@@ -1154,6 +1208,7 @@ fn parse_venn_style_statement_facts(
     })();
     let (targets, styles) = parsed?;
 
+    #[cfg(feature = "editor-facts")]
     let list_span = venn_list_span(&targets);
     #[cfg(feature = "editor-facts")]
     if let Some(facts) = state.rich_editor_facts() {
@@ -1162,8 +1217,8 @@ fn parse_venn_style_statement_facts(
             list_span,
         ));
     }
+    #[cfg(feature = "editor-facts")]
     for target in &targets {
-        #[cfg(feature = "editor-facts")]
         push_venn_reference_fact(
             state.rich_editor_facts(),
             target,
@@ -1171,8 +1226,8 @@ fn parse_venn_style_statement_facts(
             EditorSemanticKind::Namespace,
         );
     }
+    #[cfg(feature = "editor-facts")]
     for (_, value) in &styles {
-        #[cfg(feature = "editor-facts")]
         push_venn_payload_fact(
             state.rich_editor_facts(),
             value,
@@ -1209,6 +1264,7 @@ fn parse_venn_identifier_list(
     Ok(identifiers)
 }
 
+#[cfg(feature = "editor-facts")]
 fn venn_list_span(items: &[VennFieldSpan]) -> SourceSpan {
     let start = items.first().map(|item| item.span.start).unwrap_or(0);
     let end = items.last().map(|item| item.span.end).unwrap_or(start);
@@ -1515,10 +1571,12 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
-    use crate::{Engine, MermaidConfig, ParseMetadata, ParseOptions, RenderSemanticModel};
+    use crate::{
+        MermaidConfig, MermaidEngine, ParseOptions, PresentationMetadata, RenderSemanticModel,
+    };
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "venn".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1753,7 +1811,7 @@ text A,B 42
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_venn_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r##"venn-beta
 title Product Surface
 set A["Core"]:20
@@ -2088,7 +2146,7 @@ style A,B fill:#ff6b6b, color:red
 
     #[test]
     fn render_model_entrypoint_returns_typed_venn_model() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "venn-beta\nset A\nset B\nunion A,B\n",
                 ParseOptions::strict(),
@@ -2262,7 +2320,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::ParseMetadata {
+        let meta = crate::PresentationMetadata {
             diagram_type: "venn".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

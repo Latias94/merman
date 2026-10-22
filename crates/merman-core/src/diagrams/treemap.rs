@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
@@ -221,7 +221,7 @@ impl TreemapParseOutcome {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn into_combined_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
         let Self {
@@ -275,6 +275,7 @@ struct SpannedValue {
 }
 
 struct TreemapSemanticSource {
+    #[cfg(feature = "compat-json")]
     present: bool,
     title: Option<String>,
     acc_title: Option<String>,
@@ -380,7 +381,7 @@ fn push_treemap_row_editor_facts(facts: &mut EditorSemanticFacts, row: &TreemapR
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_treemap(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse_treemap_semantic_source(code, meta)?
         .into_render_model_controlled(&crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled");
@@ -390,7 +391,7 @@ pub(crate) fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_treemap_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -408,7 +409,7 @@ pub(crate) fn parse_treemap_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_treemap_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
     Ok(parse_treemap_semantic_source(code, meta)?
         .into_render_model_controlled(&crate::OperationControl::new())
@@ -418,7 +419,7 @@ pub(crate) fn parse_treemap_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_treemap_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<TreemapDiagramRenderModel>> {
     let parsed = parse_treemap_outcome_controlled(
@@ -439,7 +440,7 @@ pub(crate) fn parse_treemap_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &crate::OperationControl::new())
         .expect("a private compatibility projection control cannot be cancelled")
@@ -449,7 +450,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<crate::ManagedSemanticJson>> {
     control.checkpoint()?;
@@ -463,7 +464,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
 #[cfg(feature = "compat-json")]
 fn render_model_to_compat_json_unchecked(
     model: &TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<crate::ManagedSemanticJson>> {
     control.checkpoint()?;
@@ -540,7 +541,7 @@ fn render_model_to_compat_json_unchecked(
 #[cfg(feature = "compat-json")]
 fn treemap_compatibility_output_preflight(
     model: &TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<()>> {
     control.checkpoint()?;
@@ -566,7 +567,7 @@ fn treemap_compatibility_output_preflight(
 #[cfg(feature = "compat-json")]
 fn estimate_compatibility_json_bytes(
     model: &TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     class_style_bytes: &std::collections::HashMap<&str, usize>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<usize> {
@@ -950,7 +951,7 @@ fn json_object_overhead(field_count: usize) -> usize {
 
 #[cfg(feature = "compat-json")]
 fn treemap_compatibility_output_budget_error(
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     estimated_bytes: usize,
 ) -> Error {
     Error::diagram_parse_fallback(
@@ -1204,18 +1205,18 @@ impl TreemapSemanticSource {
     }
 }
 
-#[cfg(feature = "presentation")]
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_treemap_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<TreemapSemanticSource> {
     construct_treemap_semantic_source(code, meta)
 }
 
-#[cfg(feature = "presentation")]
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_treemap_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<TreemapSemanticSource> {
     let control = crate::OperationControl::new();
     let parsed = parse_treemap_outcome_controlled(
@@ -1280,6 +1281,7 @@ fn treemap_semantic_source_from_parsed_controlled(
     let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
     control.checkpoint()?;
     Ok(TreemapSemanticSource {
+        #[cfg(feature = "compat-json")]
         present: parsed.present,
         title: parsed.title,
         acc_title: parsed.acc_title,
@@ -2031,12 +2033,12 @@ impl<'a> Parser<'a> {
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        Engine, ManagedSemanticJson, MermaidConfig, ParseMetadata, ParseOptions,
+        ManagedSemanticJson, MermaidConfig, MermaidEngine, ParseOptions, PresentationMetadata,
         RenderSemanticModel,
     };
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "treemap".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2047,7 +2049,7 @@ pub(crate) mod tests {
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2098,7 +2100,7 @@ pub(crate) mod tests {
 
     #[test]
     fn treemap_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"treemap
 title Treemap Title
 accTitle: Treemap accTitle
@@ -2146,7 +2148,7 @@ accDescr: Treemap accDescr
     }
 
     fn parse_error(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         err.to_string()
     }
@@ -2181,7 +2183,7 @@ accDescr: Treemap accDescr
             Some("leaf")
         );
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -2755,7 +2757,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
             "diagrams::treemap::tests::treemap_deep_clone_drop_export_child",
             || {
                 let source = deep_treemap_chain(5_000);
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -2774,7 +2776,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 drop(parsed.clone());
                 drop(parsed);
                 assert!(
-                    Engine::new()
+                    MermaidEngine::new()
                         .parse_diagram_sync("treemap\n\"leaf\": 1\n", ParseOptions::strict())
                         .is_ok()
                 );

@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{
     Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
@@ -415,7 +415,7 @@ impl StateDb {
     }
 
     #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
+    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
         let model = self
             .into_model_controlled(meta, &OperationControl::new())
             .expect("a private operation control cannot be cancelled")?;
@@ -425,7 +425,7 @@ impl StateDb {
     #[cfg(feature = "presentation")]
     pub(super) fn into_model_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
         match self.into_canonical_model_controlled(
@@ -1479,12 +1479,14 @@ fn normalize_multiline_ws(input: &str) -> String {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use crate::diagrams::state::parse_state_model_for_render_controlled;
-    use crate::{Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions};
+    use crate::{
+        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, PresentationMetadata,
+    };
     use serde_json::json;
 
-    fn meta(config: serde_json::Value) -> ParseMetadata {
+    fn meta(config: serde_json::Value) -> PresentationMetadata {
         let config = MermaidConfig::from_value(config);
-        ParseMetadata {
+        PresentationMetadata {
             diagram_type: "stateDiagram".to_string(),
             config: config.clone(),
             effective_config: crate::presentation::PresentationConfig::from_config(config),
@@ -1923,7 +1925,7 @@ mod tests {
 
     #[test]
     fn state_note_generated_id_collision_is_rejected_independent_of_declaration_order() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let authored_state = "state \"Authored\" as A----note-0";
         let positioned_note = "note right of A : Generated note";
 

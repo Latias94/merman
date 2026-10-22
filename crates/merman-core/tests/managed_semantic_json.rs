@@ -245,7 +245,7 @@ fn managed_json_lifecycle_child() {
             println!("managed-deep-clone-equality-export-debug-drop=done");
             io::stdout().flush().unwrap();
             let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
-            let mut engine = merman_core::Engine::new();
+            let mut engine = merman_core::MermaidEngine::new();
             engine.diagram_registry_mut().insert("sequence", |_, _, _| {
                 Ok(Ok(chain(5_000).into_unmanaged_value()))
             });

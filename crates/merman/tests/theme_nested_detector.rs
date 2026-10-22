@@ -2,8 +2,8 @@
 
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
-    DetectorRegistry, Engine, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
-    presentation::PresentationConfig,
+    DetectorRegistry, MermaidEngine, OperationControl, RenderError, RenderOutput, RenderRequest,
+    Renderer, presentation::PresentationConfig,
 };
 
 const SOURCE: &str = "stateDiagram-v2\nReady --> Done\n";
@@ -12,8 +12,8 @@ fn replace_config_with_nested_theme(_source: &str, config: &mut PresentationConf
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();
-    let RenderOutput::Semantic(Some(semantic)) = Renderer::new()
-        .render(RenderRequest::semantic(SOURCE, OperationControl::new()).with_theme(theme))
+    let RenderOutput::Presentation(Some(semantic)) = Renderer::new()
+        .render(RenderRequest::presentation(SOURCE, OperationControl::new()).with_theme(theme))
         .unwrap()
     else {
         panic!("nested themed semantic operation must produce a diagram");
@@ -23,14 +23,14 @@ fn replace_config_with_nested_theme(_source: &str, config: &mut PresentationConf
 }
 
 fn render_after_nested_detector(preset: ThemePreset) -> Result<RenderOutput, Box<RenderError>> {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     *engine.registry_mut() = DetectorRegistry::new();
     engine
         .registry_mut()
         .add_fn("stateDiagram", replace_config_with_nested_theme);
     let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
     Renderer::new()
-        .with_engine(engine)
+        .with_presentation_engine(engine)
         .render(
             RenderRequest::svg(SOURCE, OperationControl::new(), Default::default())
                 .with_theme(theme),

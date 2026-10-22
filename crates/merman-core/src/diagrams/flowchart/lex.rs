@@ -312,6 +312,13 @@ pub(super) fn attach_class_assign_stmt_spans(
 
 #[derive(Clone, Copy)]
 struct SpannedSlice<'a> {
+    #[cfg_attr(
+        not(feature = "editor-facts"),
+        allow(
+            dead_code,
+            reason = "The shared source slice retains text for optional editor span refinement."
+        )
+    )]
     text: &'a str,
     span: SourceSpan,
 }
@@ -389,13 +396,19 @@ fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
 
 struct ClickParse<'a> {
     s: &'a str,
+    #[cfg(feature = "editor-facts")]
     base: usize,
     i: usize,
 }
 
 impl<'a> ClickParse<'a> {
-    fn new(s: &'a str, base: usize) -> Self {
-        Self { s, base, i: 0 }
+    fn new(s: &'a str, _base: usize) -> Self {
+        Self {
+            s,
+            #[cfg(feature = "editor-facts")]
+            base: _base,
+            i: 0,
+        }
     }
 
     fn skip_ws(&mut self) {
@@ -453,6 +466,7 @@ impl<'a> ClickParse<'a> {
         &self.s[self.i..]
     }
 
+    #[cfg(feature = "editor-facts")]
     fn source_span(&self, start: usize, end: usize) -> SourceSpan {
         SourceSpan::new(self.base + start, self.base + end)
     }
@@ -599,6 +613,7 @@ pub(super) fn parse_click_stmt(
             editor_evidence: Default::default(),
             #[cfg(feature = "editor-facts")]
             interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
             recovery_error: None,
         });
     }
@@ -700,6 +715,7 @@ pub(super) fn parse_click_stmt(
             editor_evidence: Default::default(),
             #[cfg(feature = "editor-facts")]
             interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
             recovery_error: None,
         });
     }
@@ -760,6 +776,7 @@ pub(super) fn parse_click_stmt(
             editor_evidence: Default::default(),
             #[cfg(feature = "editor-facts")]
             interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
             recovery_error: None,
         });
     }
@@ -818,6 +835,7 @@ pub(super) fn parse_click_stmt(
         editor_evidence: Default::default(),
         #[cfg(feature = "editor-facts")]
         interaction_evidence,
+        #[cfg(any(test, feature = "editor-facts"))]
         recovery_error: None,
     })
 }

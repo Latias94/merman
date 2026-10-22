@@ -2,14 +2,14 @@ use super::*;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole};
 use crate::{
-    Engine, Error, MermaidConfig, OperationControl, ParseDiagnosticSpanKind, ParseOptions,
+    Error, MermaidConfig, MermaidEngine, OperationControl, ParseDiagnosticSpanKind, ParseOptions,
     RenderSemanticModel, SourceSpan,
 };
 use futures::executor::block_on;
 use serde_json::json;
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
         effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -40,8 +40,8 @@ fn parse_with_site_config(
     site_config: Option<crate::presentation::PresentationConfig>,
 ) -> crate::ManagedSemanticJson {
     let engine = match site_config {
-        Some(site_config) => Engine::new().with_site_config(site_config),
-        None => Engine::new(),
+        Some(site_config) => MermaidEngine::new().with_site_config(site_config),
+        None => MermaidEngine::new(),
     };
     block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -76,7 +76,7 @@ fn utc_ms(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
 
 #[test]
 fn gantt_entrypoints_construct_one_semantic_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "gantt\n",
         "dateFormat YYYY-MM-DD\n",
@@ -122,7 +122,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         "Build: build,2026-01-01,2d\n",
         "Ship: ship,after build,1d\n",
     );
-    let meta = ParseMetadata {
+    let meta = PresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
         effective_config: crate::presentation::PresentationConfig::default(),
@@ -195,7 +195,7 @@ fn gantt_typed_projection_matches_compatibility_semantics() {
     );
     let effective_config =
         crate::presentation::PresentationConfig::from_value(json!({ "securityLevel": "loose" }));
-    let meta = ParseMetadata {
+    let meta = PresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
         effective_config,
@@ -363,7 +363,7 @@ fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
 
 #[test]
 fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
-    let meta = ParseMetadata {
+    let meta = PresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
         effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -391,7 +391,7 @@ fn gantt_date_format_consumes_one_separator_and_preserves_extra_whitespace() {
 
         #[cfg(feature = "editor-facts")]
         {
-            let facts = Engine::new()
+            let facts = MermaidEngine::new()
                 .parse_editor_semantic_facts_with_type_sync("gantt", &text)
                 .unwrap()
                 .expect("gantt editor facts");
@@ -438,7 +438,7 @@ fn gantt_title_preserves_jison_separator_and_last_assignment_semantics() {
 
     #[cfg(feature = "editor-facts")]
     {
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("gantt", unicode)
             .unwrap()
             .expect("gantt editor facts");
@@ -467,7 +467,7 @@ fn gantt_title_requires_content_after_the_separator() {
     );
     let title_start = text.find("title").unwrap();
 
-    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+    let Error::DiagramParse { diagnostic, .. } = MermaidEngine::new()
         .parse_diagram_sync(text, ParseOptions::strict())
         .expect_err("a bare title separator must not match the pinned Jison title token")
     else {
@@ -485,7 +485,7 @@ fn gantt_title_requires_content_after_the_separator() {
 
     #[cfg(feature = "editor-facts")]
     {
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("gantt", text)
             .unwrap()
             .expect("gantt editor facts");
@@ -523,7 +523,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
         "Task 2: id2,after id1,until id1\n",
         "click id2 call open(userId) href \"https://example.com/\"\n",
     );
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -720,7 +720,7 @@ fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
         "Forward: early,after later,1d\n",
         "Later: later,2026-01-01,1d\n",
     );
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", source)
         .unwrap()
         .expect("gantt editor facts");
@@ -745,7 +745,7 @@ fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
 #[cfg(feature = "editor-facts")]
 fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
     let text = concat!("gantt\n", "accDescr {\n", "  Draft release notes\n");
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -779,7 +779,7 @@ fn gantt_editor_facts_recovers_from_incomplete_input() {
         "Task 1: id1,2014-01-01,1d\n",
         "Task 2",
     );
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -811,7 +811,7 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
         "gantt\n",
         "Task 1: id1,2014-01-01,1d\n",
     );
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -835,7 +835,7 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
 fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
     let text = "gantt\nweekday foo\n";
     reset_gantt_syntax_construction_count();
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -849,7 +849,7 @@ fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
     }));
 
     reset_gantt_syntax_construction_count();
-    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+    let Error::DiagramParse { diagnostic, .. } = MermaidEngine::new()
         .parse_diagram_sync(text, ParseOptions::strict())
         .expect_err("invalid weekday must fail strict Gantt parsing")
     else {
@@ -873,7 +873,7 @@ fn gantt_editor_facts_skip_frontmatter() {
         "gantt\n",
         "Task 1: id1,2014-01-01,1d\n",
     );
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
@@ -888,7 +888,7 @@ fn gantt_editor_facts_skip_frontmatter() {
 
 #[test]
 fn gantt_render_model_uses_fixed_today_for_missing_year_dates() {
-    let engine = Engine::new()
+    let engine = MermaidEngine::new()
         .with_fixed_today(Some(
             CivilDate::new(2026, 2, 15).expect("valid fixed today"),
         ))
@@ -1092,7 +1092,7 @@ test2: id2,2019-02-01,2019-02-03
 
 #[test]
 fn gantt_rejects_ridiculous_years() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram(
         r#"
 gantt
@@ -1255,7 +1255,7 @@ fn gantt_javascript_time_boundary_supports_one_millisecond_duration() {
     let source = format!("gantt\ndateFormat x\nsection Boundary\nTask: task,{max_ms},1ms\n");
     let utc = crate::time::LocalTimeZone::utc();
     let parsed = with_test_local_time_zone(utc, || {
-        block_on(Engine::new().parse_diagram(&source, ParseOptions::default()))
+        block_on(MermaidEngine::new().parse_diagram(&source, ParseOptions::default()))
     })
     .expect("one millisecond remains representable at the JavaScript Date boundary")
     .expect("gantt detected");
@@ -1542,7 +1542,7 @@ test1: id1,2019-02-07,2d
 
 #[test]
 fn gantt_rejects_excludes_that_cover_every_weekday() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram(
         r#"
 gantt
@@ -1563,7 +1563,7 @@ task :a, 2025-01-01, 1d
 
 #[test]
 fn gantt_rejects_long_exclude_runs_instead_of_looping() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram(
         r#"
 gantt
@@ -1751,7 +1751,8 @@ section A
 task: id1, 2013-01-01, 1d
 click id1
 "#;
-    let err = block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
+    let err =
+        block_on(MermaidEngine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
 
     assert!(
         err.to_string().contains("invalid click statement"),
@@ -1790,8 +1791,8 @@ task: id1, 2013-01-01, 1d
 click id1 call first() call second()
 "#,
     ] {
-        let err =
-            block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
+        let err = block_on(MermaidEngine::new().parse_diagram(source, ParseOptions::default()))
+            .unwrap_err();
 
         assert!(
             err.to_string().contains("invalid click statement"),
@@ -1802,7 +1803,7 @@ click id1 call first() call second()
 
 #[test]
 fn gantt_click_rejects_unrecognized_tail() {
-    let err = block_on(Engine::new().parse_diagram(
+    let err = block_on(MermaidEngine::new().parse_diagram(
         r#"
 gantt
 dateFormat YYYY-MM-DD
@@ -2000,7 +2001,7 @@ fn gantt_relative_ref_ids_preserve_source_regex_space_backtracking() {
 
 #[test]
 fn gantt_relative_keywords_are_case_sensitive_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram(
         r#"
 gantt
@@ -2373,7 +2374,7 @@ test: id1,2013-01-01,1d
 
 #[test]
 fn gantt_weekday_rejects_unknown_values() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "gantt\nweekday foo\n";
     let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
     assert!(err.to_string().contains("invalid weekday"));
@@ -2391,7 +2392,7 @@ fn gantt_weekday_rejects_unknown_values() {
 
 #[test]
 fn gantt_weekend_rejects_unknown_values() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram(
         r#"
 gantt
@@ -2423,7 +2424,7 @@ test2: id2,after missing,1d
 
 #[test]
 fn gantt_unknown_reference_warnings_preserve_fallback_and_resolved_dates() {
-    let engine = Engine::new()
+    let engine = MermaidEngine::new()
         .with_fixed_today(Some(CivilDate::new(2026, 2, 15).unwrap()))
         .try_with_fixed_local_offset_minutes(0)
         .unwrap();

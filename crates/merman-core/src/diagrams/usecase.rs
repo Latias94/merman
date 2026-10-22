@@ -9,7 +9,7 @@ use crate::EditorSemanticFacts;
 use crate::family::EditorFactsDemand;
 use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
@@ -426,7 +426,7 @@ pub(crate) fn parse_usecase_semantic_model_controlled(
 #[cfg(all(test, feature = "compat-json"))]
 fn construct(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     construct_usecase_semantic_source_controlled(
@@ -446,7 +446,7 @@ struct Construction {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_usecase(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_usecase(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let control = OperationControl::new();
     let construction = construct_usecase_semantic_source_controlled(
         code,
@@ -464,7 +464,7 @@ pub(crate) fn parse_usecase(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_usecase_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<UsecaseDiagramModel>> {
     Ok(construct_usecase_semantic_source_controlled(
@@ -483,7 +483,7 @@ pub(crate) fn parse_usecase_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_usecase_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_usecase_semantic_source_controlled(
@@ -509,7 +509,7 @@ pub(crate) fn parse_usecase_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &UsecaseDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let json_nodes: Vec<_> = model
         .json_nodes
@@ -670,7 +670,7 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::ParseMetadata {
+            let full_metadata = crate::PresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
                 effective_config: crate::presentation::PresentationConfig::from_config(

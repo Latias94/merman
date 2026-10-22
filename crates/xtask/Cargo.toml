@@ -19,7 +19,7 @@ fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
-merman = { path = "../merman", default-features = false, features = ["all-diagrams", "svg"] }
+merman = { path = "../merman", default-features = false, features = ["all-diagrams", "svg", "compat-json"] }
 merman-analysis = { workspace = true, features = ["all-diagrams"] }
 merman-bindings-core = { workspace = true, features = [
     "all-diagrams",

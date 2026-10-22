@@ -1313,7 +1313,7 @@ mod tests {
                 "architecture-beta\nservice worker \"<a href='https://example.test'>Docs</a>\" [Worker]",
             ),
         ] {
-            let parsed = merman_core::Engine::new()
+            let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap_or_else(|error| panic!("{name}: {error}"))
                 .unwrap();

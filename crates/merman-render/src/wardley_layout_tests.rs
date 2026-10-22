@@ -26,7 +26,7 @@ fn annotations_measure_the_family_font_override_used_by_svg() {
             crate::text::DeterministicTextMeasurer::default().measure(text, style)
         }
     }
-    let parsed = merman_core::Engine::new()
+    let parsed = merman_core::MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "wardley-beta\nannotations [0.1, 0.2]\nannotation 1,[0.78, 0.82] \"Font probe\"",
             merman_core::ParseOptions::strict(),

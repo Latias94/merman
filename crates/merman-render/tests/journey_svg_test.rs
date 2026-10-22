@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector,
@@ -82,7 +82,7 @@ fn journey_text_fill_has_portable_terminal_evidence() {
                 .expect("compile Journey Text.fill");
             let parsed = merman_render::__private::install_parse_compatibility(
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             )
             .parse_diagram_for_render_model_sync(
                 "journey\n  title Release\n  section Delivery\n    Ship release: 5: Maintainer\n",
@@ -135,7 +135,7 @@ fn render_journey_rules_with_requirement(
         .expect("compile Journey rules");
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(config)),
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .expect("parse Journey")
@@ -432,7 +432,7 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
             ] {
                 let parsed = merman_render::__private::install_parse_compatibility(
                     &theme,
-                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                 )
                 .parse_diagram_for_render_model_sync(
                     "journey\n  title Release\n  section Delivery\n    Ship release: 5: Maintainer\n",
@@ -585,13 +585,14 @@ fn journey_task_radius_reaches_terminal_svg_without_changing_sections() {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile Journey task radius theme");
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(
-                "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
-                ParseOptions::strict(),
-            )
-            .expect("parse themed Journey")
-            .expect("detect themed Journey");
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(
+                    "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                    ParseOptions::strict(),
+                )
+                .expect("parse themed Journey")
+                .expect("detect themed Journey");
         let session = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -641,13 +642,14 @@ fn journey_task_radius_reaches_terminal_svg_without_changing_sections() {
 #[test]
 fn journey_task_static_paint_reaches_terminal_rect_and_is_fully_accounted() {
     let theme = journey_task_paint_theme();
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse themed Journey")
-        .expect("detect themed Journey");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(
+                "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse themed Journey")
+            .expect("detect themed Journey");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -702,13 +704,14 @@ fn journey_task_explicit_default_paint_reaches_terminal_rect_and_is_fully_accoun
     ] {
         let theme =
             journey_task_paint_theme_with_variant(Some(ThemeVariant::Default), fill, stroke);
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(
-                "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
-                ParseOptions::strict(),
-            )
-            .expect("parse explicitly default-themed Journey")
-            .expect("detect explicitly default-themed Journey");
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(
+                    "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                    ParseOptions::strict(),
+                )
+                .expect("parse explicitly default-themed Journey")
+                .expect("detect explicitly default-themed Journey");
         let session = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -760,10 +763,11 @@ fn journey_task_explicit_default_paint_is_not_applicable_without_tasks() {
         CanvasPaint::solid("#123456").expect("valid Journey task fill"),
         CanvasPaint::solid("#654321").expect("valid Journey task stroke"),
     );
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync("journey\n", ParseOptions::strict())
-        .expect("parse empty Journey")
-        .expect("detect empty Journey");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync("journey\n", ParseOptions::strict())
+            .expect("parse empty Journey")
+            .expect("detect empty Journey");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -789,13 +793,14 @@ fn journey_task_explicit_default_paint_is_not_applicable_without_tasks() {
 #[test]
 fn journey_base_typography_drives_scoped_css_and_is_fully_accounted() {
     let theme = journey_typography_theme(21.0);
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse themed Journey")
-        .expect("detect themed Journey");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(
+                "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse themed Journey")
+            .expect("detect themed Journey");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -852,7 +857,7 @@ fn journey_explicit_theme_font_size_owns_only_the_size_route() {
     let theme = journey_typography_theme(21.0);
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "24px" }
         }))),
     )
@@ -902,7 +907,7 @@ fn journey_task_palette_reaches_section_and_task_terminals_without_legacy_projec
             ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::JourneyTask, palette),
         ))
         .expect("compile Journey task palette theme");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "journey\n  section Delivery\n    Ship release: 5: Maintainer\n  section Verify\n    Verify release: 4: Maintainer\n",
             ParseOptions::strict(),
@@ -974,7 +979,7 @@ fn journey_task_palette_preserves_source_owned_slots_and_counts_typed_slots() {
         .expect("compile Journey task palette theme");
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     )
@@ -1061,7 +1066,7 @@ fn journey_task_transparent_palette_reaches_both_terminals() {
             ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::JourneyTask, palette),
         ))
         .expect("compile Journey task palette theme");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "journey\n  section Delivery\n    Ship release: 5: Maintainer\n  section Verify\n    Verify release: 4: Maintainer\n",
             ParseOptions::strict(),
@@ -1156,7 +1161,7 @@ fn journey_task_theme_receipts_only_require_actual_section_headers() {
                 "journey\n  Unsectioned: 5: Actor\n"
             };
             let parsed =
-                merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+                merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
                     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();

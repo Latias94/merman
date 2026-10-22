@@ -1101,7 +1101,7 @@ mod tests {
                 };
                 let parsed = crate::__private::install_parse_compatibility(
                     &theme,
-                    merman_core::Engine::new(),
+                    merman_core::MermaidEngine::new(),
                 )
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()

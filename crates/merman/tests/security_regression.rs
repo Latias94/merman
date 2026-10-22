@@ -28,8 +28,12 @@ impl TypedSvgRenderer {
     }
 
     fn with_site_config(mut self, site_config: PresentationConfig) -> Self {
-        let engine = self.renderer.engine().clone().with_site_config(site_config);
-        self.renderer = self.renderer.with_engine(engine);
+        let engine = self
+            .renderer
+            .presentation_engine()
+            .clone()
+            .with_site_config(site_config);
+        self.renderer = self.renderer.with_presentation_engine(engine);
         self
     }
 

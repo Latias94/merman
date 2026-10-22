@@ -824,7 +824,7 @@ mod resource_tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::presentation::PresentationConfig;
     use merman_core::{
-        Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
+        MermaidEngine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
     };
     use rustc_hash::FxHashMap;
     use serde_json::json;
@@ -874,7 +874,7 @@ mod resource_tests {
     }
 
     fn sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramRenderModel {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

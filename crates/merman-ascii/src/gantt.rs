@@ -543,7 +543,7 @@ mod tests {
     fn canonical_gantt_tasks_match_full_terminal_dates_sections_and_constraints() {
         use merman_core::presentation::PresentationConfig;
         use merman_core::{
-            Engine, MermaidConfig, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
+            MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
             SemanticParser,
         };
 
@@ -553,7 +553,7 @@ mod tests {
         let parser = SemanticParser::new()
             .with_runtime_policy(runtime.clone())
             .with_site_config(MermaidConfig::from_value(config.clone()));
-        let engine = Engine::new()
+        let engine = MermaidEngine::new()
             .with_runtime_policy(runtime)
             .with_site_config(PresentationConfig::from_value(config));
         let options = AsciiRenderOptions::ascii();

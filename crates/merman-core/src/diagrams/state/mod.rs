@@ -63,6 +63,7 @@ include_checked_in_lalrpop_parser!(
 #[derive(Debug, Clone)]
 pub(crate) struct SpannedDirection {
     pub value: String,
+    #[cfg(any(test, feature = "editor-facts"))]
     pub selection: crate::SourceSpan,
 }
 
@@ -396,6 +397,7 @@ impl<'input> Lexer<'input> {
                     start,
                     Tok::Direction(SpannedDirection {
                         value: direction.to_string(),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         selection: crate::SourceSpan::new(start + value_end - 2, start + value_end),
                     }),
                     self.pos,

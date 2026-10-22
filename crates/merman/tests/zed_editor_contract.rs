@@ -6,11 +6,11 @@ use merman::svg::{
     SvgRenderOptions,
 };
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
     presentation::PresentationConfig,
 };
 
-fn zed_like_engine() -> Engine {
+fn zed_like_engine() -> MermaidEngine {
     let theme_config = PresentationConfig::from_value(serde_json::json!({
         "theme": "base",
         "darkMode": true,
@@ -100,7 +100,7 @@ fn zed_like_engine() -> Engine {
         }
     }));
 
-    Engine::new().with_site_config(theme_config)
+    MermaidEngine::new().with_site_config(theme_config)
 }
 
 fn render_zed_safe(name: &str, source: &str) -> String {
@@ -123,7 +123,7 @@ fn render_zed_with_host_css(name: &str, source: &str, host_css: &str) -> String 
 
 fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) -> String {
     let output = Renderer::new()
-        .with_engine(zed_like_engine())
+        .with_presentation_engine(zed_like_engine())
         .render(RenderRequest::svg(
             source,
             OperationControl::new(),

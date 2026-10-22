@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -12,7 +12,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn layout_er(text: &str) -> ErDiagramLayout {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -209,7 +209,7 @@ fn er_elk_layout_materializes_compound_subgraphs_and_svg_groups() {
         "end\n",
         "WAREHOUSE ||--o{ Orders : ships\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");

@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::LineCursor;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -351,6 +351,13 @@ impl<'source> SourceSlice<'source> {
 #[derive(Debug, Clone)]
 struct ParsedText<'source> {
     value: String,
+    #[cfg_attr(
+        not(feature = "editor-facts"),
+        allow(
+            dead_code,
+            reason = "The shared parsed text retains its source slice for optional editor facts."
+        )
+    )]
     content: SourceSlice<'source>,
 }
 
@@ -527,6 +534,7 @@ fn find_class_marker(input: &str) -> Option<usize> {
 struct ParsedPoint<'source> {
     label: ParsedText<'source>,
     class_name: Option<SourceSlice<'source>>,
+    #[cfg(feature = "editor-facts")]
     class_marker: Option<SourceSpan>,
     x: f64,
     y: f64,
@@ -542,28 +550,28 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
         .subslice(colon_idx + 1, statement.text.len())
         .trim_start();
 
-    let (class_name, class_marker, label_input) = if let Some(marker) = find_class_marker(head.text)
-    {
-        let class = head.subslice(marker + 3, head.text.len()).trim();
-        if class
-            .text
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        {
-            (
-                (!class.text.is_empty()).then_some(class),
-                Some(SourceSpan::new(
-                    head.start + marker,
-                    head.start + marker + 3,
-                )),
-                head.subslice(0, marker).trim_end(),
-            )
+    let (class_name, _class_marker, label_input) =
+        if let Some(marker) = find_class_marker(head.text) {
+            let class = head.subslice(marker + 3, head.text.len()).trim();
+            if class
+                .text
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                (
+                    (!class.text.is_empty()).then_some(class),
+                    Some(SourceSpan::new(
+                        head.start + marker,
+                        head.start + marker + 3,
+                    )),
+                    head.subslice(0, marker).trim_end(),
+                )
+            } else {
+                (None, None, head)
+            }
         } else {
             (None, None, head)
-        }
-    } else {
-        (None, None, head)
-    };
+        };
     let label = parse_text_slice(label_input)?;
 
     if !tail.text.starts_with('[') {
@@ -602,7 +610,8 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
     Ok(Some(ParsedPoint {
         label,
         class_name,
-        class_marker,
+        #[cfg(feature = "editor-facts")]
+        class_marker: _class_marker,
         x,
         y,
         styles: styles.items,
@@ -732,6 +741,7 @@ fn push_quadrant_outline_fact(
 
 struct QuadrantAccDescrBlock {
     text: String,
+    #[cfg(feature = "editor-facts")]
     source_start: usize,
 }
 
@@ -818,7 +828,7 @@ fn push_quadrant_point_facts(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_quadrant_chart_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
     construct_quadrant_chart_semantic_source_controlled(
         code,
@@ -980,6 +990,7 @@ fn parse_quadrant_chart_semantic_source(
                     {
                         facts.push_directive_prefix("accDescr");
                     }
+                    #[cfg(feature = "editor-facts")]
                     let content_start = rest.start + 1;
                     let after_brace = rest.subslice(1, rest.text.len());
                     if let Some(end) = after_brace.text.find('}') {
@@ -1016,6 +1027,7 @@ fn parse_quadrant_chart_semantic_source(
                         }
                         acc_descr_block = Some(QuadrantAccDescrBlock {
                             text,
+                            #[cfg(feature = "editor-facts")]
                             source_start: content_start,
                         });
                     }
@@ -1368,7 +1380,7 @@ fn parse_quadrant_chart_semantic_source(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_quadrant_chart(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = construct_quadrant_chart_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?;
     render_model_to_compat_json(&source.model, meta)
@@ -1378,7 +1390,7 @@ pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<V
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_quadrant_chart_semantic_source_controlled(
@@ -1406,7 +1418,7 @@ pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &QuadrantChartDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(9);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -1427,7 +1439,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_quadrant_chart_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<QuadrantChartDiagramModel> {
     construct_quadrant_chart_semantic_source(code, meta)
         .map(|source| source.model)
@@ -1437,7 +1449,7 @@ pub(crate) fn parse_quadrant_chart_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<QuadrantChartDiagramModel>> {
     let construction = construct_quadrant_chart_semantic_source_controlled(
@@ -1513,11 +1525,11 @@ mod tests {
     use crate::generated;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole};
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1525,7 +1537,7 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
@@ -1546,7 +1558,7 @@ mod tests {
 
     #[test]
     fn errors_without_header() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "quadrantChart".to_string(),
             config: MermaidConfig::default(),
             effective_config: generated::default_presentation_config(),
@@ -1669,7 +1681,7 @@ mod tests {
             "classDef priority color: #109060\n",
             "Project A:::priority: [0.2, 0.8]\n",
         );
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
             .unwrap()
             .expect("quadrant editor facts");
@@ -1772,7 +1784,7 @@ Incorta: [0.20, 0.30]\n",
 
     #[test]
     fn parse_quadrant_chart_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r##"
 quadrantChart
 title Typed Quadrant
@@ -1861,7 +1873,7 @@ Project A:::priority : [0.2, 0.8]
 
     #[test]
     fn entrypoints_and_combined_projection_construct_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "quadrantChart\n",
             "title Delivery portfolio\n",
@@ -1924,7 +1936,7 @@ Project A:::priority : [0.2, 0.8]
 
     #[test]
     fn quoted_semicolons_and_inline_acc_descr_block_share_statement_scanner() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "quadrantChart\n",
             "title \"Plan; Execute\"; accDescr {first %% literal; second}; quadrant-1 \"Build; Learn\"\n",
@@ -1964,7 +1976,7 @@ Project A:::priority : [0.2, 0.8]
 
     #[test]
     fn multiline_acc_descr_preserves_original_source_span() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "quadrantChart\n",
             "accDescr {\n",
@@ -2004,7 +2016,7 @@ Project A:::priority : [0.2, 0.8]
     #[test]
     #[cfg(feature = "editor-facts")]
     fn malformed_point_recovers_prior_parser_facts() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "quadrantChart\nx-axis Low --> High\nBroken: [1.2, 0.4]\n";
         let statement_start = text.find("Broken").expect("malformed statement");
         let statement_end = statement_start + "Broken: [1.2, 0.4]".len();
@@ -2033,13 +2045,13 @@ Project A:::priority : [0.2, 0.8]
 
         reset_quadrant_syntax_construction_count();
         #[cfg(feature = "editor-facts")]
-        let snapshot = Engine::new()
+        let snapshot = MermaidEngine::new()
             .parse_diagram_snapshot_with_type_sync("quadrantChart", text)
             .expect("Quadrant snapshot operation")
             .expect("Quadrant snapshot");
         #[cfg(not(feature = "editor-facts"))]
         assert!(
-            Engine::new()
+            MermaidEngine::new()
                 .parse_diagram_sync(text, ParseOptions::strict())
                 .is_err()
         );
@@ -2175,7 +2187,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::ParseMetadata {
+        let meta = crate::PresentationMetadata {
             diagram_type: "quadrantChart".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

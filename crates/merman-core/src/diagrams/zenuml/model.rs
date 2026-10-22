@@ -1,6 +1,6 @@
 use crate::json_value::ManagedJson;
 #[cfg(feature = "compat-json")]
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, PresentationMetadata, Result};
 use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -182,7 +182,7 @@ pub struct ZenumlFragmentSection {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ZenumlDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
         .expect("a private projection control cannot be cancelled")
@@ -191,7 +191,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ZenumlDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     let mut projected = match model_to_typed_json_controlled(model, control)? {
@@ -465,7 +465,7 @@ mod tests {
         let parsed = super::super::parser::parse(source, &tokens);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         let built = super::super::semantic::build(parsed);
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "zenuml".into(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

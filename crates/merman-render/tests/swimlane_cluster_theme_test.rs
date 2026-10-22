@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MermaidThemeCompatibility,
     OrdinalSelector, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -70,7 +70,7 @@ fn try_render_swimlane_cluster(
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(site_config),
+        MermaidEngine::new().with_site_config(site_config),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .expect("parse themed Swimlane")

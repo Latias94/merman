@@ -8,7 +8,7 @@ use merman::svg::{
     EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue, ThemeRule,
     ThemeRuleSet, ThemeStylePatch, ThemeTarget,
 };
-use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
+use merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer};
 
 #[test]
 fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
@@ -330,7 +330,7 @@ fn underestimated_host_label_geometry_is_rejected_by_native_export() {
 
 #[test]
 fn typed_edge_background_preserves_alpha_in_native_pixels() {
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
         PresentationConfig::from_value(serde_json::json!({
             "theme": "redux-color",
             "themeVariables": {

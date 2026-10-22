@@ -1,7 +1,7 @@
 #[cfg(feature = "compat-json")]
 use crate::ManagedSemanticJson;
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 #[cfg(feature = "compat-json")]
 use crate::diagram::legacy_warning_messages;
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
@@ -819,10 +819,12 @@ fn block_db_to_model(
         blocks_flat.push(block_to_semantic_node(block));
     }
     let mut edges = Vec::with_capacity(db.edges.len());
-    for (index, mut edge) in db.edges.into_iter().enumerate() {
+    for (index, edge) in db.edges.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
+        #[cfg(feature = "compat-json")]
+        let mut edge = edge;
         #[cfg(feature = "compat-json")]
         if _presentation_requested {
             compatibility.edge_directions.push(edge.directions.take());
@@ -956,7 +958,7 @@ fn construct_block_semantic_source(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_block_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<BlockDiagramRenderModel> {
     let source = construct_block_semantic_source(
         code,
@@ -977,7 +979,7 @@ pub(crate) fn parse_block_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_block_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<BlockDiagramRenderModel>> {
     let construction = construct_block_semantic_source(
@@ -1348,7 +1350,7 @@ fn push_block_id_list(
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_block_semantic_source(
@@ -1532,6 +1534,7 @@ fn push_document_child(frames: &mut [DocumentFrame], index: usize) -> Result<()>
 
 struct BlockStatementFailure {
     error: Error,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -1816,9 +1819,13 @@ impl<'input, 'control> Parser<'input, 'control> {
                 Ok(false) => continue,
                 Err(error) => {
                     let fallback = self.statement_span(statement_start);
-                    let (error, span) = block_error_with_fallback_span(error, fallback);
+                    let (error, _span) = block_error_with_fallback_span(error, fallback);
                     if first_failure.is_none() {
-                        first_failure = Some(BlockStatementFailure { error, span });
+                        first_failure = Some(BlockStatementFailure {
+                            error,
+                            #[cfg(feature = "editor-facts")]
+                            span: _span,
+                        });
                     }
                     self.recover_to_next_statement(statement_start);
                 }
@@ -1826,6 +1833,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
 
         if frames.len() > 1 && first_failure.is_none() {
+            #[cfg(feature = "editor-facts")]
             let span = SourceSpan::new(self.input.len(), self.input.len());
             first_failure = Some(BlockStatementFailure {
                 error: Error::diagram_parse_insertion_point(
@@ -1833,6 +1841,7 @@ impl<'input, 'control> Parser<'input, 'control> {
                     "expected end for nested block",
                     self.input.len(),
                 ),
+                #[cfg(feature = "editor-facts")]
                 span,
             });
         }
@@ -2914,7 +2923,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &BlockDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
         .expect("a private projection control cannot be cancelled")
@@ -2923,7 +2932,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &BlockDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     if let Err(message) = model.record_metrics() {
@@ -3001,14 +3010,14 @@ pub(crate) fn render_model_to_compat_json_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_block(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_block_with_warning_facts(code, meta).map(crate::family::WarningSemanticParse::into_model)
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_block_with_warning_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<crate::family::WarningSemanticParse> {
     let source = construct_block_semantic_source(
         code,
@@ -3033,11 +3042,11 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::EditorSemanticCompleteness;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -3083,8 +3092,8 @@ mod tests {
         assert_eq!(model["blocks"][0]["children"][0]["colorIndex"], json!(1));
     }
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "block".to_string(),
             config: MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
@@ -3319,7 +3328,7 @@ mod tests {
 
     #[test]
     fn block_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = "block-beta\n  A[\"first\"] --> B[\"second\"]\n";
 
         let parsed = engine
@@ -3816,7 +3825,7 @@ C<["Route"]>(left,down)
             Some("leaf")
         );
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();

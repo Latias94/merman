@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -23,7 +23,7 @@ fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
     let text = std::fs::read_to_string(&mmd_path)
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

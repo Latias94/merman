@@ -84,7 +84,7 @@ fn render_mermaid_svg(
     context: &str,
 ) -> Result<String> {
     let resources = options.resource_policy()?;
-    let mut engine = merman::Engine::new();
+    let mut engine = merman::MermaidEngine::new();
     if let Some(theme) = site_theme {
         let mut config = PresentationConfig::empty_object();
         config.set_value("theme", Value::String(theme.to_string()));
@@ -114,7 +114,7 @@ fn render_mermaid_svg(
         ..Default::default()
     };
     let rendered = Renderer::new()
-        .with_engine(engine)
+        .with_presentation_engine(engine)
         .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
             let hint = match &err {

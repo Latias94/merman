@@ -10,7 +10,9 @@ use super::NODE_TYPE_DEFAULT;
 use super::{MindmapDisplayPolicy, NODE_TYPE_HEXAGON, NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT};
 #[cfg(feature = "compat-json")]
 use crate::{Error, json_value::ManagedJson};
-use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
+use crate::{
+    MermaidConfig, OperationControl, OperationControlResult, PresentationMetadata, Result,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +87,7 @@ pub struct MindmapDiagramRenderEdge {
 
 pub(super) fn model_into_render_model_controlled(
     model: super::db::MindmapDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MindmapDiagramRenderModel>> {
     control.checkpoint()?;
@@ -359,7 +361,7 @@ impl MindmapProjection {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &MindmapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
@@ -369,7 +371,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
@@ -463,7 +465,7 @@ fn hex_digit(value: u8) -> u8 {
 }
 
 #[cfg(feature = "compat-json")]
-fn mindmap_compat_config(meta: &ParseMetadata) -> Value {
+fn mindmap_compat_config(meta: &PresentationMetadata) -> Value {
     let mut config = crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(object) = config.as_object_mut()
@@ -551,7 +553,7 @@ fn mindmap_edge_to_compat_json(edge: &MindmapDiagramRenderEdge) -> Value {
 #[cfg(feature = "compat-json")]
 pub(super) fn mindmap_root_node_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ManagedJson>> {
     let mut node_index = HashMap::with_capacity(model.nodes.len());
@@ -641,7 +643,7 @@ pub(super) fn mindmap_root_node_to_compat_json_controlled(
 fn mindmap_root_record(
     node: &MindmapDiagramRenderNode,
     children: Vec<ManagedJson>,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<ManagedJson> {
     let id = node.id.parse::<i64>().map_err(|_| {
         invalid_mindmap_model(
@@ -716,7 +718,7 @@ fn mindmap_custom_class(node: &MindmapDiagramRenderNode) -> Option<String> {
 }
 
 #[cfg(feature = "compat-json")]
-fn invalid_mindmap_model(meta: &ParseMetadata, message: impl Into<String>) -> Error {
+fn invalid_mindmap_model(meta: &PresentationMetadata, message: impl Into<String>) -> Error {
     Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
 }
 
@@ -758,7 +760,7 @@ mod tests {
             .expect("root child");
         }
 
-        let metadata = ParseMetadata {
+        let metadata = PresentationMetadata {
             diagram_type: "mindmap".to_string(),
             config: config.clone(),
             effective_config: crate::presentation::PresentationConfig::from_value(

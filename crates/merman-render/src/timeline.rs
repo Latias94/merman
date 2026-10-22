@@ -1103,7 +1103,7 @@ mod tests {
     use super::*;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -1113,7 +1113,7 @@ mod tests {
     }
 
     fn layout_timeline(source: &str) -> TimelineDiagramLayout {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");

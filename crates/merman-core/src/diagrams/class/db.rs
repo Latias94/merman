@@ -1,6 +1,6 @@
 use crate::MermaidConfig;
 #[cfg(feature = "compat-json")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::common::parse_generic_types;
 use crate::models::class_diagram as class_typed;
 use crate::sanitize::sanitize_text;
@@ -1094,7 +1094,7 @@ impl<'a> ClassDb<'a> {
     }
 
     #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
+    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Value {
         let model = class_typed::ClassDiagram::new(
             self.into_semantic_model(&meta.diagram_type),
             meta.effective_config.as_config(),

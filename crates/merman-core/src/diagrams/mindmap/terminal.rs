@@ -493,7 +493,7 @@ mod tests {
     #[test]
     #[cfg(feature = "presentation")]
     fn terminal_render_view_borrows_detached_fields_without_node_scan_callbacks() {
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "mindmap\n root((Root))\n  left\n  right\n",
                 crate::ParseOptions::strict(),

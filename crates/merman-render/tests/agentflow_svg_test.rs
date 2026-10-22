@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -72,7 +72,7 @@ flow planner[Planner]
   prompt --> tool
 end
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse agentflow")
         .expect("agentflow render model");
@@ -105,7 +105,7 @@ end
 #[test]
 fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
     for backend in ["elk", "dagre"] {
-        let engine = Engine::new().with_site_config(
+        let engine = MermaidEngine::new().with_site_config(
             merman_core::presentation::PresentationConfig::from_value(json!({"layout": backend})),
         );
         let parsed = engine.parse_diagram_for_render_model_sync(
@@ -428,7 +428,7 @@ fn agentflow_parallel_dagre_loops_replace_metadata_without_moving_the_first_slot
 fn agentflow_cyclic_container_references_preserve_visible_nodes() {
     for backend in ["elk", "dagre"] {
         for collapsed in [false, true] {
-            let engine = Engine::new().with_site_config(
+            let engine = MermaidEngine::new().with_site_config(
                 merman_core::presentation::PresentationConfig::from_value(
                     json!({"layout": backend}),
                 ),
@@ -485,7 +485,7 @@ linkStyle 0 stroke:#271828,stroke-width:3px
 e@{ animate: true, animation: fast }
 click a href "https://example.com" "Open task" _blank
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -543,7 +543,7 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
         ),
     ] {
         for backend in ["elk", "dagre"] {
-            let engine = Engine::new().with_site_config(
+            let engine = MermaidEngine::new().with_site_config(
                 merman_core::presentation::PresentationConfig::from_value(
                     json!({"layout": backend}),
                 ),
@@ -579,7 +579,7 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
 #[test]
 fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
     for backend in ["elk", "dagre"] {
-        let engine = Engine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(
             json!({"layout": backend, "look": "handDrawn", "themeVariables": {"flowContainerStroke": "#123456"}}),
         ));
         let parsed = engine
@@ -630,7 +630,7 @@ B["**plain**"]
 C@{label: "`**literal**`", labelType: text}
 "#;
     for html in [false, true] {
-        let engine = Engine::new().with_site_config(
+        let engine = MermaidEngine::new().with_site_config(
             merman_core::presentation::PresentationConfig::from_value(
                 json!({"layout":"dagre", "htmlLabels":html}),
             ),
@@ -689,7 +689,7 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
     for backend in ["elk", "dagre"] {
         for html_labels in [false, true] {
             for flowchart in [json!({}), json!({"minNodeWidth": 10})] {
-                let engine = Engine::new().with_site_config(
+                let engine = MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(json!({
                         "layout": backend,
                         "htmlLabels": html_labels,
@@ -720,7 +720,7 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
 
         let mut dimensions = Vec::new();
         for wrapping_width in [40, 200] {
-            let engine = Engine::new().with_site_config(
+            let engine = MermaidEngine::new().with_site_config(
                 merman_core::presentation::PresentationConfig::from_value(json!({
                     "layout": backend,
                     "htmlLabels": false,
@@ -761,12 +761,12 @@ fn render_agentflow_config_probe(
 ) -> (serde_json::Value, String) {
     let (engine, source) = if frontmatter {
         (
-            Engine::new(),
+            MermaidEngine::new(),
             format!("---\nconfig: {config}\n---\n{source}"),
         )
     } else {
         (
-            Engine::new().with_site_config(
+            MermaidEngine::new().with_site_config(
                 merman_core::presentation::PresentationConfig::from_value(config),
             ),
             source.to_owned(),

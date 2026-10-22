@@ -4,12 +4,12 @@
 use merman_core::{
     EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticKind, EditorSemanticRole,
 };
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
 #[test]
 fn usecase_public_parse_routes_preserve_preprocessed_source_identity() {
     let source = "---\ntitle: 订单\n---\nusecase-beta\nactor Customer(\"客户\")\nsystemBoundary \"Order system\"\n  Checkout(\"Place order\")\nend\nCustomer --> Checkout\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(source, ParseOptions::strict())
         .expect("semantic parse")
@@ -97,7 +97,7 @@ fn usecase_rename_accepts_only_a_complete_identifier_token() {
 #[cfg(feature = "editor-facts")]
 #[test]
 fn usecase_recovery_preserves_declared_and_implicit_identity() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = concat!(
         "usecase-beta\n",
         "User link@--> Login\n",
@@ -203,7 +203,7 @@ fn usecase_recovery_preserves_declared_and_implicit_identity() {
 #[cfg(feature = "editor-facts")]
 #[test]
 fn usecase_recovery_disables_rename_for_conflicting_declaration_kinds() {
-    let facts = Engine::new()
+    let facts = MermaidEngine::new()
         .parse_editor_semantic_facts_with_type_sync(
             "usecase",
             "usecase-beta\nactor A\nA(Usecase)\nA --> B\nC -->",
@@ -230,7 +230,7 @@ fn usecase_utf16_json_keeps_semantic_typed_and_editor_routes_available() {
 json Data@{"\ud800":"\udc00","normal":"value"}
 Data --> Consumer
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let semantic = engine
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
@@ -266,7 +266,7 @@ Data --> Consumer
 
 #[test]
 fn usecase_eof_diagnostics_keep_original_positions_across_public_routes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for body in ["actor", "A -->"] {
         for separator in ["\n", "\r\n"] {
             let source = format!(

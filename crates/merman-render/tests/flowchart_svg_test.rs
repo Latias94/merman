@@ -11,7 +11,7 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::presentation::PresentationConfig;
 use merman_core::{
-    DiagramFamilyId, Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
+    DiagramFamilyId, MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
 };
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -78,7 +78,7 @@ fn render_flowchart_artifact(
 }
 
 fn render_flowchart_svg_from_text(text: &str) -> String {
-    render_flowchart_svg_from_text_with_engine(Engine::new(), text)
+    render_flowchart_svg_from_text_with_engine(MermaidEngine::new(), text)
 }
 
 fn assert_svg_ids_are_unique(svg: &str) {
@@ -273,7 +273,7 @@ fn prepare_flowchart_family_with_theme_and_portability(
     prepare_flowchart_family_with_theme_engine_and_portability(
         source,
         theme,
-        Engine::new(),
+        MermaidEngine::new(),
         portability,
     )
 }
@@ -281,7 +281,7 @@ fn prepare_flowchart_family_with_theme_and_portability(
 fn prepare_flowchart_family_with_theme_engine_and_portability(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> FamilyFixture {
     let parsed = block_on(
@@ -299,7 +299,7 @@ fn prepare_flowchart_family_with_theme_engine_and_portability(
 
 fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         )),
         text,
@@ -335,7 +335,7 @@ fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
             ["A", "B", "E", "C", "D"].as_slice(),
         ),
     ] {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"layout": "elk"}),
         ));
         let svg = render_flowchart_svg_from_text_with_engine(engine, source);
@@ -383,7 +383,7 @@ fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
     ];
     for (source, upstream, edge_id) in fixtures {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout": "elk"}),
             )),
             source,
@@ -416,7 +416,7 @@ fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
     }
 }
 
-fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+fn render_flowchart_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     render_flowchart_svg_from_text_with_engine_and_policy(
         engine,
         text,
@@ -425,7 +425,7 @@ fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> Str
 }
 
 fn render_flowchart_svg_from_text_with_engine_and_policy(
-    engine: Engine,
+    engine: MermaidEngine,
     text: &str,
     resource_policy: RenderResourcePolicy,
 ) -> String {
@@ -453,10 +453,11 @@ fn try_render_flowchart_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Flowchart resource-bound session");
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()))
-            .expect("parse Flowchart resource-bound fixture")
-            .expect("detect Flowchart resource-bound fixture");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse Flowchart resource-bound fixture")
+    .expect("detect Flowchart resource-bound fixture");
     render_flowchart_artifact(
         parsed,
         &LayoutOptions::default(),
@@ -571,10 +572,11 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("create deterministic session");
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse succeeds")
-            .expect("detects flowchart");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse succeeds")
+    .expect("detects flowchart");
     let edge_id = flowchart_model(&parsed)
         .edges
         .first()
@@ -601,7 +603,7 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
 #[test]
 fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
     let source = "flowchart TD\nA --> B\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse succeeds")
         .expect("detects flowchart");
@@ -638,10 +640,11 @@ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
         .with_resource_policy(failing_policy)
         .begin_session()
         .expect("create failing session");
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse succeeds")
-            .expect("detects flowchart");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse succeeds")
+    .expect("detects flowchart");
     let failing_artifact = family::prepare(&parsed, &LayoutOptions::default(), failing_session)
         .expect("prepare failing artifact");
     assert!(
@@ -669,10 +672,11 @@ fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
         }
         source.push_str(&format!("N{index} --> N{}\n", index + 1));
     }
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
-            .expect("parse succeeds")
-            .expect("detects Flowchart");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(&source, ParseOptions::default()),
+    )
+    .expect("parse succeeds")
+    .expect("detects Flowchart");
     let policy = RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(ResourceLimitId::MaxSvgBytes, 1)
         .expect("valid SVG byte limit");
@@ -708,10 +712,11 @@ fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
     let svg = render_flowchart_artifact(
         parsed,
         &LayoutOptions::default(),
@@ -738,10 +743,11 @@ fn flowchart_accessibility_ids_close_for_title_only_and_description_only() {
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin Flowchart accessibility session");
-        let parsed =
-            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-                .expect("parse Flowchart accessibility fixture")
-                .expect("detect Flowchart accessibility fixture");
+        let parsed = block_on(
+            MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+        )
+        .expect("parse Flowchart accessibility fixture")
+        .expect("detect Flowchart accessibility fixture");
         render_flowchart_artifact(
             parsed,
             &LayoutOptions::default(),
@@ -803,7 +809,7 @@ fn flowchart_accessibility_ids_close_for_title_only_and_description_only() {
 fn flowchart_shadow_css_references_the_emitted_document_filters() {
     let source = "flowchart TD\nA --> B\n";
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "look": "neo",
             "themeVariables": {
                 "dropShadow": "url(#drop-shadow) url(#drop-shadow-small)"
@@ -873,10 +879,11 @@ fn swimlane_a11y_and_lane_raw_ids_remain_in_disjoint_namespaces() {
     let source =
         "swimlane-beta LR\naccTitle: Accessible title\nsubgraph chart-title-flow-root\n  A\nend\n";
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
     let svg = render_flowchart_artifact(
         parsed,
         &LayoutOptions::default(),
@@ -917,10 +924,11 @@ end
 classDef huge font-size:40px,font-family:Arial
 class Lane huge
 "#;
-    let parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse Swimlane source")
-            .expect("detect Swimlane diagram");
+    let parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse Swimlane source")
+    .expect("detect Swimlane diagram");
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -1728,7 +1736,7 @@ fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
         .begin_session()
         .unwrap();
     let text = "flowchart TD\nA[box] --> A\n";
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -2137,7 +2145,7 @@ flowchart TD
     );
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"%%{init: {"securityLevel": "loose"}}%%
@@ -2168,7 +2176,7 @@ fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -2184,7 +2192,7 @@ fn flowchart_layout_handles_deep_subgraph_chain() {
         .unwrap();
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::strict()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -2204,7 +2212,7 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
     let svg = render_flowchart_svg_from_text_with_engine_and_policy(
-        Engine::new(),
+        MermaidEngine::new(),
         &text,
         RenderResourcePolicy::unbounded_for_trusted_input(),
     );
@@ -2340,7 +2348,7 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .join("upstream_flowchart_v2_icons_in_edge_labels_spec.mmd");
     let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -2377,7 +2385,7 @@ fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
         .begin_session()
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true, \"wrappingWidth\": 120}}}%%\nflowchart TB\nA[\"Hello\"]\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -2444,7 +2452,7 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     B -->|No| D[End]
     C --> D"#;
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "flowchart": {"minNodeWidth": 0}
         })));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -2485,7 +2493,7 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]"#;
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "flowchart": {"minNodeWidth": 0}
         })));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -2654,10 +2662,11 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_r
     const STROKE_WIDTH: f32 = 160.0;
 
     fn prepare_control(source: &str) -> FamilyFixture {
-        let parsed =
-            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-                .expect("parse control Flowchart family")
-                .expect("detect control Flowchart family");
+        let parsed = block_on(
+            MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+        )
+        .expect("parse control Flowchart family")
+        .expect("detect control Flowchart family");
         (
             parsed,
             LayoutOptions::default(),
@@ -2725,24 +2734,26 @@ fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_val
     for (case, engine, source, expected_path_style, expected_svg) in [
         (
             "linkStyle inline",
-            Engine::new(),
+            MermaidEngine::new(),
             "flowchart LR\nA edge@--> B\nlinkStyle 0 stroke-width:7px\n",
             Some("stroke-width:7px"),
             None,
         ),
         (
             "assigned classDef",
-            Engine::new(),
+            MermaidEngine::new(),
             "flowchart LR\nA edge@--> B\nclassDef wide stroke-width:8px\nclass edge wide\n",
             Some("stroke-width:8px"),
             None,
         ),
         (
             "explicit Mermaid config",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "theme": "base",
-                "themeVariables": {"strokeWidth": 9}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "theme": "base",
+                    "themeVariables": {"strokeWidth": 9}
+                }),
+            )),
             "flowchart LR\nA --> B\n",
             None,
             Some(".edge-thickness-normal{stroke-width:9px;}"),
@@ -2962,7 +2973,8 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
                 };
                 let typed_applies = origin != "source" && case.typed_applies;
                 let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
-                let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+                let engine =
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
                 let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
                     prepare_flowchart_family_with_theme_engine_and_portability(
                         &source,
@@ -3169,9 +3181,11 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
 
     for security_level in ["strict", "sandbox"] {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "securityLevel": security_level
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "securityLevel": security_level
+                }),
+            )),
             source,
         );
         assert_eq!(
@@ -3182,7 +3196,7 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
     }
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         source,
@@ -3409,7 +3423,7 @@ flowchart LR
 #[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "mainBkg": "#111827",
                 "nodeTextColor": "#f8fafc",
@@ -3524,9 +3538,11 @@ L@{ shape: lined-cylinder, label: "Lined cylinder" }
 
     for security_level in ["strict", "sandbox"] {
         let svg = render_flowchart_svg_from_text_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "securityLevel": security_level
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "securityLevel": security_level
+                }),
+            )),
             source,
         );
         for node_id in ["C", "L"] {
@@ -3539,7 +3555,7 @@ L@{ shape: lined-cylinder, label: "Lined cylinder" }
     }
 
     let loose = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         source,
@@ -3634,14 +3650,14 @@ flowchart LR
 #[test]
 fn flowchart_neo_ignores_removed_private_presentation_keys() {
     let baseline_engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
             "flowchart": {"curve": "rounded"}
         })));
     let private_keys_engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
@@ -3676,14 +3692,14 @@ fn flowchart_private_compact_edge_corners_key_does_not_change_elk_routes() {
     BELOW[Below] --> TARGET
 "#;
     let baseline = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": "elk",
             "look": "neo"
         }))),
         text,
     );
     let with_private_key = render_flowchart_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": "elk",
             "look": "neo",
             "flowchart": {"compactEdgeCorners": true}
@@ -3704,7 +3720,7 @@ fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_fals
         .unwrap();
     let text =
         "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -3733,7 +3749,7 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA{{\"`**Hex**`\"}}\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -3765,9 +3781,12 @@ fn flowchart_stadium_path_uses_html_label_font_size_for_fractional_theme_size() 
             "%%{{init: {{\"look\": \"{look}\", \"themeVariables\": {{\"fontSize\": \"12.5px\"}}}}}}%%\nflowchart LR\nA([Client]) --> B[Rect]\n"
         );
         let parse = || {
-            block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected")
+            block_on(
+                MermaidEngine::new()
+                    .parse_diagram_for_render_model(&source, ParseOptions::default()),
+            )
+            .expect("parse ok")
+            .expect("diagram detected")
         };
         let layout = layout_flowchart_render_model(
             parse(),
@@ -3819,7 +3838,7 @@ fn flowchart_folder_shape_renders_aliases_and_clips_edges_to_the_tab_polygon() {
     let text = r#"flowchart TB
 A@{ shape: folder, label: "src" } --> B@{ shape: directory, label: "include" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -4746,7 +4765,7 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA@{ shape: stop }\nB@{ shape: lightning-bolt }\nC@{ shape: crossed-circle }\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -4770,11 +4789,12 @@ fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
     for html_labels in [true, false] {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let text = "flowchart TB\nA@{ shape: hourglass, label: \"Hourglass label\" }\n";
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "htmlLabels": html_labels,
                 "flowchart": { "htmlLabels": html_labels },
-            })));
+            }),
+        ));
         let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
             .expect("parse ok")
             .expect("diagram detected");
@@ -4862,7 +4882,7 @@ fn flowchart_note_shape_renders_note_label_class() {
     let text = r#"flowchart TB
 A@{ shape: note, label: "Note" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -4891,7 +4911,7 @@ fn flowchart_svg_markdown_node_labels_wrap_when_html_labels_false() {
 flowchart TB
 A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -4922,7 +4942,7 @@ subgraph A[SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious]
   x
 end
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -4961,7 +4981,7 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
     let expected_text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega";
     for html_labels in [false, true] {
         for wrapping_width in [60, 240] {
-            let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "layout": "elk", "look": "classic", "htmlLabels": html_labels,
                 "flowchart": { "htmlLabels": html_labels, "wrappingWidth": wrapping_width, "minNodeWidth": 0 }
             })));
@@ -5282,10 +5302,11 @@ A -->|alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu| B
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin render session");
-        let parsed =
-            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
+        let parsed = block_on(
+            MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+        )
+        .expect("parse ok")
+        .expect("diagram detected");
         let layout =
             layout_flowchart_render_model(parsed.clone(), &LayoutOptions::default(), session)
                 .expect("layout ok");
@@ -5373,10 +5394,11 @@ fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content
     };
 
     fn prepare_control(source: &str) -> FamilyFixture {
-        let parsed =
-            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-                .expect("parse control Flowchart family")
-                .expect("detect control Flowchart family");
+        let parsed = block_on(
+            MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+        )
+        .expect("parse control Flowchart family")
+        .expect("detect control Flowchart family");
         (
             parsed,
             LayoutOptions::default(),
@@ -5783,10 +5805,11 @@ config:
 flowchart LR
 A padded@-->|edge label padding| B
 "#;
-    let control_parsed =
-        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
-            .expect("parse control ELK Flowchart")
-            .expect("detect control ELK Flowchart");
+    let control_parsed = block_on(
+        MermaidEngine::new().parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse control ELK Flowchart")
+    .expect("detect control ELK Flowchart");
     let control = family::prepare(
         &control_parsed,
         &LayoutOptions::default(),
@@ -5865,11 +5888,12 @@ fn flowchart_markdown_raw_html_overflow_keeps_host_profile_style_widths() {
         (format!("<strong>{word}</strong>"), 480.0),
     ] {
         for wrapping_width in [40, 120] {
-            let engine =
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
                     "securityLevel": "strict",
                     "flowchart": { "htmlLabels": true, "wrappingWidth": wrapping_width }
-                })));
+                }),
+            ));
             let source = format!("flowchart TB\nA[\"`{label}`\"]\n");
             let parsed =
                 block_on(engine.parse_diagram_for_render_model(&source, ParseOptions::default()))
@@ -5921,7 +5945,7 @@ fn flowchart_html_layout_and_wrapping_ignore_policy_removed_markdown_content() {
     }));
     let render = |label: &str| {
         // The site owns sanitizer policy. Diagram directives filter unsupported config keys.
-        let engine = Engine::new().with_site_config(config.clone());
+        let engine = MermaidEngine::new().with_site_config(config.clone());
         render_flowchart_svg_from_text_with_engine(
             engine,
             &format!("flowchart TB\nA[\"`{label}`\"]\n"),
@@ -6005,7 +6029,7 @@ fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
         .begin_session()
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6061,7 +6085,7 @@ fn flowchart_html_single_image_label_uses_paragraph_wrapper() {
     let text = r#"flowchart TB
 B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6222,7 +6246,7 @@ fn flowchart_image_shape_label_bbox_includes_mermaid_padding() {
     let text = r#"flowchart TD
 A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", pos: "t", h: 60, constraint: "on" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6281,7 +6305,7 @@ A@{
     multiline string
 }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6308,7 +6332,7 @@ fn flowchart_html_plain_multiline_labels_preserve_source_indentation() {
         .begin_session()
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"\n  First\n      Second\n  \"]\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6359,7 +6383,7 @@ fn flowchart_svg_plain_text_labels_do_not_apply_markdown_weight() {
 flowchart TB
 foo[**Bold Foo**]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6394,7 +6418,7 @@ fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
         .unwrap();
     let text =
         "flowchart TB\nA[\"Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')\"]\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6422,7 +6446,7 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -6460,7 +6484,7 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA -->|plain edge label| B\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6486,7 +6510,7 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
         .begin_session()
         .unwrap();
     let text = "flowchart TD\n    A[Start] --> B{Condition ?}\n    B -->|Yes| C[Execute]\n    B -->|No| D[End]\n    C --> D\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -6542,7 +6566,7 @@ fn dagre_flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
     let render = |text: &str| {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let parsed = block_on(
-            Engine::new()
+            MermaidEngine::new()
                 .with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"layout": "dagre"}),
                 ))
@@ -6585,7 +6609,7 @@ fn dagre_flowchart_empty_subgraph_node_applies_inline_style() {
         .begin_session()
         .unwrap();
     let text = "flowchart TD\nsubgraph Empty\nend\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -6909,7 +6933,7 @@ fn flowchart_elk_root_algorithms_execute_and_paint_edges() {
         let source = format!(
             "---\nconfig:\n  layout: {algorithm}\n  htmlLabels: false\n---\nflowchart TB\nA[Alpha<br/>one<br/>two<br/>three<br/>four<br/>five<br/>six] first@-->|first label| B[Beta]\nA second@-->|second label| C[Gamma]\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -6962,7 +6986,7 @@ fn flowchart_elk_unrouted_container_edges_are_clipped_and_labels_are_centered() 
         let source = format!(
             "---\nconfig:\n  layout: elk\n  htmlLabels: false\n---\nflowchart TB\nsubgraph G[Container]\nA[Small] edge@-->|wide label sentinel| B[Wider target]\nend\nG@{{algorithm: {algorithm}}}\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse")
             .expect("diagram");
@@ -7107,7 +7131,7 @@ fn dagre_flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
  n1@{ shape: summary, label: "summary" }
  n2@{ shape: crossed-circle, label: "crossed-circle" }
 "#;
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"layout": "dagre"}),
     ));
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -7154,7 +7178,7 @@ A[Styled node] -->|Styled edge| B[Plain]
 style A fill:#eee,stroke:#111,font-style:italic,text-decoration:underline,letter-spacing:1px,white-space:break-spaces,text-align:left,line-height:2
 linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color:#123456
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -7200,7 +7224,7 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
 
 #[test]
 fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available() {
-    fn render_with_engine(engine: Engine, text: &str) -> String {
+    fn render_with_engine(engine: MermaidEngine, text: &str) -> String {
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin render session");
@@ -7220,7 +7244,7 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
 
     fn render(text: &str) -> String {
         render_with_engine(
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout": "dagre"}),
             )),
             text,
@@ -7264,7 +7288,7 @@ fn flowchart_datastore_shape_renders_top_and_bottom_border_rect() {
     let text = r#"flowchart TB
 D@{ shape: datastore, label: "Datastore" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -7307,7 +7331,7 @@ fn flowchart_svg_renders_ratex_math_labels_end_to_end() {
 flowchart LR
 A["$$x^2$$"] -->|$$x^2$$| B[Done]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -7345,7 +7369,7 @@ fn flowchart_svg_renders_ratex_mixed_math_labels_end_to_end() {
 flowchart LR
 A["value: $$x^2$$"] -->|"Solve: $$\sqrt{2+2}$$"| B[Done]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -7382,7 +7406,7 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         .join("flowchart")
         .join("upstream_docs_math_flowcharts_001.mmd");
     let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -7475,8 +7499,8 @@ fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
                             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                             .expect("portable cluster title")
                     };
-                    let typed = render(&theme, Engine::new());
-                    let legacy = render(&baseline, Engine::new().with_site_config(PresentationConfig::from_value(
+                    let typed = render(&theme, MermaidEngine::new());
+                    let legacy = render(&baseline, MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                         serde_json::json!({ "themeVariables": { "titleColor": "#2468ac", "nodeTextColor": "#333" } })
                     )));
                     assert_eq!(
@@ -7570,11 +7594,11 @@ fn flowchart_title_fill_preserves_configuration_and_html_source_ownership() {
         let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
         for config_owned in [false, true] {
             let engine = if config_owned {
-                Engine::new().with_site_config(PresentationConfig::from_value(
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({ "themeVariables": { "titleColor": "#abcdef" } }),
                 ))
             } else {
-                Engine::new()
+                MermaidEngine::new()
             };
             let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
                 prepare_flowchart_family_with_theme_engine_and_portability(
@@ -8058,12 +8082,14 @@ fn flowchart_background_requires_a_real_terminal_and_respects_config_owner() {
     )]);
     for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
         for (source, engine) in [
-            ("flowchart TD\nA[Alpha] --> B[Beta]\n", Engine::new()),
+            ("flowchart TD\nA[Alpha] --> B[Beta]\n", MermaidEngine::new()),
             (
                 "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "theme": "base", "themeVariables": {"edgeLabelBackground": "#ac6824"}
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "theme": "base", "themeVariables": {"edgeLabelBackground": "#ac6824"}
+                    }),
+                )),
             ),
         ] {
             let source = format!("{prefix}{source}");
@@ -8298,7 +8324,8 @@ fn flowchart_rounded_rect_radius_uses_effective_theme_and_source_truthiness() {
             if let Some(radius) = radius.clone() {
                 config["themeVariables"] = serde_json::json!({"radius": radius});
             }
-            let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+            let engine =
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
             let svg =
                 render_flowchart_svg_from_text_with_engine(engine, "flowchart TD\nA(Label)\n");
             let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
@@ -8325,13 +8352,14 @@ fn flowchart_rounded_rect_radius_uses_effective_theme_and_source_truthiness() {
 #[test]
 fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
     let render_paths = |radius: serde_json::Value, source: &str| {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "look": "handDrawn", "theme": "default", "handDrawnSeed": 42,
                 // Equal padding isolates the drawRect primitive from each shape's sizing policy.
                 "flowchart": {"padding": 0},
                 "themeVariables": {"radius": radius}
-            })));
+            }),
+        ));
         let svg = render_flowchart_svg_from_text_with_engine(engine, source);
         let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
         let shape = document
@@ -8365,7 +8393,7 @@ fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &
     use kurbo::Shape as _;
 
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "layout": backend,
             "look": "classic",
             "state": { "padding": 8 }
@@ -8511,7 +8539,8 @@ fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
                 "%%{{init: {{\"look\": \"{look}\"}}}}%%\nflowchart LR\nA([\"{label}\"]) --> B[Rect]\n"
             );
             let parsed = block_on(
-                Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()),
+                MermaidEngine::new()
+                    .parse_diagram_for_render_model(&source, ParseOptions::default()),
             )
             .expect("parse ok")
             .expect("diagram detected");
@@ -8569,10 +8598,11 @@ fn flowchart_elk_line_hops_rewrite_original_dashed_and_authored_masks() {
         marker: String,
     }
     let render = |look: &str, line_hops: serde_json::Value| {
-        let engine =
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "layout": "elk", "look": look, "elk": { "lineHops": line_hops }
-            })));
+            }),
+        ));
         let mut source = "flowchart TD\nA & B -.-> C & D\n".to_owned();
         if look == "classic" {
             source.push_str("linkStyle default stroke-dasharray:0 7 50 9,stroke:#123456\n");
@@ -8731,7 +8761,7 @@ fn flowchart_ancestor_descendant_routes_retain_real_segments_for_supported_curve
         "flowchart TB\nOut --> In\nsubgraph Sub\nIn\nend\nIn --> Sub\n",
     ] {
         for curve in ["linear", "basis", "rounded"] {
-            let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"layout":"dagre", "flowchart":{"curve":curve}}),
             ));
             let svg = render_flowchart_svg_from_text_with_engine(engine, source);
@@ -8789,7 +8819,7 @@ fn flowchart_important_html_color_inheritance_is_portable_for_generic_text_fill(
 #[test]
 fn flowchart_hand_drawn_icon_circle_preserves_emit_resource_failures() {
     let source = "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 7\n---\nflowchart LR\nC@{ icon: \"missing:icon\", form: \"circle\" }\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
         .unwrap();

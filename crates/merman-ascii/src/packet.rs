@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn canonical_packet_matches_full_row_and_metadata_output() {
         use merman_core::{
-            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
         };
 
         let options = AsciiRenderOptions::ascii();
@@ -110,7 +110,7 @@ mod tests {
             let SemanticDiagramModel::Packet(model) = &canonical.model else {
                 panic!("Packet model")
             };
-            let full = Engine::new()
+            let full = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();

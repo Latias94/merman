@@ -7,7 +7,7 @@ use merman_ascii::{
     AsciiError, AsciiPrimaryProjection, AsciiRenderOptions, AsciiSupportLevel, ascii_capabilities,
     ascii_diagrammatic_diagram_types, ascii_supported_diagram_types,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use support::render_model;
 
 struct RejectedCandidate {
@@ -42,7 +42,7 @@ const REJECTED_CANDIDATES: &[RejectedCandidate] = &[
 #[test]
 fn unsupported_candidates_match_capability_catalog_and_dispatch() {
     let workspace_root = workspace_root();
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let supported = ascii_supported_diagram_types();
     let diagrammatic = ascii_diagrammatic_diagram_types();
 

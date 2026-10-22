@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -7,7 +7,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 fn render_paths(source: &str, color: &str, seed: u32) -> Vec<String> {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "layout":"dagre", "theme":"default", "look":"neo", "htmlLabels":false,
         "handDrawnSeed":seed,
         "themeVariables": {

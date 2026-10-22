@@ -5,7 +5,7 @@ use allocator::CountingSystemAllocator;
 use merman_core::runtime::RuntimePolicy;
 use merman_core::{
     DiagramParseOutcome, DiagramParseSnapshot, EditorSemanticCompleteness, EditorSemanticRole,
-    Engine, ParseOptions, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts,
+    MermaidEngine, ParseOptions, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts,
     RenderSemanticModel,
 };
 use serde::{Deserialize, Serialize};
@@ -257,7 +257,7 @@ enum ParseResult {
 }
 
 fn parse(
-    engine: &Engine,
+    engine: &MermaidEngine,
     route: Route,
     diagram_type: &str,
     source: &str,
@@ -422,7 +422,7 @@ fn verify_result(
     Ok(())
 }
 
-fn characterize_recovery(engine: &Engine, family: Family) -> Result<(), String> {
+fn characterize_recovery(engine: &MermaidEngine, family: Family) -> Result<(), String> {
     let source = match family {
         Family::Flowchart => "flowchart TD\naccTitle: One pass\nA((\n",
         Family::Sequence => "sequenceDiagram\nAlice->>Bob: Hello\nBob->>",
@@ -473,7 +473,7 @@ fn execute_probe() -> Result<ProbeResponse, String> {
     let (family, route) = selected_lane(&request.lane_id)?;
     let executable_sha256 = executable_sha256()?;
     let source = build_source(family, request.scale, request.seed);
-    let engine = Engine::new()
+    let engine = MermaidEngine::new()
         .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed));
     let operation = matches!(request.mode, Mode::Operation);
 
@@ -574,8 +574,8 @@ fn write_json_line(value: &impl Serialize) -> io::Result<()> {
 }
 
 fn execute_state_shape(seed: u64) -> Result<Value, String> {
-    let engine =
-        Engine::new().with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(seed));
+    let engine = MermaidEngine::new()
+        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(seed));
     let mut rows = Vec::with_capacity(MEMORY_SCALES.len());
     for scale in MEMORY_SCALES {
         let source = build_source(Family::State, scale, seed);

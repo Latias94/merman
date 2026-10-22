@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -23,8 +23,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
-fn classic_engine() -> Engine {
-    Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+fn classic_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "look": "classic",
         "layout": "dagre"
     })))
@@ -154,7 +154,7 @@ fn render_requirement_with_theme(source: &str, theme: &DiagramTheme) -> family::
 fn render_requirement_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     render_requirement_with_theme_requirement(
         source,
@@ -174,7 +174,7 @@ fn render_requirement_with_classic_paint_baseline(
 fn render_requirement_with_retained_recipe_baseline(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     let rendered = render_requirement_with_theme_requirement(
         source,
@@ -191,7 +191,7 @@ fn render_requirement_with_retained_recipe_baseline(
 fn render_requirement_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> family::RenderedFamilySvg {
     try_render_requirement_with_theme_requirement_and_environment(
@@ -207,7 +207,7 @@ fn render_requirement_with_theme_requirement(
 fn render_requirement_with_theme_requirement_and_environment(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
     environment: RenderEnvironment,
 ) -> family::RenderedFamilySvg {
@@ -224,7 +224,7 @@ fn render_requirement_with_theme_requirement_and_environment(
 fn try_render_requirement_with_theme_requirement_and_environment(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
     environment: RenderEnvironment,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
@@ -252,7 +252,7 @@ fn render_requirement_without_theme(source: &str) -> family::RenderedFamilySvg {
 
 fn render_requirement_without_theme_and_engine(
     source: &str,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     let baseline = DiagramThemeCompiler::new()
         .compile(requirement_classic_paint_spec())
@@ -1610,8 +1610,11 @@ fn requirement_family_default_palette_yields_to_typed_paint() {
             ),
         )
         .unwrap();
-    let rendered =
-        render_requirement_with_theme_and_engine(requirement_source(), &theme, Engine::new());
+    let rendered = render_requirement_with_theme_and_engine(
+        requirement_source(),
+        &theme,
+        MermaidEngine::new(),
+    );
     let document = roxmltree::Document::parse(rendered.svg()).expect("default Requirement SVG");
     assert_eq!(
         terminal_fill_for(&document, "requirement-theme-req1"),

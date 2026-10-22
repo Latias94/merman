@@ -18,7 +18,7 @@ pub use super::model::{
 use super::{StateDocumentId, StateStatement};
 use crate::resources::ModelComplexity;
 #[cfg(feature = "compat-json")]
-use crate::{ManagedSemanticJson, ParseMetadata, Result};
+use crate::{ManagedSemanticJson, PresentationMetadata, Result};
 use crate::{OperationControl, OperationControlResult};
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -349,7 +349,7 @@ pub struct StateDiagramRenderEdge {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &StateDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(
         render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
@@ -361,7 +361,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &StateDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ManagedSemanticJson>> {
     let states = match state_records_to_compat_json(model, control)? {

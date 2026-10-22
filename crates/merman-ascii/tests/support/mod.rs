@@ -5,7 +5,7 @@ use merman_ascii::{
 pub(crate) mod full_model;
 use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 use merman_core::{
-    Engine, OperationControl, ParseOptions, SemanticParser, runtime::OperationContext,
+    MermaidEngine, OperationControl, ParseOptions, SemanticParser, runtime::OperationContext,
 };
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
@@ -79,7 +79,7 @@ fn terminal_line_width(line: &str, profile: TerminalWidthProfile) -> usize {
 
 #[allow(dead_code)]
 pub(crate) fn parse_model(source: &str) -> RenderSemanticModel {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("diagram should parse")
         .expect("diagram should be detected")

@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn canonical_journey_borrows_full_tasks_and_preserves_complete_terminal_output() {
         use merman_core::{
-            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
         };
 
         let options = AsciiRenderOptions::ascii();
@@ -379,7 +379,7 @@ mod tests {
             let SemanticDiagramModel::Journey(model) = &canonical.model else {
                 panic!("Journey model")
             };
-            let full = Engine::new()
+            let full = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();

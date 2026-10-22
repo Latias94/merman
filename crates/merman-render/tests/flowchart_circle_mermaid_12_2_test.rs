@@ -4,7 +4,7 @@
 //! Source: 1fb7869866dd619168d840291c9c54b4f129758b.
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::{FlowchartLayout, LayoutNode};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -37,7 +37,7 @@ fn render(
 }
 
 fn render_source(input: &str, config: PresentationConfig) -> (FlowchartLayout, String, TextStyle) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_site_config(config)
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse circle diagram")
@@ -364,7 +364,7 @@ fn hand_drawn_circles_keep_the_source_construction_dimensions() {
 fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_resources() {
     for source in ["flowchart LR\nA((a))\n", "flowchart LR\nA(((a)))\n"] {
         for (font_size, padding) in [(1e4, 16.0), (16.0, 1e4)] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .with_site_config(PresentationConfig::from_value(json!({
                     "look": "handDrawn",
                     "handDrawnSeed": 1,

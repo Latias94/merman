@@ -21,12 +21,14 @@ pub(crate) fn svg_compare_site_config_with(
     config
 }
 
-pub(crate) fn svg_compare_engine() -> merman::Engine {
-    merman::Engine::new().with_site_config(svg_compare_site_config())
+pub(crate) fn svg_compare_engine() -> merman::MermaidEngine {
+    merman::MermaidEngine::new().with_site_config(svg_compare_site_config())
 }
 
-pub(crate) fn svg_compare_engine_with_site_config(overrides: serde_json::Value) -> merman::Engine {
-    merman::Engine::new().with_site_config(svg_compare_site_config_with(overrides))
+pub(crate) fn svg_compare_engine_with_site_config(
+    overrides: serde_json::Value,
+) -> merman::MermaidEngine {
+    merman::MermaidEngine::new().with_site_config(svg_compare_site_config_with(overrides))
 }
 
 pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {

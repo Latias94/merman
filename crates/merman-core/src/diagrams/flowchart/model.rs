@@ -589,7 +589,21 @@ pub(crate) struct Edge {
     pub link: LinkToken,
     pub label: Option<String>,
     pub label_type: TitleKind,
+    #[cfg_attr(
+        not(feature = "editor-facts"),
+        allow(
+            dead_code,
+            reason = "Shared grammar actions retain label provenance for the optional editor observer."
+        )
+    )]
     pub label_span: Option<SourceSpan>,
+    #[cfg_attr(
+        not(feature = "editor-facts"),
+        allow(
+            dead_code,
+            reason = "Shared grammar actions retain label provenance for the optional editor observer."
+        )
+    )]
     pub label_selection: Option<SourceSpan>,
     pub style: Vec<String>,
     pub classes: Vec<String>,

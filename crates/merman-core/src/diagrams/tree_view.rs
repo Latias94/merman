@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
@@ -100,7 +100,7 @@ struct TreeViewParseOutcome {
 impl TreeViewParseOutcome {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
         let Self {
             snapshot,
             first_issue,
@@ -181,13 +181,16 @@ struct TreeViewNodeLineDetails {
     css_class: Option<TreeViewSpannedValue>,
     icon: Option<TreeViewSpannedValue>,
     description: Option<TreeViewSpannedValue>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct TreeViewSpannedValue {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -225,7 +228,7 @@ struct ArenaNode {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_tree_view(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model =
         parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -236,7 +239,7 @@ pub(crate) fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value>
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_tree_view_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let parsed = parse_tree_view_input_controlled(
@@ -253,7 +256,7 @@ pub(crate) fn parse_tree_view_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_tree_view_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<TreeViewDiagramModel> {
     parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -262,7 +265,7 @@ pub(crate) fn parse_tree_view_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_tree_view_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
     Ok(construct_tree_view_model_controlled(
@@ -347,7 +350,7 @@ fn construct_tree_view_model_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &TreeViewDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut nodes = Vec::new();
     flatten_nodes(&model.root, &mut nodes);
@@ -891,9 +894,10 @@ fn parse_node_content(
 ) -> std::result::Result<TreeViewNodeLineDetails, TreeViewNodeParseFailure> {
     let content = line_view.content;
     let content_abs = line_start + line_view.content_offset;
+    #[cfg(feature = "editor-facts")]
     let span = SourceSpan::new(content_abs, content_abs + content.len());
 
-    let (mut raw_name, name_start, name_end, suffix_start) =
+    let (mut raw_name, _name_start, name_end, suffix_start) =
         if let Some((_, quote @ ('"' | '\''))) = content.char_indices().next() {
             let mut end = None;
             for (idx, ch) in content[quote.len_utf8()..].char_indices() {
@@ -931,8 +935,9 @@ fn parse_node_content(
         raw_name = raw_name.replace('\t', "    ");
     }
 
-    let (name, node_type, selection_end) = normalize_tree_view_node_name(raw_name, name_end);
-    let selection = SourceSpan::new(content_abs + name_start, content_abs + selection_end);
+    let (name, node_type, _selection_end) = normalize_tree_view_node_name(raw_name, name_end);
+    #[cfg(feature = "editor-facts")]
+    let selection = SourceSpan::new(content_abs + _name_start, content_abs + _selection_end);
 
     let suffix = &content[suffix_start..];
     let suffix_abs = content_abs + suffix_start;
@@ -957,7 +962,9 @@ fn parse_node_content(
         css_class: annotations.css_class,
         icon: annotations.icon,
         description: annotations.description,
+        #[cfg(feature = "editor-facts")]
         span,
+        #[cfg(feature = "editor-facts")]
         selection,
     })
 }
@@ -985,9 +992,11 @@ fn normalize_tree_view_node_name(
 
 fn parse_tree_view_annotations(
     suffix: &str,
-    abs_base: usize,
+    _abs_base: usize,
     diagram_type: &str,
 ) -> Result<TreeViewAnnotations> {
+    #[cfg(feature = "editor-facts")]
+    let abs_base = _abs_base;
     let mut annotations = TreeViewAnnotations::default();
     let mut pos = 0usize;
     while pos < suffix.len() {
@@ -1006,6 +1015,7 @@ fn parse_tree_view_annotations(
             };
             annotations.css_class = Some(TreeViewSpannedValue {
                 value: suffix[value_start..value_end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             pos = value_end;
@@ -1035,6 +1045,7 @@ fn parse_tree_view_annotations(
             };
             annotations.icon = Some(TreeViewSpannedValue {
                 value,
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             pos = value_end + ')'.len_utf8();
@@ -1047,6 +1058,7 @@ fn parse_tree_view_annotations(
             if trimmed_start != trimmed_end {
                 annotations.description = Some(TreeViewSpannedValue {
                     value: suffix[trimmed_start..trimmed_end].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
                 });
             }
@@ -1388,7 +1400,7 @@ mod semantic_tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "treeView",
                     source,
@@ -1437,11 +1449,11 @@ mod tests {
     #[cfg(feature = "editor-facts")]
     use crate::EditorExpectedSyntaxKind;
     #[cfg(feature = "editor-facts")]
-    use crate::Engine;
-    use crate::{MermaidConfig, ParseMetadata, SourceSpan};
+    use crate::MermaidEngine;
+    use crate::{MermaidConfig, PresentationMetadata, SourceSpan};
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "treeView".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1797,7 +1809,7 @@ root/
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_tree_view_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"
 treeView-beta
 title My Tree
@@ -1827,7 +1839,7 @@ accDescr: Accessible Description
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_tree_view_editor_facts_preserve_box_drawing_annotation_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"
 treeView-beta
 ├── App.tsx :::highlight icon(react) ## main component

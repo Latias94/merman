@@ -5211,7 +5211,7 @@ mod tests {
                     ))),
             )
             .unwrap();
-        let parsed = theme.install_parse_compatibility(merman_core::Engine::new())
+        let parsed = theme.install_parse_compatibility(merman_core::MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"themeVariables\": {\"fontFamily\": \"serif\", \"fontSize\": 30}}}%%\nstateDiagram-v2\nReady --> Done: Next\n",
                 merman_core::ParseOptions::strict()
@@ -5288,7 +5288,7 @@ mod tests {
                 .join(","),
         ] {
             let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(json!({
                         "themeVariables": {"fontFamily": family}
                     })),
@@ -5353,7 +5353,7 @@ mod tests {
             json!({"fontFamily": "inherit", "fontSize": 1e100}),
         ] {
             let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(json!({
                         "themeVariables": config
                     })),

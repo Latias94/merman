@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::strip_line_ending;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -741,7 +741,7 @@ pub(crate) fn parse_architecture_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_architecture(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
@@ -751,7 +751,7 @@ pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Val
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
@@ -816,7 +816,7 @@ impl ArchitectureDiagramModel {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ArchitectureDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
@@ -826,7 +826,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ArchitectureDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
@@ -1018,7 +1018,7 @@ pub struct ArchitectureLayoutHintModel {
 #[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<ArchitectureDiagramModel> {
     parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -1027,7 +1027,7 @@ pub(crate) fn parse_architecture_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_architecture_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
     parse::parse_model_controlled(code, &meta.diagram_type, control)
@@ -1038,11 +1038,11 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, ParsedEditorFacts};
-    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1050,15 +1050,15 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> crate::ParseDiagnostic {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected architecture parse error, got {other:?}"),
         }
     }
 
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
@@ -1090,7 +1090,7 @@ mod tests {
 
     #[test]
     fn architecture_canonical_typed_entrypoint_accepts_simple_service() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "architecture-beta\nservice db\n",
                 ParseOptions::strict(),
@@ -1700,7 +1700,7 @@ service caption(server)[\"title %% kept\"]\n",
 
     #[test]
     fn architecture_rejects_legacy_edge_shorthand() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let err = block_on(engine.parse_diagram(
             "architecture-beta\n  service a\n  service b\n  a (T--B) b\n",
             ParseOptions::default(),
@@ -1943,7 +1943,7 @@ group child(cloud)[Child] in root\n";
     #[cfg(feature = "editor-facts")]
     fn architecture_parse_pipeline_returns_combined_json_and_editor_projection() {
         let text = "architecture-beta\nservice api(server)[API]\n";
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -1975,7 +1975,7 @@ group child(cloud)[Child] in root\n";
 
         fn custom_architecture_parser(
             _code: &str,
-            _meta: &ParseMetadata,
+            _meta: &PresentationMetadata,
             control: &crate::OperationControl,
         ) -> crate::OperationControlResult<Result<Value>> {
             control.checkpoint()?;
@@ -1983,7 +1983,7 @@ group child(cloud)[Child] in root\n";
         }
 
         let text = "architecture-beta\nservice api(server)[API]\n";
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .registry_mut()
             .add_fn("architecture", detect_architecture);
@@ -2035,7 +2035,7 @@ group child(cloud)[Child] in root\n";
             "architecture-beta\n",
             "service api(server)[API]\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -2066,7 +2066,7 @@ group child(cloud)[Child] in root\n";
             "architecture-beta\r\n",
             "service api(server)[\"Gateway \u{7f51}\u{5173}\"]\r\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -2104,7 +2104,7 @@ group child(cloud)[Child] in root\n";
             "%% removed body comment\n",
             "service after(database)[After]\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -2576,7 +2576,7 @@ mod semantic_tests {
     #[test]
     fn architecture_compat_layout_presence_uses_authored_config() {
         let model = ArchitectureDiagramModel::default();
-        let mut meta = ParseMetadata {
+        let mut meta = PresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::from_value(
@@ -2597,7 +2597,7 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn architecture_typed_projection_omits_editor_observers() {
-        let metadata = ParseMetadata {
+        let metadata = PresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

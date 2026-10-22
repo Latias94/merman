@@ -1,5 +1,7 @@
+use crate::Error;
+#[cfg(feature = "presentation")]
 use crate::{
-    Error, ParseMetadata, Result,
+    PresentationMetadata, Result,
     diagram::{ParsedDiagramRender, RenderSemanticModel},
 };
 #[cfg(feature = "compat-json")]
@@ -10,7 +12,7 @@ use serde_json::{Value, json};
 
 /// Typed semantic model for Merman's built-in suppressed-error diagram.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ErrorDiagramRenderModel {
+pub struct ErrorDiagramModel {
     #[serde(rename = "type")]
     pub diagram_type: String,
     #[serde(
@@ -21,11 +23,18 @@ pub struct ErrorDiagramRenderModel {
     pub error_message: Option<String>,
 }
 
-impl ErrorDiagramRenderModel {
-    fn new(meta: &ParseMetadata) -> Self {
+impl ErrorDiagramModel {
+    pub(crate) fn new(diagram_type: &str) -> Self {
         Self {
-            diagram_type: meta.diagram_type.clone(),
+            diagram_type: diagram_type.to_string(),
             error_message: None,
+        }
+    }
+
+    pub(crate) fn suppressed(error: &Error) -> Self {
+        Self {
+            diagram_type: "error".to_string(),
+            error_message: Some(error.to_string()),
         }
     }
 
@@ -39,34 +48,51 @@ impl ErrorDiagramRenderModel {
     }
 }
 
+pub(crate) fn canonical_error(
+    _code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] _editor_demand: crate::family::EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<crate::SemanticDiagramModel>>
+{
+    control.checkpoint()?;
+    Ok(crate::family::SemanticConstruction {
+        model: Ok(crate::SemanticDiagramModel::Error(ErrorDiagramModel::new(
+            &metadata.diagram_type,
+        ))),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: None,
+    })
+}
+
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ErrorDiagramRenderModel,
-    _meta: &ParseMetadata,
+    model: &ErrorDiagramModel,
+    _meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(model.compatibility_json())
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_error(_code: &str, meta: &ParseMetadata) -> Result<Value> {
-    render_model_to_compat_json(&ErrorDiagramRenderModel::new(meta), meta)
+pub(crate) fn parse_error(_code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    render_model_to_compat_json(&ErrorDiagramModel::new(&meta.diagram_type), meta)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_error_model_for_render(
     _code: &str,
-    meta: &ParseMetadata,
-) -> Result<ErrorDiagramRenderModel> {
-    Ok(ErrorDiagramRenderModel::new(meta))
+    meta: &PresentationMetadata,
+) -> Result<ErrorDiagramModel> {
+    Ok(ErrorDiagramModel::new(&meta.diagram_type))
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn suppressed_error_diagram(
-    source_meta: &ParseMetadata,
+    source_meta: &PresentationMetadata,
     error: &Error,
 ) -> ParsedDiagram {
     let meta = suppressed_error_metadata(source_meta);
-    let mut typed = ErrorDiagramRenderModel::new(&meta);
-    typed.error_message = Some(error.to_string());
+    let typed = ErrorDiagramModel::suppressed(error);
     let mut model = render_model_to_compat_json(&typed, &meta)
         .expect("Error typed model must remain JSON-serializable");
     common_db::apply_common_db_sanitization(&mut model, meta.effective_config.as_config());
@@ -76,17 +102,18 @@ pub(crate) fn suppressed_error_diagram(
     }
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn suppressed_error_render_diagram(
-    source_meta: &ParseMetadata,
+    source_meta: &PresentationMetadata,
     error: &Error,
 ) -> ParsedDiagramRender {
     let meta = suppressed_error_metadata(source_meta);
-    let mut model = ErrorDiagramRenderModel::new(&meta);
-    model.error_message = Some(error.to_string());
+    let model = ErrorDiagramModel::suppressed(error);
     ParsedDiagramRender::new(meta, RenderSemanticModel::Error(model))
 }
 
-fn suppressed_error_metadata(source_meta: &ParseMetadata) -> ParseMetadata {
+#[cfg(feature = "presentation")]
+fn suppressed_error_metadata(source_meta: &PresentationMetadata) -> PresentationMetadata {
     let mut meta = source_meta.clone();
     meta.diagram_type = "error".to_string();
     meta
@@ -98,7 +125,7 @@ mod tests {
 
     #[test]
     fn typed_error_model_projects_exact_compatibility_json() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "error".to_string(),
             config: crate::MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),

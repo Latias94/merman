@@ -605,8 +605,8 @@ pub mod __private {
     /// Installs a compiled theme's explicit Mermaid compatibility and selected-family bridge.
     pub fn install_parse_compatibility(
         theme: &crate::diagram_theme::DiagramTheme,
-        engine: merman_core::Engine,
-    ) -> merman_core::Engine {
+        engine: merman_core::MermaidEngine,
+    ) -> merman_core::MermaidEngine {
         merman_core::__private::install_theme_compatibility(engine, theme.parse_compatibility())
     }
 }
@@ -1298,7 +1298,7 @@ mod tests {
     use merman_core::ParsedDiagramRender;
     #[cfg(feature = "layout-elk")]
     use merman_core::RenderSemanticModel;
-    use merman_core::{Engine, ParseOptions};
+    use merman_core::{MermaidEngine, ParseOptions};
 
     #[test]
     fn render_capability_ids_and_error_accessor_are_stable() {
@@ -1393,7 +1393,7 @@ mod tests {
         layout_options: &LayoutOptions,
         svg_options: &crate::svg::SvgRenderOptions,
     ) -> String {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse")
             .expect("diagram");
@@ -1452,7 +1452,7 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_with_type_sync(
                 "flowchart-elk",
                 "flowchart-elk TD\nA-->B;",
@@ -1471,7 +1471,7 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"---
 config:
@@ -1497,7 +1497,7 @@ A-->B
     #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_rejects_flowchart_over_node_resource_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_with_type_sync(
                 "flowchart-elk",
                 "flowchart-elk TD\nA-->B;",
@@ -1529,7 +1529,7 @@ A-->B
 
     #[test]
     fn render_model_dispatch_rejects_flowchart_dagre_work_during_its_first_owner_phase() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
                 ParseOptions::strict(),
@@ -1559,7 +1559,7 @@ A-->B
     }
 
     fn assert_class_layout_work_limit(source: &str) {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("class source should produce a render model");
@@ -1613,7 +1613,7 @@ C --> D"#,
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"---
 config:
@@ -1647,7 +1647,7 @@ Animal <|-- Duck
     #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_rejects_class_over_node_resource_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nAnimal <|-- Duck",
                 ParseOptions::strict(),
@@ -1679,7 +1679,7 @@ Animal <|-- Duck
     #[cfg(feature = "layout-elk")]
     #[test]
     fn typed_dispatch_rejects_flowchart_over_edge_resource_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nA-->B\nB-->C\nC-->D",
                 ParseOptions::strict(),
@@ -1711,7 +1711,7 @@ Animal <|-- Duck
     #[cfg(feature = "layout-elk")]
     #[test]
     fn typed_dispatch_rejects_class_over_edge_resource_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nAnimal <|-- Duck\nDuck <|-- Mallard",
                 ParseOptions::strict(),
@@ -1930,7 +1930,7 @@ id1(Start)-->id2(Stop)
         ] {
             let render = |layout: &str| {
                 let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -1970,7 +1970,7 @@ id1(Start)-->id2(Stop)
     #[cfg(not(feature = "layout-elk"))]
     #[test]
     fn flowchart_elk_alias_uses_dagre_geometry_when_loader_is_absent() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_with_type_sync(
                 "flowchart-elk",
                 "flowchart-elk TD\nA-->B;",
@@ -1983,7 +1983,7 @@ id1(Start)-->id2(Stop)
             .unwrap();
         let artifact = crate::family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let geometry = artifact.layout_json().unwrap()["layout"].clone();
-        let dagre_parsed = Engine::new()
+        let dagre_parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA-->B;",
                 ParseOptions::strict(),
@@ -2021,7 +2021,7 @@ id1(Start)-->id2(Stop)
         ] {
             for layout in ["cose-bilkent", "unknown-layout-probe"] {
                 let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -2045,7 +2045,7 @@ id1(Start)-->id2(Stop)
     #[test]
     fn registered_cose_host_denial_precedes_missing_root_failure() {
         let source = "---\nconfig:\n  layout: cose-bilkent\n---\nusecase-beta\nactor A\nA --> B\n";
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -2085,7 +2085,7 @@ id1(Start)-->id2(Stop)
                 "elk.rectpacking",
             ] {
                 let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();

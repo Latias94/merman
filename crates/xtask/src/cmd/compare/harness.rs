@@ -473,7 +473,7 @@ pub(crate) fn render_source_svg(
 }
 
 pub(crate) fn render_semantic_svg(
-    semantic: merman::SemanticArtifact,
+    semantic: merman::PresentationArtifact,
     request: merman::SvgRequest,
 ) -> Result<merman::SvgOutput, String> {
     let output = semantic
@@ -895,7 +895,7 @@ pub(crate) fn run_canonical_svg_compare(
     let environment = merman::SvgEnvironment::deterministic();
     let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let renderer = merman::Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
 
     let dom_plan = DomComparisonPlan::from_request(&request, fact.default_dom_mode)
@@ -960,11 +960,11 @@ pub(crate) fn run_canonical_svg_compare(
             let fixture_renderer = match input.site_config.clone() {
                 Some(site_config) => renderer
                     .clone()
-                    .with_engine(engine.clone().with_site_config(site_config)),
+                    .with_presentation_engine(engine.clone().with_site_config(site_config)),
                 None => renderer.clone(),
             };
             let semantic = fixture_renderer
-                .prepare_semantic(input.text, merman::OperationControl::new())
+                .prepare_presentation(input.text, merman::OperationControl::new())
                 .map_err(|error| {
                     format!("parse failed for {}: {error}", input.fixture_path.display())
                 })?
@@ -2123,7 +2123,7 @@ mod tests {
             let mut observed = ObservedRenderOperations::from_environment(&environment);
             let diagram_id = format!("computed-root-{}", fact.diagram);
             let renderer = merman::Renderer::new()
-                .with_engine(super::super::svg_compare_engine())
+                .with_presentation_engine(super::super::svg_compare_engine())
                 .with_parse_options(fact.parse_policy.options());
             let rendered = render_source_svg(
                 &renderer,
@@ -2514,7 +2514,7 @@ mod tests {
 
     fn render_info_for_evidence(stem: &str) -> merman::SvgOutput {
         render_source_svg(
-            &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
+            &merman::Renderer::new().with_presentation_engine(super::super::svg_compare_engine()),
             "info",
             svg_request(
                 merman::SvgEnvironment::deterministic(),
@@ -2862,7 +2862,7 @@ mod tests {
         }
         let environment = merman::SvgEnvironment::deterministic().without_math_renderer();
         let renderer = merman::Renderer::new()
-            .with_engine(super::super::svg_compare_engine())
+            .with_presentation_engine(super::super::svg_compare_engine())
             .with_parse_options(ParsePolicy::SuppressErrors.options());
         let mut observed = ObservedRenderOperations::from_environment(&environment);
         let out_path = root.join("report.md");

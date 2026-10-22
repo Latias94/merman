@@ -3,18 +3,18 @@
 #[cfg(feature = "editor-facts")]
 use super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts, SourceSpan};
 use super::parse_api::{
-    Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl, ParseMetadata,
-    ParseOptions, ParsedDiagram, ParsedDiagramRender, Result, diagram_family_capabilities,
+    Error, ManagedSemanticJson, MermaidConfig, MermaidEngine, OperationControl, ParseOptions,
+    ParsedDiagram, ParsedDiagramRender, PresentationMetadata, Result, diagram_family_capabilities,
     runtime::RuntimePolicy, time::CivilDate,
 };
 
-pub fn deterministic_engine() -> Engine {
+pub fn deterministic_engine() -> MermaidEngine {
     let policy = RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(CivilDate::new(2025, 1, 1))
         .with_fixed_unix_millis(1_735_689_600_000);
-    Engine::new().with_runtime_policy(policy)
+    MermaidEngine::new().with_runtime_policy(policy)
 }
 
 fn managed_config(config: &MermaidConfig) -> ManagedSemanticJson {
@@ -25,7 +25,7 @@ fn managed_config(config: &MermaidConfig) -> ManagedSemanticJson {
         .into()
 }
 
-fn assert_metadata(semantic: &ParseMetadata, typed: &ParseMetadata, source: &str) {
+fn assert_metadata(semantic: &PresentationMetadata, typed: &PresentationMetadata, source: &str) {
     assert_eq!(semantic.diagram_type, typed.diagram_type, "{source}");
     assert_eq!(semantic.title, typed.title, "{source}");
     assert_eq!(
@@ -112,7 +112,7 @@ pub fn assert_pair(
     }
 }
 
-pub fn assert_parse_paths(engine: &Engine, source: &str) {
+pub fn assert_parse_paths(engine: &MermaidEngine, source: &str) {
     let strict = engine.parse_diagram_sync(source, ParseOptions::strict());
     let strict_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
     assert_pair(&strict, &strict_typed, source);
@@ -133,7 +133,7 @@ pub fn assert_parse_paths(engine: &Engine, source: &str) {
     assert_modes(&strict, &lenient, source);
 }
 
-pub fn assert_known_type_parse_paths(engine: &Engine, diagram_type: &str, source: &str) {
+pub fn assert_known_type_parse_paths(engine: &MermaidEngine, diagram_type: &str, source: &str) {
     let strict = engine.parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict());
     let typed = engine.parse_diagram_for_render_model_with_type_sync(
         diagram_type,

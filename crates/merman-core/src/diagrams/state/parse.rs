@@ -17,7 +17,7 @@ use crate::{
     SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -120,7 +120,7 @@ struct StateSemanticFailure {
 
 impl StateSemanticFailure {
     #[cfg(feature = "presentation")]
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+    fn into_parse_error(self, meta: &PresentationMetadata, fallback_offset: usize) -> Error {
         self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
     }
 
@@ -135,7 +135,7 @@ impl StateSemanticFailure {
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
@@ -186,14 +186,14 @@ fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> 
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_state(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_state_semantic_source(code, meta)?.db.into_model(meta)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_state_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
     let construction = construct_state_semantic_source(
@@ -263,7 +263,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_state_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_state_semantic_source(code, EditorFactsDemand::Capture, control)?;
@@ -302,7 +302,10 @@ pub(crate) fn parse_state_json_and_editor_facts(
 }
 
 #[cfg(feature = "compat-json")]
-fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {
+fn parse_state_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<StateSemanticSource> {
     construct_state_semantic_source(
         code,
         #[cfg(feature = "editor-facts")]

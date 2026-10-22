@@ -1,6 +1,6 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::svg::{LayoutOptions, RenderResourcePolicy, SvgDebugOptions, SvgRenderOptions};
-use merman_core::{DetectorRegistry, Engine, ManagedSemanticJson, ParseOptions};
+use merman_core::{DetectorRegistry, ManagedSemanticJson, MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -407,7 +407,7 @@ fn frontmatter_fixtures() -> Vec<(&'static str, &'static str)> {
 }
 
 fn bench_parse(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("parse");
@@ -443,7 +443,7 @@ fn bench_parse(c: &mut Criterion) {
 }
 
 fn bench_compatibility_json_parse(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("compatibility_json_parse");
@@ -500,10 +500,10 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
         if !benchmark_selected("parse_cold_engine", name) {
             continue;
         }
-        // Tracks request-style usage that constructs a fresh Engine per parse, so parse wins are
+        // Tracks request-style usage that constructs a fresh MermaidEngine per parse, so parse wins are
         // not accidentally attributed only to the hot shared-engine benchmark shape.
         let output_identity = || {
-            let engine = Engine::new();
+            let engine = MermaidEngine::new();
             let parsed = engine
                 .parse_diagram_for_render_model_sync(input, parse_opts)
                 .unwrap_or_else(|error| {
@@ -525,7 +525,7 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let engine = Engine::new();
+                let engine = MermaidEngine::new();
                 let parsed = engine
                     .parse_diagram_for_render_model_sync(black_box(data), parse_opts)
                     .expect("cold-engine parse benchmark")
@@ -539,7 +539,7 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
 }
 
 fn bench_editor_snapshot(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let mut group = c.benchmark_group("editor_snapshot");
     for (name, input) in fixtures() {
         if !benchmark_selected("editor_snapshot", name) {
@@ -643,7 +643,7 @@ fn bench_frontmatter_preprocess(c: &mut Criterion) {
 }
 
 fn bench_layout(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     // Native batch fixtures include layouts beyond the interactive preview budget.
@@ -691,7 +691,7 @@ fn bench_layout(c: &mut Criterion) {
 }
 
 fn bench_render(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     // Native batch fixtures include layouts beyond the interactive preview budget.
@@ -752,12 +752,12 @@ fn bench_render(c: &mut Criterion) {
 }
 
 fn bench_end_to_end(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     let resources = RenderResourcePolicy::trusted_native();
     let renderer = merman::Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(parse_opts)
         .with_resource_policy(*resources.input_policy());
 

@@ -345,7 +345,7 @@ mod tests {
         let resolved = theme
             .as_ref()
             .map(|theme| theme.resolve(crate::DiagramFamilyId::SEQUENCE));
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nA->>+B: Hello\nnote over B: Note\nloop control\nB-->>A: Reply\nend\nB-->>-A: Done",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();

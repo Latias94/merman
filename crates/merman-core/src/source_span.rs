@@ -97,7 +97,10 @@ pub(crate) fn keyword_value_span(
     Some(SourceSpan::new(value_start, value_start + value_len))
 }
 
-#[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
+#[cfg(all(
+    feature = "editor-facts",
+    any(feature = "diagram-packet", feature = "diagram-radar")
+))]
 pub(crate) fn recovery_fallback_span(source: &str) -> SourceSpan {
     let mut line_start = 0;
     for segment in source.split_inclusive('\n') {

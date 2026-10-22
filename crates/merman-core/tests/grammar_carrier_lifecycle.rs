@@ -1,7 +1,7 @@
 #![cfg(all(feature = "diagram-class", feature = "diagram-sequence"))]
 #![cfg(feature = "presentation")]
 
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
@@ -59,10 +59,10 @@ fn run_worker(case: &str, size: usize) {
     let source = source(case, size);
     println!(
         "case={case} size={size} source_bytes={} worker_stack_bytes={WORKER_STACK_BYTES} \
-         path=Engine.parse_diagram_for_render_model_sync profile=direct-engine-strict",
+         path=MermaidEngine.parse_diagram_for_render_model_sync profile=direct-engine-strict",
         source.len()
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     marker("parse", "begin");
     let parsed = engine.parse_diagram_for_render_model_sync(&source, ParseOptions::strict());
     if case.contains("missing-outer") {

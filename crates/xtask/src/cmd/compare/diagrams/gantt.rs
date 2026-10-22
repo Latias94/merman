@@ -89,7 +89,7 @@ pub(super) fn compare_gantt_request(
     let environment = merman::SvgEnvironment::deterministic();
     let mut observed_operations = ObservedRenderOperations::from_environment(&environment);
     let probe_renderer = merman::Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
     run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
@@ -124,11 +124,11 @@ pub(super) fn compare_gantt_request(
             let fixture_renderer = match input.site_config.clone() {
                 Some(site_config) => probe_renderer
                     .clone()
-                    .with_engine(engine.clone().with_site_config(site_config)),
+                    .with_presentation_engine(engine.clone().with_site_config(site_config)),
                 None => probe_renderer.clone(),
             };
             let semantic = match fixture_renderer
-                .prepare_semantic(input.text, merman::OperationControl::new())
+                .prepare_presentation(input.text, merman::OperationControl::new())
             {
                 Ok(Some(v)) => v,
                 Ok(None) => {

@@ -3,7 +3,7 @@
 #[path = "../../merman-core/src/tests/registry_cases.rs"]
 mod catalog_cases;
 
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -16,7 +16,7 @@ use merman_render::diagram_theme::{
 };
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected")
@@ -78,7 +78,7 @@ fn architecture_prepared_artifact_renders_the_typed_family() {
 #[cfg(not(feature = "layout-cytoscape"))]
 #[test]
 fn architecture_reports_the_missing_cytoscape_layout_capability() {
-    let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
+    let parsed = match MermaidEngine::new().parse_diagram_for_render_model_with_type_sync(
         "architecture",
         "architecture-beta\n  service api(server)[API]\n",
         ParseOptions::strict(),
@@ -108,16 +108,17 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
                 ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
             ))
             .expect("compile default-feature Mindmap palette");
-    let parsed = match merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_with_type_sync(
-            "mindmap",
-            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
-            ParseOptions::strict(),
-        ) {
-        Ok(Some(parsed)) => parsed,
-        Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
-        result => panic!("unexpected Mindmap parse result: {result:?}"),
-    };
+    let parsed =
+        match merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_with_type_sync(
+                "mindmap",
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
+                ParseOptions::strict(),
+            ) {
+            Ok(Some(parsed)) => parsed,
+            Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
+            result => panic!("unexpected Mindmap parse result: {result:?}"),
+        };
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -196,10 +197,11 @@ fn finalized_svg_receipt_rejects_other_renders_and_mutated_output() {
         let session = RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
             .unwrap();
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
         family::prepare(&parsed, &LayoutOptions::default(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -248,7 +250,7 @@ fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capabilit
             .map(|fact| fact.diagram_type)
             .collect::<BTreeSet<_>>()
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let mut prepared_families = BTreeSet::new();
     let mut missing_families = BTreeSet::new();
     for case in cases {

@@ -431,7 +431,7 @@ mod tests {
     }
 
     fn effective_config(site_config: serde_json::Value) -> PresentationConfig {
-        merman_core::Engine::new()
+        merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(site_config))
             .parse_metadata_sync("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n")
             .expect("parse Radar config ownership fixture")

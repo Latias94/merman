@@ -2,7 +2,7 @@
 //! Terminal-friendly ASCII and Unicode rendering for Mermaid typed models.
 //!
 //! `merman-ascii` is deliberately model-driven: callers parse Mermaid text with `merman-core`, then
-//! pass the resulting typed render model into this crate. The renderer does not own Mermaid syntax
+//! pass the resulting canonical model into this crate. The renderer does not own Mermaid syntax
 //! parsing. Rendering requires the caller's operation control, runtime context, and resource
 //! policy so this backend cannot create a second source-to-output operation.
 
@@ -435,7 +435,6 @@ impl AsciiRenderer {
     ///
     /// Admission uses the parsed logical family, so enabling the shared Flowchart implementation
     /// for Swimlane does not admit Flowchart source, or vice versa.
-    #[doc(hidden)]
     pub fn render_parsed(
         &self,
         parsed: &ParsedSemanticDiagram,
@@ -466,7 +465,6 @@ impl AsciiRenderer {
     }
 
     /// Renders a parser-owned model and returns logical extent/projection/overflow metadata.
-    #[doc(hidden)]
     pub fn render_parsed_report(
         &self,
         parsed: &ParsedSemanticDiagram,

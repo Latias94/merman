@@ -56,6 +56,7 @@ pub(super) struct FlowchartAccessibilityScan {
     pub(super) statements: Vec<FlowchartAccessibilityStatement>,
 }
 
+#[cfg(any(test, feature = "compat-json"))]
 pub(super) fn scan_flowchart_accessibility(
     code: &str,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,

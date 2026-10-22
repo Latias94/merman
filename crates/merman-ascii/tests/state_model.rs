@@ -5,12 +5,12 @@ use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use std::path::Path;
 use support::render_model;
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("state diagram should parse")
         .expect("state diagram should be detected");

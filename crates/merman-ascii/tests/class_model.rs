@@ -6,12 +6,12 @@ use merman_ascii::{
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::{MermaidEngine, OperationControl, ParseOptions};
 use std::path::Path;
 use support::{render_controlled_model, render_model, render_model_with_resources};
 
 fn parse_class_render_model(input: &str) -> RenderSemanticModel {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("class diagram should parse")
         .expect("class diagram should be detected")
@@ -56,7 +56,7 @@ fn render_class_with_grid_limit(
 ) -> merman_ascii::Result<String> {
     let model = parse_class_render_model(input);
     let control = OperationControl::new();
-    let context = Engine::new()
+    let context = MermaidEngine::new()
         .begin_operation()
         .expect("deterministic operation context should be available");
     let resources = AsciiResourcePolicy::default()

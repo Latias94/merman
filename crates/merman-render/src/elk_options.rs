@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn public_configuration_ignores_null_layer_bounds_before_elk_projection() {
         use merman_core::presentation::PresentationConfig;
-        use merman_core::{Engine, ParseOptions};
+        use merman_core::{MermaidEngine, ParseOptions};
 
         // Mermaid 12 assignWithDepth.ts ignores null-valued object properties.
         // Its initialize, frontmatter, and init-directive routes therefore preserve
@@ -479,9 +479,9 @@ mod tests {
             for exact in [false, true] {
                 let site = PresentationConfig::from_value(site.clone());
                 let engine = if exact {
-                    Engine::new().with_exact_site_config(Some(site))
+                    MermaidEngine::new().with_exact_site_config(Some(site))
                 } else {
-                    Engine::new().with_site_config(site)
+                    MermaidEngine::new().with_site_config(site)
                 };
                 let parsed = engine
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())

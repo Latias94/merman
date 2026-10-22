@@ -2114,7 +2114,7 @@ mod tests {
                 UserUnitMeasurer.measure(text, style)
             }
         }
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "xychart\ntitle Chart\nx-axis Categories [One, Two, Three]\ny-axis Amount 0 --> 40\nline Series [10, 30, 20]",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();

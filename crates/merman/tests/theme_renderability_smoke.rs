@@ -1,7 +1,7 @@
 #![cfg(feature = "svg")]
 
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
     presentation::PresentationConfig,
 };
 
@@ -35,7 +35,7 @@ fn render_svg_with_site_config(
         ..Default::default()
     };
     let output = Renderer::new()
-        .with_engine(Engine::new().with_site_config(site_config))
+        .with_presentation_engine(MermaidEngine::new().with_site_config(site_config))
         .render(
             RenderRequest::svg(source, OperationControl::new(), request)
                 .with_parse_options(merman::ParseOptions::strict()),

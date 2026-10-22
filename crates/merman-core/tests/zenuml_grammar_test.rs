@@ -2,7 +2,7 @@
 
 #[cfg(feature = "editor-facts")]
 use merman_core::{EditorSemanticCompleteness, ParsedEditorFacts};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 
 const ADVANCED_ZENUML: &str = r#"zenuml
 title Order Service
@@ -31,7 +31,7 @@ OrderController.post(payload) {
 
 #[test]
 fn official_advanced_zenuml_builds_semantics_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let semantic = engine
         .parse_diagram_sync(ADVANCED_ZENUML, ParseOptions::strict())
         .expect("advanced ZenUML semantic parsing must succeed")
@@ -63,7 +63,7 @@ fn official_advanced_zenuml_builds_semantics_and_editor_facts() {
 #[test]
 fn invalid_zenuml_recovers_facts_on_both_sides_of_the_error() {
     let source = "zenuml\n@Starter(Client)\nA.call()\nif( {\nB.call()\nC.call()\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("zenuml", source)
         .expect("facts request must complete")

@@ -20,6 +20,7 @@ artifact-profile-required = true
 presentation = ["dep:ryu-js"]
 editor-facts = []
 compat-json = ["presentation"]
+terminal-text = ["dep:unicode-segmentation", "dep:unicode-width"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -122,8 +123,8 @@ granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true
 unicode-general-category = { workspace = true, optional = true }
-unicode-segmentation.workspace = true
-unicode-width.workspace = true
+unicode-segmentation = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
 html5ever.workspace = true
 url.workspace = true
 jiff = { workspace = true, optional = true }

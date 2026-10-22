@@ -17,7 +17,7 @@ use crate::EditorSemanticFacts;
 use crate::family::EditorFactsDemand;
 use crate::{Error, OperationControl, OperationControlResult, SemanticMetadata};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
@@ -38,7 +38,7 @@ struct ZenumlSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_zenuml(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = parse_semantic_source(code, meta)?;
     model::render_model_to_compat_json(&source.model, meta)
 }
@@ -46,7 +46,7 @@ pub(crate) fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_zenuml_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<ZenumlDiagramRenderModel> {
     Ok(parse_semantic_source(code, meta)?.model)
 }
@@ -54,7 +54,7 @@ pub(crate) fn parse_zenuml_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_zenuml_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ZenumlDiagramRenderModel>> {
     let source = construct_semantic_source(
@@ -77,7 +77,7 @@ pub(crate) fn parse_zenuml_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let source = construct_semantic_source(
@@ -110,7 +110,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
+fn parse_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<ZenumlSemanticSource> {
     let source = construct_semantic_source(
         code,
         #[cfg(feature = "editor-facts")]
@@ -342,7 +342,7 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn typed_and_json_only_entrypoints_do_not_collect_editor_facts() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "zenuml".into(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -373,8 +373,8 @@ mod tests {
     use super::*;
     use crate::{MermaidConfig, RenderSemanticModel};
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "zenuml".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

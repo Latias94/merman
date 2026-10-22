@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -72,6 +72,7 @@ impl CynefinDiagramModel {
 struct SpannedText {
     text: String,
     span: SourceSpan,
+    #[cfg(any(test, feature = "editor-facts"))]
     selection: SourceSpan,
 }
 
@@ -116,7 +117,7 @@ impl CynefinParseOutcome {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_cynefin(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
 
@@ -127,7 +128,7 @@ pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let CynefinParseOutcome {
@@ -170,7 +171,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &CynefinDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({
         "type": meta.diagram_type,
@@ -185,7 +186,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "all-diagrams", feature = "presentation"))]
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<CynefinDiagramRenderModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
@@ -195,7 +196,7 @@ pub(crate) fn parse_cynefin_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_cynefin_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<CynefinDiagramRenderModel>> {
     parse_cynefin_model_controlled(
@@ -274,7 +275,7 @@ fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
 ))]
 fn parse_cynefin_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<CynefinSemanticSource> {
     construct_cynefin_parse_outcome(code, &meta.diagram_type).into_strict_source()
 }
@@ -802,6 +803,7 @@ impl<'input> CynefinCursor<'input> {
             return Some(SpannedText {
                 text: (*domain).to_string(),
                 span: SourceSpan::new(start, start + domain.len()),
+                #[cfg(any(test, feature = "editor-facts"))]
                 selection: SourceSpan::new(start, start + domain.len()),
             });
         }
@@ -815,6 +817,7 @@ impl<'input> CynefinCursor<'input> {
         Some(SpannedText {
             text: parsed.value,
             span: parsed.raw_span,
+            #[cfg(any(test, feature = "editor-facts"))]
             selection: parsed.value_span,
         })
     }
@@ -925,7 +928,7 @@ mod tests {
             ),
             ("cynefin-beta\r\n  \"orphan\" %% hidden\r\n", "\"orphan\""),
         ] {
-            let facts = crate::Engine::new()
+            let facts = crate::MermaidEngine::new()
                 .parse_editor_semantic_facts_with_type_sync("cynefin", source)
                 .unwrap()
                 .unwrap();
@@ -952,7 +955,7 @@ mod tests {
         let facts = crate::family::test_support::editor_facts(
             parse_cynefin_json_and_editor_facts,
             source,
-            &crate::ParseMetadata {
+            &crate::PresentationMetadata {
                 diagram_type: "cynefin".to_string(),
                 config: crate::MermaidConfig::empty_object(),
                 effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -981,7 +984,7 @@ mod tests {
             "  \"Probe\"\n",
             "complex --> complicated : \"Sense\"\n",
         );
-        let engine = crate::Engine::new();
+        let engine = crate::MermaidEngine::new();
         let compat = engine
             .parse_diagram_sync(source, crate::ParseOptions::strict())
             .unwrap()

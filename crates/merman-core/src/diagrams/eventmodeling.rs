@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
@@ -87,7 +87,7 @@ impl EventModelingDiagramModel {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_eventmodeling(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_compat_json(meta)
@@ -97,7 +97,7 @@ pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Va
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -126,7 +126,7 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &EventModelingDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({
         "type": meta.diagram_type,
@@ -141,7 +141,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_eventmodeling_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<EventModelingDiagramModel> {
     Ok(construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
@@ -151,7 +151,7 @@ pub(crate) fn parse_eventmodeling_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_eventmodeling_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<EventModelingDiagramModel>> {
     let construction = construct_eventmodeling_semantic_source_controlled(
@@ -233,11 +233,14 @@ struct EventModelingFrameFacts {
     name: String,
     name_span: SourceSpan,
     model_entity_type: String,
+    #[cfg(feature = "editor-facts")]
     model_entity_type_span: SourceSpan,
     entity_identifier: String,
+    #[cfg(feature = "editor-facts")]
     entity_identifier_span: SourceSpan,
     source_frames: Vec<EventModelingFieldSpan>,
     data_reference: Option<EventModelingFieldSpan>,
+    #[cfg(feature = "editor-facts")]
     data_type: Option<EventModelingFieldSpan>,
     data_inline_value: Option<EventModelingFieldSpan>,
 }
@@ -245,30 +248,42 @@ struct EventModelingFrameFacts {
 #[derive(Debug, Clone)]
 struct EventModelingDataEntityFacts {
     name: EventModelingFieldSpan,
+    #[cfg(feature = "editor-facts")]
     data_type: Option<EventModelingFieldSpan>,
     block_text: String,
+    #[cfg(feature = "editor-facts")]
     block_span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct EventModelingNoteFacts {
+    #[cfg(feature = "editor-facts")]
     source_frame: EventModelingFieldSpan,
+    #[cfg(feature = "editor-facts")]
     data_type: Option<EventModelingFieldSpan>,
+    #[cfg(feature = "editor-facts")]
     block_text: String,
+    #[cfg(feature = "editor-facts")]
     block_span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct EventModelingGwtStatementFacts {
+    #[cfg(feature = "editor-facts")]
     model_entity_type: EventModelingFieldSpan,
+    #[cfg(feature = "editor-facts")]
     entity_reference: EventModelingFieldSpan,
 }
 
 #[derive(Debug, Clone)]
 struct EventModelingGwtFacts {
+    #[cfg(feature = "editor-facts")]
     source_frame: EventModelingFieldSpan,
+    #[cfg(feature = "editor-facts")]
     given: Vec<EventModelingGwtStatementFacts>,
+    #[cfg(feature = "editor-facts")]
     when: Vec<EventModelingGwtStatementFacts>,
+    #[cfg(feature = "editor-facts")]
     then: Vec<EventModelingGwtStatementFacts>,
 }
 
@@ -378,7 +393,7 @@ impl EventModelingSyntaxFacts {
 
 impl EventModelingSemanticSource {
     #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-    fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramModel {
+    fn into_render_model(self, meta: &PresentationMetadata) -> EventModelingDiagramModel {
         self.into_render_model_controlled(meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
@@ -444,22 +459,22 @@ impl EventModelingSemanticSource {
     #[cfg(feature = "presentation")]
     fn into_render_model_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EventModelingDiagramModel> {
         self.into_model_controlled(meta.effective_config.as_config(), control)
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
         let model = self.into_render_model(meta);
         render_model_to_compat_json(&model, meta)
     }
 
-    #[cfg(feature = "compat-json")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn into_compat_json_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
@@ -486,7 +501,7 @@ impl EventModelingParseFailure {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_eventmodeling_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
     construct_eventmodeling_semantic_source_controlled(
         code,
@@ -1184,18 +1199,22 @@ fn parse_eventmodeling_frame_cursor(
         None
     };
 
-    let (data_type, data_inline_value) = parse_eventmodeling_optional_inline(cursor, diagram_type)?;
+    let (_data_type, data_inline_value) =
+        parse_eventmodeling_optional_inline(cursor, diagram_type)?;
     Ok(EventModelingFrameFacts {
         frame_kind: frame_kind.to_string(),
         name: name.text,
         name_span: name.span,
         model_entity_type: model_entity_type.text,
+        #[cfg(feature = "editor-facts")]
         model_entity_type_span: model_entity_type.span,
         entity_identifier: entity_identifier.text,
+        #[cfg(feature = "editor-facts")]
         entity_identifier_span: entity_identifier.span,
         source_frames,
         data_reference,
-        data_type,
+        #[cfg(feature = "editor-facts")]
+        data_type: _data_type,
         data_inline_value,
     })
 }
@@ -1288,15 +1307,19 @@ fn parse_eventmodeling_optional_inline(
 }
 
 struct ParsedEventModelingBlock {
+    #[cfg(feature = "editor-facts")]
     data_type: Option<EventModelingFieldSpan>,
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
 struct FailedEventModelingBlock {
     error: Box<Error>,
+    #[cfg(feature = "editor-facts")]
     data_type: Option<EventModelingFieldSpan>,
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -1304,13 +1327,15 @@ fn parse_eventmodeling_block_cursor(
     cursor: &mut EventModelingCursor<'_>,
     diagram_type: &str,
 ) -> std::result::Result<ParsedEventModelingBlock, FailedEventModelingBlock> {
-    let data_type = match parse_eventmodeling_optional_data_type(cursor, diagram_type) {
+    let _data_type = match parse_eventmodeling_optional_data_type(cursor, diagram_type) {
         Ok(data_type) => data_type,
         Err(error) => {
             return Err(FailedEventModelingBlock {
                 error: Box::new(error),
+                #[cfg(feature = "editor-facts")]
                 data_type: None,
                 text: String::new(),
+                #[cfg(feature = "editor-facts")]
                 span: cursor.insertion_span(),
             });
         }
@@ -1318,8 +1343,10 @@ fn parse_eventmodeling_block_cursor(
     if let Err(error) = cursor.skip_hidden(diagram_type) {
         return Err(FailedEventModelingBlock {
             error: Box::new(error),
-            data_type,
+            #[cfg(feature = "editor-facts")]
+            data_type: _data_type,
             text: String::new(),
+            #[cfg(feature = "editor-facts")]
             span: cursor.insertion_span(),
         });
     }
@@ -1331,8 +1358,10 @@ fn parse_eventmodeling_block_cursor(
                 "expected eventmodeling data block",
                 span.start,
             )),
-            data_type,
+            #[cfg(feature = "editor-facts")]
+            data_type: _data_type,
             text: String::new(),
+            #[cfg(feature = "editor-facts")]
             span,
         });
     }
@@ -1348,8 +1377,10 @@ fn parse_eventmodeling_block_cursor(
                 "eventmodeling data block must start on a new line",
                 span,
             )),
-            data_type,
+            #[cfg(feature = "editor-facts")]
+            data_type: _data_type,
             text: cursor.source[block_start..].to_string(),
+            #[cfg(feature = "editor-facts")]
             span,
         });
     };
@@ -1374,8 +1405,10 @@ fn parse_eventmodeling_block_cursor(
                 "eventmodeling data block must start on a new line",
                 span,
             )),
-            data_type,
+            #[cfg(feature = "editor-facts")]
+            data_type: _data_type,
             text: cursor.source[block_start..cursor.offset + before_newline.len()].to_string(),
+            #[cfg(feature = "editor-facts")]
             span,
         });
     }
@@ -1392,8 +1425,10 @@ fn parse_eventmodeling_block_cursor(
             if after.is_empty() || after.chars().next().is_some_and(char::is_whitespace) {
                 cursor.offset = block_end;
                 return Ok(ParsedEventModelingBlock {
-                    data_type,
+                    #[cfg(feature = "editor-facts")]
+                    data_type: _data_type,
                     text: cursor.source[block_start..block_end].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(block_start, block_end),
                 });
             }
@@ -1405,6 +1440,7 @@ fn parse_eventmodeling_block_cursor(
         line_start = next;
     }
 
+    #[cfg(feature = "editor-facts")]
     let span = SourceSpan::new(block_start, cursor.source.len());
     cursor.offset = cursor.source.len();
     Err(FailedEventModelingBlock {
@@ -1413,8 +1449,10 @@ fn parse_eventmodeling_block_cursor(
             "expected closing brace for eventmodeling data block",
             cursor.source.len(),
         )),
-        data_type,
+        #[cfg(feature = "editor-facts")]
+        data_type: _data_type,
         text: cursor.source[block_start..].to_string(),
+        #[cfg(feature = "editor-facts")]
         span,
     })
 }
@@ -1443,8 +1481,10 @@ fn parse_eventmodeling_data_cursor(
                         text: String::new(),
                         span: cursor.insertion_span(),
                     },
+                    #[cfg(feature = "editor-facts")]
                     data_type: None,
                     block_text: String::new(),
+                    #[cfg(feature = "editor-facts")]
                     block_span: cursor.insertion_span(),
                 }),
             });
@@ -1453,16 +1493,20 @@ fn parse_eventmodeling_data_cursor(
     match parse_eventmodeling_block_cursor(cursor, diagram_type) {
         Ok(block) => Ok(EventModelingDataEntityFacts {
             name,
+            #[cfg(feature = "editor-facts")]
             data_type: block.data_type,
             block_text: block.text,
+            #[cfg(feature = "editor-facts")]
             block_span: block.span,
         }),
         Err(block) => Err(FailedEventModelingDataCursor {
             error: block.error,
             partial: Box::new(EventModelingDataEntityFacts {
                 name,
+                #[cfg(feature = "editor-facts")]
                 data_type: block.data_type,
                 block_text: block.text,
+                #[cfg(feature = "editor-facts")]
                 block_span: block.span,
             }),
         }),
@@ -1479,7 +1523,7 @@ fn parse_eventmodeling_note_cursor(
     diagram_type: &str,
 ) -> std::result::Result<EventModelingNoteFacts, FailedEventModelingNoteCursor> {
     cursor.consume_keyword("note");
-    let source_frame = match take_eventmodeling_frame_id_cursor(
+    let _source_frame = match take_eventmodeling_frame_id_cursor(
         cursor,
         diagram_type,
         "expected eventmodeling note source frame",
@@ -1489,30 +1533,42 @@ fn parse_eventmodeling_note_cursor(
             return Err(FailedEventModelingNoteCursor {
                 error: Box::new(error),
                 partial: Box::new(EventModelingNoteFacts {
+                    #[cfg(feature = "editor-facts")]
                     source_frame: EventModelingFieldSpan {
                         text: String::new(),
                         span: cursor.insertion_span(),
                     },
+                    #[cfg(feature = "editor-facts")]
                     data_type: None,
+                    #[cfg(feature = "editor-facts")]
                     block_text: String::new(),
+                    #[cfg(feature = "editor-facts")]
                     block_span: cursor.insertion_span(),
                 }),
             });
         }
     };
     match parse_eventmodeling_block_cursor(cursor, diagram_type) {
-        Ok(block) => Ok(EventModelingNoteFacts {
-            source_frame,
-            data_type: block.data_type,
-            block_text: block.text,
-            block_span: block.span,
+        Ok(_block) => Ok(EventModelingNoteFacts {
+            #[cfg(feature = "editor-facts")]
+            source_frame: _source_frame,
+            #[cfg(feature = "editor-facts")]
+            data_type: _block.data_type,
+            #[cfg(feature = "editor-facts")]
+            block_text: _block.text,
+            #[cfg(feature = "editor-facts")]
+            block_span: _block.span,
         }),
         Err(block) => Err(FailedEventModelingNoteCursor {
             error: block.error,
             partial: Box::new(EventModelingNoteFacts {
-                source_frame,
+                #[cfg(feature = "editor-facts")]
+                source_frame: _source_frame,
+                #[cfg(feature = "editor-facts")]
                 data_type: block.data_type,
+                #[cfg(feature = "editor-facts")]
                 block_text: block.text,
+                #[cfg(feature = "editor-facts")]
                 block_span: block.span,
             }),
         }),
@@ -1556,15 +1612,17 @@ fn parse_eventmodeling_gwt_group(
         {
             break;
         }
-        let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, diagram_type)?;
-        let entity_reference = take_eventmodeling_id_cursor(
+        let _model_entity_type = take_eventmodeling_entity_type_cursor(cursor, diagram_type)?;
+        let _entity_reference = take_eventmodeling_id_cursor(
             cursor,
             diagram_type,
             "expected eventmodeling gwt model entity reference",
         )?;
         statements.push(EventModelingGwtStatementFacts {
-            model_entity_type,
-            entity_reference,
+            #[cfg(feature = "editor-facts")]
+            model_entity_type: _model_entity_type,
+            #[cfg(feature = "editor-facts")]
+            entity_reference: _entity_reference,
         });
     }
     if statements.is_empty() {
@@ -1582,7 +1640,7 @@ fn parse_eventmodeling_gwt_cursor(
     diagram_type: &str,
 ) -> Result<EventModelingGwtFacts> {
     cursor.consume_keyword("gwt");
-    let source_frame = take_eventmodeling_frame_id_cursor(
+    let _source_frame = take_eventmodeling_frame_id_cursor(
         cursor,
         diagram_type,
         "expected eventmodeling gwt source frame",
@@ -1595,9 +1653,9 @@ fn parse_eventmodeling_gwt_cursor(
             cursor.offset(),
         ));
     }
-    let given = parse_eventmodeling_gwt_group(cursor, diagram_type, &["when", "then"])?;
+    let _given = parse_eventmodeling_gwt_group(cursor, diagram_type, &["when", "then"])?;
     cursor.skip_hidden(diagram_type)?;
-    let when = if cursor.consume_keyword("when") {
+    let _when = if cursor.consume_keyword("when") {
         parse_eventmodeling_gwt_group(cursor, diagram_type, &["then"])?
     } else {
         Vec::new()
@@ -1610,12 +1668,16 @@ fn parse_eventmodeling_gwt_cursor(
             cursor.offset(),
         ));
     }
-    let then = parse_eventmodeling_gwt_group(cursor, diagram_type, &[])?;
+    let _then = parse_eventmodeling_gwt_group(cursor, diagram_type, &[])?;
     Ok(EventModelingGwtFacts {
-        source_frame,
-        given,
-        when,
-        then,
+        #[cfg(feature = "editor-facts")]
+        source_frame: _source_frame,
+        #[cfg(feature = "editor-facts")]
+        given: _given,
+        #[cfg(feature = "editor-facts")]
+        when: _when,
+        #[cfg(feature = "editor-facts")]
+        then: _then,
     })
 }
 
@@ -1942,13 +2004,13 @@ fn push_eventmodeling_gwt_facts(
 mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
-    use crate::Engine;
+    use crate::MermaidEngine;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
-    use crate::{MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata};
+    use crate::{MermaidConfig, ParseDiagnosticSpanKind, PresentationMetadata};
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "eventmodeling".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2292,7 +2354,7 @@ data ItemAddedData {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_eventmodeling_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"eventmodeling
 tf 01 cmd AddItem { productId: 7 }
 tf 02 evt ItemAdded ->> 01 [[ItemAddedData]]
@@ -2732,7 +2794,7 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::ParseMetadata {
+            let full_metadata = crate::PresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
                 effective_config: crate::presentation::PresentationConfig::from_config(

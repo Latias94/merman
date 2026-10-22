@@ -40,7 +40,13 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman",
-        &["system-fonts", "experimental-system-font-query"],
+        &[
+            "system-fonts",
+            "experimental-system-font-query",
+            "presentation",
+            "compat-json",
+            "editor-facts",
+        ],
     ),
     ("merman-analysis", &["compat-json"]),
     ("merman-android-jni", &["native-runtime"]),
@@ -57,6 +63,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
             "editor-facts",
             "operation-deadlines",
             "presentation",
+            "terminal-text",
             "test-support",
         ],
     ),
@@ -1268,6 +1275,7 @@ fn display_feature_set(features: &BTreeSet<String>) -> String {
 }
 
 fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskError> {
+    let target_root = super::target_root();
     let all = merman_core::diagram_family_selectors()
         .iter()
         .map(|selector| selector.logical_family_kind)
@@ -1411,7 +1419,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
             .args(["run", "--quiet", "--manifest-path"])
             .arg(&manifest)
             .args(["--no-default-features", "--jobs", "2"])
-            .env("CARGO_TARGET_DIR", root.join("target"))
+            .env("CARGO_TARGET_DIR", &target_root)
             .env("MERMAN_EXPECTED_FAMILIES", families)
             .env("MERMAN_EXPECTED_RENDER_FAMILIES", render)
             .env("MERMAN_EXPECTED_ASCII_FAMILIES", ascii)
@@ -1438,7 +1446,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
             "--jobs",
             "2",
         ])
-        .env("CARGO_TARGET_DIR", root.join("target"))
+        .env("CARGO_TARGET_DIR", &target_root)
         .current_dir(root)
         .output()
         .map_err(|error| matrix_error(format!("cannot check omitted Sequence payload: {error}")))?;

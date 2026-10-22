@@ -2,13 +2,13 @@
 
 #[cfg(feature = "editor-facts")]
 use merman_core::DiagramParseOutcome;
-use merman_core::Engine;
+use merman_core::MermaidEngine;
 use serde_json::Value;
 
 fn diagnostics(source: &str) -> Value {
     #[cfg(feature = "editor-facts")]
     {
-        let snapshot = Engine::new()
+        let snapshot = MermaidEngine::new()
             .parse_diagram_snapshot_with_type_sync("agentflow", source)
             .expect("snapshot parse")
             .expect("snapshot");
@@ -19,7 +19,7 @@ fn diagnostics(source: &str) -> Value {
     }
     #[cfg(not(feature = "editor-facts"))]
     {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_with_type_sync("agentflow", source, merman_core::ParseOptions::strict())
             .expect("semantic parse")
             .expect("Agentflow diagram");

@@ -2402,7 +2402,7 @@ pub(crate) fn zenuml_emoji_unicode(shortcode: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     #[test]
     fn presentation_typography_measures_selected_fonts_and_preserves_vertical_clearance() {
@@ -2418,7 +2418,7 @@ mod tests {
             }
         }
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\n@Actor <<Client>> Alice\nBob\n// First line\n// (bold, italic) Second line\nAlice->Bob: A message wide enough to separate participants\nif(ready) {\n Alice->Bob: Continue\n}\n== Divider ==\n",
                 ParseOptions::strict(),
@@ -2515,7 +2515,7 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nAlice->Bob: request\n",
                 ParseOptions::strict(),
@@ -2569,7 +2569,7 @@ mod tests {
 
     #[test]
     fn presentation_font_rejects_finite_size_that_overflows_layout_geometry() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nAlice->Bob: Message\n",
                 ParseOptions::strict(),
@@ -2592,7 +2592,7 @@ mod tests {
     }
 
     fn layout(source: &str) -> ZenumlDiagramLayout {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

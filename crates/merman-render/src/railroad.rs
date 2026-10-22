@@ -1216,7 +1216,7 @@ mod tests {
         effective_config: &serde_json::Value,
         branch_label: &str,
     ) -> (String, String) {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
             .expect("railroad render model parses");
@@ -1335,7 +1335,7 @@ mod tests {
 
     #[test]
     fn railroad_layout_handles_sequence_choice_and_repetition() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "railroad-beta\nexpr = sequence(nonterminal(\"term\"), zeroOrMore(terminal(\"+\"))) ;\n",
                 merman_core::ParseOptions::strict(),
@@ -1423,7 +1423,7 @@ mod tests {
 
     #[test]
     fn railroad_variants_use_raw_svg_bbox_width_without_character_floor() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "railroad-beta\nexpr = choice(nonterminal(\"other\"), special(\"anything\")) ;\n",
                 merman_core::ParseOptions::strict(),

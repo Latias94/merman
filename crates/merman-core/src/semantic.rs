@@ -21,10 +21,12 @@ pub struct SemanticMetadata {
     pub title: Option<String>,
 }
 
-/// A typed semantic result. Variants are added as diagram families migrate to semantic parsing.
+/// A typed semantic result for the selected built-in diagram families.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum SemanticDiagramModel {
+    /// Canonical infrastructure model for an explicit or suppressed parser error.
+    Error(crate::diagrams::error_diagram::ErrorDiagramModel),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-sequence")]
@@ -152,12 +154,36 @@ pub struct ParsedSemanticDiagram {
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
 /// Enabled families publish their canonical parser through the family catalog.
-/// Other enabled families return [`Error::UnsupportedDiagram`] until their semantic parsers migrate here.
+/// Recognized families omitted from the build return [`Error::UnsupportedDiagram`].
 #[derive(Debug, Clone)]
 pub struct SemanticParser {
     site_config: MermaidConfig,
     site_config_overrides: MermaidConfig,
     runtime_policy: crate::runtime::RuntimePolicy,
+}
+
+struct SemanticTiming {
+    total: Option<crate::runtime::OperationTimer>,
+    input_bytes: usize,
+}
+
+impl SemanticTiming {
+    fn new(context: &crate::runtime::OperationContext, input: &str) -> Self {
+        Self {
+            total: context.timing().map(crate::runtime::OperationTiming::start),
+            input_bytes: input.len(),
+        }
+    }
+
+    fn log(self) {
+        if let Some(total) = self.total {
+            eprintln!(
+                "[parse-timing] contract=semantic total={:?} input_bytes={}",
+                total.elapsed(),
+                self.input_bytes,
+            );
+        }
+    }
 }
 
 impl Default for SemanticParser {
@@ -191,6 +217,11 @@ impl SemanticParser {
 
     pub fn runtime_policy(&self) -> &crate::runtime::RuntimePolicy {
         &self.runtime_policy
+    }
+
+    /// Returns the explicit host overrides applied before source-config admission.
+    pub fn site_config_overrides(&self) -> &MermaidConfig {
+        &self.site_config_overrides
     }
 
     pub fn begin_operation(
@@ -292,7 +323,8 @@ impl SemanticParser {
                 });
             }
         };
-        crate::runtime::with_operation_context(&context, || {
+        let timing = SemanticTiming::new(&context, input);
+        let result = crate::runtime::with_operation_context(&context, || {
             let captured = crate::preprocess::preprocess_builtin_semantic_with_evidence_controlled(
                 input,
                 diagram_type,
@@ -410,7 +442,9 @@ impl SemanticParser {
                     recovered_incomplete_directive,
                 ),
             ))
-        })
+        });
+        timing.log();
+        result
     }
 
     /// Applies host-level config before parsing. An explicit `secure` array replaces the
@@ -453,6 +487,57 @@ impl SemanticParser {
         self.parse_input_controlled(input, None, control)
     }
 
+    /// Parses canonical meaning with the shared strict or lenient model contract.
+    ///
+    /// The caller supplies the runtime context shared by parsing and downstream targets. This
+    /// method never begins a replacement operation or consults the parser's runtime policy.
+    /// Detection failures produce no diagram in lenient mode; preprocessing failures remain
+    /// errors, and detected family failures become canonical `error` diagram models.
+    pub fn parse_diagram_with_options_controlled_in_context_sync(
+        &self,
+        input: &str,
+        options: crate::ParseOptions,
+        control: &OperationControl,
+        context: &crate::runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedSemanticDiagram>>> {
+        use crate::preprocess::{
+            DirectiveRecoveryMode, preprocess_builtin_semantic_with_directive_recovery_controlled,
+        };
+
+        control.checkpoint_at(crate::OperationPhase::Admission)?;
+        let control = control.for_phase(crate::OperationPhase::Parse);
+        control.checkpoint()?;
+        let timing = SemanticTiming::new(context, input);
+        let result = crate::runtime::with_operation_context(context, || {
+            let recovery = if options.suppress_errors {
+                DirectiveRecoveryMode::RecoverLine
+            } else {
+                DirectiveRecoveryMode::Strict
+            };
+            let pre = match preprocess_builtin_semantic_with_directive_recovery_controlled(
+                input, None, recovery, &control,
+            )? {
+                Ok(pre) => pre,
+                Err(Error::DetectType(_)) if options.suppress_errors => return Ok(Ok(None)),
+                Err(error) => return Ok(Err(error)),
+            };
+            if pre.code().trim_start().starts_with("---") {
+                return Ok(Err(Error::MalformedFrontMatter));
+            }
+            let diagram_type =
+                match crate::detect::detect_builtin_precleaned_controlled(pre.code(), &control)? {
+                    Ok(fact) => fact.id,
+                    Err(Error::DetectType(_)) if options.suppress_errors => return Ok(Ok(None)),
+                    Err(error) => return Ok(Err(error)),
+                };
+            Ok(self
+                .parse_preprocessed_controlled(diagram_type, pre, options, &control)?
+                .map(Some))
+        });
+        timing.log();
+        result
+    }
+
     /// Parses a diagram when its Mermaid type is already known and supported by this facade.
     pub fn parse_diagram_with_type_sync(
         &self,
@@ -485,7 +570,8 @@ impl SemanticParser {
             Ok(context) => context,
             Err(error) => return Ok(Err(error.into())),
         };
-        crate::runtime::with_operation_context(&context, || {
+        let timing = SemanticTiming::new(&context, input);
+        let result = crate::runtime::with_operation_context(&context, || {
             let pre = match preprocess_builtin_semantic_controlled(input, diagram_type, control)? {
                 Ok(pre) => pre,
                 Err(error) => return Ok(Err(error)),
@@ -500,37 +586,61 @@ impl SemanticParser {
                     }
                 }
             };
-            self.parse_preprocessed_controlled(diagram_type, pre, control)
-        })
+            self.parse_preprocessed_controlled(
+                diagram_type,
+                pre,
+                crate::ParseOptions::strict(),
+                control,
+            )
+        });
+        timing.log();
+        result
     }
 
     fn parse_preprocessed_controlled(
         &self,
         diagram_type: &str,
         pre: crate::PreprocessResult,
+        options: crate::ParseOptions,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
-        let (metadata, source) =
+        let (mut metadata, source) =
             match self.prepare_semantic_source_controlled(diagram_type, pre, control)? {
                 Ok(prepared) => prepared,
                 Err(error) => return Ok(Err(error)),
             };
-        let Some(parser) = crate::family::canonical_parser(diagram_type) else {
-            return Ok(Err(Error::UnsupportedDiagram {
+        control.checkpoint_at(crate::OperationPhase::Semantic)?;
+        let parsed = match crate::family::canonical_parser(diagram_type) {
+            Some(parser) => {
+                parser(
+                    source.text(),
+                    &metadata,
+                    #[cfg(feature = "editor-facts")]
+                    crate::family::EditorFactsDemand::Omit,
+                    control,
+                )?
+                .model
+            }
+            None => Err(Error::UnsupportedDiagram {
                 diagram_type: diagram_type.to_string(),
-            }));
+            }),
         };
-        let mut model = match parser(
-            source.text(),
-            &metadata,
-            #[cfg(feature = "editor-facts")]
-            crate::family::EditorFactsDemand::Omit,
-            control,
-        )?
-        .model
-        {
+        control.checkpoint_at(crate::OperationPhase::Semantic)?;
+        let mut model = match parsed {
             Ok(model) => model,
-            Err(error) => return Ok(Err(source.remap_parse_error(error))),
+            Err(error) => {
+                let error = source.remap_parse_error(error);
+                if !options.suppress_errors {
+                    return Ok(Err(error));
+                }
+                metadata.diagram_type = "error".to_string();
+                return Ok(Ok(ParsedSemanticDiagram {
+                    metadata,
+                    model: SemanticDiagramModel::Error(
+                        crate::diagrams::error_diagram::ErrorDiagramModel::suppressed(&error),
+                    ),
+                }));
+            }
         };
         model.remap_source_positions(&source, control)?;
         control.checkpoint()?;
@@ -1052,7 +1162,7 @@ mod tests {
         );
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
@@ -1163,7 +1273,7 @@ mod tests {
         assert_eq!(semantic_model.domains.len(), 2);
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "cynefin",
                     source,
@@ -1209,7 +1319,7 @@ mod tests {
         );
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+            let full = crate::MermaidEngine::new().parse_diagram_for_render_model_with_type_sync(
                 "cynefin",
                 input,
                 crate::ParseOptions::strict(),
@@ -1246,7 +1356,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "info",
                     source,
@@ -1310,7 +1420,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "pie",
                     source,
@@ -1377,7 +1487,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "journey",
                     source,
@@ -1438,7 +1548,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "sequence",
                     source,
@@ -1483,7 +1593,7 @@ mod tests {
         assert!(SemanticParser::new().parse_diagram_sync(source).is_ok());
         #[cfg(feature = "presentation")]
         assert!(matches!(
-            crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+            crate::MermaidEngine::new().parse_diagram_for_render_model_with_type_sync(
                 "sequence",
                 source,
                 crate::ParseOptions::strict(),
@@ -1534,7 +1644,7 @@ mod tests {
         );
         #[cfg(feature = "presentation")]
         assert!(matches!(
-            crate::Engine::new().parse_diagram_for_render_model_with_type_sync(
+            crate::MermaidEngine::new().parse_diagram_for_render_model_with_type_sync(
                 "flowchart-v2",
                 input,
                 crate::ParseOptions::strict(),
@@ -1606,7 +1716,7 @@ mod tests {
         assert_eq!(semantic_model.nodes.len(), 3);
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "flowchart-v2",
                     source,

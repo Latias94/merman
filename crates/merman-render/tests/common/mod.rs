@@ -1,4 +1,4 @@
-use merman_core::Engine;
+use merman_core::MermaidEngine;
 use merman_core::presentation::PresentationConfig;
 
 pub fn legacy_init_theme_compat_config() -> PresentationConfig {
@@ -15,6 +15,6 @@ pub fn legacy_init_theme_compat_config() -> PresentationConfig {
 }
 
 #[allow(dead_code)]
-pub fn legacy_init_theme_compat_engine() -> Engine {
-    Engine::new().with_site_config(legacy_init_theme_compat_config())
+pub fn legacy_init_theme_compat_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(legacy_init_theme_compat_config())
 }

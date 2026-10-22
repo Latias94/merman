@@ -119,12 +119,12 @@ mod tests {
     #[cfg(feature = "presentation")]
     use super::{SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke};
     #[cfg(feature = "presentation")]
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     #[cfg(feature = "presentation")]
     #[test]
     fn parser_preserves_bracketed_block_titles_for_the_renderer() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
     par [Action 1]
@@ -162,7 +162,7 @@ create participant Worker
 Bob->>Worker: Start
 destroy Worker
 Worker-->>Bob: Done"#;
-        let engine = crate::Engine::new();
+        let engine = crate::MermaidEngine::new();
         let compat = engine
             .parse_diagram_sync(source, crate::ParseOptions::strict())
             .unwrap()
@@ -184,7 +184,7 @@ Worker-->>Bob: Done"#;
     #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_resolves_add_message_lifecycle_ownership() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 concat!(
                     "sequenceDiagram\n",
@@ -260,7 +260,7 @@ Worker-->>Bob: Done"#;
                 false,
             ),
         ] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .expect("consecutive lifecycle declarations should parse")
                 .expect("sequence diagram should be detected");
@@ -286,7 +286,7 @@ Worker-->>Bob: Done"#;
     #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_projects_pinned_signal_semantics() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
 participant A
@@ -510,7 +510,7 @@ A--//B: dotted open half bottom"#,
                 .collect::<Vec<_>>()
                 .join("\n")
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .expect("parse should succeed")
             .expect("sequence diagram should be detected");
@@ -538,7 +538,7 @@ A--//B: dotted open half bottom"#,
     #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_classifies_central_marker_records_without_losing_decorations() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
 participant A

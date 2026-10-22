@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -338,11 +338,17 @@ pub struct KanbanRenderNode {
 #[derive(Debug, Clone, Default)]
 struct KanbanRenderNodeCompatibility {
     level: usize,
+    #[cfg(feature = "compat-json")]
     width: i64,
+    #[cfg(feature = "compat-json")]
     padding: i64,
+    #[cfg(feature = "compat-json")]
     ticket: Option<String>,
+    #[cfg(feature = "compat-json")]
     priority: Option<String>,
+    #[cfg(feature = "compat-json")]
     assigned: Option<String>,
+    #[cfg(feature = "compat-json")]
     icon: Option<String>,
     css_classes: Option<String>,
     shape: Option<String>,
@@ -1193,6 +1199,7 @@ impl<'a> KanbanMetadataCursor<'a> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_kanban_inline_number(raw: &str) -> bool {
     raw.as_bytes()
         .first()
@@ -1865,13 +1872,14 @@ pub(crate) fn parse_kanban_semantic_model_controlled(
 #[cfg(feature = "presentation")]
 impl KanbanDiagramModel {
     fn into_render_model(self, config: &MermaidConfig) -> Result<KanbanDiagramRenderModel> {
+        #[cfg(feature = "compat-json")]
         let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
         let base_padding = get_i64(config, "mindmap.padding").unwrap_or(10);
         let nodes = self
             .nodes
             .into_iter()
             .map(|node| {
-                let padding = if matches!(
+                let _padding = if matches!(
                     node.node_type,
                     NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON
                 ) {
@@ -1896,11 +1904,17 @@ impl KanbanDiagramModel {
                     icon: node.icon.clone(),
                     compatibility: KanbanRenderNodeCompatibility {
                         level: node.level,
+                        #[cfg(feature = "compat-json")]
                         width,
-                        padding,
+                        #[cfg(feature = "compat-json")]
+                        padding: _padding,
+                        #[cfg(feature = "compat-json")]
                         ticket: node.ticket,
+                        #[cfg(feature = "compat-json")]
                         priority: node.priority,
+                        #[cfg(feature = "compat-json")]
                         assigned: node.assigned,
+                        #[cfg(feature = "compat-json")]
                         icon: node.icon,
                         css_classes: node.css_classes,
                         shape: node.shape,
@@ -1927,7 +1941,7 @@ impl KanbanDiagramModel {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_kanban(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model =
         parse_kanban_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -1937,7 +1951,7 @@ pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -1970,7 +1984,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &KanbanDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(6);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -2044,7 +2058,7 @@ fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_kanban_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
     parse_kanban_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -2053,7 +2067,7 @@ pub(crate) fn parse_kanban_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_kanban_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<KanbanDiagramRenderModel>> {
     let construction = construct_kanban_semantic_source_controlled(
@@ -2083,11 +2097,13 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::EditorSemanticCompleteness;
-    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata, ParseOptions};
+    use crate::{
+        MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, PresentationMetadata,
+    };
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2095,15 +2111,15 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> crate::ParseDiagnostic {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected kanban parse error, got {other:?}"),
         }
     }
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "kanban".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2222,7 +2238,7 @@ mod tests {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn parse_kanban_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "kanban\n    root\n      child1\n    :::highlight\n";
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("kanban", text)
@@ -2242,7 +2258,7 @@ mod tests {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn kanban_recovered_editor_fact_diagnostics_are_english() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "kanban\n  broken[Open\n";
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("kanban", text)
@@ -2380,7 +2396,7 @@ mod tests {
 
     #[test]
     fn knbn_6_real_root_in_wrong_place_is_error() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "kanban\n          root\n        fakeRoot\n    realRootWrongPlace";
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         assert!(
@@ -2849,7 +2865,7 @@ mod semantic_tests {
         );
         #[cfg(feature = "presentation")]
         {
-            let full = ParseMetadata {
+            let full = PresentationMetadata {
                 diagram_type: metadata.diagram_type,
                 config: metadata.config,
                 effective_config: crate::presentation::PresentationConfig::from_value(
@@ -2890,7 +2906,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn typed_and_json_paths_skip_editor_projection() {
-        let full = ParseMetadata {
+        let full = PresentationMetadata {
             diagram_type: "kanban".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2977,7 +2993,7 @@ mod semantic_tests {
     #[test]
     fn full_visual_validation_keeps_first_error_and_recovery_span() {
         let source = "kanban\n  section[Section]\n  broken[";
-        let full = ParseMetadata {
+        let full = PresentationMetadata {
             diagram_type: "kanban".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::from_value(

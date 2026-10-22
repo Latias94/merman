@@ -8,6 +8,7 @@ use crate::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSe
 pub(super) struct Label {
     pub text: String,
     pub kind: UsecaseLabelType,
+    #[cfg(feature = "editor-facts")]
     pub span: SourceSpan,
 }
 #[derive(Debug, Clone)]
@@ -276,10 +277,10 @@ impl<'a> Parser<'a> {
             ) && self.peek(1) == K::MetadataStart =>
             {
                 let token = self.take();
-                let (id, _, generated) = self.name(&token);
+                let (id, _, _generated) = self.name(&token);
                 let metadata = self.metadata()?;
                 #[cfg(feature = "editor-facts")]
-                self.reference(&id, self.content_span(&token), generated);
+                self.reference(&id, self.content_span(&token), _generated);
                 self.draft.metadata.push(Assignment {
                     target: id,
                     span: self.content_span(&token),
@@ -367,6 +368,7 @@ impl<'a> Parser<'a> {
             } else {
                 UsecaseLabelType::Text
             },
+            #[cfg(feature = "editor-facts")]
             span,
         }
     }
@@ -392,6 +394,7 @@ impl<'a> Parser<'a> {
         Ok(Label {
             text: self.source[span.start..span.end].to_string(),
             kind: UsecaseLabelType::Text,
+            #[cfg(feature = "editor-facts")]
             span,
         })
     }
@@ -675,6 +678,7 @@ impl<'a> Parser<'a> {
             label = Some(Label {
                 text: self.text(&token).to_ascii_lowercase(),
                 kind: UsecaseLabelType::Text,
+                #[cfg(feature = "editor-facts")]
                 span: token.span,
             });
         } else if first.kind == K::Generalization {

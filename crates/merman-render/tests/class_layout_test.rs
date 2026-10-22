@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -12,7 +12,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn parse_class(text: &str) -> ParsedDiagramRender {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")

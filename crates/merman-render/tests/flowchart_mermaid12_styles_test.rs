@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -6,7 +6,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 
 fn render(source: &str) -> String {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Flowchart")
         .expect("Flowchart diagram");

@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn prepared_activation_geometry_keeps_unmatched_groups_and_requires_actor_geometry() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nA->>+B: Hello\nB-->>-A: Reply",
                 merman_core::ParseOptions::strict(),

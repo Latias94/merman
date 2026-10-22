@@ -224,7 +224,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let environment = layout_snapshot_environment().with_runtime_policy(runtime_policy.clone());
-    let engine = merman::Engine::new()
+    let engine = merman::MermaidEngine::new()
         .with_site_config(layout_snapshot_site_config())
         .with_runtime_policy(runtime_policy);
     let layout_opts = merman_render::LayoutOptions::default();
@@ -746,7 +746,7 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         .with_fixed_today(Some(
             merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
-    let engine = merman::Engine::new()
+    let engine = merman::MermaidEngine::new()
         .with_site_config(merman::presentation::PresentationConfig::from_value(
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))

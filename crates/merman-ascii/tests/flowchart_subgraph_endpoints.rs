@@ -3,7 +3,7 @@ mod support;
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions};
 use merman_core::diagrams::flowchart::FlowNodeProvenance;
 use merman_core::{
-    Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+    MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
 };
 use support::render_full_parsed;
 
@@ -12,7 +12,7 @@ const SUBGRAPH_ENDPOINT_FIXTURE: &str = include_str!(
 );
 
 fn render_flowchart(source: &str) -> String {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
@@ -22,7 +22,7 @@ fn render_flowchart(source: &str) -> String {
 
 #[test]
 fn upstream_subgraph_endpoint_edges_route_to_groups_without_visible_placeholder_nodes() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(SUBGRAPH_ENDPOINT_FIXTURE, ParseOptions::strict())
         .expect("upstream subgraph endpoint fixture should parse")
         .expect("upstream subgraph endpoint fixture should be detected");
@@ -75,7 +75,7 @@ fn authored_node_colliding_with_a_subgraph_uses_group_first_projection() {
         "end\n",
         "G --> A\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("authored node/subgraph collision should parse")
         .expect("flowchart should be detected");
@@ -108,7 +108,7 @@ fn standalone_shape_data_does_not_override_same_id_group_projection() {
         "G --> A\n",
         "G@{ shape: rect, label: \"Authored G\" }\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("standalone shapeData should parse")
         .expect("flowchart should be detected");
@@ -142,7 +142,7 @@ fn style_statement_on_a_colliding_vertex_remains_on_the_group_owner() {
         "style G fill:#ff0000\n",
         "G --> A\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("styled node/subgraph collision should parse")
         .expect("flowchart should be detected");
@@ -164,7 +164,7 @@ fn same_id_group_style_preserves_flowdb_class_and_style_statement_order() {
         let source = format!(
             "flowchart TD\nclassDef base stroke:#0000ff\nsubgraph G\n  A\nend\n{statements}\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .expect("same-id group style order should parse")
             .expect("flowchart should be detected");
@@ -207,7 +207,7 @@ fn canonical_flowchart_css_matches_the_parser_owned_terminal_projection() {
         let source = format!(
             "flowchart TD\nclassDef base stroke:#0000ff\nsubgraph G\n  A\nend\n{statements}\nG --> A\n"
         );
-        let full = Engine::new()
+        let full = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .expect("full Flowchart should parse")
             .expect("Flowchart should be detected");

@@ -1,7 +1,7 @@
 //! Node effects must reach shape terminals without changing label or source ownership.
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
@@ -69,7 +69,7 @@ fn render_with_html_labels(
 ) -> merman_render::Result<RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"htmlLabels":html_labels, "look":look}),
         )),
     )
@@ -442,7 +442,7 @@ fn diamond_miter_stroke_is_inside_the_filter_region_even_without_blur() {
 fn host_region_ceiling_is_enforced_before_node_filter_emission() {
     use merman_render::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
     let theme = theme(ThemeRuleSet::default());
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync("---\nconfig:\n  look: classic\n  theme: default\n  layout: dagre\n---\nflowchart LR\nA --> B", ParseOptions::strict())
         .unwrap()
         .unwrap();

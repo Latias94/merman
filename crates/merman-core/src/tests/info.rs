@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn parse_diagram_info_basic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "info showInfo\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -21,7 +21,7 @@ fn parse_diagram_info_basic() {
 
 #[test]
 fn parse_diagram_info_rejects_unsupported_grammar_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "info unsupported\n";
     let err = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap_err()

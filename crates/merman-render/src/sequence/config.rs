@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn sequence_role_typography_keeps_explicit_root_font_ownership_after_mirroring() {
-        let metadata = merman_core::Engine::new()
+        let metadata = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "Root Family",
             })))
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn sequence_role_typography_keeps_theme_variable_ownership_separate_from_measurement() {
-        let metadata = merman_core::Engine::new()
+        let metadata = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "Root Family",
                 "themeVariables": {"fontFamily": "Theme Family"},
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn sequence_role_typography_uses_generated_root_defaults_on_mermaid_compatibility_path() {
-        let metadata = merman_core::Engine::new()
+        let metadata = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "sequence": {
                     "actorFontFamily": "Actor Family",
@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn sequence_role_typography_keeps_explicit_role_ownership_for_typed_properties() {
-        let metadata = merman_core::Engine::new()
+        let metadata = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "sequence": {
                     "actorFontFamily": "Actor Family",

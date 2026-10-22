@@ -1,15 +1,15 @@
 use super::*;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-#[cfg(feature = "presentation")]
-use crate::{Engine, ParseMetadata, ParseOptions, RenderSemanticModel};
 use crate::{MermaidConfig, OperationControl};
+#[cfg(feature = "presentation")]
+use crate::{MermaidEngine, ParseOptions, PresentationMetadata, RenderSemanticModel};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 #[cfg(feature = "presentation")]
 fn model(source: &str) -> StateDiagramRenderModel {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("state parses")
         .expect("state detected");
@@ -32,8 +32,8 @@ fn chain(depth: usize) -> String {
 }
 
 #[cfg(feature = "presentation")]
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "stateDiagram-v2".to_string(),
         config: MermaidConfig::empty_object(),
         effective_config: crate::presentation::PresentationConfig::empty_object(),

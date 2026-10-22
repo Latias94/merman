@@ -464,7 +464,7 @@ jobs:
 
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --no-fail-fast --cargo-quiet
+        run: cargo nextest run --locked --features merman/compat-json,merman/editor-facts --no-fail-fast --cargo-quiet
 
       - name: Compile workspace on ordinary host runners
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'

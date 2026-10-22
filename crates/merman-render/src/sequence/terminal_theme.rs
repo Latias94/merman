@@ -256,7 +256,7 @@ mod tests {
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let metadata = merman_core::Engine::new()
+        let metadata = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"sequenceNumberColor": "#abcdef"}
             })))

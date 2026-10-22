@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::{
     Error, Result,
     time::{CivilDate, CivilDateTime, OffsetDateTime, UtcOffset},
@@ -388,7 +388,7 @@ mod semantic_tests {
     #[test]
     fn gantt_typed_projection_builds_visual_sidecar_without_editor_work() {
         let source = "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nTask: task,2019-02-01,1d\n";
-        let metadata = ParseMetadata {
+        let metadata = PresentationMetadata {
             diagram_type: "gantt".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::from_value(

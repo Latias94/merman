@@ -281,8 +281,8 @@ impl DiagramTheme {
     #[cfg(test)]
     pub(crate) fn install_parse_compatibility(
         &self,
-        engine: merman_core::Engine,
-    ) -> merman_core::Engine {
+        engine: merman_core::MermaidEngine,
+    ) -> merman_core::MermaidEngine {
         crate::__private::install_parse_compatibility(self, engine)
     }
 

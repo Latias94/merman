@@ -8,7 +8,7 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
@@ -198,7 +198,7 @@ impl SankeySemanticSource {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SankeyDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(3);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -211,7 +211,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_sankey(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse_sankey_model(code, meta)?;
     render_model_to_compat_json(&model, meta)
 }
@@ -220,7 +220,7 @@ pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_sankey_semantic_source_controlled(
@@ -247,7 +247,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_sankey_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<SankeyDiagramRenderModel> {
     parse_sankey_model(code, meta)
 }
@@ -255,7 +255,7 @@ pub(crate) fn parse_sankey_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_sankey_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<SankeyDiagramRenderModel>> {
     Ok(construct_sankey_semantic_source_controlled(
@@ -271,7 +271,7 @@ pub(crate) fn parse_sankey_model_for_render_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_sankey_model(code: &str, meta: &ParseMetadata) -> Result<SankeyDiagramModel> {
+fn parse_sankey_model(code: &str, meta: &PresentationMetadata) -> Result<SankeyDiagramModel> {
     construct_sankey_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -911,12 +911,12 @@ impl<'input, 'control> CsvParser<'input, 'control> {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{MermaidEngine, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -943,7 +943,7 @@ mod tests {
             "theme": "forest",
             "securityLevel": "strict"
         }));
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "sankey".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config,
@@ -1062,7 +1062,7 @@ A,__proto__,0.403
     #[test]
     #[cfg(feature = "editor-facts")]
     fn sankey_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"sankey-beta
 A,B,0.597
 "#;
@@ -1085,7 +1085,7 @@ A,B,0.597
     #[test]
     #[cfg(feature = "editor-facts")]
     fn sankey_editor_recovery_preserves_original_spans_and_surrounding_records() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "  sankey-beta\r\n",
             "\r\n",
@@ -1132,7 +1132,7 @@ A,B,0.597
         let text = "  sankey-beta\r\n  ";
         let header_start = text.find("sankey-beta").unwrap();
         let error_span = SourceSpan::new(header_start, header_start + "sankey-beta".len());
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_sync(text, ParseOptions::strict())
@@ -1303,7 +1303,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::ParseMetadata {
+        let meta = crate::PresentationMetadata {
             diagram_type: "sankey".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

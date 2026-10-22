@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
@@ -60,7 +60,7 @@ fn render_with_retained_recipe_baseline(
     let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(value)),
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(value)),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()

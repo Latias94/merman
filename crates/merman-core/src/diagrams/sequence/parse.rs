@@ -777,12 +777,12 @@ mod tests {
     use crate::EditorSemanticRole;
     use crate::MermaidConfig;
     #[cfg(feature = "compat-json")]
-    use crate::ParseMetadata;
+    use crate::PresentationMetadata;
     use std::fmt::Write as _;
 
     #[cfg(feature = "compat-json")]
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "sequence".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

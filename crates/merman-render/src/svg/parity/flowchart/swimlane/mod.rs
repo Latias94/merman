@@ -71,7 +71,7 @@ pub(super) fn swimlane_terminal_geometry(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let layout = artifact.pair().layout();
@@ -103,7 +103,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn swimlane_edge_geometry(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     let layout = artifact.pair().layout();

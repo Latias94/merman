@@ -9,11 +9,11 @@ use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRe
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
-use merman_core::{Engine, OperationControl, OperationPhase, RenderSemanticModel};
+use merman_core::{MermaidEngine, OperationControl, OperationPhase, RenderSemanticModel};
 use support::{parse_model, render_controlled_model, render_model};
 
 fn operation_context() -> merman_core::runtime::OperationContext {
-    Engine::new()
+    MermaidEngine::new()
         .begin_operation()
         .expect("deterministic operation context should be available")
 }

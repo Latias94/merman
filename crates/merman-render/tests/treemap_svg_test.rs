@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -179,7 +179,7 @@ fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_j
 }
 
 fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json::Value) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -254,7 +254,7 @@ fn treemap_typography_theme(font_stack: FontStack) -> DiagramTheme {
 fn render_treemap_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     try_render_treemap_with_theme_requirement(
         source,
@@ -268,7 +268,7 @@ fn render_treemap_with_theme(
 fn try_render_treemap_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -291,7 +291,7 @@ fn try_render_treemap_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Treemap resource-bound session");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Treemap resource-bound fixture")
         .expect("detect Treemap resource-bound fixture");
@@ -422,7 +422,7 @@ fn treemap_title_fill_reaches_terminal_css_and_title_text() {
         let rendered = render_treemap_with_theme(
             "treemap\ntitle Themed treemap\n\"Section\"\n  \"Leaf\": 1\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid themed Treemap SVG");
@@ -461,7 +461,7 @@ fn treemap_text_fill_reaches_label_and_value_terminals() {
     let rendered = render_treemap_with_theme(
         "treemap\n\"Section\"\n  \"Leaf\": 12\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid Treemap SVG");
     let stylesheet = document
@@ -501,7 +501,7 @@ fn treemap_mixed_text_rule_does_not_certify_unsupported_typography() {
         let rendered = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -524,7 +524,7 @@ fn treemap_mixed_text_rule_does_not_certify_unsupported_typography() {
         let error = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .err()
@@ -561,7 +561,7 @@ fn treemap_text_rule_accounts_only_its_winning_facets() {
     let rendered = try_render_treemap_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();
@@ -579,7 +579,7 @@ fn treemap_text_rule_accounts_only_its_winning_facets() {
     );
 
     let hidden = "---\nconfig:\n  treemap:\n    nodeWidth: 1\n    nodeHeight: 1\n---\ntreemap\ntitle Visible title\n\"Leaf\": 12\n";
-    let rendered = render_treemap_with_theme(hidden, &theme, Engine::new());
+    let rendered = render_treemap_with_theme(hidden, &theme, MermaidEngine::new());
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     assert!(
         document
@@ -599,7 +599,7 @@ fn treemap_text_rule_accounts_only_its_winning_facets() {
 fn treemap_label_hidden_after_fitting_does_not_prove_text_fill() {
     let theme = treemap_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
     let source = "---\nconfig:\n  treemap:\n    nodeWidth: 8\n    nodeHeight: 20\n    showValues: false\n---\ntreemap\n\"A very long label that cannot fit at the minimum font size\": 12\n";
-    let rendered = render_treemap_with_theme(source, &theme, Engine::new());
+    let rendered = render_treemap_with_theme(source, &theme, MermaidEngine::new());
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let leaf_label = document
         .descendants()
@@ -653,7 +653,7 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
                 serde_json::json!({"treemap": {"labelColor": "#abcdef"}}),
             )
         };
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
         let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
@@ -740,7 +740,7 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
         let rendered = render_treemap_with_theme(
             "treemap\n\"Section\"\n  \"Leaf\": 12\n",
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(site_config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config)),
         );
         let document = roxmltree::Document::parse(rendered.svg())
             .unwrap_or_else(|error| panic!("{name}: valid Treemap SVG: {error}"));
@@ -834,7 +834,7 @@ fn treemap_text_palette_uses_final_fill_ownership() {
         let rendered = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -853,7 +853,7 @@ fn treemap_text_palette_uses_final_fill_ownership() {
         let strict = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
         if residual_count == 0 {
@@ -895,7 +895,8 @@ fn treemap_text_palette_respects_visible_roles_and_config_owners() {
             true,
         ),
     ] {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(config.clone()));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config.clone()));
         let rendered = try_render_treemap_with_theme_requirement(
             "treemap\n\"Leaf\": 12\n",
             &theme,
@@ -956,7 +957,7 @@ fn treemap_text_effect_binding_accounts_only_visible_terminals() {
         let rendered = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -967,7 +968,7 @@ fn treemap_text_effect_binding_accounts_only_visible_terminals() {
         let strict = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
         if visible {
@@ -999,7 +1000,7 @@ fn treemap_source_text_colors_do_not_certify_typed_fill() {
                 ""
             },
         );
-        let rendered = render_treemap_with_theme(&source, &theme, Engine::new());
+        let rendered = render_treemap_with_theme(&source, &theme, MermaidEngine::new());
         let owned = text_tag_by_text(rendered.svg(), "Owned");
         assert!(
             owned.contains(&format!("fill:{color} !important")),
@@ -1038,7 +1039,7 @@ fn treemap_uncertain_source_fill_does_not_certify_a_mixed_surface() {
         let rendered = try_render_treemap_with_theme_requirement(
             &source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -1049,7 +1050,7 @@ fn treemap_uncertain_source_fill_does_not_certify_a_mixed_surface() {
         let error = try_render_treemap_with_theme_requirement(
             &source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .err()
@@ -1076,7 +1077,7 @@ treemap
 "Leaf": 12
 "#,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid tiny Treemap SVG");
     assert!(document.descendants().any(|node| {
@@ -1104,13 +1105,15 @@ fn treemap_explicit_title_color_owners_outrank_typed_fill() {
                 "---\nconfig:\n  treemap:\n    titleColor: '#fedcba'\n---\n",
                 "treemap\ntitle Source-owned title\n\"Leaf\": 1\n",
             ),
-            Engine::new(),
+            MermaidEngine::new(),
         ),
         (
             "treemap\ntitle Site-owned title\n\"Leaf\": 1\n",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "titleColor": "#fedcba" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "titleColor": "#fedcba" }
+                }),
+            )),
         ),
     ];
 
@@ -1138,7 +1141,8 @@ fn treemap_explicit_title_color_owners_outrank_typed_fill() {
 fn treemap_title_fill_is_not_applicable_without_a_title() {
     let theme =
         treemap_title_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap title color"));
-    let rendered = render_treemap_with_theme("treemap\n\"Leaf\": 1\n", &theme, Engine::new());
+    let rendered =
+        render_treemap_with_theme("treemap\n\"Leaf\": 1\n", &theme, MermaidEngine::new());
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid titleless Treemap SVG");
     assert!(!document.descendants().any(|node| {
         node.has_tag_name("text") && node.attribute("class") == Some("treemapTitle")
@@ -1165,10 +1169,11 @@ title Typed treemap
   "Another leaf": 2
 "#;
     let host = Arc::new(CountingTreemapHost::default());
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse themed Treemap")
-        .expect("detect themed Treemap");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse themed Treemap")
+            .expect("detect themed Treemap");
     let session = counting_treemap_environment(Arc::clone(&host))
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1222,10 +1227,11 @@ classDef leafFont font-family:"Leaf\,Face"\,serif,font-size:18px,font-style:ital
   "Leaf": 42:::leafFont
 "#;
     let host = Arc::new(CountingTreemapHost::default());
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse class-styled Treemap")
-        .expect("detect class-styled Treemap");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse class-styled Treemap")
+            .expect("detect class-styled Treemap");
     let session = counting_treemap_environment(Arc::clone(&host))
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1326,10 +1332,11 @@ title Config-sized title
 "Leaf": 42
 "#;
     let host = Arc::new(CountingTreemapHost::default());
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse config-sized Treemap title")
-        .expect("detect config-sized Treemap title");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse config-sized Treemap title")
+            .expect("detect config-sized Treemap title");
     let session = counting_treemap_environment(Arc::clone(&host))
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1383,7 +1390,8 @@ title Dynamic title
 "Leaf": 42
 "#;
     let host = Arc::new(CountingTreemapHost::default());
-    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let engine =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
     let metadata = engine
         .parse_metadata_sync(source)
         .expect("parse Treemap config");
@@ -1475,7 +1483,7 @@ title Dynamic title
         let rendered = try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap_or_else(|error| panic!("BestEffort must preserve {label}: {error}"));
@@ -1492,7 +1500,7 @@ title Dynamic title
         let error = match try_render_treemap_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         ) {
             Ok(_) => panic!("RequirePortable must reject {label}"),
@@ -1513,7 +1521,7 @@ fn treemap_host_title_font_variable_remains_unverified_for_portable_themes() {
     );
     let source = "treemap\ntitle Dynamic title\n\"Leaf\": 42\n";
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "treemap": { "titleFontSize": "var(--treemap-title-size)" }
         })));
     let rendered = try_render_treemap_with_theme_requirement(
@@ -1597,7 +1605,7 @@ fn treemap_huge_source_font_finishes_height_fitting() {
         }
     }
     let source = "treemap\nclassDef huge font-size:100000000000000000000px;\n\"Leaf\": 42:::huge\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1641,7 +1649,7 @@ fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit
         }
     }
     let source = "treemap\nclassDef huge font-size:100000000000000000000px;\n\"Leaf\": 42:::huge\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1684,7 +1692,7 @@ treemap
 "Section"
   "Leaf": 1234
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Treemap with valueFormat")
         .expect("detect Treemap with valueFormat");
@@ -1785,7 +1793,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
   "Leaf": 1000.00:::c
 "#;
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             source,
@@ -1820,7 +1828,7 @@ fn treemap_deep_chain_projects_and_renders_flat_model() {
     const DEPTH: usize = 1200;
     let source = deep_treemap_chain(DEPTH);
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
@@ -1868,7 +1876,7 @@ title Routed title
     let session = counting_treemap_environment(Arc::clone(&host))
         .begin_session()
         .expect("begin render session");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -1914,7 +1922,7 @@ title Routed title
         "Treemap title bounds must route SVG bbox height through the session"
     );
 
-    let parity_parsed = Engine::new()
+    let parity_parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");

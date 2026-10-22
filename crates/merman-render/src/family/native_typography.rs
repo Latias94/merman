@@ -522,7 +522,7 @@ fn unsupported_native_flowchart_html_style(
 #[cfg(all(test, feature = "diagram-block"))]
 mod tests {
     use super::*;
-    use merman_core::{BuiltinRenderSemantic, Engine, ParseOptions};
+    use merman_core::{BuiltinRenderSemantic, MermaidEngine, ParseOptions};
 
     #[test]
     fn native_admission_cancels_among_flat_records_without_declarations() {
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn native_admission_does_not_expand_the_block_compatibility_tree() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
             .unwrap()
             .unwrap();

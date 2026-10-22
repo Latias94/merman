@@ -1,3 +1,9 @@
+#[cfg(any(
+    test,
+    feature = "editor-facts",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
 use super::LexError;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use super::{Edge, Node, SubgraphHeader};
@@ -127,6 +133,7 @@ pub(crate) struct ClickStmt {
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
     #[cfg(feature = "editor-facts")]
     pub interaction_evidence: FlowchartClickEditorEvidence,
+    #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -55,7 +55,7 @@ deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
 
 fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
@@ -85,7 +85,7 @@ fn try_render_wardley_with_resource_policy(
     diagram_id: &str,
     resource_policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
@@ -118,7 +118,7 @@ fn wardley_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
 fn try_render_wardley_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(Value, family::RenderedFamilySvg)> {
@@ -182,7 +182,7 @@ fn wardley_anchor_labels_follow_pure_host_presets() {
         let (_, rendered) = try_render_wardley_with_theme(
             WARDLEY_ANCHOR_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic(),
             "wardley-preset-anchors",
         )
@@ -226,7 +226,7 @@ fn wardley_explicit_anchor_and_evolution_colors_outrank_host_text() {
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "wardley": {
                 "anchorLabelColor": "#aabbcc",
                 "componentLabelColor": "#112233",
@@ -284,7 +284,7 @@ fn wardley_text_and_node_label_rules_prove_only_their_visible_consumers() {
     let (_, rendered) = try_render_wardley_with_theme(
         WARDLEY_ANCHOR_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_wardley_environment(),
         "wardley-role-paint",
     )
@@ -321,7 +321,7 @@ fn wardley_supported_fill_does_not_hide_unsupported_sibling_opacity() {
     let (_, rendered) = try_render_wardley_with_theme(
         WARDLEY_ANCHOR_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "wardley-mixed-facets",
     )
@@ -362,7 +362,8 @@ fn wardley_site_palette_yields_to_host_anchor_paint_but_raw_colors_keep_ownershi
         ),
         ("source-palette", serde_json::json!({}), "#131300"),
     ] {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
         let source = if origin == "source-palette" {
             format!("%%{{init: {{\"theme\": \"default\"}}}}%%\n{WARDLEY_ANCHOR_SOURCE}")
         } else {
@@ -406,7 +407,7 @@ fn wardley_shared_text_fill_does_not_recolor_annotation_surfaces() {
             "annotation 1,[0.7, 0.6] \"Source-owned annotation\"\n",
         ),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_wardley_environment(),
         "wardley-annotation-owner",
     )
@@ -775,7 +776,7 @@ fn wardley_typed_font_stack_drives_measurement_group_inheritance_and_terminal_ev
             "annotation 1,[0.78, 0.82] \"User touchpoints\"\n",
         ),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "wardley-typed-font",
     )
@@ -824,7 +825,7 @@ fn wardley_direct_font_stack_exceeds_the_retired_legacy_bridge_limit_without_a_s
     let (_, rendered) = try_render_wardley_with_theme(
         "wardley-beta\ncomponent API [0.6, 0.7]\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_wardley_environment(),
         "wardley-large-font",
     )
@@ -853,17 +854,21 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "wardley-site-font",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontFamily": "SiteWardleyFont,serif" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "fontFamily": "SiteWardleyFont,serif" }
+                }),
+            )),
             "wardley-beta\ncomponent API [0.6, 0.7]\n".to_string(),
             "SiteWardleyFont,serif",
         ),
         (
             "wardley-source-font",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "secure": []
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "secure": []
+                }),
+            )),
             concat!(
                 "%%{init: {\"fontFamily\": \"SourceWardleyFont,monospace\"}}%%\n",
                 "wardley-beta\ncomponent API [0.6, 0.7]\n"
@@ -911,7 +916,7 @@ fn wardley_font_size_only_keeps_the_baseline_dom_and_mixed_typography_fails_clos
     let (_, rendered) = try_render_wardley_with_theme(
         "wardley-beta\ncomponent API [0.6, 0.7]\n",
         &font_size_theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &best_effort,
         "wardley-font-size-only",
     )
@@ -942,7 +947,7 @@ fn wardley_font_size_only_keeps_the_baseline_dom_and_mixed_typography_fails_clos
     let error = try_render_wardley_with_theme(
         "wardley-beta\ncomponent API [0.6, 0.7]\n",
         &mixed_theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_wardley_environment(),
         "wardley-mixed-typography",
     )
@@ -969,7 +974,7 @@ fn wardley_empty_typed_theme_preserves_plain_svg_bytes() {
     let (_, rendered) = try_render_wardley_with_theme(
         WARDLEY_COMPLETE_FEATURE_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         diagram_id,
     )
@@ -991,7 +996,7 @@ fn wardley_typography_only_theme_preserves_plain_paint() {
     let (_, rendered) = try_render_wardley_with_theme(
         WARDLEY_COMPLETE_FEATURE_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         diagram_id,
     )
@@ -1040,7 +1045,7 @@ fn wardley_non_paint_themes_preserve_authored_palette_paint() {
             let (_, rendered) = try_render_wardley_with_theme(
                 &source,
                 theme,
-                Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                 &RenderEnvironment::deterministic(),
                 diagram_id,
             )
@@ -1077,7 +1082,7 @@ fn wardley_host_text_preserves_arrow_foreground_background_pairs() {
         let (_, rendered) = try_render_wardley_with_theme(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic(),
             "wardley-arrow-pairs",
         )

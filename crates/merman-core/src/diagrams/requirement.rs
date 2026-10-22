@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -378,7 +378,7 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_requirement(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse_requirement_semantic_source(code, meta)?.model;
     render_model_to_compat_json(&model, meta)
 }
@@ -386,7 +386,7 @@ pub(crate) fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Valu
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_requirement_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<RequirementDiagramModel> {
     Ok(parse_requirement_semantic_source(code, meta)?.model)
 }
@@ -394,7 +394,7 @@ pub(crate) fn parse_requirement_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_requirement_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RequirementDiagramModel>> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -414,7 +414,7 @@ pub(crate) fn parse_requirement_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -605,7 +605,7 @@ fn emit_parsed_requirement_styles(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RequirementDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(9);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -626,7 +626,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_requirement_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<RequirementSemanticSource> {
     construct_requirement_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
@@ -634,7 +634,7 @@ fn parse_requirement_semantic_source(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_requirement_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
     construct_requirement_semantic_source_controlled(
         code,
@@ -1061,6 +1061,7 @@ fn requirement_statement_span(line: &str, line_start: usize) -> SourceSpan {
 struct RequirementAccDescr {
     value: String,
     statement_span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: Option<SourceSpan>,
     complete: bool,
 }
@@ -1106,6 +1107,7 @@ fn parse_requirement_acc_descr(
                 .unwrap_or_default()
                 .to_string(),
             statement_span: requirement_statement_span(raw_line, line_start),
+            #[cfg(feature = "editor-facts")]
             selection: value.map(|value| {
                 SourceSpan::new(
                     line_start + value.start,
@@ -1174,6 +1176,7 @@ fn parse_requirement_acc_descr(
     let parsed = RequirementAccDescr {
         value: value_lines.join("\n").trim().to_string(),
         statement_span: SourceSpan::new(statement_start, statement_end),
+        #[cfg(feature = "editor-facts")]
         selection: first_content_start
             .zip(last_content_end)
             .map(|(start, end)| SourceSpan::new(start, end)),
@@ -1536,6 +1539,7 @@ fn split_name_and_classes(input: &str, input_start: usize) -> Result<DefinitionN
         return Ok(DefinitionName {
             name: ParsedRequirementId {
                 value: String::new(),
+                #[cfg(feature = "editor-facts")]
                 selection: SourceSpan::new(input_start + leading, input_start + leading),
             },
             class_tokens: None,
@@ -1867,10 +1871,12 @@ fn normalize_verify_method(input: &str) -> Result<String> {
     }
 }
 
-fn parse_requirement_id_spanned(input: &str, input_start: usize) -> Result<ParsedRequirementId> {
+fn parse_requirement_id_spanned(input: &str, _input_start: usize) -> Result<ParsedRequirementId> {
+    #[cfg(feature = "editor-facts")]
     let leading = leading_whitespace_len(input);
     let input = input.trim();
-    let token_start = input_start + leading;
+    #[cfg(feature = "editor-facts")]
+    let token_start = _input_start + leading;
     let (value, rest) = parse_id_or_name(input)?;
     if !rest.trim().is_empty() {
         return Err(Error::diagram_parse_fallback(
@@ -1882,10 +1888,16 @@ fn parse_requirement_id_spanned(input: &str, input_start: usize) -> Result<Parse
         ));
     }
     if input.starts_with('"') {
+        #[cfg(feature = "editor-facts")]
         let selection = SourceSpan::new(token_start + 1, token_start + 1 + value.len());
-        return Ok(ParsedRequirementId { value, selection });
+        return Ok(ParsedRequirementId {
+            value,
+            #[cfg(feature = "editor-facts")]
+            selection,
+        });
     }
     Ok(ParsedRequirementId {
+        #[cfg(feature = "editor-facts")]
         selection: SourceSpan::new(token_start, token_start + input.len()),
         value,
     })
@@ -1894,6 +1906,7 @@ fn parse_requirement_id_spanned(input: &str, input_start: usize) -> Result<Parse
 #[derive(Debug)]
 struct ParsedRequirementStyle {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -1908,23 +1921,25 @@ impl ParsedRequirementStyles {
     }
 }
 
-fn parse_requirement_styles(input: &str, input_start: usize) -> ParsedRequirementStyles {
+fn parse_requirement_styles(input: &str, _input_start: usize) -> ParsedRequirementStyles {
     let mut items = Vec::new();
-    let mut cursor = 0usize;
+    let mut _cursor = 0usize;
     for part in input.split_inclusive(',') {
         let raw = part.strip_suffix(',').unwrap_or(part);
+        #[cfg(feature = "editor-facts")]
         let leading = leading_whitespace_len(raw);
         let value = raw.trim();
         if !value.is_empty() {
             items.push(ParsedRequirementStyle {
                 value: value.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(
-                    input_start + cursor + leading,
-                    input_start + cursor + leading + value.len(),
+                    _input_start + _cursor + leading,
+                    _input_start + _cursor + leading + value.len(),
                 ),
             });
         }
-        cursor += part.len();
+        _cursor += part.len();
     }
     ParsedRequirementStyles { items }
 }
@@ -1946,6 +1961,7 @@ struct ParsedRequirementClassStatement {
 
 struct ParsedRequirementRelationship {
     kind: String,
+    #[cfg(feature = "editor-facts")]
     kind_span: SourceSpan,
     source: ParsedRequirementId,
     target: ParsedRequirementId,
@@ -2089,7 +2105,9 @@ fn parse_relationship_stmt(
         let right_raw = &rest[dash + 1..];
         let right_leading = leading_whitespace_len(right_raw);
         let right = right_raw.trim();
+        #[cfg(feature = "editor-facts")]
         let rel_leading = leading_whitespace_len(&rest[..dash]);
+        #[cfg(feature = "editor-facts")]
         let rel_start = rest_start + rel_leading;
         let right_start = rest_start + dash + 1 + right_leading;
         let relationship = normalize_relationship(rel)?;
@@ -2102,6 +2120,7 @@ fn parse_relationship_stmt(
         }
         return Ok(Some(ParsedRequirementRelationship {
             kind: relationship,
+            #[cfg(feature = "editor-facts")]
             kind_span: SourceSpan::new(
                 statement_start + rel_start,
                 statement_start + rel_start + rel.len(),
@@ -2125,8 +2144,10 @@ fn parse_relationship_stmt(
         };
         let src_raw = left_part[..dash].trim_end();
         let rel_raw = &left_part[dash + 1..];
+        #[cfg(feature = "editor-facts")]
         let rel_leading = leading_whitespace_len(rel_raw);
         let rel = rel_raw.trim();
+        #[cfg(feature = "editor-facts")]
         let rel_start = dash + 1 + rel_leading;
         let relationship = normalize_relationship(rel)?;
         let mut src_token = parse_requirement_id_spanned(src_raw, statement_start)?;
@@ -2138,6 +2159,7 @@ fn parse_relationship_stmt(
         }
         return Ok(Some(ParsedRequirementRelationship {
             kind: relationship,
+            #[cfg(feature = "editor-facts")]
             kind_span: SourceSpan::new(
                 statement_start + rel_start,
                 statement_start + rel_start + rel.len(),
@@ -2183,10 +2205,12 @@ fn split_list_and_rest_spanned(
                     "unterminated string".to_string(),
                 )
             })?;
+            #[cfg(feature = "editor-facts")]
             let consumed = cur.len() - rest.len();
             (
                 ParsedRequirementId {
                     value,
+                    #[cfg(feature = "editor-facts")]
                     selection: SourceSpan::new(
                         input_start + cursor + 1,
                         input_start + cursor + consumed - 1,
@@ -2211,6 +2235,7 @@ fn split_list_and_rest_spanned(
             (
                 ParsedRequirementId {
                     value: cur[..end].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     selection: SourceSpan::new(input_start + cursor, input_start + cursor + end),
                 },
                 &cur[end..],
@@ -2244,6 +2269,7 @@ fn split_list_and_rest_spanned(
 #[derive(Debug, Clone)]
 struct ParsedRequirementId {
     value: String,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
 }
 
@@ -2266,7 +2292,7 @@ fn parse_id_list_all_spanned(input: &str, input_start: usize) -> Result<ParsedRe
         let leading = cur.len() - cur.trim_start().len();
         cursor += leading;
         cur = cur.trim_start();
-        let (item, rest, selection) = if cur.starts_with('"') {
+        let (item, rest, _selection) = if cur.starts_with('"') {
             let (item, rest) = parse_quoted_prefix(cur).ok_or_else(|| {
                 Error::diagram_parse_fallback(
                     "requirement".to_string(),
@@ -2302,7 +2328,8 @@ fn parse_id_list_all_spanned(input: &str, input_start: usize) -> Result<ParsedRe
         if !item.is_empty() {
             out.push(ParsedRequirementId {
                 value: item,
-                selection,
+                #[cfg(feature = "editor-facts")]
+                selection: _selection,
             });
         }
         cursor += cur.len() - rest.len();
@@ -2325,12 +2352,12 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::EditorSemanticCompleteness;
-    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2338,14 +2365,14 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap_err()
             .to_string()
     }
 
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "requirement".to_string(),
             config: MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
@@ -2583,7 +2610,7 @@ mod tests {
 
     #[test]
     fn requirement_entrypoints_construct_one_semantic_source() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "requirementDiagram\n",
             "requirement login {\n",
@@ -2683,7 +2710,7 @@ mod tests {
 
     #[test]
     fn requirement_malformed_recovery_reuses_partial_statement_facts_and_exact_span() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "requirementDiagram\n",
             "requirement login {\n",
@@ -3227,7 +3254,7 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::ParseMetadata {
+            let full_metadata = crate::PresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
                 effective_config: crate::presentation::PresentationConfig::from_config(

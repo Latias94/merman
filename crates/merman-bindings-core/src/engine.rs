@@ -1172,7 +1172,7 @@ impl SemanticOperationConfig {
     }
 
     fn materialize(self) -> SemanticOperationEngine {
-        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
+        let mut engine = merman::MermaidEngine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
             engine = engine.with_site_config(
                 merman::presentation::PresentationConfig::from_config(site_config),
@@ -1188,7 +1188,7 @@ impl SemanticOperationConfig {
 
 #[derive(Clone)]
 struct SemanticOperationEngine {
-    engine: merman::Engine,
+    engine: merman::MermaidEngine,
     parse_options: merman::ParseOptions,
     resources: merman::resources::InputResourcePolicy,
 }
@@ -1856,7 +1856,7 @@ mod tests {
     #[test]
     fn semantic_parse_preserves_the_public_compatibility_json_projection() {
         let source = "flowchart TD\nsubgraph outer\nA[Start] --> B[Done]\nend";
-        let expected = merman::Engine::new()
+        let expected = merman::MermaidEngine::new()
             .parse_diagram_sync(source, merman::ParseOptions::strict())
             .expect("compatibility JSON parse")
             .expect("flowchart diagram")
@@ -1880,7 +1880,7 @@ mod tests {
         for depth in 1..=150 {
             writeln!(source, "{}node{depth}", "  ".repeat(depth)).unwrap();
         }
-        let expected = merman::Engine::new()
+        let expected = merman::MermaidEngine::new()
             .parse_diagram_sync(&source, merman::ParseOptions::strict())
             .unwrap()
             .unwrap()
@@ -1899,7 +1899,7 @@ mod tests {
     #[test]
     fn semantic_parse_resource_boundaries_match_the_typed_model() {
         let source = "flowchart TD\nsubgraph outer\nsubgraph inner\nA[Start] --> B[Done]\nend\nend";
-        let parsed = merman::Engine::new()
+        let parsed = merman::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
             .expect("typed model parse")
             .expect("flowchart diagram");

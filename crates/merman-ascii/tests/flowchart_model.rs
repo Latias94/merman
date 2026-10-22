@@ -9,7 +9,7 @@ use merman_core::diagrams::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowchartModel,
 };
 use merman_core::resources::ResourceProfile;
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::{MermaidEngine, OperationControl, ParseOptions};
 use std::path::Path;
 use support::render_model;
 use unicode_width::UnicodeWidthStr;
@@ -39,7 +39,7 @@ fn render_flowchart_with_resources(
 }
 
 fn parse_flowchart_error(input: &str) -> String {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect_err("flowchart should fail to parse")
         .to_string()

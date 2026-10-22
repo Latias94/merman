@@ -62,11 +62,14 @@ impl DiagramWarningFact {
     }
 }
 
-#[cfg(any(
-    feature = "diagram-block",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-git-graph"
+#[cfg(all(
+    feature = "compat-json",
+    any(
+        feature = "diagram-block",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-git-graph"
+    )
 ))]
 pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<String> {
     facts.iter().map(|fact| fact.message.clone()).collect()
@@ -79,6 +82,7 @@ pub struct CapturedPanic {
 }
 
 impl CapturedPanic {
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn from_payload(payload: Box<dyn Any + Send + 'static>) -> Self {
         let message = payload
             .downcast_ref::<&str>()

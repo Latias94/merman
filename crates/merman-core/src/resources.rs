@@ -720,6 +720,7 @@ impl ModelComplexity {
 
     pub fn from_semantic_model(model: &crate::SemanticDiagramModel) -> Self {
         match *model {
+            crate::SemanticDiagramModel::Error(ref model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-agentflow")]
             crate::SemanticDiagramModel::Agentflow(ref model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-git-graph")]
@@ -2613,7 +2614,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let parsed = crate::Engine::new()
+            let parsed = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
@@ -2666,7 +2667,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
@@ -2686,7 +2687,7 @@ mod tests {
     #[cfg(all(feature = "diagram-flowchart", feature = "presentation"))]
     #[test]
     fn parsed_render_resource_checks_include_parser_owned_flowchart_label_sources() {
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[\"&nbsp;entity&nbsp;\"] --> B\n",
                 crate::ParseOptions::strict(),
@@ -2734,7 +2735,7 @@ mod tests {
 
         #[cfg(feature = "presentation")]
         {
-            let parsed = crate::Engine::new()
+            let parsed = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
@@ -2836,7 +2837,7 @@ mod tests {
 
             #[cfg(feature = "presentation")]
             {
-                let full = crate::Engine::new()
+                let full = crate::MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, crate::ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -2857,7 +2858,7 @@ mod tests {
             Some(16_000)
         );
 
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "mindmap\n  Root\n    First child\n    Second child\n",
                 crate::ParseOptions::strict(),
@@ -3037,7 +3038,7 @@ mod tests {
             "classDiagram\nnamespace A.B {\nclass Service\nnote \"namespace note\"\n}\n",
             "class note0\nclass interface0\nIService ()-- Service\n",
         );
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -3074,7 +3075,7 @@ mod tests {
     #[cfg(all(feature = "diagram-xychart", feature = "presentation"))]
     #[test]
     fn xychart_full_wrapper_preserves_static_field_resource_accounting() {
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "xychart-beta\nx-axis [a, b]\nbar [1, 2]\n",
                 crate::ParseOptions::strict(),

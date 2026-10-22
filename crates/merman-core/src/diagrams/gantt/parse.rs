@@ -963,7 +963,7 @@ pub(crate) fn parse_gantt_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_gantt(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
@@ -974,7 +974,7 @@ pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_gantt_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<GanttDiagramRenderModel> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(GanttDiagramRenderModel::empty_compatibility_output());
@@ -985,7 +985,7 @@ pub(crate) fn parse_gantt_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_gantt_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
     let construction = construct_gantt_semantic_source_controlled(
@@ -1009,7 +1009,7 @@ pub(crate) fn parse_gantt_model_for_render_controlled(
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = match construct_gantt_semantic_source_controlled(
@@ -1040,7 +1040,7 @@ struct GanttSemanticSource {
 impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self { db, editor_facts } = self;
@@ -1060,14 +1060,17 @@ impl GanttSemanticSource {
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_gantt_semantic_source(code: &str, meta: &ParseMetadata) -> Result<GanttSemanticSource> {
+fn parse_gantt_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<GanttSemanticSource> {
     construct_gantt_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_gantt_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
     construct_gantt_semantic_source_controlled(
         code,
@@ -1236,7 +1239,7 @@ fn parse_gantt_semantic_source_once(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
@@ -1246,7 +1249,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;

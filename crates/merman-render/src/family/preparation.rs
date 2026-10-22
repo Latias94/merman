@@ -129,7 +129,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
 #[cfg(feature = "diagram-mindmap")]
 fn prepare_mindmap_family<'parsed>(
     model: &'parsed diagrams::mindmap::MindmapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
@@ -161,7 +161,7 @@ fn prepare_mindmap_family<'parsed>(
 #[cfg(feature = "diagram-sankey")]
 fn prepare_sankey_family<'parsed>(
     model: &'parsed diagrams::sankey::SankeyDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let layout = crate::sankey::layout_sankey_diagram_typed_with_work_meter(
@@ -200,7 +200,7 @@ fn prepare_sankey_family<'parsed>(
 #[cfg(feature = "diagram-block")]
 fn prepare_block_family<'parsed>(
     model: &'parsed diagrams::block::BlockDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let mut typography_theme = crate::block::BlockTypographyThemePlan::resolve(
@@ -269,7 +269,7 @@ fn prepare_block_family<'parsed>(
 fn prepare_railroad_family<'parsed>(
     model: &'parsed diagrams::railroad::RailroadDiagramRenderModel,
     diagram_type: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let mut typography_theme = crate::railroad::RailroadTypographyThemePlan::resolve(
@@ -298,8 +298,8 @@ fn prepare_railroad_family<'parsed>(
 
 #[inline(never)]
 fn prepare_error_family<'parsed>(
-    model: &'parsed diagrams::error_diagram::ErrorDiagramRenderModel,
-    meta: &ParseMetadata,
+    model: &'parsed diagrams::error_diagram::ErrorDiagramModel,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let typography_theme = crate::error::ErrorTypographyThemePlan::resolve_with_message(
@@ -321,7 +321,7 @@ fn prepare_error_family<'parsed>(
 #[cfg(feature = "diagram-info")]
 fn prepare_info_family<'parsed>(
     model: &'parsed diagrams::info::InfoDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
@@ -341,7 +341,7 @@ fn prepare_info_family<'parsed>(
 #[cfg(feature = "diagram-cynefin")]
 fn prepare_cynefin_family<'parsed>(
     model: &'parsed diagrams::cynefin::CynefinDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let typography_theme = crate::cynefin::CynefinTypographyThemePlan::resolve(
@@ -367,7 +367,7 @@ fn prepare_cynefin_family<'parsed>(
 #[cfg(feature = "diagram-wardley")]
 fn prepare_wardley_family<'parsed>(
     model: &'parsed diagrams::wardley::WardleyDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let mut typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
@@ -396,7 +396,7 @@ fn prepare_wardley_family<'parsed>(
 #[cfg(feature = "diagram-state")]
 fn prepare_state_family<'parsed>(
     model: &'parsed diagrams::state::StateDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let label_sidecar = crate::state::StateLabelSidecarBuilder::default();
@@ -424,7 +424,7 @@ fn prepare_state_family<'parsed>(
 fn prepare_flowchart_family<'parsed>(
     model: &'parsed diagrams::flowchart::FlowchartModel,
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
     svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -506,7 +506,7 @@ fn prepare_flowchart_family<'parsed>(
 #[cfg(feature = "diagram-architecture")]
 fn prepare_architecture_family<'parsed>(
     model: &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let group_theme = crate::architecture::ArchitectureGroupThemePlan::resolve(
@@ -535,7 +535,7 @@ fn prepare_architecture_family<'parsed>(
 #[cfg(feature = "diagram-c4")]
 fn prepare_c4_family<'parsed>(
     model: &'parsed diagrams::c4::C4DiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let text_paint = crate::c4::C4TextPaintPlan::resolve(
@@ -584,7 +584,7 @@ fn prepare_c4_family<'parsed>(
 #[cfg(feature = "diagram-gantt")]
 fn prepare_gantt_family<'parsed>(
     model: &'parsed diagrams::gantt::GanttDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
@@ -614,7 +614,7 @@ fn prepare_gantt_family<'parsed>(
 #[cfg(feature = "diagram-pie")]
 fn prepare_pie_family<'parsed>(
     model: &'parsed diagrams::pie::PieDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let title = model.title.as_deref().or(meta.title.as_deref());
@@ -642,7 +642,7 @@ fn prepare_pie_family<'parsed>(
 #[cfg(feature = "diagram-timeline")]
 fn prepare_timeline_family<'parsed>(
     model: &'parsed diagrams::timeline::TimelineDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let text_paint = crate::timeline::TimelineTextPaintPlan::resolve(
@@ -681,7 +681,7 @@ fn prepare_timeline_family<'parsed>(
 #[cfg(feature = "diagram-journey")]
 fn prepare_journey_family<'parsed>(
     model: &'parsed diagrams::journey::JourneyDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let text_paint = crate::journey::JourneyTextPaintPlan::resolve(
@@ -725,7 +725,7 @@ fn prepare_journey_family<'parsed>(
 #[cfg(feature = "diagram-radar")]
 fn prepare_radar_family<'parsed>(
     model: &'parsed diagrams::radar::RadarDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let effective_title = crate::radar::effective_title(model, meta.title.as_deref());
@@ -784,7 +784,7 @@ fn prepare_radar_family<'parsed>(
 #[cfg(feature = "diagram-treemap")]
 fn prepare_treemap_family<'parsed>(
     model: &'parsed diagrams::treemap::TreemapDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
@@ -819,7 +819,7 @@ fn prepare_treemap_family<'parsed>(
 #[cfg(feature = "diagram-er")]
 fn prepare_er_family<'parsed>(
     model: &'parsed diagrams::er::ErDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(
@@ -870,7 +870,7 @@ fn prepare_er_family<'parsed>(
 #[cfg(feature = "diagram-quadrant-chart")]
 fn prepare_quadrant_chart_family<'parsed>(
     model: &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
@@ -905,7 +905,7 @@ fn prepare_quadrant_chart_family<'parsed>(
 #[cfg(feature = "diagram-xychart")]
 fn prepare_xy_chart_family<'parsed>(
     model: &'parsed diagrams::xychart::XyChartDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let series_paint = crate::xychart::XyChartSeriesPaintPlan::resolve(
@@ -958,7 +958,7 @@ fn prepare_xy_chart_family<'parsed>(
 #[cfg(feature = "diagram-git-graph")]
 fn prepare_gitgraph_family<'parsed>(
     model: &'parsed diagrams::git_graph::GitGraphRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let has_title = crate::gitgraph::resolve_gitgraph_title(model, meta.title.as_deref()).is_some();
@@ -1007,7 +1007,7 @@ fn prepare_gitgraph_family<'parsed>(
 #[cfg(feature = "diagram-tree-view")]
 fn prepare_tree_view_family<'parsed>(
     model: &'parsed diagrams::tree_view::TreeViewDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let theme = crate::tree_view::TreeViewThemePlan::resolve(
@@ -1036,7 +1036,7 @@ fn prepare_tree_view_family<'parsed>(
 #[cfg(feature = "diagram-packet")]
 fn prepare_packet_family<'parsed>(
     model: &'parsed diagrams::packet::PacketDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(
@@ -1062,7 +1062,7 @@ fn prepare_packet_family<'parsed>(
 #[cfg(feature = "diagram-requirement")]
 fn prepare_requirement_family<'parsed>(
     model: &'parsed diagrams::requirement::RequirementDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
@@ -1094,7 +1094,7 @@ fn prepare_requirement_family<'parsed>(
 #[cfg(feature = "diagram-class")]
 fn prepare_class_family<'parsed>(
     model: &'parsed ClassDiagram,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let relation_count = model.relations().len();
@@ -1191,7 +1191,7 @@ fn prepare_class_family<'parsed>(
 #[cfg(feature = "diagram-venn")]
 fn prepare_venn_family<'parsed>(
     model: &'parsed diagrams::venn::VennDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let effective_title = model
@@ -1237,7 +1237,7 @@ fn prepare_venn_family<'parsed>(
 #[cfg(feature = "diagram-zenuml")]
 fn prepare_zenuml_family<'parsed>(
     model: &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let source_style = crate::zenuml::ZenumlSourceStyle::resolve(
@@ -1276,7 +1276,7 @@ fn prepare_zenuml_family<'parsed>(
 #[cfg(feature = "diagram-event-modeling")]
 fn prepare_eventmodeling_family<'parsed>(
     model: &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let css_binding =
@@ -1305,7 +1305,7 @@ fn prepare_eventmodeling_family<'parsed>(
 #[cfg(feature = "diagram-ishikawa")]
 fn prepare_ishikawa_family<'parsed>(
     model: &'parsed diagrams::ishikawa::IshikawaDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(

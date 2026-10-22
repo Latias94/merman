@@ -244,7 +244,7 @@ fn evaluate_fixture(
     };
     report.pass(CapabilityStage::Source);
 
-    let metadata = match renderer.engine().parse_metadata_sync(&source) {
+    let metadata = match renderer.presentation_engine().parse_metadata_sync(&source) {
         Ok(metadata) => metadata,
         Err(error) => {
             report.fail(CapabilityStage::Detected, error.to_string());
@@ -254,7 +254,7 @@ fn evaluate_fixture(
     report.diagram_type = Some(metadata.diagram_type.clone());
     report.pass(CapabilityStage::Detected);
 
-    let semantic = match renderer.prepare_semantic(&source, OperationControl::new()) {
+    let semantic = match renderer.prepare_presentation(&source, OperationControl::new()) {
         Ok(Some(semantic)) => semantic,
         Ok(None) => {
             report.fail(

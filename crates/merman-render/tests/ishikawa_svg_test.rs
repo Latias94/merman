@@ -2,7 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -46,7 +46,7 @@ fn ishikawa_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
 fn render_ishikawa_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     try_render_ishikawa_with_theme_requirement(
         source,
@@ -60,7 +60,7 @@ fn render_ishikawa_with_theme(
 fn try_render_ishikawa_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     try_render_ishikawa_with_theme_requirement_and_id(
@@ -75,7 +75,7 @@ fn try_render_ishikawa_with_theme_requirement(
 fn try_render_ishikawa_with_theme_requirement_and_id(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
@@ -142,7 +142,10 @@ fn ishikawa_stylesheet(svg: &str) -> String {
         .to_string()
 }
 
-fn ishikawa_layout_json_with_theme(theme: &DiagramTheme, engine: Engine) -> serde_json::Value {
+fn ishikawa_layout_json_with_theme(
+    theme: &DiagramTheme,
+    engine: MermaidEngine,
+) -> serde_json::Value {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(
             &ishikawa_theme_source("classic"),
@@ -167,7 +170,7 @@ fn try_render_ishikawa_svg_with_resource_policy(
     source: &str,
     policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Ishikawa resource-bound fixture")
         .expect("detect Ishikawa diagram");
@@ -642,8 +645,11 @@ fn ishikawa_text_fill_reaches_every_visible_terminal_in_classic_and_hand_drawn()
     for look in ["classic", "handDrawn"] {
         for (fill, expected_fill) in cases.clone() {
             let theme = ishikawa_text_fill_theme(fill);
-            let rendered =
-                render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, Engine::new());
+            let rendered = render_ishikawa_with_theme(
+                &ishikawa_theme_source(look),
+                &theme,
+                MermaidEngine::new(),
+            );
             let document =
                 roxmltree::Document::parse(rendered.svg()).expect("valid themed Ishikawa SVG");
             let text_nodes = ishikawa_visible_text_nodes(&document);
@@ -702,7 +708,7 @@ fn ishikawa_typed_font_stack_reaches_classic_and_hand_drawn_text_receipts() {
         let theme =
             ishikawa_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
         let rendered =
-            render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, Engine::new());
+            render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, MermaidEngine::new());
         let stylesheet = ishikawa_stylesheet(rendered.svg());
 
         assert!(
@@ -725,7 +731,7 @@ fn ishikawa_theme_font_family_keeps_precedence_over_root_font_family() {
             FontStack::single("IshikawaTyped").expect("valid Ishikawa typed font"),
         ));
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "IshikawaRootFont",
             "themeVariables": { "fontFamily": "IshikawaThemeFont" }
         })));
@@ -752,7 +758,7 @@ fn ishikawa_font_size_is_direct_and_portable_in_classic_and_hand_drawn() {
 
     for look in ["classic", "handDrawn"] {
         let rendered =
-            render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, Engine::new());
+            render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, MermaidEngine::new());
 
         let stylesheet = ishikawa_stylesheet(rendered.svg());
         let base = stylesheet
@@ -793,7 +799,7 @@ fn ishikawa_styles_are_scoped_per_inline_svg() {
     let rendered_a = try_render_ishikawa_with_theme_requirement_and_id(
         &source,
         &theme_a,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         "ishikawa-a",
     )
@@ -801,7 +807,7 @@ fn ishikawa_styles_are_scoped_per_inline_svg() {
     let rendered_b = try_render_ishikawa_with_theme_requirement_and_id(
         &source,
         &theme_b,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         "ishikawa-b",
     )
@@ -839,8 +845,11 @@ fn ishikawa_mixed_typography_is_direct_and_portable() {
         .with_font_size_px(24.0)
         .expect("valid mixed Ishikawa font size");
     let theme = ishikawa_typography_theme(typography);
-    let rendered =
-        render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, Engine::new());
+    let rendered = render_ishikawa_with_theme(
+        &ishikawa_theme_source("classic"),
+        &theme,
+        MermaidEngine::new(),
+    );
     let stylesheet = ishikawa_stylesheet(rendered.svg());
     assert!(stylesheet.contains("font-family: IshikawaMixed;"));
     assert!(stylesheet.contains("font-size: 24px;"));
@@ -865,7 +874,7 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let config_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px !important" }
         }))),
     );
@@ -906,7 +915,7 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let root_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px"
         }))),
     );
@@ -936,21 +945,21 @@ fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
             .expect("valid large Ishikawa font size"),
     );
     assert_eq!(
-        ishikawa_layout_json_with_theme(&small, Engine::new()),
-        ishikawa_layout_json_with_theme(&large, Engine::new()),
+        ishikawa_layout_json_with_theme(&small, MermaidEngine::new()),
+        ishikawa_layout_json_with_theme(&large, MermaidEngine::new()),
         "Ishikawa typed FontSize is a final CSS terminal"
     );
 
     let baseline = ishikawa_typography_theme(ThemeTextStyle::default());
     let root_small = ishikawa_layout_json_with_theme(
         &baseline,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "12px"
         }))),
     );
     let root_large = ishikawa_layout_json_with_theme(
         &baseline,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontSize": "48px"
         }))),
     );
@@ -969,7 +978,7 @@ fn ishikawa_font_size_is_not_applicable_without_inherited_text() {
     );
 
     for source in ["ishikawa-beta\n", "ishikawa-beta\n Root cause\n"] {
-        let rendered = render_ishikawa_with_theme(source, &theme, Engine::new());
+        let rendered = render_ishikawa_with_theme(source, &theme, MermaidEngine::new());
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1, "source={source:?}");
@@ -993,7 +1002,7 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_size = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontSize": "22px" }
         }))),
     );
@@ -1008,7 +1017,7 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_stack = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontFamily": "IshikawaConfigured" }
         }))),
     );
@@ -1032,7 +1041,7 @@ fn ishikawa_unsupported_typography_sibling_keeps_direct_font_size() {
     let rendered = try_render_ishikawa_with_theme_requirement(
         &ishikawa_theme_source("classic"),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders unsupported Ishikawa typography");
@@ -1049,7 +1058,7 @@ fn ishikawa_unsupported_typography_sibling_keeps_direct_font_size() {
         try_render_ishikawa_with_theme_requirement(
             &ishikawa_theme_source("classic"),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .is_err(),
@@ -1064,7 +1073,7 @@ fn ishikawa_explicit_text_color_outranks_typed_text_fill() {
     );
 
     for look in ["classic", "handDrawn"] {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({ "themeVariables": { "textColor": "#fedcba" } }),
         ));
         let rendered = render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, engine);
@@ -1123,8 +1132,11 @@ fn ishikawa_typed_text_fill_shadows_unsupported_ordinal_palette() {
             ),
         )
         .expect("compile Ishikawa typed fill and ordinal palette theme");
-    let rendered =
-        render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, Engine::new());
+    let rendered = render_ishikawa_with_theme(
+        &ishikawa_theme_source("classic"),
+        &theme,
+        MermaidEngine::new(),
+    );
     assert!(
         rendered.svg().contains("fill:#123456 !important;"),
         "{}",
@@ -1144,7 +1156,7 @@ fn ishikawa_text_fill_is_not_applicable_without_visible_text() {
     let theme = ishikawa_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid empty Ishikawa text fill"),
     );
-    let rendered = render_ishikawa_with_theme("ishikawa-beta\n", &theme, Engine::new());
+    let rendered = render_ishikawa_with_theme("ishikawa-beta\n", &theme, MermaidEngine::new());
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid empty themed Ishikawa SVG");
     assert!(ishikawa_visible_text_nodes(&document).is_empty());
@@ -1161,7 +1173,7 @@ fn ishikawa_text_fill_is_not_applicable_without_visible_text() {
 #[test]
 fn ishikawa_deep_hierarchy_projects_and_renders_flat_model() {
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1210,9 +1222,9 @@ fn ishikawa_text_palette_is_shadowed_by_the_config_owned_fill_domain() {
                 ishikawa_theme_source(look)
             };
             let engine = if source_owner {
-                Engine::new()
+                MermaidEngine::new()
             } else {
-                Engine::new().with_site_config(PresentationConfig::from_value(
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
                 ))
             };

@@ -454,7 +454,7 @@ mod tests {
         for preset in all_presets().filter(|preset| !is_native_candidate(*preset)) {
             let (theme, _) = compiled(preset);
             let selected = if preset.is_dark() { "dark" } else { "base" };
-            let parse = |engine: merman_core::Engine| {
+            let parse = |engine: merman_core::MermaidEngine| {
                 engine
                     .parse_diagram_for_render_model_sync(
                         "flowchart LR\nA[Alpha]\n",
@@ -463,8 +463,9 @@ mod tests {
                     .unwrap()
                     .unwrap()
             };
-            let themed = parse(theme.install_parse_compatibility(merman_core::Engine::new()));
-            let fallback = parse(merman_core::Engine::new().with_site_config(
+            let themed =
+                parse(theme.install_parse_compatibility(merman_core::MermaidEngine::new()));
+            let fallback = parse(merman_core::MermaidEngine::new().with_site_config(
                 merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"theme": selected}),
                 ),
@@ -1807,12 +1808,12 @@ mod tests {
             };
             for &dark_mode in dark_modes {
                 let engine = match dark_mode {
-                    Some(value) => merman_core::Engine::new().with_site_config(
+                    Some(value) => merman_core::MermaidEngine::new().with_site_config(
                         merman_core::presentation::PresentationConfig::from_value(
                             serde_json::json!({"darkMode": value}),
                         ),
                     ),
-                    None => merman_core::Engine::new(),
+                    None => merman_core::MermaidEngine::new(),
                 };
                 let parsed = crate::__private::install_parse_compatibility(&theme, engine)
                     .parse_diagram_for_render_model_sync(

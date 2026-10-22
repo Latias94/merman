@@ -194,6 +194,20 @@ pub(crate) fn preprocess_builtin_semantic_controlled(
     diagram_type: Option<&str>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<PreprocessResult>> {
+    preprocess_builtin_semantic_with_directive_recovery_controlled(
+        input,
+        diagram_type,
+        DirectiveRecoveryMode::Strict,
+        control,
+    )
+}
+
+pub(crate) fn preprocess_builtin_semantic_with_directive_recovery_controlled(
+    input: &str,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &OperationControl,
+) -> OperationControlResult<Result<PreprocessResult>> {
     let detector = |text: &str, control: &OperationControl| {
         Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
     };
@@ -202,7 +216,7 @@ pub(crate) fn preprocess_builtin_semantic_controlled(
             input,
             &detector,
             diagram_type,
-            DirectiveRecoveryMode::Strict,
+            directive_recovery,
             #[cfg(feature = "editor-facts")]
             SourceConfigCaptureMode::Omit,
             control,

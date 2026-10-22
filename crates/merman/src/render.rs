@@ -11,9 +11,8 @@ use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 #[cfg(any(feature = "ascii", feature = "svg"))]
 use merman_core::OperationPhase;
 use merman_core::{
-    Engine, OperationCancelled, OperationControl, OperationResourceDomain,
-    OperationResourceOverride, OperationResourceProvenance, ParseOptions,
-    resources::InputResourcePolicy,
+    OperationCancelled, OperationControl, OperationResourceDomain, OperationResourceOverride,
+    OperationResourceProvenance, ParseOptions, SemanticParser, resources::InputResourcePolicy,
 };
 
 #[cfg(feature = "ascii")]
@@ -78,9 +77,17 @@ pub use target_admission::{
     TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
 };
 
+#[cfg(feature = "presentation")]
+pub use crate::operation_runner::PresentationArtifact;
 pub use crate::operation_runner::SemanticArtifact;
+#[cfg(feature = "presentation")]
 pub(crate) mod prepared;
+#[cfg(feature = "presentation")]
+use merman_core::MermaidEngine;
+#[cfg(feature = "presentation")]
 pub use prepared::{PrepareSourceRequest, PreparedSource};
+#[cfg(feature = "presentation")]
+use std::sync::OnceLock;
 
 /// Successful SVG layout inspection output.
 #[cfg(feature = "svg")]
@@ -440,6 +447,8 @@ fn map_export_error(error: ExportError) -> RenderError {
 #[non_exhaustive]
 pub enum RenderTarget {
     Semantic,
+    #[cfg(feature = "presentation")]
+    Presentation,
     #[cfg(feature = "svg")]
     Svg(SvgRequest),
     #[cfg(feature = "svg")]
@@ -584,9 +593,12 @@ impl RenderTarget {
         request.pipeline.as_ref()
     }
 
+    #[cfg(feature = "presentation")]
     fn svg_input_resource_policy(&self) -> Option<InputResourcePolicy> {
         match self {
             Self::Semantic => None,
+            #[cfg(feature = "presentation")]
+            Self::Presentation => None,
             #[cfg(feature = "ascii")]
             Self::Ascii(_) => None,
             #[cfg(feature = "svg")]
@@ -724,6 +736,12 @@ impl<'a> RenderRequest<'a> {
         Self::new(source, RenderTarget::Semantic, control)
     }
 
+    /// Selects full Mermaid presentation and its explicit handoff APIs.
+    #[cfg(feature = "presentation")]
+    pub fn presentation(source: &'a str, control: OperationControl) -> Self {
+        Self::new(source, RenderTarget::Presentation, control)
+    }
+
     #[cfg(feature = "svg")]
     pub fn svg(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::Svg(request), control)
@@ -807,6 +825,8 @@ impl<'a> RenderRequest<'a> {
 )]
 pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
+    #[cfg(feature = "presentation")]
+    Presentation(Option<PresentationArtifact>),
     #[cfg(feature = "svg")]
     Svg(Option<SvgOutput>),
     #[cfg(feature = "svg")]
@@ -830,16 +850,27 @@ pub enum RenderOutput {
 /// Long-lived renderer defaults and host-independent engine configuration.
 #[derive(Debug, Clone)]
 pub struct Renderer {
-    engine: Engine,
+    parser: SemanticParser,
+    #[cfg(feature = "presentation")]
+    presentation_engine: PresentationEngineSource,
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
     resources_explicit: bool,
 }
 
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone)]
+enum PresentationEngineSource {
+    Inherited(OnceLock<MermaidEngine>),
+    Explicit(MermaidEngine),
+}
+
 impl Default for Renderer {
     fn default() -> Self {
         Self {
-            engine: Engine::new(),
+            parser: SemanticParser::new(),
+            #[cfg(feature = "presentation")]
+            presentation_engine: PresentationEngineSource::Inherited(OnceLock::new()),
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
             resources_explicit: false,
@@ -852,13 +883,42 @@ impl Renderer {
         Self::default()
     }
 
-    pub fn with_engine(mut self, engine: Engine) -> Self {
-        self.engine = engine;
+    /// Selects the canonical parser used by semantic and terminal operations.
+    /// Inherited presentation defaults follow the new parser even after earlier full operations.
+    /// Full-only adapters installed with `with_presentation_engine` are independent.
+    pub fn with_semantic_parser(mut self, parser: SemanticParser) -> Self {
+        self.parser = parser;
+        #[cfg(feature = "presentation")]
+        if matches!(
+            self.presentation_engine,
+            PresentationEngineSource::Inherited(_)
+        ) {
+            self.presentation_engine = PresentationEngineSource::Inherited(OnceLock::new());
+        }
+        self
+    }
+
+    /// Installs a full-only Mermaid engine, including its custom adapters and configuration.
+    /// Semantic and ASCII requests continue to use the explicitly selected canonical parser.
+    #[cfg(feature = "presentation")]
+    pub fn with_presentation_engine(mut self, engine: MermaidEngine) -> Self {
+        self.presentation_engine = PresentationEngineSource::Explicit(engine);
         self
     }
 
     pub fn with_runtime_policy(mut self, policy: merman_core::runtime::RuntimePolicy) -> Self {
-        self.engine = self.engine.with_runtime_policy(policy);
+        self.parser = self.parser.with_runtime_policy(policy.clone());
+        #[cfg(feature = "presentation")]
+        match &mut self.presentation_engine {
+            PresentationEngineSource::Inherited(cache) => {
+                if let Some(engine) = cache.get_mut() {
+                    *engine = engine.clone().with_runtime_policy(policy);
+                }
+            }
+            PresentationEngineSource::Explicit(engine) => {
+                *engine = engine.clone().with_runtime_policy(policy);
+            }
+        }
         self
     }
 
@@ -875,8 +935,23 @@ impl Renderer {
         self
     }
 
-    pub fn engine(&self) -> &Engine {
-        &self.engine
+    pub fn semantic_parser(&self) -> &SemanticParser {
+        &self.parser
+    }
+
+    /// Initializes full presentation defaults only when a full operation requests them.
+    #[cfg(feature = "presentation")]
+    pub fn presentation_engine(&self) -> &MermaidEngine {
+        match &self.presentation_engine {
+            PresentationEngineSource::Explicit(engine) => engine,
+            PresentationEngineSource::Inherited(cache) => cache.get_or_init(|| {
+                MermaidEngine::new()
+                    .with_site_config(merman_core::presentation::PresentationConfig::from_config(
+                        self.parser.site_config_overrides().clone(),
+                    ))
+                    .with_runtime_policy(self.parser.runtime_policy().clone())
+            }),
+        }
     }
 
     pub fn parse_options(&self) -> ParseOptions {
@@ -893,15 +968,28 @@ impl Renderer {
     /// then the graphical target's SVG environment policy. Semantic and ASCII targets use the
     /// renderer's input defaults when neither the request nor the renderer overrides them.
     pub fn render(&self, request: RenderRequest<'_>) -> Result<RenderOutput, RenderError> {
-        let (semantic, target) = self.parse_request(request)?;
-        let Some(semantic) = semantic else {
-            #[cfg(feature = "ascii")]
-            if matches!(&target, RenderTarget::Ascii(_)) {
-                return Err(RenderError::NoDiagram);
+        match &request.target {
+            RenderTarget::Semantic => {
+                let (artifact, target) = self.parse_semantic_request(request)?;
+                match artifact {
+                    Some(artifact) => artifact.render(target),
+                    None => Ok(RenderOutput::empty(target)),
+                }
             }
-            return Ok(RenderOutput::empty(target));
-        };
-        semantic.render(target)
+            #[cfg(feature = "ascii")]
+            RenderTarget::Ascii(_) => {
+                let (artifact, target) = self.parse_semantic_request(request)?;
+                artifact.ok_or(RenderError::NoDiagram)?.render(target)
+            }
+            #[cfg(feature = "presentation")]
+            _ => {
+                let (artifact, target) = self.parse_presentation_request(request)?;
+                match artifact {
+                    Some(artifact) => artifact.render(target),
+                    None => Ok(RenderOutput::empty(target)),
+                }
+            }
+        }
     }
 
     /// Renders an SVG request into its bytes without constructing unrequested output metadata.
@@ -919,7 +1007,7 @@ impl Renderer {
                 "render_svg_data requires an SVG request",
             ));
         }
-        let (semantic, target) = self.parse_request(request)?;
+        let (semantic, target) = self.parse_presentation_request(request)?;
         let Some(semantic) = semantic else {
             return Ok(None);
         };
@@ -929,10 +1017,11 @@ impl Renderer {
         render_svg_data_target(semantic, request).map(Some)
     }
 
-    fn parse_request(
+    #[cfg(feature = "presentation")]
+    fn parse_presentation_request(
         &self,
         request: RenderRequest<'_>,
-    ) -> Result<(Option<SemanticArtifact>, RenderTarget), RenderError> {
+    ) -> Result<(Option<PresentationArtifact>, RenderTarget), RenderError> {
         let RenderRequest {
             source,
             target,
@@ -951,51 +1040,88 @@ impl Renderer {
         });
         #[cfg(feature = "svg")]
         let themed_engine = theme.as_ref().map(|theme| {
-            merman_render::__private::install_parse_compatibility(theme, self.engine.clone())
+            merman_render::__private::install_parse_compatibility(
+                theme,
+                self.presentation_engine().clone(),
+            )
         });
         #[cfg(feature = "svg")]
-        let operation_engine = themed_engine.as_ref().unwrap_or(&self.engine);
+        let operation_engine = themed_engine
+            .as_ref()
+            .unwrap_or_else(|| self.presentation_engine());
         #[cfg(not(feature = "svg"))]
-        let operation_engine = &self.engine;
+        let operation_engine = self.presentation_engine();
         let operation = Operation::begin(
-            operation_engine,
+            operation_engine.runtime_policy(),
             source,
             control,
             resources,
             #[cfg(feature = "svg")]
             theme,
         )?;
-        let semantic =
-            operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
+        let semantic = operation.parse_presentation(
+            operation_engine,
+            source,
+            parse_options.unwrap_or(self.parse_options),
+        )?;
         Ok((semantic, target))
     }
 
-    /// Prepares a format-neutral semantic artifact through the same runner used by `render`.
-    /// This uses the renderer's input policy before any output target is selected.
-    pub fn prepare_semantic(
+    fn parse_semantic_request(
+        &self,
+        request: RenderRequest<'_>,
+    ) -> Result<(Option<SemanticArtifact>, RenderTarget), RenderError> {
+        let resources = request.resources.unwrap_or(self.resources);
+        let operation = Operation::begin(
+            self.parser.runtime_policy(),
+            request.source,
+            request.control,
+            resources,
+            #[cfg(feature = "svg")]
+            None,
+        )?;
+        let artifact = operation.parse_semantic(
+            &self.parser,
+            request.source,
+            request.parse_options.unwrap_or(self.parse_options),
+        )?;
+        Ok((artifact, request.target))
+    }
+
+    /// Parses canonical meaning without presentation or compatibility projections.
+    pub fn parse_semantic(
         &self,
         source: &str,
         control: OperationControl,
     ) -> Result<Option<SemanticArtifact>, RenderError> {
-        self.prepare_semantic_with(source, control, self.parse_options, self.resources)
+        self.parse_semantic_request(RenderRequest::semantic(source, control))
+            .map(|(artifact, _)| artifact)
     }
 
-    pub fn prepare_semantic_with(
+    /// Prepares full Mermaid presentation for a later output in the same operation.
+    #[cfg(feature = "presentation")]
+    pub fn prepare_presentation(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Option<PresentationArtifact>, RenderError> {
+        self.prepare_presentation_with(source, control, self.parse_options, self.resources)
+    }
+
+    #[cfg(feature = "presentation")]
+    pub fn prepare_presentation_with(
         &self,
         source: &str,
         control: OperationControl,
         parse_options: ParseOptions,
         resources: InputResourcePolicy,
-    ) -> Result<Option<SemanticArtifact>, RenderError> {
-        let operation = Operation::begin(
-            &self.engine,
-            source,
-            control,
-            resources,
-            #[cfg(feature = "svg")]
-            None,
-        )?;
-        operation.parse_render_model(source, parse_options)
+    ) -> Result<Option<PresentationArtifact>, RenderError> {
+        self.parse_presentation_request(
+            RenderRequest::presentation(source, control)
+                .with_parse_options(parse_options)
+                .with_resource_policy(resources),
+        )
+        .map(|(artifact, _)| artifact)
     }
 }
 
@@ -1046,7 +1172,59 @@ fn ensure_native_font_theme_typography(
 }
 
 impl SemanticArtifact {
+    /// Consumes canonical meaning into semantic inspection or terminal output.
+    /// Graphical targets require an independently requested full presentation parse.
+    pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
+        crate::operation_runner::checkpoint(self.control(), merman_core::OperationPhase::Semantic)?;
+        match target {
+            RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
+            #[cfg(feature = "ascii")]
+            RenderTarget::Ascii(request) => {
+                render_ascii_target(self, request).map(RenderOutput::Ascii)
+            }
+            #[cfg(feature = "presentation")]
+            _ => Err(RenderError::UnsupportedTarget(
+                "graphical output requires full presentation",
+            )),
+        }
+    }
+}
+
+#[cfg(feature = "ascii")]
+fn render_ascii_target(
+    semantic: SemanticArtifact,
+    request: AsciiRequest,
+) -> Result<Option<AsciiOutput>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let result = renderer.render_parsed_report(
+        &parsed,
+        request.viewport,
+        &operation.control,
+        &operation.context,
+        request.resources,
+    );
+    match result {
+        Ok(output) => Ok(Some(output)),
+        Err(error @ AsciiError::ResourceLimitExceeded(_)) => {
+            match operation
+                .control
+                .terminal_checkpoint_at(OperationPhase::Emit)
+            {
+                Err(terminal) => Err(crate::operation_runner::operation_terminal_error(terminal)),
+                Ok(()) => Err(map_ascii_error(error)),
+            }
+        }
+        Err(error) => Err(map_ascii_error(error)),
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl PresentationArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
+    #[cfg(feature = "compat-json")]
     pub fn compatibility_json(&self) -> Result<merman_core::ManagedSemanticJson, RenderError> {
         self.parsed()
             .model()
@@ -1110,11 +1288,20 @@ impl SemanticArtifact {
         Ok(target)
     }
 
-    /// Consumes this operation-owned semantic artifact into one typed output target.
+    /// Consumes this operation-owned presentation artifact into one typed output target.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
         let target = self.admit_target(target)?;
         match target {
-            RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
+            RenderTarget::Semantic => Err(RenderError::UnsupportedTarget(
+                "canonical semantic output requires a semantic parse operation",
+            )),
+            RenderTarget::Presentation => {
+                crate::operation_runner::checkpoint(
+                    self.control(),
+                    merman_core::OperationPhase::Semantic,
+                )?;
+                Ok(RenderOutput::Presentation(Some(self)))
+            }
             #[cfg(feature = "svg")]
             RenderTarget::Svg(request) => render_svg_target(self, request).map(RenderOutput::Svg),
             #[cfg(feature = "svg")]
@@ -1135,7 +1322,7 @@ impl SemanticArtifact {
             }
             #[cfg(feature = "ascii")]
             RenderTarget::Ascii(request) => {
-                render_ascii_target(self, request).map(RenderOutput::Ascii)
+                render_presentation_ascii_target(self, request).map(RenderOutput::Ascii)
             }
             #[cfg(feature = "png")]
             RenderTarget::Png(request) => render_png_target(self, request).map(RenderOutput::Png),
@@ -1153,6 +1340,8 @@ impl RenderOutput {
     fn empty(target: RenderTarget) -> Self {
         match target {
             RenderTarget::Semantic => Self::Semantic(None),
+            #[cfg(feature = "presentation")]
+            RenderTarget::Presentation => Self::Presentation(None),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(_) => Self::Svg(None),
             #[cfg(feature = "svg")]
@@ -1177,7 +1366,7 @@ impl RenderOutput {
 
 #[cfg(feature = "svg")]
 fn render_svg_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgOutput>, RenderError> {
     #[cfg(feature = "native-fonts")]
@@ -1207,7 +1396,7 @@ fn render_svg_target(
 
 #[cfg(feature = "svg")]
 fn render_svg_data_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<String, RenderError> {
     #[cfg(feature = "native-fonts")]
@@ -1259,7 +1448,7 @@ fn finish_standalone_svg_data(
 
 #[cfg(feature = "svg")]
 fn render_layout_json_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
     // A prepared artifact keeps the operation's sticky terminal state. Observe it before
@@ -1290,7 +1479,7 @@ fn render_layout_json_target(
 
 #[cfg(feature = "svg")]
 fn render_edge_geometry_json_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
     crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
@@ -1329,7 +1518,7 @@ fn render_edge_geometry_json_target(
 
 #[cfg(feature = "svg")]
 fn render_svg_plan_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<merman_render::family::RenderCapabilityPlan>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
@@ -1350,7 +1539,7 @@ fn render_svg_plan_target(
     reason = "The preparation tuple keeps completion, capability admission, and operation state together."
 )]
 fn prepare_resvg_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: &SvgRequest,
 ) -> Result<
     Option<(
@@ -1381,7 +1570,7 @@ fn prepare_resvg_target(
 
 #[cfg(feature = "svg")]
 fn prepare_rendered_family_svg(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: &SvgRequest,
 ) -> Result<(merman_render::family::RenderedFamilySvg, OperationExecution), RenderError> {
     let (parsed, operation) = semantic.into_parts();
@@ -1400,7 +1589,7 @@ fn prepare_rendered_family_svg(
 
 #[cfg(feature = "svg")]
 fn render_document_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
     let Some((completion, required_capabilities, operation)) =
@@ -1427,9 +1616,8 @@ fn render_document_target(
     Ok(Some(document))
 }
 
-#[cfg(feature = "ascii")]
-#[doc(hidden)]
-pub fn ascii_diagram_from_full(
+#[cfg(all(feature = "ascii", feature = "presentation"))]
+fn ascii_diagram_from_full(
     model: &merman_core::RenderSemanticModel,
 ) -> merman_ascii::AsciiDiagram<'_> {
     use merman_ascii::AsciiDiagram;
@@ -1479,9 +1667,9 @@ pub fn ascii_diagram_from_full(
     }
 }
 
-#[cfg(feature = "ascii")]
-fn render_ascii_target(
-    semantic: SemanticArtifact,
+#[cfg(all(feature = "ascii", feature = "presentation"))]
+fn render_presentation_ascii_target(
+    semantic: PresentationArtifact,
     request: AsciiRequest,
 ) -> Result<Option<AsciiOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
@@ -1523,7 +1711,7 @@ fn render_ascii_target(
 
 #[cfg(feature = "png")]
 fn render_png_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
     let Some((completion, required_capabilities, operation)) =
@@ -1548,7 +1736,7 @@ fn render_png_target(
 
 #[cfg(feature = "jpeg")]
 fn render_jpeg_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
     let Some((completion, required_capabilities, operation)) =
@@ -1573,7 +1761,7 @@ fn render_jpeg_target(
 
 #[cfg(feature = "pdf")]
 fn render_pdf_target(
-    semantic: SemanticArtifact,
+    semantic: PresentationArtifact,
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
     let Some((completion, required_capabilities, operation)) =

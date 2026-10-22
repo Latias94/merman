@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -315,7 +315,7 @@ impl HostTextMeasurer for FontSizeAwareTextMeasurer {
 }
 
 fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .map_err(|error| format!("parse failed: {error}"))?
         .ok_or_else(|| "no diagram detected".to_string())?;
@@ -348,7 +348,7 @@ fn layout_swimlane(source: &str) -> SwimlaneLayout {
 }
 
 fn layout_swimlane_with_width_aware_measurer(source: &str) -> SwimlaneLayout {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
         .expect("detect swimlane");
@@ -373,7 +373,7 @@ fn layout_swimlane_with_width_aware_measurer(source: &str) -> SwimlaneLayout {
 }
 
 fn layout_swimlane_with_font_size_aware_measurer(source: &str) -> SwimlaneLayout {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
         .expect("detect swimlane");

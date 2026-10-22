@@ -766,7 +766,7 @@ mod tests {
             )
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
-        let config = merman_core::Engine::new()
+        let config = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "actorTextColor": "#123456" },
             })))

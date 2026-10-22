@@ -595,11 +595,13 @@ A[Plain source]"##,
             .compile_preset(merman::svg::ThemePreset::OneDark)
             .unwrap();
         let environment = merman::SvgEnvironment::deterministic();
-        let renderer = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
-            merman::presentation::PresentationConfig::from_value(serde_json::json!({
-                "layout": "dagre",
-            })),
-        ));
+        let renderer = merman::Renderer::new().with_presentation_engine(
+            merman::MermaidEngine::new().with_site_config(
+                merman::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "layout": "dagre",
+                })),
+            ),
+        );
         let svg_request = merman::SvgRequest {
             environment,
             options: merman::svg::SvgRenderOptions {
@@ -1083,7 +1085,7 @@ Missing ref: id2,after missing,1d
         for index in 0..150 {
             writeln!(source, "{}Node {index}", "  ".repeat(index + 2)).unwrap();
         }
-        let semantic = merman::Engine::new()
+        let semantic = merman::MermaidEngine::new()
             .parse_diagram_sync(&source, merman::ParseOptions::strict())
             .unwrap()
             .unwrap();

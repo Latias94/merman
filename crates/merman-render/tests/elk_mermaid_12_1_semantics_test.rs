@@ -8,7 +8,7 @@
 
 use base64::Engine as _;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -72,7 +72,7 @@ fn render_with_environment(
     elk_options: Value,
     environment: &RenderEnvironment,
 ) -> Rendered {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_site_config(PresentationConfig::from_value(json!({
             "layout": algorithm, "htmlLabels": false, "look": "classic",
             "elk": elk_options,

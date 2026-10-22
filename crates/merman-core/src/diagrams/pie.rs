@@ -16,7 +16,7 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -109,7 +109,7 @@ impl PieSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_pie(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = parse_pie_semantic_source(code, meta)?;
     render_model_to_compat_json(&source.into_render_model(), meta)
 }
@@ -118,7 +118,7 @@ pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_pie_semantic_source_controlled(
@@ -145,7 +145,7 @@ pub(crate) fn parse_pie_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &PieDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
@@ -163,7 +163,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_pie_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<PieDiagramRenderModel> {
     Ok(parse_pie_semantic_source(code, meta)?.into_render_model())
 }
@@ -171,7 +171,7 @@ pub(crate) fn parse_pie_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_pie_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<PieDiagramRenderModel>> {
     let construction = construct_pie_semantic_source_controlled(
@@ -242,7 +242,7 @@ pub(crate) fn parse_pie_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
+fn parse_pie_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<PieSemanticSource> {
     construct_pie_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -468,7 +468,9 @@ enum PieStatement {
 struct PieParsedSection {
     label: String,
     value: f64,
+    #[cfg(feature = "editor-facts")]
     statement_span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     label_span: SourceSpan,
     value_span: SourceSpan,
 }
@@ -519,7 +521,9 @@ fn parse_pie_section(line: &str, line_start: usize) -> Option<PieParsedSection> 
     Some(PieParsedSection {
         label: parsed_label.value,
         value,
+        #[cfg(feature = "editor-facts")]
         statement_span: SourceSpan::new(line_start, line_start + line.len()),
+        #[cfg(feature = "editor-facts")]
         label_span: parsed_label.value_span,
         value_span,
     })
@@ -548,6 +552,7 @@ fn parse_number_pie(input: &str) -> Option<f64> {
 
 struct ParsedQuotedString<'a> {
     value: String,
+    #[cfg(feature = "editor-facts")]
     value_span: SourceSpan,
     rest: &'a str,
     rest_start: usize,
@@ -557,6 +562,7 @@ fn parse_quoted_string(input: &str, input_start: usize) -> Option<ParsedQuotedSt
     let parsed = parse_langium_string(input, input_start)?;
     Some(ParsedQuotedString {
         value: parsed.value,
+        #[cfg(feature = "editor-facts")]
         value_span: parsed.value_span,
         rest: &input[parsed.consumed..],
         rest_start: input_start + parsed.consumed,
@@ -715,14 +721,14 @@ mod tests {
     use crate::EditorSemanticCompleteness;
     use crate::MermaidConfig;
     #[cfg(feature = "presentation")]
-    use crate::ParseMetadata;
+    use crate::PresentationMetadata;
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    use crate::{Engine, Error, ParseOptions, SourceSpan};
+    use crate::{Error, MermaidEngine, ParseOptions, SourceSpan};
     use serde_json::json;
 
     #[cfg(feature = "presentation")]
-    fn metadata() -> ParseMetadata {
-        ParseMetadata {
+    fn metadata() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "pie".to_string(),
             config: MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
@@ -909,7 +915,7 @@ mod tests {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_title_statement_after_header() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"
 pie showData
   title Market Share
@@ -936,7 +942,7 @@ pie showData
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_uses_langium_string_escapes_and_quote_aware_inline_comments() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine
             .parse_diagram_sync(
                 r#"pie
@@ -955,7 +961,7 @@ pie showData
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_number_terminal_matches_number_pie_exactly() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         for value in [".5", "01", "1.", "1junk", "1..2"] {
             let source = format!("pie\n\"A\": {value}\n");
             assert!(
@@ -982,7 +988,7 @@ pie showData
         let invalid = "-1";
         let start = source.find(invalid).unwrap();
         let expected_span = SourceSpan::new(start, start + invalid.len());
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
         crate::editor::test_work::reset();
@@ -1064,7 +1070,7 @@ pie showData
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_reports_later_syntax_errors_before_populate_errors() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let error = engine
             .parse_diagram_sync(
                 "pie\n\"negative\": -1\n\"malformed\": 1junk\n",
@@ -1081,7 +1087,7 @@ pie showData
     #[test]
     fn pie_rejects_show_data_after_the_header_line() {
         let source = "pie\nshowData\n\"A\": 1\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_sync(source, ParseOptions::strict())
@@ -1115,7 +1121,7 @@ pie showData
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_header_acc_title_inline() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"
 pie accTitle: sample wow
   "A" : 1
@@ -1136,7 +1142,7 @@ pie accTitle: sample wow
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn pie_supports_header_acc_descr_block() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"
 pie accDescr {
   first line

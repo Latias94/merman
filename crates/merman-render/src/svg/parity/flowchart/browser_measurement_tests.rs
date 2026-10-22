@@ -7,7 +7,7 @@ use crate::environment::RenderEnvironment;
 use crate::model::{FlowchartLayout, LayoutPoint};
 use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use serde_json::Value;
 use std::path::Path;
 
@@ -170,7 +170,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         let source =
             std::fs::read_to_string(root.join("fixtures/flowchart").join(format!("{name}.mmd")))
                 .unwrap();
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .unwrap()
             .unwrap();

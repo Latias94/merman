@@ -8,7 +8,7 @@ use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramModel,
     XyChartDiagramRenderModel, XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
 };
-use merman_core::{Engine, OperationControl, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
 use support::{render_controlled_model, render_model_with_resources};
 
@@ -21,7 +21,7 @@ fn render_xychart_with_resources(
     options: &AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("xychart should parse")
         .expect("xychart should be detected");
@@ -53,12 +53,12 @@ fn render_xychart_with_grid_limit(
     options: &AsciiRenderOptions,
     max_grid_cells: usize,
 ) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("xychart should parse")
         .expect("xychart should be detected");
     let control = OperationControl::new();
-    let context = Engine::new()
+    let context = MermaidEngine::new()
         .begin_operation()
         .expect("deterministic operation context should be available");
     let resources = AsciiResourcePolicy::default()

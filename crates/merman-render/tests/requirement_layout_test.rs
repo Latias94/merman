@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -21,7 +21,7 @@ fn render_with_config(
     config: Value,
     svg_options: &SvgRenderOptions,
 ) -> (Value, String) {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Requirement")

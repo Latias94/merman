@@ -1452,10 +1452,10 @@ mod tests {
     use merman_core::diagram::RenderSemanticModel;
     use merman_core::models::class_diagram::{ClassDiagram, ClassInterface};
     use merman_core::resources::ResourceProfile;
-    use merman_core::{Engine, ParseOptions};
+    use merman_core::{MermaidEngine, ParseOptions};
 
     fn parsed_class_model(input: &str) -> ClassDiagram {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
             .expect("class diagram should parse")
             .expect("class diagram should be detected");

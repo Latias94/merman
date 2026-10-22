@@ -811,11 +811,11 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use merman_core::resources::ResourceProfile;
     use merman_core::{
-        Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
+        MermaidEngine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
     };
 
     fn parse_sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("sequence cancellation fixture should parse")
             .expect("sequence cancellation fixture should be detected");

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
@@ -38,7 +38,7 @@ fn render_railroad(site_config: Value) -> (String, Value) {
 }
 
 fn render_railroad_with_id(site_config: Value, diagram_id: &str) -> (String, Value) {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(RAILROAD_SOURCE, ParseOptions::strict())
         .expect("railroad parse succeeds")
@@ -61,7 +61,7 @@ fn render_railroad_with_id(site_config: Value, diagram_id: &str) -> (String, Val
 }
 
 fn try_render_railroad_with_policy(policy: RenderResourcePolicy) -> merman_render::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(RAILROAD_SOURCE, ParseOptions::strict())
         .expect("railroad resource-bound parse succeeds")
         .expect("railroad resource-bound diagram is detected");
@@ -166,7 +166,7 @@ fn railroad_text_fill_theme(variant: Option<ThemeVariant>, fill: CanvasPaint) ->
 fn try_render_railroad_source_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(RailroadDiagramLayout, family::RenderedFamilySvg)> {
@@ -452,7 +452,7 @@ fn railroad_typed_font_stack_and_size_drive_layout_css_and_terminal_text_receipt
     let (layout, rendered) = try_render_railroad_source_with_theme(
         RAILROAD_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "railroad-typed-font",
     )
@@ -563,7 +563,8 @@ fn railroad_explicit_font_config_outranks_theme_variables_and_typed_typography()
     ];
 
     for (diagram_id, site_config, expected_font_family, expected_font_size) in cases {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
@@ -622,7 +623,8 @@ fn railroad_font_config_precedence_is_property_local() {
     ];
 
     for (diagram_id, site_config, expected_font_family, expected_font_size) in cases {
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
@@ -661,7 +663,7 @@ fn railroad_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
     let (_, rendered) = try_render_railroad_source_with_theme(
         RAILROAD_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_railroad_environment(),
         "railroad-large-font-stack",
     )
@@ -690,7 +692,7 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
     let (layout, rendered) = try_render_railroad_source_with_theme(
         "railroad-beta\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_railroad_environment(),
         "railroad-empty-font",
     )
@@ -720,7 +722,7 @@ fn railroad_title_fill_reaches_rule_name_through_typed_adapter() {
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_railroad_environment(),
             &diagram_id,
         )
@@ -771,7 +773,7 @@ fn railroad_text_fill_reaches_every_unowned_visible_text_role_through_typed_adap
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_railroad_environment(),
             &diagram_id,
         )
@@ -814,7 +816,7 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
         (
             "railroad-title-fill-site-rule-name",
             RAILROAD_SOURCE,
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "railroad": { "ruleNameColor": "#0f766e" }
             }))),
             "#0f766e",
@@ -822,7 +824,7 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
         (
             "railroad-title-fill-site-title",
             RAILROAD_SOURCE,
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "titleColor": "#1d4ed8" }
             }))),
             "#1d4ed8",
@@ -830,7 +832,7 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
         (
             "railroad-title-fill-site-text",
             RAILROAD_SOURCE,
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "textColor": "#b45309" }
             }))),
             "#b45309",
@@ -838,13 +840,13 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
         (
             "railroad-title-fill-source-rule-name",
             RAILROAD_SOURCE_WITH_RULE_NAME_CONFIG,
-            Engine::new(),
+            MermaidEngine::new(),
             "#be123c",
         ),
         (
             "railroad-title-fill-source-over-site-rule-name",
             RAILROAD_SOURCE_WITH_RULE_NAME_CONFIG,
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "railroad": { "ruleNameColor": "#0f766e" }
             }))),
             "#be123c",
@@ -898,7 +900,7 @@ fn railroad_ordinal_text_fill_uses_the_actual_occurrence_domain() {
         let result = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_railroad_environment(),
             "railroad-ordinal-fill",
         );
@@ -928,7 +930,7 @@ fn railroad_font_ampersand_is_xml_text_encoded_without_changing_css() {
     let (_, rendered) = try_render_railroad_source_with_theme(
         RAILROAD_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_railroad_environment(),
         "railroad-font-entity",
     )
@@ -965,7 +967,7 @@ fn railroad_ordinal_text_fill_respects_each_actual_roles_config_owner() {
                 ),
             )
             .unwrap();
-        let engine = Engine::new().with_site_config(PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"railroad":{"nonTerminalTextColor":"#abcdef"}}),
         ));
         let result = try_render_railroad_source_with_theme(
@@ -1050,11 +1052,11 @@ fn railroad_unsupported_facets_use_independent_winners_and_title_ordinals() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
         let engine = if case == "config-fill" {
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 json!({"railroad":{"ruleNameColor":"#abcdef"}}),
             ))
         } else {
-            Engine::new()
+            MermaidEngine::new()
         };
         let result = try_render_railroad_source_with_theme(
             source,
@@ -1112,7 +1114,7 @@ fn railroad_ordinal_evidence_preparation_obeys_the_operation_work_budget() {
     let error = try_render_railroad_source_with_theme(
         &source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "railroad-evidence-bounded",
     )
@@ -1142,7 +1144,7 @@ fn railroad_unsupported_nontext_targets_have_no_terminal_domain() {
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_railroad_environment(),
             "railroad-empty-target",
         )
@@ -1234,7 +1236,7 @@ fn railroad_dialect_combinations_preserve_source_branches_in_actual_reference_sv
         ),
     ];
     for (diagram_type, source, upstream, labels, groups) in cases {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

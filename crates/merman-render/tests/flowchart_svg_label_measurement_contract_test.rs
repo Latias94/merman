@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
@@ -168,7 +168,7 @@ fn render_flowchart_with_host(
     expected_operation: Option<TextMeasurementOperation>,
     outcome: HostOutcome,
 ) -> Vec<RecordedRequest> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
@@ -291,7 +291,7 @@ end
             source.to_owned()
         };
         for outcome in [HostOutcome::Success, HostOutcome::Missing] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({ "layout": backend }),
                 ))
@@ -503,7 +503,7 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
         for html in [false, true] {
             let engine = merman_render::__private::install_parse_compatibility(
                 &theme,
-                Engine::new().with_site_config(
+                MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(
                         serde_json::json!({"htmlLabels": html, "fontWeight": root_weight}),
                     ),
@@ -583,7 +583,7 @@ fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
             let source = format!(
                 "---\nconfig:\n  layout: {backend}\n  look: classic\n  theme: default\n  htmlLabels: {html_labels}\n  flowchart:\n    minNodeWidth: 120\n    wrappingWidth: 200\n    padding: 10\n---\nflowchart LR\nA[X]\n"
             );
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse minimum width fixture")
                 .expect("detect flowchart");
@@ -663,7 +663,7 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
                 let source = format!(
                     "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nA@{{ shape: {shape}, label: 'First **bold** </br>second line' }}\n"
                 );
-                let parsed = Engine::new()
+                let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();

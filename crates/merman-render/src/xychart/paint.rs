@@ -1195,7 +1195,7 @@ mod tests {
             &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
         )
         .unwrap();
-        let source_config = merman_core::Engine::new()
+        let source_config = merman_core::MermaidEngine::new()
             .with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"xyChart": {"titleColor": "black"}}
             })))

@@ -1,6 +1,6 @@
 //! Availability contracts for isolated ASCII consumers.
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 
 mod support;
 
@@ -50,7 +50,7 @@ fn capabilities_follow_compiled_logical_families() {
 
 #[test]
 fn custom_models_stay_non_renderable_and_cancellation_wins() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("sequence", |_, _, control| {
@@ -162,7 +162,7 @@ fn swimlane_report_keeps_logical_family_through_fallback() {
 #[test]
 fn git_graph_metadata_and_model_identities_share_one_capability() {
     assert!(merman_ascii::ascii_supported_diagram_types().contains(&"gitgraph"));
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             "gitGraph\ncommit id:\"first\"\n",

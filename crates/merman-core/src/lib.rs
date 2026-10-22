@@ -1,5 +1,33 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(
+    not(feature = "presentation"),
+    doc = r#"
+Presentation definitions require the `presentation` capability:
+
+```compile_fail,E0432
+use merman_core::presentation::MermaidEngine;
+```
+
+```compile_fail,E0432
+use merman_core::{PresentationMetadata, RenderSemanticModel};
+```
+
+```compile_fail,E0432
+use merman_core::theme_color::ColorError;
+```
+"#
+)]
+#![cfg_attr(
+    not(feature = "terminal-text"),
+    doc = r#"
+Terminal normalization requires the `terminal-text` capability:
+
+```compile_fail,E0432
+use merman_core::terminal_text::normalize_terminal_text;
+```
+"#
+)]
+#![cfg_attr(
     not(feature = "editor-facts"),
     doc = r#"
 The editor namespace requires the `editor-facts` capability:
@@ -52,6 +80,7 @@ mod json_value;
 pub mod models;
 pub mod operation;
 mod parse_diagnostic;
+mod parse_options;
 pub mod preprocess;
 #[cfg(feature = "presentation")]
 pub mod presentation;
@@ -63,6 +92,7 @@ mod source_span;
 pub mod style;
 pub mod svg_security;
 #[doc(hidden)]
+#[cfg(feature = "terminal-text")]
 pub mod terminal_text;
 #[cfg(feature = "presentation")]
 mod theme;
@@ -106,6 +136,7 @@ pub use operation::{
     OperationLedgerError, OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
     OperationResourceOverride, OperationResourceProvenance,
 };
+pub use parse_options::ParseOptions;
 pub use preprocess::{PreprocessResult, PreprocessedSource};
 #[cfg(feature = "presentation")]
 pub use preprocess::{preprocess_diagram, preprocess_diagram_with_known_type};
@@ -130,17 +161,13 @@ pub use semantic::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapsh
 pub use source_span::SourceSpan;
 pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
-#[cfg(feature = "presentation")]
-pub use presentation::{MermaidEngine, ParseOptions, PresentationMetadata};
-// Transitional source names; removed when full consumers migrate.
 #[doc(hidden)]
 #[cfg(feature = "presentation")]
 pub use presentation::engine::__private;
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use presentation::engine::parse_pipeline;
-#[doc(hidden)]
 #[cfg(feature = "presentation")]
-pub use presentation::{MermaidEngine as Engine, PresentationMetadata as ParseMetadata};
+pub use presentation::{MermaidEngine, PresentationMetadata};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;

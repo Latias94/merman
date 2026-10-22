@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
@@ -54,7 +54,7 @@ fn render(
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(config),
+        MermaidEngine::new().with_site_config(config),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()

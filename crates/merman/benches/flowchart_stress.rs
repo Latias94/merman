@@ -1,10 +1,10 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::svg::{LayoutOptions, SvgRenderOptions};
 use merman::{
-    OperationControl, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
+    OperationControl, PresentationArtifact, RenderOutput, RenderRequest, RenderTarget, Renderer,
     SvgEnvironment, SvgRequest,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -268,7 +268,7 @@ fn assert_cluster_edge_panel_roles(model: &serde_json::Value) {
 }
 
 fn validated_synthetic_case(
-    engine: &Engine,
+    engine: &MermaidEngine,
     parse_opts: ParseOptions,
     spec: FlowchartSpec,
 ) -> SyntheticCase {
@@ -284,9 +284,9 @@ fn validated_synthetic_case(
     let case_id = spec.case_id(&digest);
 
     let renderer = Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(parse_opts);
-    let semantic = prepare_semantic(&renderer, &source);
+    let semantic = prepare_presentation(&renderer, &source);
     assert_eq!(semantic.semantic_kind(), "flowchart");
     let model = semantic
         .compatibility_json()
@@ -388,11 +388,11 @@ fn typed_svg_request(
     }
 }
 
-fn prepare_semantic(renderer: &Renderer, source: &str) -> SemanticArtifact {
+fn prepare_presentation(renderer: &Renderer, source: &str) -> PresentationArtifact {
     let output = renderer
-        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .render(RenderRequest::presentation(source, OperationControl::new()))
         .expect("prepare semantic artifact");
-    let RenderOutput::Semantic(Some(semantic)) = output else {
+    let RenderOutput::Presentation(Some(semantic)) = output else {
         panic!("typed semantic target returned no diagram");
     };
     semantic
@@ -443,13 +443,13 @@ fn register_synthetic_cases(
     prepare_group_name: &str,
     diagram_id: &str,
     cases: &[SyntheticCase],
-    engine: &Engine,
+    engine: &MermaidEngine,
     parse_opts: ParseOptions,
     layout: &LayoutOptions,
     environment: &SvgEnvironment,
 ) {
     let renderer = Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(parse_opts);
     let mut public = c.benchmark_group(public_group_name);
     for case in cases {
@@ -481,7 +481,7 @@ fn register_synthetic_cases(
             &case.source,
             |b, source| {
                 b.iter_batched(
-                    || prepare_semantic(&renderer, black_box(source.as_str())),
+                    || prepare_presentation(&renderer, black_box(source.as_str())),
                     |semantic| {
                         let output = semantic
                             .render(RenderTarget::LayoutJson(request.clone()))
@@ -497,7 +497,7 @@ fn register_synthetic_cases(
 }
 
 fn bench_flowchart_curves(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     let environment = SvgEnvironment::deterministic();
@@ -604,7 +604,7 @@ flowchart LR
 }
 
 fn bench_emit_svg_controls(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     let environment = SvgEnvironment::deterministic();
@@ -643,7 +643,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     }
 
     let renderer = Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(parse_opts);
 
     let mut public = c.benchmark_group("flowchart_label_public");
@@ -669,7 +669,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
         let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
         prepare.bench_function(name.as_str(), |b| {
             b.iter_batched(
-                || prepare_semantic(&renderer, black_box(input.as_str())),
+                || prepare_presentation(&renderer, black_box(input.as_str())),
                 |semantic| {
                     let output = semantic
                         .render(RenderTarget::LayoutJson(request.clone()))
@@ -688,7 +688,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
         let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
         group.bench_function(name.as_str(), |b| {
             b.iter_batched(
-                || prepare_semantic(&renderer, black_box(input.as_str())),
+                || prepare_presentation(&renderer, black_box(input.as_str())),
                 |semantic| {
                     let output = semantic
                         .render(RenderTarget::Svg(request.clone()))

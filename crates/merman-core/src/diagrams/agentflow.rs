@@ -14,7 +14,7 @@ use crate::{
 };
 use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -337,14 +337,14 @@ struct Context {
 
 /// Parse the compatibility JSON path used by the public Mermaid facade.
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_agentflow(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_agentflow(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_agentflow_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_agentflow_with_warning_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<family::WarningSemanticParse> {
     let control = OperationControl::new();
     let construction = construct_source(
@@ -412,7 +412,7 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_agentflow_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<AgentflowDiagramRenderModel>> {
     Ok(construct_source(
@@ -437,7 +437,7 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_agentflow_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_source(
@@ -469,7 +469,7 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &AgentflowDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     semantic_model_to_compat_json(&model.model, &meta.diagram_type)
 }
@@ -606,7 +606,7 @@ fn construct_source(
 #[cfg(all(test, feature = "compat-json"))]
 fn construct(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     construct_source(
@@ -2648,7 +2648,7 @@ mod semantic_tests {
         #[cfg(feature = "presentation")]
         {
             AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "agentflow",
                     SOURCE,
@@ -2711,7 +2711,7 @@ mod semantic_tests {
             #[cfg(feature = "compat-json")]
             assert_eq!(
                 error.to_string(),
-                crate::Engine::new()
+                crate::MermaidEngine::new()
                     .parse_diagram_sync(source, crate::ParseOptions::strict())
                     .unwrap_err()
                     .to_string()
@@ -2735,7 +2735,7 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn full_agentflow_serialization_keeps_presentation_shape_and_dom_ordinals() {
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_with_type_sync(
                 "agentflow",
                 SOURCE,
@@ -2768,7 +2768,7 @@ mod semantic_tests {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn agentflow_observes_editor_facts_only_for_combined_request() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "agentflow".into(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2806,8 +2806,8 @@ mod tests {
     use crate::{MermaidConfig, OperationControl};
     use serde_json::json;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "agentflow".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

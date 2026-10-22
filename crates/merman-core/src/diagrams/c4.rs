@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -281,6 +281,7 @@ struct SpannedArg {
 }
 
 impl SpannedArg {
+    #[cfg(feature = "editor-facts")]
     fn text(&self) -> &str {
         match &self.value {
             SpannedArgValue::Text(value) => value.text.as_str(),
@@ -295,6 +296,7 @@ impl SpannedArg {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn key(&self) -> Option<&str> {
         match &self.value {
             SpannedArgValue::Text(_) => None,
@@ -506,7 +508,7 @@ impl C4ParseOutcome {
 
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
         let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
         let editor_facts = construction.editor_facts.unwrap_or_default();
         let construction = match construction.model {
@@ -525,7 +527,7 @@ impl C4ParseOutcome {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_c4(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .into_strict_source()?;
@@ -535,7 +537,7 @@ pub(crate) fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_c4_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<C4DiagramModel> {
     construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -547,7 +549,7 @@ pub(crate) fn parse_c4_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_c4_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<C4DiagramModel>> {
     let outcome = construct_c4_semantic_source_controlled(code, meta, control)?;
@@ -560,7 +562,7 @@ pub(crate) fn parse_c4_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     Ok(construct_c4_source_controlled(
@@ -576,7 +578,7 @@ pub(crate) fn parse_c4_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &C4DiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(11);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -1241,6 +1243,7 @@ fn validate_c4_macro_args(stmt: &SpannedMacroStmt) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "editor-facts")]
 fn c4_shape_detail(name: &str) -> &'static str {
     match name {
         "Person" | "Person_Ext" => "c4 person",
@@ -1726,7 +1729,7 @@ impl C4Db {
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
         render_model_to_compat_json(&self.into_model()?, meta)
     }
 
@@ -2067,7 +2070,7 @@ fn value_as_i64(v: &Value) -> Option<i64> {
 }
 
 #[cfg(all(test, feature = "compat-json"))]
-fn construct_c4_semantic_source(code: &str, meta: &ParseMetadata) -> C4ParseOutcome {
+fn construct_c4_semantic_source(code: &str, meta: &PresentationMetadata) -> C4ParseOutcome {
     construct_c4_source_controlled(
         code,
         &meta.diagram_type,
@@ -2082,7 +2085,7 @@ fn construct_c4_semantic_source(code: &str, meta: &ParseMetadata) -> C4ParseOutc
 #[cfg(feature = "presentation")]
 fn construct_c4_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<C4ParseOutcome> {
     construct_c4_source_controlled(
@@ -2880,7 +2883,7 @@ mod semantic_tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .parse_diagram_for_render_model_with_type_sync(
                     "c4",
                     source,
@@ -2915,7 +2918,7 @@ mod semantic_tests {
             assert!(matches!(error, Error::DiagramParse { .. }));
             #[cfg(feature = "compat-json")]
             {
-                let full = crate::Engine::new()
+                let full = crate::MermaidEngine::new()
                     .parse_diagram_sync(source, crate::ParseOptions::strict())
                     .unwrap_err();
                 assert_eq!(error.to_string(), full.to_string());
@@ -2938,14 +2941,14 @@ mod tests {
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
     use crate::{
-        Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata, ParseOptions,
+        MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, PresentationMetadata,
         RenderSemanticModel,
     };
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2953,7 +2956,7 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> crate::ParseDiagnostic {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected C4 parse error, got {other:?}"),
@@ -2971,8 +2974,8 @@ mod tests {
         (model, errors)
     }
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "c4".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -4422,7 +4425,7 @@ third
 
     #[test]
     fn c4_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"C4Context
 title Banking Context
 Person(customer, "Customer", "Uses the system")
@@ -4464,7 +4467,7 @@ Rel(customer, system, "Uses", "HTTPS")
     #[test]
     #[cfg(feature = "editor-facts")]
     fn c4_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = r#"C4Context
 title Banking Context
 accTitle: Banking accessibility title
@@ -4645,7 +4648,7 @@ UpdateRelStyle(customer, system, $lineColor="blue")
     #[test]
     #[cfg(feature = "editor-facts")]
     fn c4_editor_facts_recover_unsupported_statements_without_losing_prior_facts() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = "C4Context\nPerson(customer, \"Customer\")\nNotAMacro customer\n";
 
         let facts = engine

@@ -246,7 +246,7 @@ fn by_id<'a>(values: &'a Value, id: &str) -> &'a Value {
 fn default_swimlane_uses_the_typed_swimlane_artifact() {
     let renderer = Renderer::new();
     let semantic = renderer
-        .prepare_semantic(DOCS_BASIC, OperationControl::new())
+        .prepare_presentation(DOCS_BASIC, OperationControl::new())
         .expect("swimlane prepare")
         .expect("swimlane diagram");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
@@ -455,7 +455,7 @@ fn docs_basic_geometry_preserves_swimlane_topology() {
 fn explicit_dagre_override_uses_the_flowchart_artifact() {
     let source = format!("---\nconfig:\n  layout: dagre\n---\n{}", DOCS_BASIC);
     let semantic = Renderer::new()
-        .prepare_semantic(&source, OperationControl::new())
+        .prepare_presentation(&source, OperationControl::new())
         .expect("dagre override prepare")
         .expect("swimlane diagram with dagre override");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
@@ -506,7 +506,7 @@ flowchart LR
   A --> B
 "#;
     let semantic = Renderer::new()
-        .prepare_semantic(source, OperationControl::new())
+        .prepare_presentation(source, OperationControl::new())
         .expect("flowchart swimlane-layout prepare")
         .expect("flowchart swimlane-layout diagram");
     assert_eq!(semantic.metadata().diagram_type, "flowchart-v2");
@@ -634,7 +634,7 @@ fn line_hops_run_after_neo_and_hand_drawn_edge_construction() {
 fn explicit_elk_override_uses_the_flowchart_artifact() {
     let source = format!("---\nconfig:\n  layout: elk\n---\n{}", DOCS_BASIC);
     let semantic = Renderer::new()
-        .prepare_semantic(&source, OperationControl::new())
+        .prepare_presentation(&source, OperationControl::new())
         .expect("ELK override prepare")
         .expect("swimlane diagram with ELK override");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
@@ -737,7 +737,7 @@ fn swimlane_typed_entrypoint_preserves_repeated_nested_group_completion() {
     source.push_str("subgraph lane[First]\ndirection TB\nA-->B\n");
     source.push_str(&"end\n".repeat(128));
     source.push_str("class lane grouped\nsubgraph lane[Later]\nC\nend\nB-->C\n");
-    let parsed = merman::Engine::new()
+    let parsed = merman::MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("typed Swimlane parse")
         .expect("Swimlane detected");

@@ -1505,7 +1505,7 @@ mod tests {
 
     fn build_semantic_fallback(
         model: &merman_core::RenderSemanticModel,
-        metadata: &merman_core::ParseMetadata,
+        metadata: &merman_core::PresentationMetadata,
         primary_extent: AsciiExtent,
         context: OutputBuildContext<'_>,
     ) -> Result<AsciiOutput> {
@@ -1536,7 +1536,7 @@ mod tests {
 
     fn semantic_fallback_projection(
         model: &merman_core::RenderSemanticModel,
-        metadata: &merman_core::ParseMetadata,
+        metadata: &merman_core::PresentationMetadata,
         execution: AsciiExecution<'_>,
     ) -> std::result::Result<Vec<u8>, SemanticFallbackError> {
         super::semantic_fallback_projection(
@@ -1548,7 +1548,7 @@ mod tests {
 
     #[cfg(feature = "diagram-sequence")]
     fn sequence_model_with_property(value: Value) -> merman_core::diagram::RenderSemanticModel {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant A",
                 merman_core::ParseOptions::strict(),
@@ -1572,7 +1572,7 @@ mod tests {
     fn flowchart_model_with_subgraph_metadata(
         value: Value,
     ) -> merman_core::diagram::RenderSemanticModel {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nsubgraph G\nA\nend",
                 merman_core::ParseOptions::strict(),
@@ -1727,7 +1727,7 @@ mod tests {
             AsciiProjection::StructuredText
         );
 
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "gitGraph\ncommit id:\"root\"",
                 merman_core::ParseOptions::strict(),
@@ -1869,7 +1869,7 @@ mod tests {
     #[test]
     #[cfg(feature = "diagram-flowchart")]
     fn flowchart_semantic_fallback_observes_cancellation_before_projection() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[Alpha] --> B[Beta]",
                 merman_core::ParseOptions::strict(),
@@ -1906,7 +1906,7 @@ mod tests {
     #[test]
     #[cfg(feature = "diagram-flowchart")]
     fn flowchart_semantic_fallback_honors_exact_output_budget() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[Alpha] --> B[Beta]",
                 merman_core::ParseOptions::strict(),
@@ -1982,7 +1982,7 @@ mod tests {
     #[test]
     #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_fallback_honors_exact_output_budget() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 concat!(
                     "sequenceDiagram\n",
@@ -2240,7 +2240,7 @@ mod tests {
     #[test]
     #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_projection_bounds_nested_properties_while_streaming() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant A",
                 merman_core::ParseOptions::strict(),
@@ -2280,7 +2280,7 @@ mod tests {
     #[test]
     #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_projection_observes_cancellation_during_streaming_properties() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant A",
                 merman_core::ParseOptions::strict(),

@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn canonical_kanban_retains_authored_metadata_and_matches_full_terminal_output() {
         use merman_core::{
-            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
         };
 
         let options = AsciiRenderOptions::ascii();
@@ -204,7 +204,7 @@ mod tests {
                 assert_eq!(node.id, canonical.id);
             }
             assert!(view.node(model.nodes.len()).is_none());
-            let full = Engine::new()
+            let full = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();

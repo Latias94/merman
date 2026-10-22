@@ -8,7 +8,7 @@ use std::fmt::Write;
 
 #[test]
 fn parse_graph_defaults_to_flowchart_v2() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_metadata("graph TD;A-->B;")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-v2");
     assert_eq!(res.config.as_value(), &json!({}));
@@ -20,7 +20,7 @@ fn parse_graph_defaults_to_flowchart_v2() {
 
 #[test]
 fn parse_indented_headers_across_common_diagrams() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let cases = [
         ("     flowchart TB\n     A-->B\n", "flowchart-v2"),
@@ -70,7 +70,7 @@ fn parse_indented_headers_across_common_diagrams() {
 
 #[test]
 fn parse_merges_frontmatter_and_directive_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 config:
   theme: forest
@@ -94,7 +94,7 @@ graph TD;A-->B;"#;
 
 #[test]
 fn parse_frontmatter_and_directives_deep_merge_nested_config_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 config:
   flowchart:
@@ -126,7 +126,7 @@ graph TD;A-->B;"#;
 
 #[test]
 fn parse_init_directives_deep_merge_in_source_order_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 100}, "theme": "default"}}%%
 %%{init: {"flowchart": {"nodeSpacing": 75}, "fontSize": 12}}%%
 %%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 100}, "mindmap": {"padding": 15}}}%%
@@ -152,7 +152,7 @@ graph TD;A-->B;"#;
 
 #[test]
 fn parse_theme_variables_reach_retained_and_effective_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
 
@@ -180,7 +180,7 @@ graph TD;A-->B;"##;
 
 #[test]
 fn default_scoped_theme_calculates_with_source_variables() {
-    let metadata = Engine::new()
+    let metadata = MermaidEngine::new()
         .parse_metadata_sync(
             "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
         )
@@ -205,7 +205,7 @@ fn default_scoped_theme_calculates_with_source_variables() {
 
 #[test]
 fn host_scoped_theme_calculates_with_source_variables() {
-    let metadata = Engine::new()
+    let metadata = MermaidEngine::new()
         .with_site_config(PresentationConfig::from_value(json!({
             "theme": "default",
             "flowchart": {"theme": "base"}
@@ -231,10 +231,10 @@ fn host_scoped_theme_calculates_with_source_variables() {
 fn source_color_validation_follows_actual_theme_rematerialization() {
     let source = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\nflowchart TD\nA-->B";
     for (name, engine) in [
-        ("default scoped theme", Engine::new()),
+        ("default scoped theme", MermaidEngine::new()),
         (
             "host scoped theme",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "theme": "default",
                 "flowchart": {"theme": "base"}
             }))),
@@ -249,7 +249,7 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
         );
     }
 
-    let metadata = Engine::new()
+    let metadata = MermaidEngine::new()
         .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})))
         .parse_metadata_sync(source)
         .expect("an ordinary source update retains initialized derivations");
@@ -267,7 +267,7 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
 
 #[test]
 fn init_directive_theme_variables_use_source_value_admission() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r##"%%{init: {"themeVariables": {"primaryColor": "url(javascript:alert(1))", "secondaryColor": "rgb(1, 2, 3)"}}}%%
 graph TD;A-->B;"##;
 
@@ -294,7 +294,7 @@ graph TD;A-->B;"##;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_theme_variables() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
@@ -313,7 +313,7 @@ graph TD;A-->B;"##;
 
 #[test]
 fn parse_maps_top_level_frontmatter_diagram_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 title: Frontmatter Example
 displayMode: compact
@@ -380,7 +380,7 @@ gantt
 
 #[test]
 fn parse_frontmatter_config_takes_priority_over_diagram_compat() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 config:
   look: neo
@@ -409,7 +409,7 @@ gantt
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_diagram_with_type_sync_matches_auto_detect_for_flowchart_v2() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "flowchart TD; A[Start]-->B[End];";
 
     let auto = engine
@@ -429,7 +429,7 @@ fn parse_diagram_with_type_sync_matches_auto_detect_for_flowchart_v2() {
 
 #[test]
 fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "%%{init: {\"config\": {\"htmlLabels\": true}}}%%\nflowchart TD; A-->B;";
 
     let meta = engine
@@ -441,7 +441,7 @@ fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
 
 #[test]
 fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for (diagram_type, source, config_key) in [
         ("classDiagram", "classDiagram\nclass A\n", "class"),
@@ -477,7 +477,7 @@ fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
 
 #[test]
 fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "flowchart-elk TD\nA-->B;";
 
     let meta = engine
@@ -488,7 +488,7 @@ fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
 
 #[test]
 fn parse_sanitizes_frontmatter_title_like_mermaid_common_db() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 title: "Flowchart v2 arrows: graph direction \"<\""
 ---
@@ -505,7 +505,7 @@ A-->B
 
 #[test]
 fn parse_stringifies_truthy_frontmatter_title_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let meta = engine
         .parse_metadata_sync(
             "---
@@ -522,7 +522,7 @@ Alice->Bob: Hi
 
 #[test]
 fn parse_indented_frontmatter_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let meta = engine
         .parse_metadata_sync(
             "   ---
@@ -544,7 +544,7 @@ fn parse_indented_frontmatter_like_upstream() {
 
 #[test]
 fn parse_merges_init_directive_numeric_values_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: { 'logLevel': 0 } }%%
 sequenceDiagram
 Alice->Bob: Hi
@@ -557,7 +557,7 @@ Alice->Bob: Hi
 
 #[test]
 fn parse_init_font_family_reaches_retained_and_effective_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: { "fontFamily": "Courier" } }%%
 graph TD;A-->B;
 "#;
@@ -577,7 +577,7 @@ graph TD;A-->B;
 
 #[test]
 fn parse_init_theme_font_family_takes_precedence_over_legacy_font() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
 graph TD;A-->B;
 "#;
@@ -597,7 +597,7 @@ graph TD;A-->B;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_fonts() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
@@ -614,7 +614,7 @@ graph TD;A-->B;
 
 #[test]
 fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let default =
         block_on(engine.parse_metadata("architecture-beta\n  service a(server)[A]\n")).unwrap();
 
@@ -645,7 +645,7 @@ architecture-beta
 
 #[test]
 fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B")).unwrap();
     let config = meta.effective_config.as_value();
 
@@ -720,7 +720,7 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
         DEPTH,
         Value::String("#112233".to_string()),
     ));
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let handle = std::thread::Builder::new()
         .name("merman-core-deep-site-config".to_string())
@@ -744,7 +744,7 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
 
 #[test]
 fn site_config_secure_keys_protect_effective_config_from_diagram_config() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "fontFamily": "site-font",
         "fontSize": 16,
         "securityLevel": "strict",
@@ -779,7 +779,7 @@ flowchart TD
 
 #[test]
 fn default_secure_keys_protect_effective_config_from_diagram_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: {"theme": "dark", "securityLevel": "loose", "fontFamily": "x;a{b} :not(&){background:green !important} c{d}", "altFontFamily": "Injected", "themeCSS": ".node rect { fill: red; }", "themeVariables": {"fontFamily": "Injected Theme"}}}%%
 flowchart TD
     A --> B
@@ -836,7 +836,7 @@ flowchart TD
     A --> B
 "##;
 
-    let metadata = Engine::new()
+    let metadata = MermaidEngine::new()
         .parse_metadata_sync(source)
         .expect("parse succeeds");
     let retained = metadata.config.as_value();
@@ -875,7 +875,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
         DEPTH,
         Value::String("#556677".to_string()),
     ));
-    let engine = Engine::new().with_site_config(site_config);
+    let engine = MermaidEngine::new().with_site_config(site_config);
 
     let handle = std::thread::Builder::new()
         .name("merman-core-deep-retained-semantic-config".to_string())
@@ -941,7 +941,7 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
         DEPTH,
         Value::String("#778899".to_string()),
     ));
-    let engine = Engine::new().with_site_config(site_config);
+    let engine = MermaidEngine::new().with_site_config(site_config);
 
     let handle = std::thread::Builder::new()
         .name("merman-core-remaining-deep-retained-config".to_string())
@@ -1014,7 +1014,7 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
         .name("merman-core-deep-init-config".to_string())
         .stack_size(256 * 1024)
         .spawn(move || {
-            let meta = Engine::new()
+            let meta = MermaidEngine::new()
                 .parse_metadata_sync(&source)
                 .expect("parse succeeds");
             assert_eq!(
@@ -1034,7 +1034,7 @@ fn default_engine_construction_uses_bounded_stack() {
     let handle = std::thread::Builder::new()
         .name("merman-core-default-engine-small-stack".to_string())
         .stack_size(256 * 1024)
-        .spawn(|| std::hint::black_box(Engine::new()))
+        .spawn(|| std::hint::black_box(MermaidEngine::new()))
         .expect("spawn default engine construction test");
 
     handle
@@ -1051,7 +1051,7 @@ fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
         .name("merman-core-deep-frontmatter-config".to_string())
         .stack_size(256 * 1024)
         .spawn(move || {
-            let meta = Engine::new()
+            let meta = MermaidEngine::new()
                 .parse_metadata_sync(&source)
                 .expect("parse succeeds");
             assert_eq!(
@@ -1069,7 +1069,7 @@ fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
 fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let source = deep_init_directive_source("sequence", DEPTH, "#112233");
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let handle = std::thread::Builder::new()
         .name("merman-core-too-deep-init-config".to_string())
@@ -1093,7 +1093,7 @@ fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
 fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let handle = std::thread::Builder::new()
         .name("merman-core-too-deep-frontmatter-config".to_string())
@@ -1119,7 +1119,7 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
     let mut source = String::from("---\nconfig:\n  ");
     source.push_str(&"- ".repeat(DEPTH));
     source.push_str("\"leaf\"\n---\nsequenceDiagram\nAlice->Bob: Hi\n");
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let handle = std::thread::Builder::new()
         .name("merman-core-too-deep-inline-yaml-sequence".to_string())
@@ -1141,7 +1141,7 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
 
 #[test]
 fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_metadata(
         "---\n? [non, string, key]\n: ignored\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
     ))
@@ -1153,7 +1153,7 @@ fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
 
 #[test]
 fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err =
         block_on(engine.parse_metadata("---\ntitle: a malformed YAML front-matter\n")).unwrap_err();
     assert!(err.to_string().contains("Malformed YAML front-matter"));
@@ -1161,7 +1161,7 @@ fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
 
 #[test]
 fn parse_matches_public_api_for_mismatched_indented_frontmatter() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_metadata(
         "---\ntitle: mismatched YAML front-matter\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
     ))
@@ -1181,7 +1181,7 @@ fn parse_matches_public_api_for_mismatched_indented_frontmatter() {
 
 #[test]
 fn parse_metadata_rejects_unknown_diagram_sources() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let error = block_on(engine.parse_metadata("this is not a mermaid diagram definition"))
         .expect_err("metadata detection has no lenient mode");
 
@@ -1190,7 +1190,7 @@ fn parse_metadata_rejects_unknown_diagram_sources() {
 
 #[test]
 fn parse_metadata_with_type_rejects_errors_without_a_suppression_mode() {
-    let error = Engine::new()
+    let error = MermaidEngine::new()
         .parse_metadata_with_type_sync(
             "flowchart-v2",
             "---\ntitle: unclosed frontmatter\nflowchart TD\nA-->B\n",
@@ -1203,7 +1203,7 @@ fn parse_metadata_with_type_rejects_errors_without_a_suppression_mode() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_lenient_unknown_diagram_returns_none_only_for_model_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "this is not a mermaid diagram definition";
     let options = ParseOptions::lenient();
 
@@ -1223,7 +1223,7 @@ fn parse_lenient_unknown_diagram_returns_none_only_for_model_entrypoints() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "flowchart TD\nA -->";
     let options = ParseOptions::lenient();
     let message = engine
@@ -1274,7 +1274,7 @@ fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
     let operation = OperationControl::new();
     operation.cancel();
 
-    let error = Engine::new()
+    let error = MermaidEngine::new()
         .parse_diagram_for_render_model_controlled_sync(
             "flowchart TD\nA-->B\n",
             ParseOptions::strict(),
@@ -1296,7 +1296,7 @@ fn controlled_render_model_parse_stops_inside_family_parser() {
     let operation = OperationControl::new();
     operation.cancel_after_checkpoints(128);
 
-    let error = Engine::new()
+    let error = MermaidEngine::new()
         .parse_diagram_for_render_model_controlled_sync(&source, ParseOptions::strict(), &operation)
         .expect_err("scheduled cancellation must stop family parsing");
 
@@ -1313,7 +1313,7 @@ fn controlled_known_type_render_model_parse_skips_detection_but_observes_control
     let operation = OperationControl::new();
     operation.cancel();
 
-    let error = Engine::new()
+    let error = MermaidEngine::new()
         .parse_diagram_for_render_model_with_type_controlled_sync(
             "flowchart-v2",
             "flowchart TD\nA-->B\n",
@@ -1329,7 +1329,7 @@ fn controlled_known_type_render_model_parse_skips_detection_but_observes_control
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("error", ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1429,7 +1429,7 @@ fn render_semantic_model_supports_diagram_type_aliases() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn render_parser_registry_drives_typed_alias_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     assert!(engine.render_diagram_registry().contains("flowchart-elk"));
 
     let parsed = engine
@@ -1448,7 +1448,7 @@ fn render_parser_registry_drives_typed_alias_parse() {
 
 #[test]
 fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("customDiagram", custom_json_parser);
@@ -1487,7 +1487,7 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
 
 #[test]
 fn combined_custom_warning_adapter_remaps_valid_json_into_typed_facts() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("customDiagram", custom_json_parser);
@@ -1518,7 +1518,7 @@ fn combined_custom_warning_adapter_remaps_valid_json_into_typed_facts() {
 
 #[test]
 fn combined_custom_warning_adapter_keeps_malformed_arrays_all_or_nothing() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("customDiagram", malformed_custom_warning_json_parser);
@@ -1568,7 +1568,7 @@ fn combined_builtin_warning_facts_stay_typed_and_sync_compatibility_json() {
     ];
 
     for (source, expected_rule_id) in cases {
-        let snapshot = Engine::new()
+        let snapshot = MermaidEngine::new()
             .parse_diagram_snapshot_sync(source)
             .unwrap()
             .unwrap();
@@ -1590,7 +1590,7 @@ fn combined_builtin_warning_facts_stay_typed_and_sync_compatibility_json() {
     }
 
     let flowchart_source = cases[0].0;
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_sync(flowchart_source)
         .unwrap()
         .unwrap();
@@ -1616,7 +1616,7 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
             "architecture-beta\nservice api(server)[API]",
         ),
     ] {
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .diagram_registry_mut()
             .insert(diagram_type, custom_overlay_json_parser);
@@ -1660,7 +1660,7 @@ fn combined_parse_keeps_custom_semantic_overlay_and_reports_editor_unavailable()
             "architecture-beta\nservice api(server)[API]",
         ),
     ] {
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .diagram_registry_mut()
             .insert(diagram_type, custom_overlay_json_parser);
@@ -1683,7 +1683,7 @@ fn combined_parse_keeps_custom_semantic_overlay_and_reports_editor_unavailable()
 
 #[test]
 fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .registry_mut()
         .add_fn("generic-custom", detect_generic_custom);
@@ -1711,7 +1711,7 @@ fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable(
 
 #[test]
 fn combined_parse_retains_metadata_when_a_custom_parser_panics() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .registry_mut()
         .add_fn("generic-custom", detect_generic_custom);
@@ -1741,7 +1741,7 @@ fn combined_parse_retains_metadata_when_a_custom_parser_panics() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn combined_parse_records_recovered_incomplete_directives() {
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_sync(concat!(
             "%%{ init: {\"theme\":\"dark\"} }%%\n",
             "%%{ malformed\n",
@@ -1758,7 +1758,7 @@ fn combined_parse_records_recovered_incomplete_directives() {
 #[test]
 #[cfg(feature = "diagram-wardley")]
 fn combined_parse_uses_wardley_semantics() {
-    let wardley = Engine::new()
+    let wardley = MermaidEngine::new()
         .parse_diagram_snapshot_sync("wardley-beta\ntitle Example")
         .unwrap()
         .unwrap();
@@ -1785,14 +1785,18 @@ fn combined_parse_uses_wardley_semantics() {
 
 #[test]
 fn combined_parse_retains_missing_custom_parser_failure() {
-    let mut custom = Engine::new();
+    let mut custom = MermaidEngine::new();
     custom
         .registry_mut()
         .add_fn("generic-custom", detect_generic_custom);
     assert_combined_missing_semantic_contract(&custom, "generic-custom", "generic-custom\npayload");
 }
 
-fn assert_combined_missing_semantic_contract(engine: &Engine, expected_type: &str, source: &str) {
+fn assert_combined_missing_semantic_contract(
+    engine: &MermaidEngine,
+    expected_type: &str,
+    source: &str,
+) {
     let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
     let (meta, outcome, editor_facts) = snapshot.into_parts();
     assert_eq!(meta.diagram_type, expected_type);
@@ -1811,7 +1815,7 @@ fn assert_combined_missing_semantic_contract(engine: &Engine, expected_type: &st
 
 #[test]
 fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("flowchart-v2", custom_overlay_json_parser);
@@ -1852,7 +1856,7 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
 #[test]
 #[cfg(feature = "diagram-flowchart")]
 fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     assert!(engine.render_diagram_registry_mut().remove("flowchart-v2"));
 
     let err = engine
@@ -1870,7 +1874,7 @@ fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
 
 fn custom_json_parser(
     code: &str,
-    _meta: &ParseMetadata,
+    _meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1891,7 +1895,7 @@ fn custom_json_parser(
 
 fn malformed_custom_warning_json_parser(
     _code: &str,
-    _meta: &ParseMetadata,
+    _meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1909,7 +1913,7 @@ fn malformed_custom_warning_json_parser(
 
 fn custom_overlay_json_parser(
     _code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1921,7 +1925,7 @@ fn custom_overlay_json_parser(
 
 fn panicking_custom_parser(
     _code: &str,
-    _meta: &ParseMetadata,
+    _meta: &PresentationMetadata,
     _control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     panic!("custom parser fixture panic")
@@ -1929,7 +1933,7 @@ fn panicking_custom_parser(
 
 fn custom_overlay_render_parser(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
     control.checkpoint()?;
@@ -1962,7 +1966,7 @@ fn detect_generic_custom(text: &str, _config: &mut PresentationConfig) -> bool {
 
 #[cfg(feature = "all-diagrams")]
 fn render_model_for(input: &str) -> RenderSemanticModel {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap()
@@ -2032,7 +2036,7 @@ fn deep_frontmatter_config_source(root_key: &str, depth: usize, leaf: &str) -> S
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_flowchart_json_and_typed_render_model_share_semantic_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"%%{init: {"securityLevel":"strict","flowchart":{"inheritDir":true}}}%%
 flowchart LR
 accTitle: Flowchart <b>access title</b>
@@ -2150,7 +2154,7 @@ click A href "https://example.test" "tip <b>safe</b>" _blank
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"sequenceDiagram
 participant Alice as Alice A.
 participant Bob
@@ -2202,7 +2206,7 @@ Dana-->>Bob: Done
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = "kanban\n  Todo\n    item1\n  Doing\n    item2";
 
     let parsed = engine
@@ -2234,7 +2238,7 @@ fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_gantt_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 gantt
 dateFormat YYYY-MM-DD
@@ -2274,7 +2278,7 @@ Task 1: id1, 2024-01-01, 2d
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_pie_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 pie showData title Typed Pie
   "Alpha" : 60
@@ -2312,7 +2316,7 @@ pie showData title Typed Pie
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_xychart_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 xychart horizontal
 title "Typed XYChart"
@@ -2399,7 +2403,7 @@ line "Series 2" [2 "early", 3 "late"]
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_xychart_render_model_includes_display_policy_from_effective_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"%%{init: {"xyChart": {"showTitle": false, "showDataLabel": true, "showDataLabelOutsideBar": true, "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}, "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}}}}%%
 xychart
 x-axis "X Axis" [Alpha, Beta]
@@ -2440,7 +2444,7 @@ bar "Series 1" [1, 2]
 
 #[test]
 fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let default = block_on(engine.parse_metadata("xychart\nbar [1]")).unwrap();
     let xychart = &default.effective_config.as_value()["xyChart"];
     assert_eq!(xychart["showDataLabel"], json!(false));
@@ -2460,7 +2464,7 @@ bar [1]"#,
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_xychart_editor_facts_expose_parser_backed_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 xychart horizontal
 title "Typed XYChart"
@@ -2514,7 +2518,7 @@ line "Series 2" [2, 3]
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_quadrant_chart_editor_facts_expose_parser_backed_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 quadrantChart
 title "Typed Quadrant"
@@ -2572,7 +2576,7 @@ Point A:::class1: [0.9, 0.0]
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "quadrantChart\n",
         "classDef priority color: #109060\n",
@@ -2605,7 +2609,7 @@ fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
 
 #[test]
 fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let default = block_on(engine.parse_metadata("classDiagram\nclass A")).unwrap();
     let class = &default.effective_config.as_value()["class"];
     assert_eq!(class["hierarchicalNamespaces"], json!(true));
@@ -2623,7 +2627,7 @@ class A"#,
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_expose_parser_backed_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 requirementDiagram
 accTitle: Requirement accTitle
@@ -2662,7 +2666,7 @@ a - contains -> b
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_emit_multi_id_style_class_and_classdef_symbols() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 requirementDiagram
 requirement req {
@@ -2756,7 +2760,7 @@ style req,elem fill:#ffa,stroke:#000
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_class_refs_use_class_list_spans_for_short_names() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 requirementDiagram
 requirement req {
@@ -2791,7 +2795,7 @@ class req,elem a,aa
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 packet
 title Typed Packet
@@ -2840,7 +2844,7 @@ accDescr: Packet accDescription
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_timeline_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 timeline
 title Typed Timeline
@@ -2891,7 +2895,7 @@ Task 1: event 1: event 2
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_journey_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 journey
 title Typed Journey
@@ -2945,7 +2949,7 @@ Drive: bad-score: Dad, Mum
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_requirement_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r##"
 requirementDiagram
 accTitle: Requirement accTitle
@@ -3052,7 +3056,7 @@ req_login - verifies -> api
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_sankey_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 sankey-beta
 Source,Target,10
@@ -3105,7 +3109,7 @@ Target,Done,2.5
 
 #[test]
 fn parse_sankey_exposes_config_defaults_and_overrides() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let default = block_on(engine.parse_metadata("sankey\nA,B,1")).unwrap();
     let sankey = &default.effective_config.as_value()["sankey"];
     assert_eq!(sankey["nodeWidth"], json!(10));
@@ -3130,7 +3134,7 @@ A,B,1"##,
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_radar_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 radar-beta
 title Typed Radar
@@ -3204,7 +3208,7 @@ graticule polygon
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_info_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 info
 showInfo
@@ -3234,7 +3238,7 @@ showInfo
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_er_render_model_uses_typed_variant_without_changing_json_parse() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = r#"
 erDiagram
 accTitle: ER accTitle
@@ -3285,7 +3289,7 @@ CUSTOMER {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 title: <script>alert(1)</script><b>t</b>
 accTitle: <script>alert(1)</script><b>a</b>
@@ -3304,7 +3308,7 @@ Alice->Bob:Hello"#;
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn parse_render_model_sanitizes_common_db_fields_for_typed_families() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let flowchart = r#"flowchart TD
 accTitle: <script>alert(1)</script><b>a</b>
 accDescr { <script>alert(1)</script>line1
@@ -3383,7 +3387,7 @@ group root(cloud)[Root]
 group child(cloud)[Child] in root
 "#;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .expect("Architecture should accept cross-category forward references")
         .expect("Architecture should be detected");
@@ -3417,7 +3421,7 @@ fn parse_architecture_converts_quoted_titles_like_langium() {
 service api(server)["API \"Gateway\""]
 "#;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .expect("quoted Architecture title should parse")
         .expect("Architecture should be detected");
@@ -3435,7 +3439,7 @@ fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_string
         "architecture-beta\nservice api \"icon\\\ntext\"\n",
         "architecture-beta\nservice api [\"title\\\ntext\"]\n",
     ] {
-        Engine::new()
+        MermaidEngine::new()
             .parse_diagram_sync(source, ParseOptions::strict())
             .expect_err("Langium \\. must not consume a physical newline");
     }
@@ -3445,7 +3449,7 @@ fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_string
 #[cfg(feature = "all-diagrams")]
 fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload() {
     let source = "architecture-beta\naccDescr {\n  Draft description\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let error = engine
         .parse_diagram_sync(source, ParseOptions::strict())
@@ -3509,7 +3513,7 @@ fn parse_architecture_validates_junction_ids_and_parents_with_exact_spans() {
     ];
 
     for (source, token, expected_message) in cases {
-        let error = Engine::new()
+        let error = MermaidEngine::new()
             .parse_diagram_sync(source, ParseOptions::strict())
             .expect_err(expected_message);
         let Error::DiagramParse { diagnostic, .. } = error else {

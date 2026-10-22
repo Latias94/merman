@@ -370,7 +370,7 @@ mod tests {
     };
 
     fn fixture_model() -> ClassDiagram {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass A\nclass B\n",
                 merman_core::ParseOptions::default(),

@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn parse_diagram_er_allows_standalone_entities() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\nISLAND\nMAINLAND\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -18,7 +18,7 @@ fn parse_diagram_er_allows_standalone_entities() {
 
 #[test]
 fn parse_diagram_er_parses_alias_and_attributes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 foo["bar"] {
   string title PK, FK "comment"
@@ -38,7 +38,7 @@ foo["bar"] {
 
 #[test]
 fn parse_diagram_er_empty_quoted_entity_name_is_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram("erDiagram\n\"\"\n", ParseOptions::default()))
         .unwrap_err()
         .to_string();
@@ -47,7 +47,7 @@ fn parse_diagram_er_empty_quoted_entity_name_is_error() {
 
 #[test]
 fn parse_diagram_er_rejects_percent_and_backslash_in_quoted_entity_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     assert!(
         block_on(engine.parse_diagram("erDiagram\n\"Blo%rf\"\n", ParseOptions::default())).is_err()
     );
@@ -59,7 +59,7 @@ fn parse_diagram_er_rejects_percent_and_backslash_in_quoted_entity_name() {
 
 #[test]
 fn parse_diagram_er_supports_empty_attribute_blocks_and_multiple_blocks() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 BOOK {}
 BOOK {
@@ -80,7 +80,7 @@ BOOK{
 
 #[test]
 fn parse_diagram_er_alias_applies_even_when_relationship_is_defined_first() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 foo ||--o{ bar : rel
 foo["batman"]
@@ -94,7 +94,7 @@ foo["batman"]
 
 #[test]
 fn parse_diagram_er_allows_multiple_statements_without_newlines_like_upstream_jison() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 foo ||--o{ bar : rel
 buzz foo["batman"]
@@ -110,7 +110,7 @@ buzz foo["batman"]
 
 #[test]
 fn parse_diagram_er_self_relationship_does_not_duplicate_entity() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 NODE ||--o{ NODE : "leads to"
 "#;
@@ -125,7 +125,7 @@ NODE ||--o{ NODE : "leads to"
 
 #[test]
 fn parse_diagram_er_inline_class_assignment_applies_css_classes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 FOO:::pink
 classDef pink fill:#f9f
@@ -140,7 +140,7 @@ classDef pink fill:#f9f
 
 #[test]
 fn parse_diagram_er_direction_statement_sets_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 direction LR
 A ||--o{ B : has
@@ -153,7 +153,7 @@ A ||--o{ B : has
 
 #[test]
 fn parse_diagram_er_allows_hyphen_and_underscore_in_unquoted_entity_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\nDUCK-BILLED_PLATYPUS\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -163,7 +163,7 @@ fn parse_diagram_er_allows_hyphen_and_underscore_in_unquoted_entity_name() {
 
 #[test]
 fn parse_diagram_er_rejects_unquoted_entity_names_with_non_identifier_punctuation() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     assert!(
         block_on(engine.parse_diagram("erDiagram\nBlo@rf\n", ParseOptions::default())).is_err()
     );
@@ -174,7 +174,7 @@ fn parse_diagram_er_rejects_unquoted_entity_names_with_non_identifier_punctuatio
 
 #[test]
 fn parse_diagram_er_supports_attribute_name_brackets_and_parens() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 BOOK {
   string author-ref[name](1)
@@ -192,7 +192,7 @@ BOOK {
 
 #[test]
 fn parse_diagram_er_allows_asterisk_at_start_of_attribute_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 BOOK {
   string *title
@@ -210,7 +210,7 @@ BOOK {
 
 #[test]
 fn parse_diagram_er_rejects_attribute_names_with_leading_numbers_dashes_or_brackets() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for bad in ["0author", "-author", "[author", "(author"] {
         let text = format!("erDiagram\nBOOK {{\n  string {bad}\n}}\n");
         assert!(block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err());
@@ -219,7 +219,7 @@ fn parse_diagram_er_rejects_attribute_names_with_leading_numbers_dashes_or_brack
 
 #[test]
 fn parse_diagram_er_supports_generic_and_array_and_limited_length_types() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 BOOK {
   type~T~ type
@@ -243,7 +243,7 @@ BOOK {
 
 #[test]
 fn parse_diagram_er_supports_mermaid_11_16_attribute_tokens() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 PLACE {
   public.geometry(point,4326) location
@@ -269,7 +269,7 @@ PLACE {
 
 #[test]
 fn parse_diagram_er_parses_many_constraints_and_comments() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER {
   int customer_number PK, FK "comment1"
@@ -297,7 +297,7 @@ CUSTOMER {
 
 #[test]
 fn parse_diagram_er_allows_multiple_relationships_between_same_two_entities() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CAR ||--o{ PERSON : "insured for"
 CAR }o--|| PERSON : "owned by"
@@ -311,7 +311,7 @@ CAR }o--|| PERSON : "owned by"
 
 #[test]
 fn parse_diagram_er_supports_one_or_more_cardinality_markers() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 A ||--|{ B : has
 "#;
@@ -326,7 +326,7 @@ A ||--|{ B : has
 
 #[test]
 fn parse_diagram_er_relationship_matrix_matches_upstream_spec_minimally() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let cases: &[(&str, &str, &str, &str)] = &[
         ("A ||--|{ B : has", "ONE_OR_MORE", "ONLY_ONE", "IDENTIFYING"),
         (
@@ -439,7 +439,7 @@ fn parse_diagram_er_relationship_matrix_matches_upstream_spec_minimally() {
 
 #[test]
 fn parse_diagram_er_relationship_word_aliases_match_upstream_spec_minimally() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let cases: &[(&str, &str, &str, &str)] = &[
         (
             "A one or zero to many B : has",
@@ -508,7 +508,7 @@ fn parse_diagram_er_relationship_word_aliases_match_upstream_spec_minimally() {
 fn parse_diagram_er_entity_names_may_start_with_cardinality_words() {
     // Mermaid's lexer matches `many`, `one`, `to` (and the multi-word aliases) only at a word
     // boundary (`/^(?:to\b)/i`), so `tokens` or `oneshot` are plain entity names and labels.
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in [
         "tokens",
         "topic",
@@ -544,7 +544,7 @@ fn parse_diagram_er_entity_names_may_start_with_cardinality_words() {
 
 #[test]
 fn parse_diagram_er_cardinality_suffixes_require_a_word_boundary() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (cardinality, expected) in [
         ("|o", "ZERO_OR_ONE"),
         ("}o", "ZERO_OR_MORE"),
@@ -580,7 +580,7 @@ fn parse_diagram_er_cardinality_suffixes_require_a_word_boundary() {
 fn parse_diagram_er_cardinality_word_boundary_is_ascii() {
     // `\b` in Mermaid's (non-Unicode) regexes treats `-`, `.` and non-ASCII characters as word
     // boundaries, so these stay cardinality words and the lines are rejected, as in Mermaid.
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for line in [
         "A ||--o{ to : has",
         "A ||--o{ one : has",
@@ -602,7 +602,7 @@ fn parse_diagram_er_cardinality_word_boundary_is_ascii() {
 
 #[test]
 fn parse_diagram_er_keeps_multi_digit_entity_after_numeric_cardinality() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\na many to 1 12: label\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .unwrap()
@@ -623,7 +623,7 @@ fn parse_diagram_er_keeps_multi_digit_entity_after_numeric_cardinality() {
 
 #[test]
 fn parse_diagram_er_rejects_empty_backtick_attribute_words() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for attribute in ["`` name", "string ``"] {
         let text = format!("erDiagram\nBOOK {{\n  {attribute}\n}}\n");
@@ -636,7 +636,7 @@ fn parse_diagram_er_rejects_empty_backtick_attribute_words() {
 
 #[test]
 fn parse_diagram_er_rejects_invalid_relationship_syntax() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     assert!(
         block_on(engine.parse_diagram("erDiagram\nA xxx B : has\n", ParseOptions::default()))
             .is_err()
@@ -645,7 +645,7 @@ fn parse_diagram_er_rejects_invalid_relationship_syntax() {
 
 #[test]
 fn parse_diagram_er_style_statement_applies_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER
 style CUSTOMER color:red,stroke:blue,fill:#f9f
@@ -661,7 +661,7 @@ style CUSTOMER color:red,stroke:blue,fill:#f9f
 
 #[test]
 fn parse_diagram_er_style_statements_append_across_multiple_lines() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER
 style CUSTOMER color:red
@@ -678,7 +678,7 @@ style CUSTOMER fill:#f9f
 
 #[test]
 fn parse_diagram_er_class_statement_assigns_classes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER
 class CUSTOMER firstClass, secondClass, thirdClass
@@ -694,7 +694,7 @@ class CUSTOMER firstClass, secondClass, thirdClass
 
 #[test]
 fn parse_diagram_er_class_statement_appends_across_multiple_lines() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER
 class CUSTOMER firstClass
@@ -711,7 +711,7 @@ class CUSTOMER secondClass
 
 #[test]
 fn parse_diagram_er_classdef_defines_styles_and_text_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 classDef myClass fill:#f9f, stroke: red, color: pink
 "#;
@@ -730,7 +730,7 @@ classDef myClass fill:#f9f, stroke: red, color: pink
 
 #[test]
 fn parse_diagram_er_classdef_supports_multiple_classes_in_one_statement() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 classDef firstClass,secondClass fill:#f9f, stroke: red, color: pink
 "#;
@@ -749,7 +749,7 @@ classDef firstClass,secondClass fill:#f9f, stroke: red, color: pink
 
 #[test]
 fn parse_diagram_er_shorthand_class_assignment_variants_work() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER:::myClass
 CUSTOMER2:::myClass {}
@@ -776,7 +776,7 @@ CUSTOMER3:::myClass {
 
 #[test]
 fn parse_diagram_er_shorthand_assignment_supports_multiple_classes_and_alias() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 c[CUSTOMER]:::firstClass,secondClass
 "#;
@@ -792,7 +792,7 @@ c[CUSTOMER]:::firstClass,secondClass
 
 #[test]
 fn parse_diagram_er_shorthand_assignment_works_in_relationships() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER:::myClass ||--o{ PERSON:::myClass : allows
 "#;
@@ -811,7 +811,7 @@ CUSTOMER:::myClass ||--o{ PERSON:::myClass : allows
 
 #[test]
 fn parse_diagram_er_relationship_labels_allow_empty_quoted_and_unquoted() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res_empty = block_on(engine.parse_diagram(
         "erDiagram\nCUSTOMER ||--|{ ORDER : \"\"\n",
         ParseOptions::default(),
@@ -834,7 +834,7 @@ fn parse_diagram_er_relationship_labels_allow_empty_quoted_and_unquoted() {
 
 #[test]
 fn parse_diagram_er_parent_child_relationship_sets_md_parent_cardinality() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 PROJECT u--o{ TEAM_MEMBER : "parent"
 "#;
@@ -848,7 +848,7 @@ PROJECT u--o{ TEAM_MEMBER : "parent"
 
 #[test]
 fn parse_diagram_er_allows_prototype_like_entity_names() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["__proto__", "constructor", "prototype"] {
         let text = format!("erDiagram\n{name} ||--|{{ ORDER : place\n");
         assert!(block_on(engine.parse_diagram(&text, ParseOptions::default())).is_ok());
@@ -857,7 +857,7 @@ fn parse_diagram_er_allows_prototype_like_entity_names() {
 
 #[test]
 fn parse_diagram_er_parses_relationship_cardinality_and_type() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CAR ||--o{ DRIVER : "insured for"
 "#;
@@ -876,7 +876,7 @@ CAR ||--o{ DRIVER : "insured for"
 
 #[test]
 fn parse_diagram_er_supports_numeric_cardinality_shorthands() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 A 1+--0+ B : has
 "#;
@@ -891,7 +891,7 @@ A 1+--0+ B : has
 
 #[test]
 fn parse_diagram_er_acc_title_and_multiline_description() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 accTitle: graph title
 accDescr { this graph is
@@ -909,7 +909,7 @@ A ||--o{ B : has
 
 #[test]
 fn parse_diagram_er_multibyte_attribute_does_not_panic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\n顧客 {\n  文字列 名前\n}\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -921,7 +921,7 @@ fn parse_diagram_er_multibyte_attribute_does_not_panic() {
 
 #[test]
 fn parse_er_editor_facts_preserve_parser_symbol_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 CUSTOMER ||--o{ ORDER : places
 CUSTOMER {
@@ -1076,7 +1076,7 @@ style ORDER fill:#eee
 
 #[test]
 fn parse_er_editor_facts_distinguish_declarations_implicit_entities_and_references() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "erDiagram\n",
         "KNOWN\n",
@@ -1117,7 +1117,7 @@ fn parse_er_editor_facts_distinguish_declarations_implicit_entities_and_referenc
 
 #[test]
 fn parse_er_editor_facts_preserve_mermaid_11_16_attribute_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"erDiagram
 PLACE {
   `public.geometry(point,4326)` `display name`
@@ -1166,7 +1166,7 @@ PLACE {
 
 #[test]
 fn parse_er_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("er", text)
@@ -1180,7 +1180,7 @@ fn parse_er_editor_facts_recovers_from_incomplete_input() {
 
 #[test]
 fn parse_er_editor_facts_record_expected_class_name_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "erDiagram\nclassDef pink fill:#f9f\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("er", text)
@@ -1195,7 +1195,7 @@ fn parse_er_editor_facts_record_expected_class_name_spans() {
 
 #[test]
 fn parse_er_editor_facts_do_not_consume_classdef_names_across_line_endings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for line_ending in ["\n", "\r", "\r\n"] {
         let text = [
@@ -1221,7 +1221,7 @@ fn parse_er_editor_facts_do_not_consume_classdef_names_across_line_endings() {
 
 #[test]
 fn parse_er_editor_facts_preserve_every_crlf_unicode_occurrence_span() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -1293,7 +1293,7 @@ fn parse_er_editor_facts_preserve_every_crlf_unicode_occurrence_span() {
 
 #[test]
 fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_span() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -1360,7 +1360,7 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
 
 #[test]
 fn parse_diagram_er_keyword_boundaries_match_ascii_word_characters() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     // Mermaid 12's generated Jison rules end keywords with non-Unicode `\b`.
     for name in [
         "end-user",
@@ -1402,7 +1402,7 @@ fn parse_diagram_er_keyword_boundaries_match_ascii_word_characters() {
 
 #[test]
 fn parse_diagram_er_direction_is_an_entity_without_a_direction_rule_match() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for source in [
         "erDiagram\ndirection\n",
         "erDiagram\ndirection {}\n",
@@ -1445,7 +1445,7 @@ fn parse_diagram_er_direction_is_an_entity_without_a_direction_rule_match() {
 
 #[test]
 fn parse_diagram_er_parent_cardinality_does_not_require_leading_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["u-table", "U-table", "u.table"] {
         for indent in ["", " ", "\t"] {
             let source = format!("erDiagram\n{indent}{name}\n");
@@ -1482,7 +1482,7 @@ fn parse_diagram_er_parent_cardinality_does_not_require_leading_whitespace() {
 
 #[test]
 fn parse_er_editor_direction_selection_tracks_the_matched_rule() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (statement, value) in [
         ("direction RL direction TB", "TB"),
         ("xdirection BT", "BT"),
@@ -1513,7 +1513,7 @@ fn parse_er_editor_direction_selection_tracks_the_matched_rule() {
 
 #[test]
 fn parse_diagram_er_requires_style_payload_at_eof_or_newline() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for statement in ["style A", "classDef C", "style-guide", "classDef注文"] {
         for suffix in ["", "\n", " ;", " ;\n"] {
             let source = format!("erDiagram\n{statement}{suffix}");
@@ -1529,7 +1529,7 @@ fn parse_diagram_er_requires_style_payload_at_eof_or_newline() {
 
 #[test]
 fn parse_diagram_er_accessibility_direction_uses_raw_cursor() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for keyword in ["accTitle:", "accDescr:"] {
         for prefix in ["", "  ", "\t", "\u{00a0}", "\u{feff}"] {
             let source = format!("erDiagram\n{prefix}{keyword} direction LR\nA\n");
@@ -1574,7 +1574,7 @@ fn parse_diagram_er_accessibility_direction_uses_raw_cursor() {
 
 #[test]
 fn parse_diagram_er_accessibility_requires_complete_prefix() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["accTitle", "accDescr"] {
         let source = format!("erDiagram\n{name}\n");
         let parsed = engine
@@ -1623,7 +1623,7 @@ fn parse_diagram_er_accessibility_requires_complete_prefix() {
 
 #[test]
 fn parse_diagram_er_accessibility_multiline_uses_ecmascript_trim() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (body, expected) in [
         ("\u{feff}Heading\u{feff}", "Heading"),
         ("\u{0085}Heading\u{0085}", "\u{0085}Heading\u{0085}"),
@@ -1655,7 +1655,7 @@ fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_ord
         "end\n",
         "B ||--|| D : cross_relation\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1704,7 +1704,7 @@ fn parse_diagram_er_shared_members_belong_to_the_first_completed_subgraph() {
         "end\n",
         "subgraph Peer\nA\nB\nC\nD\nFirst\nFirst\nend\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1738,7 +1738,7 @@ fn parse_diagram_er_repeated_subgraph_ids_keep_records_and_update_the_latest_loo
         "style Same color:#123\n",
         "Same ||--|| X : after_last_completion\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1771,7 +1771,7 @@ fn parse_diagram_er_empty_subgraph_and_trimmed_member_deduplication_match_upstre
         "subgraph Members\n\" A \"\nA\nend\n",
         "Empty ||--|| Members : groups\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1785,7 +1785,7 @@ fn parse_diagram_er_empty_subgraph_and_trimmed_member_deduplication_match_upstre
 #[test]
 fn parse_er_missing_outer_end_preserves_recovery_facts_and_eof_span() {
     let source = "erDiagram\nsubgraph Outer\nsubgraph Inner\n顧客\nend\n";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let error = engine
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap_err();

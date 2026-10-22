@@ -3598,7 +3598,7 @@ mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
     use merman_core::models::class_diagram::Namespace;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
@@ -3650,7 +3650,7 @@ mod tests {
                 .check_source_bytes(&source)
                 .expect("within normal source budget");
             stage("source-budget-accepted-before-engine-parse");
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"htmlLabels": true, "securityLevel": security}),
                 ))
@@ -3757,7 +3757,7 @@ mod tests {
 
     #[test]
     fn class_member_display_preserves_authored_colon_spaces_and_classifiers() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass Box {\n+left :String\n+right: String\n+both : String$\n+tight:String\n+convert(value: String) Result\n}",
                 ParseOptions::default(),
@@ -3798,7 +3798,7 @@ mod tests {
     fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
         let source =
             include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class fixture")
             .expect("detect Class fixture");
@@ -3830,7 +3830,7 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     fn class_elk_graph_for_test(source: &str) -> super::elk::Graph {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class source")
             .expect("detect Class source");
@@ -3912,7 +3912,7 @@ mod tests {
                     let source = format!(
                         "---\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA --() CompleteInterface\n"
                     );
-                    let parsed = Engine::new()
+                    let parsed = MermaidEngine::new()
                         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                         .unwrap()
                         .unwrap();
@@ -4005,7 +4005,7 @@ mod tests {
     #[test]
     fn class_elk_contracts_namespace_frame_without_rebasing_provider_routes() {
         for title_width in [32.0, 300.0] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(
                     "classDiagram\nnamespace Frame {\nclass A\n}\nA --> A : loop\n",
                     ParseOptions::default(),
@@ -4147,7 +4147,7 @@ mod tests {
     fn class_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
         use std::num::NonZeroU64;
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("classDiagram\nA --> B", ParseOptions::default())
             .expect("parse Class source")
             .expect("detect Class source");

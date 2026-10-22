@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -151,7 +151,7 @@ impl PacketDiagramRenderModel {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &PacketDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
@@ -222,7 +222,7 @@ struct PacketSemanticSource {
 type PacketWord = Vec<PacketRenderBlock>;
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_packet(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     packet_output_into_json(parse_packet_semantic_source(code, meta)?.output, meta)
 }
 
@@ -230,7 +230,7 @@ pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -255,7 +255,10 @@ pub(crate) fn parse_packet_json_and_editor_facts(
 }
 
 #[cfg(feature = "compat-json")]
-fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> Result<Value> {
+fn packet_output_into_json(
+    output: PacketParseOutput,
+    meta: &PresentationMetadata,
+) -> Result<Value> {
     match output {
         PacketParseOutput::Empty => Ok(json!({})),
         PacketParseOutput::Model(model) => {
@@ -267,7 +270,7 @@ fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> R
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_packet_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<PacketDiagramRenderModel> {
     Ok(parse_packet_semantic_source(code, meta)?
         .output
@@ -277,7 +280,7 @@ pub(crate) fn parse_packet_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_packet_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<PacketDiagramRenderModel>> {
     let construction = construct_packet_semantic_source_controlled(
@@ -297,7 +300,10 @@ pub(crate) fn parse_packet_model_for_render_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PacketSemanticSource> {
+fn parse_packet_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<PacketSemanticSource> {
     construct_packet_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -867,7 +873,7 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
     let ws2 = rest.len() - rest_trimmed.len();
     rest = rest_trimmed;
     let label_base = after_colon_base + ws2;
-    let (label, decoded_label, tail) = parse_quoted_string_spanned(rest, label_base)?;
+    let (_label, decoded_label, tail) = parse_quoted_string_spanned(rest, label_base)?;
     if !tail.trim().is_empty() {
         return None;
     }
@@ -880,7 +886,8 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
             label: decoded_label,
             numeric_span,
         },
-        label,
+        #[cfg(feature = "editor-facts")]
+        label: _label,
     })
 }
 
@@ -899,7 +906,9 @@ fn parse_quoted_string_spanned(
     let tail = &input[parsed.consumed..];
     Some((
         SpannedText {
+            #[cfg(feature = "editor-facts")]
             text: parsed.value.clone(),
+            #[cfg(feature = "editor-facts")]
             span: parsed.value_span,
         },
         parsed.value,
@@ -991,13 +1000,16 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
 
 #[derive(Debug, Clone)]
 struct SpannedText {
+    #[cfg(feature = "editor-facts")]
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct PacketBlockSpanned {
     semantic: PacketBlock,
+    #[cfg(feature = "editor-facts")]
     label: SpannedText,
 }
 
@@ -1051,7 +1063,7 @@ mod semantic_tests {
 
         #[cfg(feature = "presentation")]
         {
-            let full = crate::Engine::new()
+            let full = crate::MermaidEngine::new()
                 .with_site_config(crate::presentation::PresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ))
@@ -1094,12 +1106,12 @@ mod semantic_tests {
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{MermaidEngine, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1107,7 +1119,7 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
@@ -1122,7 +1134,7 @@ mod tests {
         }
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(4);
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1149,7 +1161,7 @@ mod tests {
             "packet": { "bitsPerRow": 16 },
             "theme": "forest"
         }));
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config,
@@ -1168,7 +1180,7 @@ mod tests {
         let source = "packet\n+12: \"wide\"\n+1: \"flag\"\n";
         let mut packets = Vec::new();
         for bit_order in ["ascending", "descending"] {
-            let meta = ParseMetadata {
+            let meta = PresentationMetadata {
                 diagram_type: "packet".to_string(),
                 config: MermaidConfig::empty_object(),
                 effective_config: crate::presentation::PresentationConfig::from_value(json!({
@@ -1191,7 +1203,7 @@ mod tests {
 
     #[test]
     fn packet_typed_projection_preserves_empty_and_header_only_output_states() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1336,7 +1348,7 @@ accDescr: Packet accDescription
 
         #[cfg(feature = "editor-facts")]
         {
-            let facts = Engine::new()
+            let facts = MermaidEngine::new()
                 .parse_editor_semantic_facts_with_type_sync("packet", source)
                 .unwrap()
                 .unwrap();
@@ -1382,7 +1394,7 @@ accDescr: Packet accDescription
     #[test]
     #[cfg(feature = "editor-facts")]
     fn packet_editor_facts_expose_parser_backed_spans() {
-        let engine = crate::Engine::new();
+        let engine = crate::MermaidEngine::new();
         let text = r#"packet
 title Packet diagram
 accTitle: Packet accTitle
@@ -1426,7 +1438,7 @@ accDescr: Packet accDescription
     #[test]
     #[cfg(feature = "editor-facts")]
     fn packet_editor_recovery_reports_invalid_statement_with_exact_span() {
-        let engine = crate::Engine::new();
+        let engine = crate::MermaidEngine::new();
         let text = concat!(
             "packet\n",
             "0-7: \"valid\"\n",
@@ -1464,7 +1476,7 @@ accDescr: Packet accDescription
         let invalid = "9-15";
         let start = text.find(invalid).unwrap();
         let expected_span = SourceSpan::new(start, start + invalid.len());
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_sync(text, ParseOptions::strict())

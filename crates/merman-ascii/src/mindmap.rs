@@ -779,7 +779,7 @@ mod tests {
     #[test]
     fn canonical_mindmap_matches_full_shapes_and_section_traversal() {
         use merman_core::{
-            Engine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
         };
 
         let branches = (0..13)
@@ -801,7 +801,7 @@ mod tests {
             let SemanticDiagramModel::Mindmap(model) = &canonical.model else {
                 panic!("expected canonical Mindmap");
             };
-            let full = Engine::new()
+            let full = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();

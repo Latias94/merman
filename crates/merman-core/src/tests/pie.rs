@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn parse_diagram_pie_basic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"pie showData
  "Cats": 2
  'Dogs': 3
@@ -31,7 +31,7 @@ fn parse_diagram_pie_basic() {
 
 #[test]
 fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"pie title Default text position: Animal adoption
          "dogs" : -60.67
         "rats" : 40.12
@@ -47,7 +47,7 @@ fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
 
 #[test]
 fn parse_pie_exposes_11_16_config_defaults_and_overrides() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let default = block_on(engine.parse_metadata("pie\n\"A\": 1")).unwrap();
     let pie = &default.effective_config.as_value()["pie"];
     assert_eq!(pie["textPosition"], json!(0.75));
@@ -70,7 +70,7 @@ pie
 
 #[test]
 fn parse_pie_editor_facts_expose_parser_backed_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"pie showData
   title Market Share
   accTitle: Accessibility title

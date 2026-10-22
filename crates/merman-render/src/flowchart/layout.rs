@@ -4240,7 +4240,7 @@ mod tests {
     use super::*;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
     #[cfg(feature = "diagram-flowchart")]
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -4269,7 +4269,7 @@ mod tests {
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_wrapped_labels_fit_rectangle_and_diamond_nodes() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"%%{init: {"flowchart": {"wrappingWidth": 120}}}%%
 flowchart TD
@@ -4332,7 +4332,7 @@ flowchart TD
     #[test]
     fn dagre_preserves_operation_computed_length_precision() {
         // Isolate host precision from Mermaid 12's minimum label width.
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
@@ -4361,7 +4361,7 @@ flowchart TD
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nsubgraph S[service title]\n  A\nend\n",
                 ParseOptions::default(),
@@ -4413,7 +4413,7 @@ flowchart TD
     fn dagre_html_nbsp_only_edge_labels_respect_source_provenance() {
         let nbsp = '\u{00A0}';
         let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
@@ -4449,7 +4449,7 @@ flowchart TD
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_operation_meter_honors_below_equal_and_above_boundaries() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nsubgraph Outer\nsubgraph Inner\nA-->B\nend\nB-->C\nend\nC-->C\n",
                 ParseOptions::default(),
@@ -4661,7 +4661,7 @@ flowchart TD
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_kernel_arithmetic_overflow_maps_to_the_resource_contract() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TB\nA-->B\n", ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
@@ -4690,7 +4690,7 @@ flowchart TD
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn unknown_shape_is_rejected_instead_of_becoming_a_rectangle() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nA[known]\n",
                 ParseOptions::default(),
@@ -4721,7 +4721,7 @@ flowchart TD
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn shape_validation_scan_is_admitted_before_invalid_model_reporting() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nA[known]\nB[also known]\n",
                 ParseOptions::default(),

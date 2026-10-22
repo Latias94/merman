@@ -20,7 +20,7 @@ fn main() {
         .map(|family| family.logical_family_kind.to_string())
         .collect::<BTreeSet<_>>();
     assert_eq!(selected, expected("MERMAN_EXPECTED_FAMILIES"));
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     for (family, source) in [
         ("agentflow", "agentflow-beta\nA --> B\n"),
         ("usecase", "usecase-beta\nactor User\nUser --> Login\n"),

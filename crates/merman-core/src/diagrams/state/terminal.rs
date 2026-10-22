@@ -453,7 +453,7 @@ mod tests {
     #[test]
     #[cfg(feature = "presentation")]
     fn full_terminal_serialization_keeps_typed_fields_and_flat_documents() {
-        let parsed = crate::Engine::new()
+        let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(fallback_source(), crate::ParseOptions::strict())
             .unwrap()
             .unwrap();

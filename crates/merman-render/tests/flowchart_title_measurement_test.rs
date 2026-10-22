@@ -1,7 +1,7 @@
 #![cfg(feature = "diagram-flowchart")]
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -40,7 +40,7 @@ impl HostTextMeasurer for TitleMeasurementHost {
 }
 
 fn render(environment: RenderEnvironment, backend: &str) -> (String, TextMeasurementReport) {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "layout": backend,
         "look": "classic",
         "fontFamily": "Arial",

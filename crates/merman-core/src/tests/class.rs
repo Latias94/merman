@@ -18,7 +18,7 @@ fn class_namespace_carriers_preserve_entry_completion_and_source_order() {
         "}\n",
         "class Outside\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -44,7 +44,7 @@ fn class_namespace_carriers_preserve_entry_completion_and_source_order() {
 
 #[test]
 fn class_namespace_carrier_failures_preserve_eof_and_first_error_recovery() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let incomplete = "classDiagram\nnamespace Outer {\nnamespace Inner {\nclass Leaf\n}\n";
     let unexpected = "classDiagram\n}\nnamespace Later {\nclass Leaf\n";
     for (source, span, kind) in [
@@ -82,7 +82,7 @@ fn class_namespace_carrier_failures_preserve_eof_and_first_error_recovery() {
 
 #[test]
 fn parse_diagram_class_text_label_member_annotation_and_css_classes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class C1["Class 1 with text label"]
 <<interface>> C1
@@ -104,7 +104,7 @@ cssClass "C1" styleClass
 
 #[test]
 fn parse_diagram_class_supports_inline_annotation_after_class_identifier() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass Shape <<interface>>\n";
 
     let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
@@ -139,7 +139,7 @@ fn parse_diagram_class_supports_inline_annotation_after_class_identifier() {
 
 #[test]
 fn parse_diagram_class_multibyte_name_does_not_panic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class 顧客
 "#;
@@ -152,7 +152,7 @@ class 顧客
 
 #[test]
 fn parse_diagram_class_accepts_ecmascript_unicode_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
         for newline in ["\n", "\r\n"] {
             let text = format!(
@@ -174,7 +174,7 @@ fn parse_diagram_class_accepts_ecmascript_unicode_whitespace() {
 
 #[test]
 fn parse_diagram_class_rejects_characters_outside_mermaid_unicode_text() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["𠀀", "顾客１", "顾客、", "A\u{0345}", "😀"] {
         let text = format!("classDiagram\nclass {name}\n");
         assert!(
@@ -188,7 +188,7 @@ fn parse_diagram_class_rejects_characters_outside_mermaid_unicode_text() {
 
 #[test]
 fn parse_diagram_class_preserves_unicode_in_quoted_names_and_generics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass `𠀀、１`\nclass Box~𠀀、１~\n";
     let res = engine
         .parse_diagram_sync(text, ParseOptions::default())
@@ -200,7 +200,7 @@ fn parse_diagram_class_preserves_unicode_in_quoted_names_and_generics() {
 
 #[test]
 fn parse_class_editor_facts_recovers_after_invalid_unicode_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass 𠀀\nclass User\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
@@ -216,7 +216,7 @@ fn parse_class_editor_facts_recovers_after_invalid_unicode_name() {
 
 #[test]
 fn parse_diagram_class_css_class_shorthand() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class C1["Class 1 with text label"]:::styleClass
 "#;
@@ -231,7 +231,7 @@ class C1["Class 1 with text label"]:::styleClass
 
 #[test]
 fn class_style_precedence_facts_follow_applied_actions() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             concat!(
@@ -293,7 +293,7 @@ fn class_style_precedence_facts_follow_applied_actions() {
 
 #[test]
 fn class_style_facts_stay_outside_the_serialized_model() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             concat!(
                 "classDiagram\n",
@@ -322,7 +322,7 @@ fn class_style_facts_stay_outside_the_serialized_model() {
 
 #[test]
 fn class_style_precedence_facts_require_paint_declarations() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             concat!(
                 "classDiagram\n",
@@ -347,7 +347,7 @@ fn class_style_precedence_facts_require_paint_declarations() {
 
 #[test]
 fn class_style_precedence_facts_ignore_interaction_classes() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             concat!(
                 "classDiagram\n",
@@ -371,7 +371,7 @@ fn class_style_precedence_facts_ignore_interaction_classes() {
 
 #[test]
 fn class_style_precedence_facts_ignore_repeated_assignments() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             concat!(
                 "classDiagram\n",
@@ -396,7 +396,7 @@ fn class_style_precedence_facts_ignore_repeated_assignments() {
 
 #[test]
 fn parse_diagram_class_namespace_and_generic_methods() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 namespace Company.Project {
   class User {
@@ -438,7 +438,7 @@ namespace Company.Project.Module {
 
 #[test]
 fn parse_diagram_class_method_parser_matches_upstream_greedy_regex_boundary() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class Parser {
   +outer(inner)(value) Result$
@@ -461,7 +461,7 @@ class Parser {
 
 #[test]
 fn parse_diagram_class_acc_descr_multiline_collapses_newline_whitespace_without_regex() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 accTitle: My Title
 accDescr {
@@ -482,7 +482,7 @@ accDescr {
 
 #[test]
 fn parse_diagram_class_hierarchical_dotted_namespace_and_notes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 namespace Company.Project.Module {
   class User
@@ -535,7 +535,7 @@ namespace Company.Project.Module {
 
 #[test]
 fn parse_diagram_class_nested_namespace_syntax_builds_qualified_parents() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 namespace Company {
   namespace Project {
@@ -565,7 +565,7 @@ namespace Company {
 
 #[test]
 fn parse_diagram_class_hierarchical_namespaces_can_be_disabled() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 config:
   class:
@@ -604,7 +604,7 @@ namespace Company.Project.Module {
 
 #[test]
 fn parse_diagram_class_relation_only_generic_classes_keep_type_params() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 Class01~T~ <|-- AveryLongClass
 Class03~T~ *-- Class04~T~
@@ -630,7 +630,7 @@ Class08 <--> C2: Cool label
 
 #[test]
 fn parse_diagram_class_relation_with_label_and_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 direction LR
 class Admin
@@ -655,7 +655,7 @@ Admin --> Report : generates
 
 #[test]
 fn parse_diagram_class_style_statement_sets_node_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class Class01
 style Class01 fill:#f9f,stroke:#333,stroke-width:4px
@@ -673,7 +673,7 @@ style Class01 fill:#f9f,stroke:#333,stroke-width:4px
 
 #[test]
 fn parse_diagram_class_classdef_applies_styles_to_css_classes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class Class01
 cssClass "Class01" pink
@@ -690,7 +690,7 @@ classDef pink fill:#f9f
 
 #[test]
 fn parse_diagram_class_multiple_classdefs_merge_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class Class01:::pink
 cssClass "Class01" bold
@@ -711,7 +711,7 @@ classDef bold stroke:#333,stroke-width:6px
 
 #[test]
 fn parse_diagram_class_link_and_click_statements_set_clickable_and_metadata() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 class Class1
 link Class1 "google.com" "A tooltip" _self
@@ -736,7 +736,7 @@ callback Class1 "otherCall" "D tooltip"
 
 #[test]
 fn parse_diagram_class_href_sanitizes_javascript_urls_when_not_loose() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"classDiagram
 class Class1
@@ -754,7 +754,7 @@ click Class1 href "javascript:alert(1)" "A tooltip" _self"#,
 
 #[test]
 fn parse_diagram_class_security_level_sandbox_forces_link_target_top() {
-    let engine = Engine::new().with_site_config({
+    let engine = MermaidEngine::new().with_site_config({
         let mut cfg = PresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("sandbox"));
         cfg
@@ -775,7 +775,7 @@ click Class1 href "google.com" "A tooltip" _self
 
 #[test]
 fn parse_diagram_class_security_level_loose_marks_callback_effective() {
-    let engine = Engine::new().with_site_config({
+    let engine = MermaidEngine::new().with_site_config({
         let mut cfg = PresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("loose"));
         cfg
@@ -798,7 +798,7 @@ click Class1 call functionCall() "A tooltip"
 
 #[test]
 fn parse_class_editor_facts_preserve_parser_symbol_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"classDiagram
 namespace Company {
   class User {
@@ -1067,7 +1067,7 @@ style User fill:#fff
 
 #[test]
 fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "classDiagram\nclass `123`\n`123` --> Service\nclick `123` href \"https://example.com\"\n";
     let facts = engine
@@ -1118,7 +1118,7 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
 
 #[test]
 fn class_relations_create_only_the_first_implicit_entity_occurrence() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "classDiagram\n",
         "Future --> Known\n",
@@ -1166,7 +1166,7 @@ fn class_relations_create_only_the_first_implicit_entity_occurrence() {
 
 #[test]
 fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass Admin\nclick Admin call   open(userId)\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
@@ -1186,7 +1186,7 @@ fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitesp
 
 #[test]
 fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_span() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -1260,7 +1260,7 @@ fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_s
 
 #[test]
 fn parse_class_editor_facts_record_expected_class_name_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
@@ -1275,7 +1275,7 @@ fn parse_class_editor_facts_record_expected_class_name_spans() {
 
 #[test]
 fn parse_class_editor_facts_do_not_consume_classdef_names_across_line_endings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for line_ending in ["\n", "\r", "\r\n"] {
         let text = ["classDiagram", "classDef", "User <|-- Admin", ""].join(line_ending);
@@ -1295,7 +1295,7 @@ fn parse_class_editor_facts_do_not_consume_classdef_names_across_line_endings() 
 
 #[test]
 fn parse_class_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass User\nUser <|--";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
@@ -1308,7 +1308,7 @@ fn parse_class_editor_facts_recovers_from_incomplete_input() {
 
 #[test]
 fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\nclass User {\n  +name";
     crate::diagrams::class::reset_class_syntax_construction_count();
     crate::editor::test_work::reset();
@@ -1365,7 +1365,7 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
 
 #[test]
 fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "classDiagram\n\"\nclass User\n";
     let invalid_start = text.find('"').unwrap();
     crate::diagrams::class::reset_class_syntax_construction_count();

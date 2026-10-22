@@ -7,7 +7,7 @@ type FamilyFixture = (
 mod common;
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -32,8 +32,8 @@ use merman_render::text::{
 };
 
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
-fn classic_engine() -> Engine {
-    Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+fn classic_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "theme": "default",
         "look": "classic",
         "layout": "dagre"
@@ -42,8 +42,8 @@ fn classic_engine() -> Engine {
 
 // Typed adapter fixtures select their Mermaid baseline through the recipe, leaving
 // external configuration free to own only the properties each case authors.
-fn classic_typed_engine() -> Engine {
-    Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+fn classic_typed_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "look": "classic",
         "layout": "dagre"
     })))
@@ -385,7 +385,7 @@ fn render_state_layout_and_svg_from_text_in_environment(
     (layout, svg)
 }
 
-fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+fn render_state_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -502,7 +502,7 @@ fn render_classic_state_svg_from_text_with_theme_in_environment(
 fn render_state_svg_from_text_with_theme_and_engine_in_environment(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
 ) -> String {
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
@@ -523,7 +523,7 @@ fn render_state_svg_from_text_with_theme_and_engine_in_environment(
 fn prepare_state_artifact_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
 ) -> FamilyFixture {
     let session = environment.begin_session_with_theme(theme).unwrap();
@@ -4262,9 +4262,9 @@ note right of Idle : seeded note"#;
 #[test]
 fn state_svg_invalid_default_look_falls_back_to_the_family_neo_default() {
     let source = "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n";
-    let baseline = render_state_svg_from_text_with_engine(Engine::new(), source);
+    let baseline = render_state_svg_from_text_with_engine(MermaidEngine::new(), source);
     let svg = render_state_svg_from_text_with_engine(
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "look": "default"
         }))),
         source,

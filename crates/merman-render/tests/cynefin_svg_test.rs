@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -155,7 +155,7 @@ clear --> complex : "Probe"
 fn try_render_cynefin_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(CynefinDiagramLayout, family::RenderedFamilySvg)> {
@@ -286,7 +286,7 @@ fn cynefin_typed_text_fill_reaches_all_visible_text_selectors() {
         let (_, rendered) = try_render_cynefin_with_theme(
             CYNEFIN_TEXT_FILL_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_cynefin_environment(),
             &diagram_id,
         )
@@ -339,11 +339,13 @@ fn cynefin_text_palette_only_remains_residual_when_its_fallback_is_needed() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile text palette theme");
         let engine = if case == "config" {
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "cynefin": { "textColor": "#123456" } }
-            })))
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "cynefin": { "textColor": "#123456" } }
+                }),
+            ))
         } else {
-            Engine::new()
+            MermaidEngine::new()
         };
         let source = if case == "empty" {
             "---\nconfig:\n  cynefin:\n    showDomainDescriptions: false\n---\ncynefin-beta\n"
@@ -402,7 +404,7 @@ fn cynefin_explicit_text_color_outranks_typed_text_fill() {
         CanvasPaint::solid("#123456").expect("valid Cynefin typed text fill"),
     );
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "cynefin": { "textColor": "#fedcba" }
             }
@@ -443,7 +445,7 @@ fn cynefin_explicit_default_text_fill_reaches_the_typed_terminal() {
     let (_, rendered) = try_render_cynefin_with_theme(
         CYNEFIN_TEXT_FILL_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "cynefin-default-text-fill",
     )
@@ -480,7 +482,7 @@ cynefin-beta
     let (_, rendered) = try_render_cynefin_with_theme(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "cynefin-empty-text-fill",
     )
@@ -595,7 +597,7 @@ fn cynefin_typed_font_stack_drives_measurement_css_and_terminal_evidence() {
     let (layout, rendered) = try_render_cynefin_with_theme(
         "cynefin-beta\ncomplex\n\"Measure me\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "cynefin-typed-font",
     )
@@ -633,7 +635,7 @@ fn cynefin_empty_item_does_not_invalidate_font_stack_terminal_evidence() {
     let (_, rendered) = try_render_cynefin_with_theme(
         "cynefin-beta\ncomplex\n\"\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "cynefin-empty-item-font",
     )
@@ -663,7 +665,7 @@ fn cynefin_direct_font_stack_exceeds_the_retired_legacy_bridge_limit() {
     let (_, rendered) = try_render_cynefin_with_theme(
         "cynefin-beta\ncomplex\n\"A\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "cynefin-large-font",
     )
@@ -687,17 +689,21 @@ fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "site-font",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
+                }),
+            )),
             "cynefin-beta\ncomplex\n\"A\"\n".to_string(),
             "SiteCynefinFont,serif",
         ),
         (
             "source-font",
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "secure": []
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "secure": []
+                }),
+            )),
             concat!(
                 "%%{init: {\"fontFamily\": \"SourceCynefinFont,monospace\"}}%%\n",
                 "cynefin-beta\ncomplex\n\"A\"\n"
@@ -743,7 +749,7 @@ fn cynefin_mixed_base_typography_fails_closed() {
     let error = try_render_cynefin_with_theme(
         "cynefin-beta\ncomplex\n\"A\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "cynefin-mixed-typography",
     )
@@ -776,7 +782,7 @@ fn repair_u7_cynefin_unmatched_text_variant_is_not_applicable() {
     let (_, rendered) = try_render_cynefin_with_theme(
         CYNEFIN_TEXT_FILL_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &portable_cynefin_environment(),
         "unmatched-variant",
     )
@@ -808,7 +814,7 @@ fn repair_u7_cynefin_matching_ordinal_text_variant_remains_residual() {
     let (_, rendered) = try_render_cynefin_with_theme(
         CYNEFIN_TEXT_FILL_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "matched-variant",
     )
@@ -820,7 +826,7 @@ fn repair_u7_cynefin_matching_ordinal_text_variant_remains_residual() {
         try_render_cynefin_with_theme(
             CYNEFIN_TEXT_FILL_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &portable_cynefin_environment(),
             "matched-variant"
         )

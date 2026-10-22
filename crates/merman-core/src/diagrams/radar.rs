@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -55,12 +55,14 @@ enum OptionValueAst {
 struct OptionAst {
     name: String,
     value: OptionValueAst,
+    #[cfg(feature = "editor-facts")]
     value_span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct SpannedRadarValue {
     value: Value,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -324,6 +326,7 @@ impl RadarDb {
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -384,6 +387,7 @@ fn push_radar_payload(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn value_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -644,7 +648,7 @@ impl RadarSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_radar(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse_radar_semantic_source(code, meta)?.into_render_model();
     render_model_to_compat_json(&model, meta)
 }
@@ -653,7 +657,7 @@ pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -680,7 +684,7 @@ pub(crate) fn parse_radar_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_radar_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<RadarDiagramRenderModel> {
     parse_radar_semantic_source(code, meta).map(RadarSemanticSource::into_render_model)
 }
@@ -688,7 +692,7 @@ pub(crate) fn parse_radar_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_radar_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<RadarDiagramRenderModel>> {
     let construction = construct_radar_semantic_source_controlled(
@@ -707,7 +711,7 @@ pub(crate) fn parse_radar_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RadarDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     if matches!(model.compatibility, RadarCompatibilityOutputState::Empty) {
         return Ok(json!({}));
@@ -728,7 +732,10 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<RadarSemanticSource> {
+fn parse_radar_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<RadarSemanticSource> {
     construct_radar_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -1381,7 +1388,7 @@ fn parse_option_stmt(
     p.skip_ws();
 
     if name == "showLegend" {
-        let (value, value_span) = p
+        let (value, _value_span) = p
             .parse_bool()
             .ok_or_else(|| "expected boolean".to_string())?;
         p.skip_ws();
@@ -1391,7 +1398,8 @@ fn parse_option_stmt(
         return Ok(Some(OptionAst {
             name,
             value: OptionValueAst::Bool(value),
-            value_span,
+            #[cfg(feature = "editor-facts")]
+            value_span: _value_span,
         }));
     }
 
@@ -1409,6 +1417,7 @@ fn parse_option_stmt(
         return Ok(Some(OptionAst {
             name,
             value: OptionValueAst::Graticule(value.text),
+            #[cfg(feature = "editor-facts")]
             value_span: value.span,
         }));
     }
@@ -1423,6 +1432,7 @@ fn parse_option_stmt(
     Ok(Some(OptionAst {
         name,
         value: OptionValueAst::Number(value.value),
+        #[cfg(feature = "editor-facts")]
         value_span: value.span,
     }))
 }
@@ -1565,6 +1575,7 @@ impl<'input> TokenParser<'input> {
     }
 
     fn parse_id(&mut self) -> Option<SpannedText> {
+        #[cfg(feature = "editor-facts")]
         let start = self.pos;
         let s = &self.input[self.pos..];
         let mut chars = s.chars();
@@ -1589,6 +1600,7 @@ impl<'input> TokenParser<'input> {
         self.pos += idx;
         Some(SpannedText {
             text: raw.to_string(),
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
         })
     }
@@ -1609,6 +1621,7 @@ impl<'input> TokenParser<'input> {
     }
 
     fn parse_number_value(&mut self) -> Option<SpannedRadarValue> {
+        #[cfg(feature = "editor-facts")]
         let start = self.pos;
         let s = &self.input[self.pos..];
         if !s.as_bytes().first().is_some_and(u8::is_ascii_digit) {
@@ -1640,9 +1653,11 @@ impl<'input> TokenParser<'input> {
             let v: f64 = token.parse().ok()?;
             self.pos += idx;
             let n = serde_json::Number::from_f64(v)?;
+            #[cfg(feature = "editor-facts")]
             let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
             return Some(SpannedRadarValue {
                 value: Value::Number(n),
+                #[cfg(feature = "editor-facts")]
                 span,
             });
         }
@@ -1652,9 +1667,11 @@ impl<'input> TokenParser<'input> {
         }
         let v: i64 = token.parse().ok()?;
         self.pos += idx;
+        #[cfg(feature = "editor-facts")]
         let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
         Some(SpannedRadarValue {
             value: Value::Number(serde_json::Number::from(v)),
+            #[cfg(feature = "editor-facts")]
             span,
         })
     }
@@ -1664,6 +1681,7 @@ impl<'input> TokenParser<'input> {
         self.pos += parsed.consumed;
         Some(SpannedText {
             text: parsed.value,
+            #[cfg(feature = "editor-facts")]
             span: parsed.value_span,
         })
     }
@@ -1723,12 +1741,12 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::EditorSemanticRole;
-    use crate::{Engine, ParseOptions};
+    use crate::{MermaidEngine, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1736,7 +1754,7 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
@@ -1752,7 +1770,7 @@ mod tests {
         let text = format!("radar-beta\naxis {axes}\n");
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1777,6 +1795,7 @@ mod tests {
             .map(|index| AxisAst {
                 name: SpannedText {
                     text: format!("axis_{index}"),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(index, index + 1),
                 },
                 label: None,
@@ -1786,10 +1805,12 @@ mod tests {
             .map(|index| EntryAst {
                 axis: Some(SpannedText {
                     text: format!("axis_{index}"),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(index, index + 1),
                 }),
                 value: SpannedRadarValue {
                     value: json!(index),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(index, index + 1),
                 },
             })
@@ -1805,6 +1826,7 @@ mod tests {
                 vec![CurveAst {
                     name: SpannedText {
                         text: "current".to_string(),
+                        #[cfg(feature = "editor-facts")]
                         span: SourceSpan::new(0, 1),
                     },
                     label: None,
@@ -1826,10 +1848,12 @@ mod tests {
         let entries = [1, 2].map(|value| EntryAst {
             axis: Some(SpannedText {
                 text: "cost".to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(0, 1),
             }),
             value: SpannedRadarValue {
                 value: json!(value),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(0, 1),
             },
         });
@@ -1958,7 +1982,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
             "ticks 5\r\n",
             "ticks 5\r\n",
         );
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .unwrap();
@@ -2011,7 +2035,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
     #[cfg(feature = "editor-facts")]
     fn radar_forward_axis_occurrence_is_a_reference_before_its_definition() {
         let text = concat!("radar-beta\n", "curve Forward{Later: 1}\n", "axis Later\n",);
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .unwrap();
@@ -2103,7 +2127,7 @@ curve
             "  curve C{.5} %% hidden\r\n",
             "axis B\r\n",
         );
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .unwrap();
@@ -2128,7 +2152,7 @@ curve
         let invalid = "sample{A: 1}";
         let start = text.find(invalid).unwrap();
         let expected_span = SourceSpan::new(start, start + invalid.len());
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_sync(text, ParseOptions::strict())
@@ -2234,7 +2258,7 @@ curve mycurve{1,2,3}
             "axis Cost,Time\n",
             "curve Current{2,3}\n",
         );
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine
             .parse_diagram_sync(text, ParseOptions::strict())
             .unwrap()
@@ -2248,7 +2272,7 @@ curve mycurve{1,2,3}
         assert_eq!(projection["accTitle"], Value::Null);
         assert_eq!(projection["accDescr"], Value::Null);
 
-        let empty_meta = ParseMetadata {
+        let empty_meta = PresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2435,7 +2459,7 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::ParseMetadata {
+        let meta = crate::PresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

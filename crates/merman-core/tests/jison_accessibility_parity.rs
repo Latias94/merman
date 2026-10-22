@@ -4,7 +4,7 @@
 use merman_core::{
     DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, ParsedEditorFacts,
 };
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use serde_json::{Value, json};
 
 struct JisonCase {
@@ -150,7 +150,7 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
     ];
 
     for case in cases {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine.parse_diagram_with_type_sync(
             case.diagram_type,
             case.source,
@@ -293,7 +293,7 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
     ];
 
     for case in cases {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine.parse_diagram_with_type_sync(
             case.diagram_type,
             case.source,
@@ -360,7 +360,7 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
 #[test]
 fn sequence_multiline_accessibility_preserves_an_ordinary_next_line() {
     let source = "sequenceDiagram\naccDescr {desc}\nparticipant A";
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_with_type_sync("sequence", source, ParseOptions::strict())
         .expect("ordinary next-line sequence input must parse")
@@ -385,7 +385,7 @@ fn sequence_multiline_accessibility_preserves_an_ordinary_next_line() {
 
 #[test]
 fn sequence_empty_comments_preserve_semantics_render_models_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for source in [
         "sequenceDiagram\n%%",
         "sequenceDiagram\n%%\nparticipant A\nA->>B: hello\n%%",

@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 #[cfg(feature = "editor-facts")]
 use crate::{
@@ -250,6 +250,7 @@ impl TimelineSemanticSource {
 
 struct TimelineParseIssue {
     error: Error,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -312,7 +313,7 @@ impl TimelineParseOutcome {
 
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
         let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
         let editor_facts = construction.editor_facts.unwrap_or_default();
         let construction = match construction.model {
@@ -388,6 +389,7 @@ struct ParsedColonDirective<'source> {
 #[derive(Debug, Clone, Copy)]
 struct ParsedSection<'source> {
     db_value: TimelineSource<'source>,
+    #[cfg(feature = "editor-facts")]
     value: TimelineSource<'source>,
 }
 
@@ -395,6 +397,7 @@ struct ParsedAccDescrBlock {
     keyword: SourceSpan,
     closing: Option<SourceSpan>,
     text: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -484,6 +487,7 @@ fn parse_section<'source>(line: TimelineSource<'source>) -> Option<ParsedSection
     };
     Some(ParsedSection {
         db_value,
+        #[cfg(feature = "editor-facts")]
         value: db_value.trim(),
     })
 }
@@ -515,7 +519,7 @@ fn parse_acc_descr_block(
         text.push_str(content.text);
         let closing = SourceSpan::new(rest.start + close, rest.start + close + 1);
         cursor.resume_same_line_at(closing.end);
-        let span = content_spans
+        let _span = content_spans
             .first()
             .zip(content_spans.last())
             .map_or(SourceSpan::new(rest.start, rest.start), |(first, last)| {
@@ -525,7 +529,8 @@ fn parse_acc_descr_block(
             keyword: keyword.span(),
             closing: Some(closing),
             text: text.trim().to_string(),
-            span,
+            #[cfg(feature = "editor-facts")]
+            span: _span,
         }));
     }
 
@@ -560,7 +565,7 @@ fn parse_acc_descr_block(
         text.push('\n');
     }
 
-    let span = content_spans
+    let _span = content_spans
         .first()
         .zip(content_spans.last())
         .map_or(empty_span, |(first, last)| {
@@ -570,7 +575,8 @@ fn parse_acc_descr_block(
         keyword: keyword.span(),
         closing,
         text: text.trim().to_string(),
-        span,
+        #[cfg(feature = "editor-facts")]
+        span: _span,
     }))
 }
 
@@ -754,15 +760,19 @@ fn push_timeline_outline_fact(
 }
 
 fn timeline_parse_issue(error: Error, fallback: SourceSpan) -> TimelineParseIssue {
-    let span = match &error {
+    let _span = match &error {
         Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
         _ => fallback,
     };
-    TimelineParseIssue { error, span }
+    TimelineParseIssue {
+        error,
+        #[cfg(feature = "editor-facts")]
+        span: _span,
+    }
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_timeline(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source =
         construct_timeline_semantic_source(code, &meta.diagram_type).into_strict_source()?;
     render_model_to_compat_json(&source.into_render_model(), meta)
@@ -772,7 +782,7 @@ pub(crate) fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_timeline_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     Ok(construct_timeline_semantic_source_controlled(
@@ -787,7 +797,7 @@ pub(crate) fn parse_timeline_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &TimelineDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
@@ -816,7 +826,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_timeline_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<TimelineDiagramRenderModel> {
     construct_timeline_semantic_source(code, &meta.diagram_type)
         .into_strict_source()
@@ -826,7 +836,7 @@ pub(crate) fn parse_timeline_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_timeline_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<TimelineDiagramRenderModel>> {
     let source = construct_timeline_semantic_source_controlled(
@@ -1295,14 +1305,14 @@ mod tests {
         EditorSemanticKind, EditorSemanticRole,
     };
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan};
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
     use serde_json::json;
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1390,7 +1400,7 @@ task4
             "2001: Second\n",
             "2002: Third\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("duplicate Timeline sections should parse")
             .expect("Timeline source should be detected");
@@ -1605,7 +1615,7 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_event_missing_space_reports_insertion_point() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "timeline\ntask1:event1\n";
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = err else {
@@ -1630,7 +1640,7 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "timeline\n\
 title My timeline\n\
 accTitle: My acc title\n\
@@ -1677,7 +1687,7 @@ task2: event2: event3\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_entrypoints_and_combined_projection_construct_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "timeline\n",
             "title Delivery\n",
@@ -1765,7 +1775,7 @@ task2: event2: event3\n";
 
         #[cfg(feature = "presentation")]
         {
-            let meta = crate::ParseMetadata {
+            let meta = crate::PresentationMetadata {
                 diagram_type: "timeline".to_string(),
                 config: crate::MermaidConfig::default(),
                 effective_config: crate::presentation::PresentationConfig::default(),
@@ -1809,7 +1819,7 @@ task2: event2: event3\n";
         );
         #[cfg(feature = "presentation")]
         {
-            let meta = ParseMetadata {
+            let meta = PresentationMetadata {
                 diagram_type: "timeline".to_string(),
                 config: crate::MermaidConfig::empty_object(),
                 effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1838,7 +1848,7 @@ task2: event2: event3\n";
         .model
         .unwrap();
         #[cfg(feature = "compat-json")]
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1863,7 +1873,7 @@ task2: event2: event3\n";
     #[cfg(feature = "compat-json")]
     #[test]
     fn timeline_typed_projection_preserves_empty_and_header_only_output_states() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1884,7 +1894,7 @@ task2: event2: event3\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_malformed_event_recovers_prior_parser_facts_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "timeline\nsection Build\nImplement parser:event\n";
         let colon = text.find(':').expect("malformed event colon");
 
@@ -1934,7 +1944,7 @@ task2: event2: event3\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn timeline_direction_is_preserved_in_semantic_and_compatibility_models() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         for (source, expected) in [
             ("timeline\n2026", TimelineDirection::LeftToRight),
             ("timeline LR\n2026", TimelineDirection::LeftToRight),
@@ -1981,7 +1991,7 @@ task2: event2: event3\n";
             "重复: 重复\r\n",
             ": 重复\r\n",
         );
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("timeline", source)
             .expect("Timeline editor parse")
             .expect("Timeline editor facts");
@@ -2034,7 +2044,7 @@ task2: event2: event3\n";
             "Later task:broken\r\n",
         );
         let first_colon = source.find(':').expect("first malformed event colon");
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "timeline".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2054,7 +2064,7 @@ task2: event2: event3\n";
             Some(SourceSpan::new(first_colon + 1, first_colon + 1))
         );
 
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("timeline", source)
             .expect("Timeline editor recovery")
             .expect("Timeline recovery facts");
@@ -2087,7 +2097,7 @@ task2: event2: event3\n";
         let text = "timeline\naccDescr {\n  partial description\n";
 
         reset_timeline_syntax_construction_count();
-        let snapshot = Engine::new()
+        let snapshot = MermaidEngine::new()
             .parse_diagram_snapshot_with_type_sync("timeline", text)
             .expect("Timeline snapshot operation")
             .expect("Timeline snapshot");

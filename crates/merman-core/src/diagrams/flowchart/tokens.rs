@@ -74,6 +74,7 @@ pub(crate) struct NodeLabelToken {
     ///
     /// The combined semantic path lexes once. An incomplete label therefore carries both the
     /// token needed for editor facts and the error projected to the strict LALRPOP parser.
+    #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }
 
@@ -87,7 +88,9 @@ pub(crate) struct NodeLabelToken {
 )]
 pub(crate) struct DirectionStatementToken {
     pub direction: String,
+    #[cfg(any(test, feature = "editor-facts"))]
     pub selection: SourceSpan,
+    #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }
 

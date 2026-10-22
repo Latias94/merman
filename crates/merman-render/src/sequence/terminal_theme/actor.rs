@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn prepared_ordinals_keep_semantic_positions_when_actor_entries_are_missing() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nA->>B: Hello",
                 merman_core::ParseOptions::strict(),

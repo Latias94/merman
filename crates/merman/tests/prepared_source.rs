@@ -70,8 +70,12 @@ fn prepared_source_freezes_parse_context_but_refreshes_output_context() {
 }
 
 fn semantic(renderer: &Renderer, prepared: &PreparedSource) -> merman_core::ManagedSemanticJson {
-    let RenderOutput::Semantic(Some(artifact)) = renderer
-        .render_prepared(prepared, RenderTarget::Semantic, OperationControl::new())
+    let RenderOutput::Presentation(Some(artifact)) = renderer
+        .render_prepared(
+            prepared,
+            RenderTarget::Presentation,
+            OperationControl::new(),
+        )
         .unwrap()
     else {
         panic!("semantic output");
@@ -316,7 +320,7 @@ fn custom_overlay_is_parsed_once_and_keeps_its_closed_capability_boundary() {
     static PARSES: AtomicUsize = AtomicUsize::new(0);
     fn parse(
         _source: &str,
-        _meta: &merman::ParseMetadata,
+        _meta: &merman::PresentationMetadata,
         control: &OperationControl,
     ) -> merman_core::OperationControlResult<merman_core::Result<merman_core::CustomJsonRenderModel>>
     {
@@ -327,11 +331,11 @@ fn custom_overlay_is_parsed_once_and_keeps_its_closed_capability_boundary() {
             serde_json::json!({"meaning":42}),
         )))
     }
-    let mut engine = merman::Engine::new();
+    let mut engine = merman::MermaidEngine::new();
     engine
         .render_diagram_registry_mut()
         .insert("flowchart-v2", parse);
-    let renderer = Renderer::new().with_engine(engine);
+    let renderer = Renderer::new().with_presentation_engine(engine);
     let prepared = prepare(&renderer, "flowchart LR\nA --> B");
     assert_eq!(PARSES.load(Ordering::SeqCst), 1);
     for _ in 0..2 {
@@ -358,7 +362,7 @@ fn no_diagram_and_parse_failure_do_not_create_snapshots() {
         .prepare_source(PrepareSourceRequest::new("", OperationControl::new()))
         .unwrap_err();
     let source_error = renderer
-        .prepare_semantic("", OperationControl::new())
+        .prepare_presentation("", OperationControl::new())
         .unwrap_err();
     assert_eq!(prepared_error.to_string(), source_error.to_string());
     assert!(
@@ -447,11 +451,11 @@ fn completed_ascii_outlives_prepared_source() {
 }
 
 #[test]
-fn semantic_handoff_releases_the_original_operation_control() {
+fn presentation_handoff_releases_the_original_operation_control() {
     let renderer = Renderer::new();
     let control = OperationControl::new();
     let artifact = renderer
-        .prepare_semantic("flowchart LR\nA --> B", control.clone())
+        .prepare_presentation("flowchart LR\nA --> B", control.clone())
         .unwrap()
         .unwrap();
     control.cancel();

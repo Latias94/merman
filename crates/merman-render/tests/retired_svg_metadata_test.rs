@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ManagedSemanticJson, ParseOptions};
+use merman_core::{ManagedSemanticJson, MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -9,7 +9,7 @@ use serde_json::json;
 use std::collections::BTreeSet;
 
 fn render(source: &str, config: PresentationConfig) -> (ManagedSemanticJson, String) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_site_config(config)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse metadata regression fixture")

@@ -1,6 +1,6 @@
 use crate::XtaskError;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ffi::OsStr;
@@ -345,9 +345,9 @@ fn validate_manifest(
                 path: fixtures_path.display().to_string(),
                 source,
             })?;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let renderer = merman::Renderer::new()
-        .with_engine(engine.clone())
+        .with_presentation_engine(engine.clone())
         .with_parse_options(ParseOptions::strict());
     let mut examples = Vec::with_capacity(manifest.examples.len());
 

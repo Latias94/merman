@@ -433,7 +433,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::CLASS);
         let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
         for token in ["#333333", "#123456"] {
-            let config = merman_core::Engine::new()
+            let config = merman_core::MermaidEngine::new()
                 .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"themeVariables":{"lineColor":token}}),
                 ))
@@ -451,7 +451,7 @@ mod tests {
         // Host colors enter the core theme derivation before Class binding. Opaque CSS is
         // therefore rejected here even though the renderer preserves already prepared tokens.
         assert!(
-            merman_core::Engine::new()
+            merman_core::MermaidEngine::new()
                 .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"themeVariables":{"lineColor":"var(--edge)"}}),
                 ))

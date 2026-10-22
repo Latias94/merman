@@ -1,8 +1,8 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
-    Engine, OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer,
-    SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    MermaidEngine, OperationControl, PresentationArtifact, RenderError, RenderOutput,
+    RenderRequest, RenderTarget, Renderer, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
     presentation::PresentationConfig,
 };
 use merman_core::ParseOptions;
@@ -371,7 +371,7 @@ impl CalibrationRenderer {
         config.set_value("theme", serde_json::Value::String(theme.to_string()));
         Self {
             renderer: Renderer::new()
-                .with_engine(Engine::new().with_site_config(config))
+                .with_presentation_engine(MermaidEngine::new().with_site_config(config))
                 .with_parse_options(ParseOptions::strict())
                 .with_resource_policy(*policy.input_policy()),
             policy,
@@ -382,9 +382,12 @@ impl CalibrationRenderer {
         }
     }
 
-    fn prepare_semantic(&self, source: &str) -> Result<Option<SemanticArtifact>, Box<RenderError>> {
+    fn prepare_presentation(
+        &self,
+        source: &str,
+    ) -> Result<Option<PresentationArtifact>, Box<RenderError>> {
         self.renderer
-            .prepare_semantic(source, OperationControl::new())
+            .prepare_presentation(source, OperationControl::new())
             .map_err(Box::new)
     }
 
@@ -402,7 +405,7 @@ impl CalibrationRenderer {
 
     fn render_svg_from_semantic(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
     ) -> Result<Option<SvgOutput>, Box<RenderError>> {
         let output =
             self.render_semantic_target(semantic, RenderTarget::Svg(self.svg_request.clone()))?;
@@ -414,7 +417,7 @@ impl CalibrationRenderer {
 
     fn render_layout_from_semantic(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
     ) -> Result<Option<SvgLayoutOutput>, Box<RenderError>> {
         let output = self
             .render_semantic_target(semantic, RenderTarget::LayoutJson(self.svg_request.clone()))?;
@@ -426,7 +429,7 @@ impl CalibrationRenderer {
 
     fn render_semantic_target(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
         target: RenderTarget,
     ) -> Result<RenderOutput, Box<RenderError>> {
         semantic.render(target).map_err(Box::new)
@@ -533,7 +536,7 @@ fn run_single_probe(
         ProbeStage::Semantic => {
             let started = Instant::now();
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             SingleProbeOutcome::AcceptedSemantic {
                 elapsed_ns: elapsed_ns(started),
@@ -543,7 +546,7 @@ fn run_single_probe(
         }
         ProbeStage::Layout => {
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             let started = Instant::now();
             match renderer.render_layout_from_semantic(semantic) {
@@ -570,7 +573,7 @@ fn run_single_probe(
         }
         ProbeStage::Svg => {
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             let started = Instant::now();
             match renderer.render_svg_from_semantic(semantic) {
@@ -1127,7 +1130,7 @@ fn calibrate_fixture_corpus(
         .ok_or("maximum corpus fixture disappeared")?;
     let maximum_source = fs::read_to_string(&maximum_input.path)?;
     let maximum_semantic = bounded
-        .prepare_semantic(&maximum_source)?
+        .prepare_presentation(&maximum_source)?
         .ok_or("maximum fixture was not recognized during semantic inspection")?;
     let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum, policy, theme)?;
 

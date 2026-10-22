@@ -11,8 +11,8 @@ use merman::svg::{
     TextMeasurementProfileIdentity, TextStyle,
 };
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest,
-    presentation::PresentationConfig,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, presentation::PresentationConfig,
 };
 
 const SOURCE: &str = r#"%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }));
     let renderer = Renderer::new()
-        .with_engine(Engine::new().with_site_config(site_config))
+        .with_presentation_engine(MermaidEngine::new().with_site_config(site_config))
         .with_parse_options(merman::ParseOptions::strict());
     let request = SvgRequest {
         environment: SvgEnvironment::deterministic().with_text_measurement_policy(policy),

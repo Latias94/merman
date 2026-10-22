@@ -8,7 +8,7 @@ use merman_core::diagrams::sequence::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use support::render_model;
@@ -34,7 +34,7 @@ const LINETYPE_BREAK_END: i32 = 31;
 const LINETYPE_PAR_OVER_START: i32 = 32;
 
 fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("sequence diagram should parse")
         .expect("sequence diagram should be detected");
@@ -65,7 +65,7 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
 }
 
 fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("sequence diagram should parse")
         .expect("sequence diagram should be detected");

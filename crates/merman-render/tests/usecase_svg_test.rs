@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -46,7 +46,7 @@ fn render_config_with_environment(
     config: serde_json::Value,
     environment: RenderEnvironment,
 ) -> (merman_core::ManagedSemanticJson, String) {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(config));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Usecase")
@@ -984,7 +984,7 @@ const MATH_LITERAL_BREAK_SOURCES: &[&str] = &[
 fn usecase_math_capability_admission_matches_html_label_rendering() {
     for source in MATH_LABEL_SOURCES.iter().chain(MATH_LITERAL_BREAK_SOURCES) {
         for html_labels in [true, false] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .with_site_config(PresentationConfig::from_value(json!({
                     "layout": "dagre", "htmlLabels": html_labels,
                 })))
@@ -1118,7 +1118,7 @@ json Data@{"surrogate":"\ud800","$$x":{"y$$":1}}
 json Data@{"surrogate":"\ud800","values":["$$x^2$$"]}
 "#,
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

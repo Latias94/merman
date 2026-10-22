@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::ParseMetadata;
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{
     LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
     starts_with_case_insensitive,
@@ -301,6 +301,7 @@ fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
 struct JourneyBlockText {
     text: String,
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     opening: SourceSpan,
     closing: Option<SourceSpan>,
 }
@@ -333,6 +334,7 @@ fn parse_acc_descr_block_spanned(
         return Ok(Some(JourneyBlockText {
             text: buf.trim().to_string(),
             span: SourceSpan::new(content_start, content_start + end),
+            #[cfg(feature = "editor-facts")]
             opening: SourceSpan::new(content_start - 1, content_start),
             closing: Some(closing),
         }));
@@ -358,6 +360,7 @@ fn parse_acc_descr_block_spanned(
     Ok(Some(JourneyBlockText {
         text: buf.trim().to_string(),
         span: SourceSpan::new(content_start, content_end.max(content_start)),
+        #[cfg(feature = "editor-facts")]
         opening: SourceSpan::new(content_start - 1, content_start),
         closing,
     }))
@@ -375,7 +378,7 @@ fn strip_comment_prefix(line: &str) -> &str {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_journey(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let source = construct_journey_semantic_source(
         code,
         &meta.diagram_type,
@@ -390,7 +393,7 @@ pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_journey_semantic_source_controlled(
@@ -466,7 +469,7 @@ pub(crate) fn parse_journey_semantic_model_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &JourneyDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
@@ -495,7 +498,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_journey_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<JourneyDiagramRenderModel> {
     construct_journey_semantic_source(
         code,
@@ -510,7 +513,7 @@ pub(crate) fn parse_journey_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_journey_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<JourneyDiagramRenderModel>> {
     let construction = construct_journey_semantic_source_controlled(
@@ -987,14 +990,14 @@ mod tests {
         EditorSemanticKind, EditorSemanticRole,
     };
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan};
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
     use serde_json::json;
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -1072,7 +1075,7 @@ section Order from website\n",
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn journey_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "journey\n\
 title Adding journey diagram functionality to mermaid\n\
 accTitle: Adding acc journey diagram functionality to mermaid\n\
@@ -1132,7 +1135,7 @@ A task: 5: Alice, Bob\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn journey_entrypoints_and_combined_projection_construct_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "journey\n",
             "title Checkout journey\n",
@@ -1177,7 +1180,7 @@ A task: 5: Alice, Bob\n";
     #[cfg(feature = "compat-json")]
     #[test]
     fn journey_typed_projection_preserves_empty_and_header_only_output_states() {
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "journey".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1237,7 +1240,7 @@ A task: 5: Alice, Bob\n";
 
         #[cfg(feature = "presentation")]
         {
-            let meta = crate::ParseMetadata {
+            let meta = crate::PresentationMetadata {
                 diagram_type: "journey".to_string(),
                 config: crate::MermaidConfig::default(),
                 effective_config: crate::presentation::PresentationConfig::default(),
@@ -1267,7 +1270,7 @@ A task: 5: Alice, Bob\n";
         .model
         .unwrap();
         #[cfg(feature = "compat-json")]
-        let meta = ParseMetadata {
+        let meta = PresentationMetadata {
             diagram_type: "journey".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1292,7 +1295,7 @@ A task: 5: Alice, Bob\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn journey_malformed_task_recovers_prior_statement_facts_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "journey\nsection Checkout\nBroken task\n";
         let task_start = text.find("Broken task").expect("malformed task");
         let insertion = task_start + "Broken task".len();
@@ -1320,7 +1323,7 @@ A task: 5: Alice, Bob\n";
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn journey_task_without_data_reports_insertion_point() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "journey\nTask:\n";
         let colon = text.find(':').expect("task colon");
         let error = engine
@@ -1354,7 +1357,7 @@ A task: 5: Alice, Bob\n";
         let facts = crate::family::test_support::editor_facts(
             parse_journey_json_and_editor_facts,
             text,
-            &ParseMetadata {
+            &PresentationMetadata {
                 diagram_type: "journey".to_string(),
                 config: crate::MermaidConfig::empty_object(),
                 effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -1502,7 +1505,7 @@ R task: 5:\n",
             "section Repeated\n",
             "Second: 3: Bob\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("duplicate Journey sections should parse")
             .expect("Journey source should be detected");

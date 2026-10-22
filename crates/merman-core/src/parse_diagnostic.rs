@@ -10,6 +10,7 @@
 use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
 use crate::source_span::SourceSpan;
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn lalrpop_recovery_span<T, E>(
     error: &lalrpop_util::ParseError<usize, T, E>,
     fallback_offset: usize,

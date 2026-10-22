@@ -6,33 +6,24 @@ use merman::ascii::{
 };
 use merman::resources::ResourceProfile;
 use merman::{
-    AsciiRequest, OperationControl, RenderOutput, RenderRequest, RenderSemanticModel, Renderer,
+    AsciiRequest, OperationControl, ParsedSemanticDiagram, RenderOutput, RenderRequest, Renderer,
 };
 
-fn render_model_for(source: &str) -> RenderSemanticModel {
-    merman::Engine::new()
-        .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
+fn render_model_for(source: &str) -> ParsedSemanticDiagram {
+    merman::SemanticParser::new()
+        .parse_diagram_sync(source)
         .unwrap()
-        .unwrap()
-        .into_parts()
-        .1
 }
 
 fn render_typed_model(
-    model: &RenderSemanticModel,
+    model: &ParsedSemanticDiagram,
     options: AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String, AsciiError> {
     let context = merman::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context");
-    let ascii_model = merman::render::ascii_diagram_from_full(model);
-    AsciiRenderer::new(options)?.render_model(
-        &ascii_model,
-        &OperationControl::new(),
-        &context,
-        resources,
-    )
+    AsciiRenderer::new(options)?.render_parsed(model, &OperationControl::new(), &context, resources)
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {
@@ -292,10 +283,9 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
             let context = merman::runtime::RuntimePolicy::deterministic()
                 .begin_operation()
                 .expect("deterministic operation context");
-            let ascii_model = merman::render::ascii_diagram_from_full(&model);
             let rendered = AsciiRenderer::new(options)
                 .expect("ASCII options should validate")
-                .render_model(&ascii_model, &control, &context, resources)
+                .render_parsed(&model, &control, &context, resources)
                 .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })

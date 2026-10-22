@@ -506,21 +506,22 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 |policy| engine.clone().with_runtime_policy(policy),
             );
             let renderer = merman::Renderer::new()
-                .with_engine(render_engine)
+                .with_presentation_engine(render_engine)
                 .with_parse_options(merman::ParseOptions {
                     suppress_errors: true,
                 });
-            let semantic = match renderer.prepare_semantic(&text, merman::OperationControl::new()) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    missing.push(format!("{diagram}/{stem}: no diagram detected"));
-                    continue;
-                }
-                Err(err) => {
-                    missing.push(format!("{diagram}/{stem}: parse failed: {err}"));
-                    continue;
-                }
-            };
+            let semantic =
+                match renderer.prepare_presentation(&text, merman::OperationControl::new()) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => {
+                        missing.push(format!("{diagram}/{stem}: no diagram detected"));
+                        continue;
+                    }
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: parse failed: {err}"));
+                        continue;
+                    }
+                };
 
             if matches!(diagram.as_str(), "flowchart" | "sequence")
                 && source_requires_math(

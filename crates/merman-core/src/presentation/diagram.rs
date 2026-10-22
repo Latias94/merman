@@ -6,7 +6,9 @@ use crate::json_value::ManagedJson as ManagedSemanticJson;
 use crate::preprocess::SourceConfigEvidence;
 #[cfg(feature = "compat-json")]
 use crate::{Error, OperationPhase};
-use crate::{MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result};
+use crate::{
+    MermaidConfig, OperationControl, OperationControlResult, PresentationMetadata, Result,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -16,25 +18,25 @@ use std::sync::Arc;
 ///
 /// Implementations must call [`OperationControl::checkpoint`] inside potentially long-running loops.
 /// The outer [`OperationControlResult`] reports cooperative cancellation; the inner [`Result`]
-/// reports Mermaid detection or parse failures. Non-cancellable `Engine` snapshot and model APIs
+/// reports Mermaid detection or parse failures. Non-cancellable `MermaidEngine` snapshot and model APIs
 /// surface an unexpected outer cancellation as [`crate::Error::OperationCancelled`].
 #[cfg(feature = "compat-json")]
 pub type DiagramSemanticParser = fn(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>>;
 
 /// Parser used by the pinned built-in semantic JSON path.
 #[cfg(feature = "compat-json")]
 pub(crate) type BuiltInDiagramSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
+    fn(code: &str, meta: &PresentationMetadata) -> Result<Value>;
 
 /// Parser used by the built-in typed render-model path for one Mermaid diagram family.
 pub(crate) type BuiltInRenderSemanticParser =
     fn(
         code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<RenderSemanticParseOutput>>;
 
@@ -44,7 +46,7 @@ pub(crate) type BuiltInRenderSemanticParser =
 /// reserved for the pinned family catalog and cannot be manufactured through this interface.
 pub type CustomJsonRenderParser = fn(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<CustomJsonRenderModel>>;
 
@@ -145,7 +147,7 @@ impl DiagramRegistry {
 #[cfg(feature = "compat-json")]
 pub struct ParsedDiagram {
     /// Diagram type and effective configuration extracted during preprocessing.
-    pub meta: ParseMetadata,
+    pub meta: PresentationMetadata,
     /// Semantic JSON model matching Mermaid's parser/database output shape where possible.
     pub model: ManagedSemanticJson,
 }
@@ -191,7 +193,7 @@ impl DiagramParseOutcome {
 #[cfg(feature = "compat-json")]
 #[cfg(feature = "editor-facts")]
 pub struct DiagramParseSnapshot {
-    meta: ParseMetadata,
+    meta: PresentationMetadata,
     outcome: DiagramParseOutcome,
     editor_facts: ParsedEditorFacts,
     source_config: SourceConfigEvidence,
@@ -202,7 +204,7 @@ pub struct DiagramParseSnapshot {
 #[cfg(feature = "editor-facts")]
 impl DiagramParseSnapshot {
     pub(crate) fn new(
-        meta: ParseMetadata,
+        meta: PresentationMetadata,
         outcome: DiagramParseOutcome,
         editor_facts: ParsedEditorFacts,
         source_config: SourceConfigEvidence,
@@ -218,7 +220,7 @@ impl DiagramParseSnapshot {
     }
 
     /// Consumes the closed snapshot into its three operation-owned projections.
-    pub fn into_parts(self) -> (ParseMetadata, DiagramParseOutcome, ParsedEditorFacts) {
+    pub fn into_parts(self) -> (PresentationMetadata, DiagramParseOutcome, ParsedEditorFacts) {
         (self.meta, self.outcome, self.editor_facts)
     }
 
@@ -226,7 +228,7 @@ impl DiagramParseSnapshot {
     pub fn into_parts_with_source_config(
         self,
     ) -> (
-        ParseMetadata,
+        PresentationMetadata,
         DiagramParseOutcome,
         ParsedEditorFacts,
         SourceConfigEvidence,
@@ -240,7 +242,7 @@ impl DiagramParseSnapshot {
     }
 
     /// Returns metadata produced by this preprocessing and detection operation.
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         &self.meta
     }
 
@@ -387,7 +389,7 @@ impl CustomJsonRenderModel {
     reason = "Family selection changes variant size ratios; keep the public typed payloads unboxed."
 )]
 pub enum RenderSemanticModel {
-    Error(crate::diagrams::error_diagram::ErrorDiagramRenderModel),
+    Error(crate::diagrams::error_diagram::ErrorDiagramModel),
     CustomJson(CustomJsonRenderModel),
     #[cfg(feature = "diagram-mindmap")]
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
@@ -589,11 +591,11 @@ mod compatibility {
     /// This trait is sealed because built-in family membership is defined by the pinned Mermaid
     /// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
     pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
-        fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson>;
+        fn compatibility_json(&self, meta: &PresentationMetadata) -> Result<ManagedSemanticJson>;
 
         fn compatibility_json_controlled(
             &self,
-            meta: &ParseMetadata,
+            meta: &PresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<ManagedSemanticJson>> {
             control.checkpoint()?;
@@ -608,7 +610,10 @@ mod compatibility {
             impl builtin_render_semantic_private::Sealed for $model {}
 
             impl BuiltinRenderSemantic for $model {
-                fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                fn compatibility_json(
+                    &self,
+                    meta: &PresentationMetadata,
+                ) -> Result<ManagedSemanticJson> {
                     $project(self, meta).map(ManagedSemanticJson::from)
                 }
             }
@@ -631,13 +636,16 @@ mod compatibility {
             impl builtin_render_semantic_private::Sealed for $model {}
 
             impl BuiltinRenderSemantic for $model {
-                fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                fn compatibility_json(
+                    &self,
+                    meta: &PresentationMetadata,
+                ) -> Result<ManagedSemanticJson> {
                     $project(self, meta).map(ManagedSemanticJson::from)
                 }
 
                 fn compatibility_json_controlled(
                     &self,
-                    meta: &ParseMetadata,
+                    meta: &PresentationMetadata,
                     control: &OperationControl,
                 ) -> OperationControlResult<Result<ManagedSemanticJson>> {
                     $controlled_project(self, meta, control)
@@ -648,7 +656,7 @@ mod compatibility {
     }
 
     impl_builtin_render_semantic!(
-        crate::diagrams::error_diagram::ErrorDiagramRenderModel,
+        crate::diagrams::error_diagram::ErrorDiagramModel,
         crate::diagrams::error_diagram::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-mindmap")]
@@ -1047,7 +1055,7 @@ impl RenderSemanticModel {
     /// Built-in families delegate to their own lossless projector. This never reparses source;
     /// custom adapters retain their explicitly named JSON boundary.
     #[cfg(feature = "compat-json")]
-    pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+    pub fn compatibility_json(&self, meta: &PresentationMetadata) -> Result<ManagedSemanticJson> {
         let control = OperationControl::new();
         self.compatibility_json_controlled(meta, &control)
             .expect("a private operation control cannot be cancelled")
@@ -1057,7 +1065,7 @@ impl RenderSemanticModel {
     #[cfg(feature = "compat-json")]
     pub fn compatibility_json_controlled(
         &self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ManagedSemanticJson>> {
         let control = control.for_phase(OperationPhase::Semantic);
@@ -1238,10 +1246,10 @@ impl RenderDiagramRegistry {
 /// model produced by different parse operations:
 ///
 /// ```compile_fail,E0451
-/// use merman_core::{ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
+/// use merman_core::{PresentationMetadata, ParsedDiagramRender, RenderSemanticModel};
 ///
 /// fn forge(
-///     meta: ParseMetadata,
+///     meta: PresentationMetadata,
 ///     model: RenderSemanticModel,
 /// ) -> ParsedDiagramRender {
 ///     ParsedDiagramRender { meta, model }
@@ -1250,7 +1258,7 @@ impl RenderDiagramRegistry {
 #[derive(Debug, Clone)]
 pub struct ParsedDiagramRender {
     /// Diagram type and effective configuration extracted during preprocessing.
-    meta: ParseMetadata,
+    meta: PresentationMetadata,
     /// Catalog-owned presentation family selected after effective appearance is resolved.
     family_id: Option<crate::DiagramFamilyId>,
     /// Typed model consumed by layout and SVG renderers.
@@ -1260,7 +1268,7 @@ pub struct ParsedDiagramRender {
 }
 
 impl ParsedDiagramRender {
-    pub(crate) fn new(meta: ParseMetadata, model: RenderSemanticModel) -> Self {
+    pub(crate) fn new(meta: PresentationMetadata, model: RenderSemanticModel) -> Self {
         let family_id = parsed_operation_family_id(&meta, &model);
         Self {
             meta,
@@ -1271,7 +1279,7 @@ impl ParsedDiagramRender {
     }
 
     pub(crate) fn from_parse_output(
-        meta: ParseMetadata,
+        meta: PresentationMetadata,
         output: RenderSemanticParseOutput,
     ) -> Self {
         let (model, context) = output.into_parts();
@@ -1285,7 +1293,7 @@ impl ParsedDiagramRender {
     }
 
     /// Returns the metadata paired with this render model by the core parse pipeline.
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         &self.meta
     }
 
@@ -1307,7 +1315,7 @@ impl ParsedDiagramRender {
     ///
     /// This intentionally omits parser-owned render context. Renderer integrations borrow the
     /// complete canonical object and its family-specific render-context accessors instead.
-    pub fn into_parts(self) -> (ParseMetadata, RenderSemanticModel) {
+    pub fn into_parts(self) -> (PresentationMetadata, RenderSemanticModel) {
         (self.meta, self.model)
     }
 
@@ -1336,7 +1344,7 @@ impl ParsedDiagramRender {
 }
 
 fn parsed_operation_family_id(
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     model: &RenderSemanticModel,
 ) -> Option<crate::DiagramFamilyId> {
     if matches!(model, RenderSemanticModel::CustomJson(_)) {
@@ -1351,7 +1359,7 @@ pub(crate) fn parse_or_unsupported_controlled(
     registry: &DiagramRegistry,
     diagram_type: &str,
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ManagedSemanticJson>> {
     control.checkpoint()?;
@@ -1377,7 +1385,7 @@ mod registry_clone_tests {
     #[cfg(feature = "compat-json")]
     fn custom_semantic_parser(
         _code: &str,
-        _meta: &ParseMetadata,
+        _meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Value>> {
         control.checkpoint()?;
@@ -1386,7 +1394,7 @@ mod registry_clone_tests {
 
     fn custom_render_parser(
         _code: &str,
-        _meta: &ParseMetadata,
+        _meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
         control.checkpoint()?;
@@ -1399,7 +1407,7 @@ mod registry_clone_tests {
     #[cfg(feature = "compat-json")]
     fn cancelling_semantic_parser(
         _code: &str,
-        _meta: &ParseMetadata,
+        _meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Value>> {
         control.cancel();
@@ -1431,7 +1439,7 @@ mod registry_clone_tests {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
     fn custom_semantic_parsers_share_the_operation_control() {
-        let mut engine = crate::Engine::new();
+        let mut engine = crate::MermaidEngine::new();
         engine
             .diagram_registry_mut()
             .insert("flowchart-v2", cancelling_semantic_parser);
@@ -1448,7 +1456,7 @@ mod registry_clone_tests {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
     fn custom_parser_cancellation_is_typed_for_non_cancellable_snapshot_apis() {
-        let mut engine = crate::Engine::new();
+        let mut engine = crate::MermaidEngine::new();
         engine
             .diagram_registry_mut()
             .insert("flowchart-v2", cancelling_semantic_parser);
@@ -1485,7 +1493,7 @@ mod registry_clone_tests {
         const DEPTH: usize = 5_000;
         fn parser(
             _code: &str,
-            _meta: &ParseMetadata,
+            _meta: &PresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
             let mut value = Value::Null;
@@ -1497,7 +1505,7 @@ mod registry_clone_tests {
             Ok(Ok(model))
         }
 
-        let mut engine = crate::Engine::new();
+        let mut engine = crate::MermaidEngine::new();
         *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
         engine
             .render_diagram_registry_mut()

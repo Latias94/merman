@@ -16,7 +16,7 @@ use crate::{
     Error, OperationControl, OperationControlResult, SourceSpan, family::CombinedSemanticFailure,
 };
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "compat-json")]
@@ -249,7 +249,7 @@ impl WardleyDiagramModel {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_wardley(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     construct_wardley_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?
         .into_compat_json(meta)
@@ -259,7 +259,7 @@ pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -284,7 +284,7 @@ pub(crate) fn parse_wardley_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_wardley_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<WardleyDiagramModel> {
     Ok(construct_wardley_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?
@@ -294,7 +294,7 @@ pub(crate) fn parse_wardley_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_wardley_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<WardleyDiagramModel>> {
     let construction = construct_wardley_semantic_source_controlled(
@@ -314,7 +314,7 @@ pub(crate) fn parse_wardley_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &WardleyDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
@@ -324,7 +324,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &WardleyDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
@@ -492,7 +492,7 @@ struct WardleySemanticSource {
 
 impl WardleySemanticSource {
     #[cfg(all(test, feature = "presentation"))]
-    fn into_render_model(mut self, meta: &ParseMetadata) -> WardleyDiagramModel {
+    fn into_render_model(mut self, meta: &PresentationMetadata) -> WardleyDiagramModel {
         self.model
             .sanitize_common_db_fields(meta.effective_config.as_config());
         self.model
@@ -512,14 +512,14 @@ impl WardleySemanticSource {
     #[cfg(feature = "presentation")]
     fn into_render_model_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<WardleyDiagramModel> {
         self.into_model_controlled(meta.effective_config.as_config(), control)
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
         let control = OperationControl::new();
         self.into_compat_json_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
@@ -528,7 +528,7 @@ impl WardleySemanticSource {
     #[cfg(feature = "compat-json")]
     fn into_compat_json_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
@@ -539,7 +539,7 @@ impl WardleySemanticSource {
     #[cfg(feature = "editor-facts")]
     fn into_combined_parts_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self {
@@ -566,7 +566,9 @@ struct WardleyParseOutcome {
 struct SpannedText {
     text: String,
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     quoted: bool,
 }
 
@@ -604,8 +606,10 @@ struct WardleyPositionedNodeAst {
 #[derive(Debug, Clone)]
 struct WardleyLabelAst {
     offset_x: i64,
+    #[cfg(feature = "editor-facts")]
     offset_x_span: SourceSpan,
     offset_y: i64,
+    #[cfg(feature = "editor-facts")]
     offset_y_span: SourceSpan,
 }
 
@@ -614,8 +618,10 @@ struct WardleyComponentAst {
     positioned: WardleyPositionedNodeAst,
     label: Option<WardleyLabelAst>,
     source_strategy: Option<WardleySourceStrategy>,
+    #[cfg(feature = "editor-facts")]
     source_strategy_span: Option<SourceSpan>,
     inertia: bool,
+    #[cfg(feature = "editor-facts")]
     inertia_span: Option<SourceSpan>,
 }
 
@@ -664,6 +670,7 @@ struct WardleyAnnotationsBoxAst {
 #[derive(Debug, Clone)]
 struct WardleyAnnotationAst {
     number: u64,
+    #[cfg(feature = "editor-facts")]
     number_span: SourceSpan,
     x: SpannedNumber,
     y: SpannedNumber,
@@ -857,7 +864,7 @@ impl WardleyParseProblem {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_wardley_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<WardleySemanticSource, CombinedSemanticFailure> {
     construct_wardley_semantic_source_controlled(
         code,
@@ -1725,8 +1732,10 @@ fn parse_component(
         },
         label,
         source_strategy: source_strategy.map(|(strategy, _)| strategy),
+        #[cfg(feature = "editor-facts")]
         source_strategy_span: source_strategy.map(|(_, span)| span),
         inertia: inertia_span.is_some(),
+        #[cfg(feature = "editor-facts")]
         inertia_span,
     })
 }
@@ -1780,15 +1789,17 @@ fn parse_optional_label(
     };
     cursor.pos += cursor.remaining().len() - rest.len();
     cursor.consume_char('[', "after wardley label")?;
-    let (offset_x, offset_x_span) = cursor.take_signed_integer("wardley label X offset")?;
+    let (offset_x, _offset_x_span) = cursor.take_signed_integer("wardley label X offset")?;
     cursor.consume_char(',', "between wardley label offsets")?;
-    let (offset_y, offset_y_span) = cursor.take_signed_integer("wardley label Y offset")?;
+    let (offset_y, _offset_y_span) = cursor.take_signed_integer("wardley label Y offset")?;
     cursor.consume_char(']', "after wardley label offsets")?;
     Ok(Some(WardleyLabelAst {
         offset_x,
-        offset_x_span,
+        #[cfg(feature = "editor-facts")]
+        offset_x_span: _offset_x_span,
         offset_y,
-        offset_y_span,
+        #[cfg(feature = "editor-facts")]
+        offset_y_span: _offset_y_span,
     }))
 }
 
@@ -1964,6 +1975,7 @@ fn parse_annotation(
     cursor.expect_end("wardley annotation")?;
     Ok(WardleyAnnotationAst {
         number: number.value as u64,
+        #[cfg(feature = "editor-facts")]
         number_span: number.span,
         x,
         y,
@@ -2048,11 +2060,13 @@ fn split_link_label(
             SourceSpan::new(statement_start + index, statement_start + index + 1),
         ));
     }
-    let (trimmed, start) = trim_horizontal(raw, statement_start + index + 1);
+    let (trimmed, _start) = trim_horizontal(raw, statement_start + index + 1);
     let label = SpannedText {
         text: trimmed.to_string(),
         span: SourceSpan::new(statement_start + index, statement_start + statement.len()),
-        selection: SourceSpan::new(start, start + trimmed.len()),
+        #[cfg(feature = "editor-facts")]
+        selection: SourceSpan::new(_start, _start + trimmed.len()),
+        #[cfg(feature = "editor-facts")]
         quoted: false,
     };
     Ok((&statement[..index], Some(label)))
@@ -2229,7 +2243,9 @@ fn parse_name(input: &str, base: usize) -> std::result::Result<SpannedText, Ward
         let text = SpannedText {
             text: parsed.value,
             span: parsed.raw_span,
+            #[cfg(feature = "editor-facts")]
             selection: parsed.value_span,
+            #[cfg(feature = "editor-facts")]
             quoted: true,
         };
         if parsed.consumed != trimmed.len() {
@@ -2249,7 +2265,9 @@ fn parse_name(input: &str, base: usize) -> std::result::Result<SpannedText, Ward
     let text = SpannedText {
         text: trimmed.to_string(),
         span: SourceSpan::new(start, start + trimmed.len()),
+        #[cfg(feature = "editor-facts")]
         selection: SourceSpan::new(start, start + trimmed.len()),
+        #[cfg(feature = "editor-facts")]
         quoted: false,
     };
     Ok(text)
@@ -2280,7 +2298,9 @@ fn parse_wardley_quoted_text(
     let text = SpannedText {
         text: parsed.value,
         span: parsed.raw_span,
+        #[cfg(feature = "editor-facts")]
         selection: parsed.value_span,
+        #[cfg(feature = "editor-facts")]
         quoted: true,
     };
     Ok((text, consumed))
@@ -3011,10 +3031,10 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
-    use crate::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+    use crate::{MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel};
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "wardley".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -3036,7 +3056,9 @@ mod tests {
                         name: SpannedText {
                             text: format!("component-{index}"),
                             span,
+                            #[cfg(feature = "editor-facts")]
                             selection: span,
+                            #[cfg(feature = "editor-facts")]
                             quoted: false,
                         },
                         visibility: SpannedNumber { value: 0.5, span },
@@ -3044,8 +3066,10 @@ mod tests {
                     },
                     label: None,
                     source_strategy: None,
+                    #[cfg(feature = "editor-facts")]
                     source_strategy_span: None,
                     inertia: false,
+                    #[cfg(feature = "editor-facts")]
                     inertia_span: None,
                 })
                 .collect(),
@@ -3426,7 +3450,7 @@ pipeline Platform {
         let source = "wardley-beta\ncomponent API [0.6, 0.7]\ncomponent DB [0.4, 0.5]\nAPI -> DB\n";
         #[cfg(feature = "editor-facts")]
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         #[cfg(feature = "editor-facts")]
         let combined = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
         #[cfg(feature = "editor-facts")]
@@ -3642,7 +3666,7 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::ParseMetadata {
+            let full_metadata = crate::PresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
                 effective_config: crate::presentation::PresentationConfig::from_config(

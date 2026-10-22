@@ -7,7 +7,7 @@ type FamilyFixture = (
 );
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
@@ -115,12 +115,12 @@ fn render_architecture_fixture_with_options(
 }
 
 fn render_architecture_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     render_architecture_text_with_engine_and_options(&engine, text, options)
 }
 
 fn render_architecture_text_with_engine_and_options(
-    engine: &Engine,
+    engine: &MermaidEngine,
     text: &str,
     options: &SvgRenderOptions,
 ) -> String {
@@ -134,7 +134,7 @@ fn render_architecture_text_with_engine_and_options(
         .to_owned()
 }
 
-fn prepare_architecture_text_with_engine(engine: &Engine, text: &str) -> FamilyFixture {
+fn prepare_architecture_text_with_engine(engine: &MermaidEngine, text: &str) -> FamilyFixture {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -172,7 +172,7 @@ fn architecture_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>
 fn prepare_architecture_with_theme_and_environment(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: RenderEnvironment,
 ) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -212,7 +212,7 @@ architecture-beta
 service api(test:rocket)[API]
 service worker(test:rocket)[Worker]
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse architecture")
@@ -391,7 +391,7 @@ fn assert_close(actual: f64, expected: f64, message: &str) {
 #[test]
 fn architecture_svg_handles_deep_group_chain() {
     const DEPTH: usize = 64;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for depth in [1, DEPTH] {
         let source = deep_group_chain_diagram(depth);
         let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
@@ -437,7 +437,7 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
     const DEPTH: usize = 1_200;
     for depth in [1, DEPTH] {
         let source = deep_icon_text_diagram(depth);
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let handle = std::thread::Builder::new()
             .name("architecture-deep-icon-text-svg".to_string())
             .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
@@ -469,7 +469,7 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
 
 #[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"themeVariables": {"lineColor": "#445566", "primaryBorderColor": "#778899", "archEdgeColor": "#010203", "archEdgeArrowColor": "#040506", "archEdgeWidth": 7, "archGroupBorderColor": "#070809", "archGroupBorderWidth": "6px"}}}%%
@@ -520,7 +520,7 @@ fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_d
             prepare_architecture_with_theme_and_environment(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 RenderEnvironment::deterministic(),
             );
         let artifact = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
@@ -705,7 +705,7 @@ fn architecture_layout_caches_service_child_bounds() {
   service cache(server)[Cache] in app
   gateway:R -- L:cache
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -727,7 +727,7 @@ fn architecture_layout_caches_service_child_bounds() {
 
 #[test]
 fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_size() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "fontSize": "24px" },
         "architecture": { "fontSize": 16 }
     })));
@@ -771,7 +771,7 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
         prepare_architecture_with_theme_and_environment(
             source,
             &theme,
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "architecture": { "fontSize": 19 }
             }))),
             counting_architecture_environment(Arc::clone(&host)),
@@ -874,7 +874,7 @@ fn architecture_near_integer_font_size_uses_one_canonical_css_value() {
         prepare_architecture_with_theme_and_environment(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             counting_architecture_environment(Arc::clone(&host)),
         );
     let artifact = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
@@ -926,7 +926,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
   service outside(server)[Outside service]
   api:R -[request path]- L:db
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -1032,7 +1032,7 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
             )
             .begin_session()
             .expect("begin render session");
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
             .expect("diagram detected");
@@ -1149,7 +1149,7 @@ fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only
                 prepare_architecture_with_theme_and_environment(
                     source,
                     &theme,
-                    Engine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                     RenderEnvironment::deterministic(),
                 );
             let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
@@ -1199,7 +1199,7 @@ fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
     let source = "architecture-beta\nservice api(server)[API]";
     let host = Arc::new(CountingArchitectureHost::default());
     let environment = counting_architecture_environment(Arc::clone(&host));
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1261,7 +1261,7 @@ fn architecture_requested_text_style_does_not_repeat_viewport_measurements() {
             prepare_architecture_with_theme_and_environment(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 counting_architecture_environment(Arc::clone(&host)),
             );
         let artifact = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
@@ -1306,7 +1306,7 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
         .unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
         )),
     )

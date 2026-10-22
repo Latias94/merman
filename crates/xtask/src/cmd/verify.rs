@@ -68,7 +68,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
-        println!("  cargo nextest run --workspace");
+        println!(
+            "  cargo nextest run --workspace --features merman/compat-json,merman/editor-facts"
+        );
         println!("  cargo test -p merman-render --doc");
         println!("  cargo test -p merman --doc --features svg");
         println!(
@@ -234,8 +236,13 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .arg("nextest")
         .arg("run")
         .arg("--workspace")
+        .arg("--features")
+        .arg("merman/compat-json,merman/editor-facts")
         .current_dir(&workspace_root);
-    run_checked("cargo nextest run --workspace", &mut nextest_cmd)?;
+    run_checked(
+        "cargo nextest run --workspace --features merman/compat-json,merman/editor-facts",
+        &mut nextest_cmd,
+    )?;
 
     println!("\n== architecture compile-fail contracts ==");
     for (what, package, features) in [

@@ -2876,9 +2876,9 @@ mod tests {
         use crate::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
         };
-        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "architecture-beta\nservice api(server)[API]\n",
                 ParseOptions::strict(),

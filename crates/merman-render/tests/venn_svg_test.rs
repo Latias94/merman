@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -51,7 +51,7 @@ fn solid(color: &str) -> CanvasPaint {
 fn render_venn_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -73,10 +73,13 @@ fn render_venn_with_theme_requirement(
 }
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
-    render_typed_venn_with_engine(input, Engine::new())
+    render_typed_venn_with_engine(input, MermaidEngine::new())
 }
 
-fn render_typed_venn_with_engine(input: &str, engine: Engine) -> (VennDiagramLayout, String) {
+fn render_typed_venn_with_engine(
+    input: &str,
+    engine: MermaidEngine,
+) -> (VennDiagramLayout, String) {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -112,7 +115,7 @@ fn try_render_venn_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin Venn resource-bound session");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse Venn resource-bound fixture")
         .expect("detect Venn resource-bound fixture");
@@ -174,7 +177,7 @@ fn venn_typed_font_stack_reaches_every_local_text_selector_and_strict_receipt() 
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("render strict portable Venn font stack");
@@ -210,7 +213,7 @@ fn venn_theme_font_family_outranks_root_and_typed_font_family() {
             .with_font_stack(FontStack::single("VennTyped").expect("valid Venn typed font")),
     );
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "VennRootFont",
             "themeVariables": { "fontFamily": "VennThemeFont" }
         })));
@@ -241,7 +244,7 @@ fn venn_font_size_is_a_structured_unsupported_residual_without_a_legacy_projecti
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders the structured Venn font-size residual");
@@ -255,7 +258,7 @@ fn venn_font_size_is_a_structured_unsupported_residual_without_a_legacy_projecti
     let error = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .err()
@@ -279,7 +282,7 @@ fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders the mixed Venn typography residual");
@@ -295,7 +298,7 @@ fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
     let error = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .err()
@@ -325,7 +328,7 @@ fn venn_typed_text_fill_reaches_visible_terminals() {
         let rendered = render_venn_with_theme_requirement(
             THEME_TYPOGRAPHY_SOURCE,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .expect("render strict portable Venn text fill theme");
@@ -368,7 +371,7 @@ fn venn_text_fill_is_not_applicable_when_config_or_source_owns_every_terminal() 
     let config_owned = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "vennSetTextColor": "#654321" }
         }))),
         ThemePortabilityRequirement::RequirePortable,
@@ -395,7 +398,7 @@ style A1 color:#654321
 style AB1 color:#654321
 "#,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("source-owned Venn text fill remains portable");
@@ -437,9 +440,9 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
                 THEME_TYPOGRAPHY_SOURCE.to_owned()
             };
             let engine = if origin == "source" {
-                Engine::new()
+                MermaidEngine::new()
             } else {
-                Engine::new().with_site_config(PresentationConfig::from_value(config))
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config))
             };
             let rendered = render_venn_with_theme_requirement(
                 &source,
@@ -495,7 +498,7 @@ union A,B["Shared"]:3
 style A,B color:#654321
 "#,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("mixed source-owned Venn text terminals remain portable");
@@ -563,7 +566,7 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     );
@@ -594,7 +597,7 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "secure": []
         }))),
     );
@@ -645,7 +648,7 @@ style A1 color:#123456
 #[test]
 fn venn_canonical_typed_path_renders_svg() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r##"%%{init: {"venn": {"useMaxWidth": false, "width": 640, "height": 360}}}%%
 venn-beta
@@ -901,7 +904,7 @@ fn venn_font_ampersand_is_xml_text_encoded_without_changing_css() {
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();

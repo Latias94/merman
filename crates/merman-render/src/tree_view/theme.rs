@@ -982,7 +982,7 @@ mod tests {
             .expect("bind typed Tree View");
         assert_eq!(typed.label_color_css(), "#123456");
 
-        config = merman_core::Engine::new()
+        config = merman_core::MermaidEngine::new()
             .parse_metadata_sync(
                 "---\nconfig:\n  themeVariables:\n    treeView:\n      labelColor: currentColor\n---\ntreeView-beta\n    \"root\"\n",
             )
@@ -1004,7 +1004,7 @@ mod tests {
         assert!(authored.label_color.is_none());
         assert_eq!(authored.line_color_css(), "black");
 
-        let host_config = merman_core::Engine::new()
+        let host_config = merman_core::MermaidEngine::new()
             .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                 serde_json::json!({
                     "themeVariables": {"treeView": {"labelColor": "var(--label)"}}

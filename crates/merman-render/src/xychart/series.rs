@@ -64,7 +64,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::XY_CHART);
         let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
         let source = "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n";
-        let baseline_config = merman_core::Engine::new()
+        let baseline_config = merman_core::MermaidEngine::new()
             .parse_metadata_sync(source)
             .unwrap()
             .effective_config;
@@ -77,7 +77,7 @@ mod tests {
                 .unwrap();
         assert_eq!(baseline.fill_css(0), Some("#123456"));
         for token in [fallback.as_str(), "var(--series)", " , "] {
-            let config = merman_core::Engine::new()
+            let config = merman_core::MermaidEngine::new()
                 .with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "themeVariables": { "xyChart": { "plotColorPalette": token } }
                 })))

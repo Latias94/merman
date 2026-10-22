@@ -18,7 +18,7 @@ use crate::{
     parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 use indexmap::IndexMap;
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
@@ -294,6 +294,7 @@ struct ErReplayFrame {
 #[derive(Debug, Clone)]
 struct SpannedId {
     name: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -307,6 +308,7 @@ impl SpannedIdList {
         self.ids.into_iter().map(|id| id.name).collect()
     }
 
+    #[cfg(feature = "editor-facts")]
     fn span(&self) -> SourceSpan {
         let start = self.ids.first().map(|id| id.span.start).unwrap_or(0);
         let end = self.ids.last().map(|id| id.span.end).unwrap_or(start);
@@ -628,7 +630,7 @@ impl ErDb {
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
+    fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
         let model = self.into_semantic_model();
         render_model_to_compat_json(&model, meta)
     }
@@ -637,7 +639,7 @@ impl ErDb {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ErDiagramModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut value = serde_json::to_value(model)
         .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
@@ -790,7 +792,7 @@ impl ErSemanticFailure {
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
@@ -900,7 +902,7 @@ pub(crate) fn parse_er_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
+fn parse_er_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<ErSemanticSource> {
     construct_er_semantic_source(
         code,
         #[cfg(feature = "editor-facts")]
@@ -914,7 +916,7 @@ fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemant
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_er_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<ErDiagramModel> {
     Ok(parse_er_semantic_source(code, meta)?
         .db
@@ -924,7 +926,7 @@ pub(crate) fn parse_er_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_er_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ErDiagramModel>> {
     let construction = construct_er_semantic_source(
@@ -946,7 +948,7 @@ pub(crate) fn parse_er_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_er(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_er_semantic_source(code, meta)?.db.into_model(meta)
 }
 
@@ -954,7 +956,7 @@ pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_er_semantic_source(code, EditorFactsDemand::Capture, control)?;
@@ -1589,6 +1591,7 @@ fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxK
 #[derive(Debug, Clone)]
 struct SpannedDirection {
     value: String,
+    #[cfg(any(test, feature = "editor-facts"))]
     selection: SourceSpan,
 }
 
@@ -1881,6 +1884,7 @@ impl<'input> Lexer<'input> {
                     start,
                     Tok::Direction(SpannedDirection {
                         value: direction.to_string(),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         selection: SourceSpan::new(start + value_end - 2, start + value_end),
                     }),
                     self.pos,
@@ -1955,6 +1959,7 @@ impl<'input> Lexer<'input> {
             }
             ids.push(SpannedId {
                 name: self.input[id_start..id_end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(id_start, id_end),
             });
             self.pos = id_end;
@@ -2446,8 +2451,8 @@ mod tests {
     use crate::EditorSemanticRole;
     use crate::MermaidConfig;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "er".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2457,7 +2462,7 @@ mod tests {
 
     #[test]
     fn er_direction_lexer_preserves_ecmascript_line_terminators() {
-        // Test raw lexer rules before Engine preprocessing normalizes line endings.
+        // Test raw lexer rules before MermaidEngine preprocessing normalizes line endings.
         for separator in ['\r', '\u{2028}', '\u{2029}'] {
             let source = format!("direction RL{separator}direction TB");
             let (start, token, end) = Lexer::new(&source).next().unwrap().unwrap();
@@ -2925,7 +2930,7 @@ mod semantic_tests {
                 diagnostic: full, ..
             } = parse_er(
                 source,
-                &ParseMetadata {
+                &PresentationMetadata {
                     diagram_type: "er".to_string(),
                     config: crate::MermaidConfig::empty_object(),
                     effective_config: crate::presentation::PresentationConfig::empty_object(),
@@ -2958,7 +2963,7 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn er_typed_projection_omits_editor_observers() {
-        let metadata = ParseMetadata {
+        let metadata = PresentationMetadata {
             diagram_type: "er".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

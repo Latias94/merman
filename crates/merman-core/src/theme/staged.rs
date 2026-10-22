@@ -2546,10 +2546,11 @@ mod tests {
         }
 
         for (program, theme) in staged_programs() {
-            let mut engine =
-                crate::Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            let mut engine = crate::MermaidEngine::new().with_site_config(
+                PresentationConfig::from_value(json!({
                     "theme": theme.as_str(),
-                })));
+                })),
+            );
             *engine.registry_mut() = crate::DetectorRegistry::new();
             engine.registry_mut().add_fn("flowchart-v2", detector);
             let metadata = engine.parse_metadata_sync("staged-order-probe").unwrap();

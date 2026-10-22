@@ -2,12 +2,12 @@
 #![cfg(feature = "compat-json")]
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use serde_json::json;
 
 #[test]
 fn public_parse_config_contains_only_admitted_source_overrides() {
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "securityLevel": "strict", "secure": ["securityLevel", "maxTextSize"]
     })));
     for source in [

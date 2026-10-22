@@ -148,11 +148,11 @@ mod tests {
         };
         use crate::svg::parity::flowchart::svg_emit::FlowchartSvgModelRequest;
         use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
-        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
         // Mermaid 12.2 edges.spec.js supplies a two-point swimlane route while
         // getConfig().layout is ELK. Use real rectangle intersections here.
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta TB\nA --> B\n",
                 ParseOptions::strict(),

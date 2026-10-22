@@ -12,7 +12,7 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
@@ -61,7 +61,7 @@ impl InfoSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_info(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model = parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
@@ -71,7 +71,7 @@ pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_info_semantic_source_controlled(
@@ -98,7 +98,7 @@ pub(crate) fn parse_info_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &InfoDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(match &model.compat_output {
         InfoCompatOutput::Empty => json!({}),
@@ -112,7 +112,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<InfoDiagramRenderModel> {
     parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -121,7 +121,7 @@ pub(crate) fn parse_info_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_info_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<InfoDiagramRenderModel>> {
     let construction = construct_info_semantic_source_controlled(
@@ -473,11 +473,11 @@ mod tests {
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
 
     #[cfg(feature = "presentation")]
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "info".to_string(),
             config: crate::MermaidConfig::default(),
             effective_config: crate::presentation::PresentationConfig::default(),
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn parse_info_editor_facts_expose_parser_backed_spans() {
         crate::editor::test_work::reset();
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "info showInfo\n";
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("info", text)
@@ -691,7 +691,7 @@ mod tests {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_invalid_headers_fail_strict_and_use_lenient_error_diagrams() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         for source in ["infox", "packet"] {
             assert!(
                 engine

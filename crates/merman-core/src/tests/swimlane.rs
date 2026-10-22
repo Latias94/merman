@@ -5,7 +5,7 @@ use serde_json::json;
 
 #[test]
 fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "swimlane-beta LR\nA[Start] --> B[Done]\n";
     let parsed = engine
         .parse_diagram_snapshot_sync(text)
@@ -68,7 +68,7 @@ fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
 
 #[test]
 fn parse_swimlane_reuses_flowchart_apostrophe_semantics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "swimlane-beta LR\nsubgraph Supplier\nA[Update the RFQs based on the supplier's response]\nB[Done]\nend\nA -->|'Owner's review'| B\n";
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .expect("Swimlane accepts apostrophes through the shared Flowchart parser")
@@ -86,12 +86,12 @@ fn parse_swimlane_reuses_flowchart_apostrophe_semantics() {
 
 #[test]
 fn parse_swimlane_layout_default_respects_user_config_precedence() {
-    let default = Engine::new()
+    let default = MermaidEngine::new()
         .parse_metadata_sync("swimlane-beta LR\nA-->B\n")
         .unwrap();
     assert_eq!(default.effective_config.get_str("layout"), Some("swimlane"));
     // Mermaid 12 gives an explicit initialized layout precedence over the family default.
-    let engine = Engine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "layout": "dagre"
     })));
 
@@ -128,7 +128,7 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
 
 #[test]
 fn parse_swimlane_render_model_reuses_flowchart_semantics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
         .expect("swimlane render parse succeeds")

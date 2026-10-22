@@ -2285,7 +2285,7 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::sync::Arc;
 
     struct NonLatticeMeasurer {
@@ -2424,7 +2424,7 @@ mod tests {
         let source = include_str!(
             "../../../../fixtures/state/stress_state_batch5_concurrency_four_regions_long_titles_061.mmd"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse state fixture")
             .expect("detect state fixture");

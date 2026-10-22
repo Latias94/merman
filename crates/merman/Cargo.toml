@@ -323,7 +323,10 @@ system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]
 system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
-svg = ["dep:merman-render", "dep:merman-theme-contract"]
+presentation = ["merman-core/presentation"]
+compat-json = ["presentation", "merman-core/compat-json"]
+editor-facts = ["merman-core/editor-facts"]
+svg = ["presentation", "dep:merman-render", "dep:merman-theme-contract"]
 native-fonts = ["svg", "dep:merman-export", "merman-export/native-fonts"]
 system-fonts = ["native-fonts", "merman-export/system-fonts"]
 experimental-system-font-query = ["system-fonts", "merman-export/experimental-system-font-query"]
@@ -337,7 +340,7 @@ png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
 pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
 [dependencies]
-merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts"] }
+merman-core = { workspace = true, features = ["terminal-text"] }
 merman-analysis = { workspace = true, optional = true }
 merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
@@ -365,6 +368,18 @@ usvg = { workspace = true, features = ["system-fonts", "text"] }
 [[test]]
 name = "prepared_render"
 required-features = ["svg"]
+
+[[test]]
+name = "prepared_source"
+required-features = ["svg", "compat-json"]
+
+[[test]]
+name = "deep_lifecycle"
+required-features = ["compat-json"]
+
+[[test]]
+name = "bounded_lifecycle"
+required-features = ["compat-json"]
 
 [[test]]
 name = "theme_composed_effects"
@@ -395,7 +410,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "pipeline"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json", "editor-facts"]
 
 [[bench]]
 name = "native_export"
@@ -415,17 +430,17 @@ required-features = ["svg"]
 [[bench]]
 name = "parse_memory"
 harness = false
-required-features = ["all-diagrams"]
+required-features = ["all-diagrams", "compat-json", "editor-facts"]
 
 [[bench]]
 name = "flowchart_svg_label_memory"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "sequence_message_memory"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "elk_hierarchy_memory"
@@ -435,7 +450,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "flowchart_stress"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "architecture_stress"
@@ -500,6 +515,7 @@ required-features = ["ascii"]
 
 [[example]]
 name = "inspect_semantics"
+required-features = ["diagram-flowchart"]
 
 [[example]]
 name = "inspect_layout"
@@ -511,6 +527,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "deterministic_gantt"
+required-features = ["compat-json", "diagram-gantt"]
 
 [[example]]
 name = "theme_preset"
@@ -534,7 +551,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "layout_work_calibration"
-required-features = ["svg", "layout-cytoscape", "layout-elk", "math"]
+required-features = ["svg", "compat-json", "layout-cytoscape", "layout-elk", "math"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

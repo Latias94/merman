@@ -27,12 +27,12 @@ use crate::svg::SvgPipelinePreset;
 use crate::text::{TextMetrics, WrapMode};
 use merman_core::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
 use merman_core::presentation::PresentationConfig;
-use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
+use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, MermaidEngine, ParseOptions};
 use serde_json::{Value, json};
 
 fn custom_semantic_parser(
     _code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &merman_core::OperationControl,
 ) -> merman_core::OperationControlResult<merman_core::Result<Value>> {
     control.checkpoint()?;
@@ -43,7 +43,7 @@ fn custom_semantic_parser(
 
 fn custom_render_parser(
     _code: &str,
-    _meta: &ParseMetadata,
+    _meta: &PresentationMetadata,
     control: &merman_core::OperationControl,
 ) -> merman_core::OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
     control.checkpoint()?;
@@ -397,7 +397,7 @@ fn decode_edge_label_positions(svg: &str) -> std::collections::HashMap<String, (
 }
 
 fn parse_flowchart(source: &str) -> ParsedDiagramRender {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart")
@@ -952,7 +952,7 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
         .compile(DiagramThemeSpec::new().with_mermaid_compatibility(compatibility))
         .expect("compile explicit Mermaid compatibility theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\nReady --> Done\n",
             ParseOptions::strict(),
@@ -981,17 +981,17 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
 
 #[test]
 fn capability_plan_reports_the_authoritative_render_family() {
-    let configured_swimlane = Engine::new().with_site_config(
+    let configured_swimlane = MermaidEngine::new().with_site_config(
         merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
     );
     let cases = [
         (
-            Engine::new(),
+            MermaidEngine::new(),
             "flowchart TD\nA --> B\n",
             DiagramFamilyId::FLOWCHART,
         ),
         (
-            Engine::new(),
+            MermaidEngine::new(),
             "swimlane-beta LR\nA --> B\n",
             DiagramFamilyId::SWIMLANE,
         ),
@@ -1018,12 +1018,12 @@ fn family_theme_plan_tracks_the_authoritative_family() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
-    let configured_swimlane = Engine::new().with_site_config(
+    let configured_swimlane = MermaidEngine::new().with_site_config(
         merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
     );
     let cases = [
         (
-            Engine::new(),
+            MermaidEngine::new(),
             "flowchart TD\nA --> B\n",
             DiagramFamilyId::FLOWCHART,
         ),
@@ -1066,7 +1066,7 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
-    let engine = Engine::new().with_site_config(
+    let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
     );
     let parsed = theme
@@ -1174,7 +1174,7 @@ fn solid_root_layer_is_applied_by_terminal_svg_completion() {
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1222,7 +1222,7 @@ fn solid_root_base_is_applied_by_terminal_svg_completion() {
         )
         .expect("compile solid canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1258,7 +1258,7 @@ fn explicit_transparent_root_base_clears_the_mermaid_white_background() {
             .requires_capability(ThemeCapability::TransparentPaint)
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1293,7 +1293,7 @@ fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
         )
         .expect("compile root canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1343,7 +1343,7 @@ fn strict_root_theme_is_rechecked_after_svg_postprocessing() {
         )
         .expect("compile root canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1373,7 +1373,7 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
     );
     let render = |portability| {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -1476,7 +1476,7 @@ fn unsupported_root_pattern_residual_survives_terminal_svg_completion() {
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1513,7 +1513,7 @@ fn root_theme_evidence_preserves_distinct_layers_with_equal_capabilities() {
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1602,7 +1602,7 @@ fn require_portable_accepts_a_root_layer_proved_by_the_svg_consumer() {
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1638,7 +1638,7 @@ fn require_portable_rejects_an_unsupported_root_pattern_after_svg_consumption() 
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile pattern theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1681,7 +1681,7 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
         )
         .expect("compile strict Flowchart theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -1738,7 +1738,7 @@ fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
         )
         .expect("compile strict Swimlane theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
             ParseOptions::strict(),
@@ -1802,7 +1802,7 @@ fn require_portable_accepts_explicit_default_flowchart_family_node_paint() {
                 Some(crate::diagram_theme::ThemeVariant::Default),
             );
             let parsed = theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart-family source should produce a render model");
@@ -1852,7 +1852,7 @@ fn flowchart_source_paint_override_does_not_claim_typed_application() {
         )
         .expect("compile Flowchart source precedence theme");
     let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nclassDef source fill:#22c55e,stroke:#111827\nA[Alpha]:::source\nB[Beta]\nstyle B fill:#f59e0b,stroke:#334155\n",
                 ParseOptions::strict(),
@@ -1905,7 +1905,7 @@ fn flowchart_single_source_paint_override_keeps_other_typed_channel_applied() {
         )
         .expect("compile Flowchart source precedence theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nstyle A fill:#22c55e\nA[Alpha]\n",
             ParseOptions::strict(),
@@ -1940,7 +1940,7 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
     );
     let render = |source: &str| {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -1974,7 +1974,7 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
     let dynamic_source = "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n";
     let parse_dynamic = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(dynamic_source, ParseOptions::strict())
             .unwrap()
             .expect("dynamic source paint should produce a render model")
@@ -2032,7 +2032,7 @@ fn flowchart_explicit_mermaid_config_owns_typed_node_paint_precedence() {
     );
 
     for explicit_fill in ["#22c55e", "#ef4444"] {
-        let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+        let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
             PresentationConfig::from_value(json!({
                 "themeVariables": {"mainBkg": explicit_fill}
             })),
@@ -2080,7 +2080,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emiss
     ] {
         let theme = flowchart_node_stroke_width_theme(family, 2.5);
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2119,7 +2119,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emiss
 #[test]
 fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
     let theme = flowchart_node_stroke_width_theme(DiagramFamilyId::FLOWCHART, 2.5);
-    let render = |engine: Engine, source: &str| {
+    let render = |engine: MermaidEngine, source: &str| {
         let parsed = theme
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -2139,14 +2139,14 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
     };
 
     let source = render(
-        Engine::new(),
+        MermaidEngine::new(),
         "flowchart LR\nstyle A stroke-width:4px\nA[Alpha]\n",
     );
     assert!(flowchart_node_shape_style(source.svg(), "A").contains("stroke-width:4px !important"));
     assert!(!source.svg().contains("stroke-width:2.5px !important"));
 
     let configured = render(
-        Engine::new().with_site_config(PresentationConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "themeVariables": {"strokeWidth": 4}
         }))),
         "flowchart LR\nA[Alpha]\n",
@@ -2200,7 +2200,7 @@ A[Alpha]
         for source in sources {
             let parse = || {
                 theme
-                    .install_parse_compatibility(Engine::new())
+                    .install_parse_compatibility(MermaidEngine::new())
                     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                     .unwrap()
                     .expect("Flowchart source should produce a render model")
@@ -2265,7 +2265,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_dasharray_after_e
     ] {
         let theme = flowchart_node_stroke_dasharray_theme(family, [4.0, 2.0]);
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2305,7 +2305,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_dasharray_after_e
 fn flowchart_source_owns_node_stroke_dasharray_precedence() {
     let theme = flowchart_node_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nstyle A stroke-dasharray:8 3\nA[Alpha]\n",
             ParseOptions::strict(),
@@ -2354,7 +2354,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_radius_after_emission() 
     ] {
         let theme = flowchart_node_radius_theme(family, 8.0);
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2397,7 +2397,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_radius_after_emission() 
 #[test]
 fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     let theme = flowchart_node_radius_theme(DiagramFamilyId::FLOWCHART, 8.0);
-    let render = |engine: Engine, source: &str| {
+    let render = |engine: MermaidEngine, source: &str| {
         let parsed = theme
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -2417,7 +2417,7 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     };
 
     let source = render(
-        Engine::new(),
+        MermaidEngine::new(),
         "flowchart LR\nstyle A rx:4px,ry:6px\nA[Alpha]\n",
     );
     let source_style = flowchart_node_shape_style(source.svg(), "A");
@@ -2433,7 +2433,7 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     );
 
     let configured = render(
-        Engine::new().with_site_config(PresentationConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "look": "neo",
             "themeVariables": {"radius": 4}
         }))),
@@ -2468,7 +2468,7 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
 
 #[test]
 fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "%%{init: {\"look\": \"classic\"}}%%\nflowchart LR\nA[Alpha]\n",
             ParseOptions::strict(),
@@ -2514,7 +2514,7 @@ A["<span style='font-size:31px'>Alpha</span>"]
         )
         .expect("compile Flowchart base font-size theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -2575,7 +2575,7 @@ end
     for (origin, engine, source, expected_size) in [
         (
             "site",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "fontSize": 19,
                 "themeVariables": {
                     "fontFamily": "Excalifont,Xiaolai SC"
@@ -2586,7 +2586,8 @@ end
         ),
         (
             "source",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
+            MermaidEngine::new()
+                .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
             format!(
                 "%%{{init: {{\"fontSize\": 21, \"themeVariables\": {{\"fontFamily\": \"Excalifont,Xiaolai SC\"}}}}}}%%\n{SOURCE}"
             ),
@@ -2652,7 +2653,7 @@ fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
         ))
         .expect("compile oversized Sequence base typography theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n",
             ParseOptions::strict(),
@@ -2700,7 +2701,7 @@ A[Alpha]
 "#;
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -2764,7 +2765,7 @@ fn flowchart_explicit_primary_color_owns_derived_main_background() {
     let theme = flowchart_node_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
-    let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+    let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
         PresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {"primaryColor": "#123456"}
@@ -2824,7 +2825,7 @@ fn flowchart_theme_recipe_mermaid_config_owns_typed_node_paint_precedence() {
         )
         .expect("compile Flowchart theme recipe");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -2855,7 +2856,7 @@ fn flowchart_source_paint_residual_is_independent_from_theme_channel() {
     let source = "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -2929,7 +2930,7 @@ A[Alpha]
     for source in cases {
         let parse = || {
             theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart source should produce a render model")
@@ -2985,7 +2986,7 @@ fn flowchart_start_node_proves_direct_typed_paint_emission() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nA@{ shape: start }\n",
             ParseOptions::strict(),
@@ -3058,7 +3059,7 @@ note for A "note"
             variant,
         );
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
             .expect("Class source should produce a render model");
@@ -3146,7 +3147,7 @@ A o-- B
             .expect("valid Class relation width"),
         None,
     );
-    let render = |engine: Engine, source: &str| {
+    let render = |engine: MermaidEngine, source: &str| {
         let parsed = theme
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -3175,13 +3176,13 @@ A o-- B
             .collect::<Vec<_>>()
     };
 
-    let typed = render(Engine::new(), DIAGRAM);
+    let typed = render(MermaidEngine::new(), DIAGRAM);
     let typed_view_box = view_box(typed.svg());
     assert!(typed.svg().contains("stroke-width:6px !important"));
 
     let configured = [
         render(
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -3194,7 +3195,7 @@ A o-- B
             SOURCE_CONFIG,
         ),
         render(
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"strokeWidth": 160}
             }))),
             DIAGRAM,
@@ -3248,7 +3249,7 @@ fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
         let theme = class_relation_theme(style, None);
         let parse = || {
             theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
                 .unwrap()
                 .expect("Class source should produce a render model")
@@ -3318,7 +3319,7 @@ note for A "note"
         .compile(DiagramThemeSpec::new())
         .expect("compile empty Class theme");
 
-    let render = |engine: Engine, session: RenderSession| {
+    let render = |engine: MermaidEngine, session: RenderSession| {
         let parsed = engine
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
@@ -3329,13 +3330,13 @@ note for A "note"
             .expect("render Class byte-stability fixture")
     };
     let unthemed = render(
-        Engine::new(),
+        MermaidEngine::new(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin unthemed Class session"),
     );
     let themed = render(
-        empty_theme.install_parse_compatibility(Engine::new()),
+        empty_theme.install_parse_compatibility(MermaidEngine::new()),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&empty_theme)
             .expect("begin empty-theme Class session"),
@@ -3363,7 +3364,7 @@ G ..> H
             .expect("valid wide Class relation stroke"),
         None,
     );
-    let render = |engine: Engine, session: RenderSession| {
+    let render = |engine: MermaidEngine, session: RenderSession| {
         let parsed = engine
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
@@ -3374,13 +3375,13 @@ G ..> H
             .expect("render Class paint-bounds fixture")
     };
     let baseline = render(
-        Engine::new(),
+        MermaidEngine::new(),
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin unthemed Class session"),
     );
     let themed = render(
-        theme.install_parse_compatibility(Engine::new()),
+        theme.install_parse_compatibility(MermaidEngine::new()),
         crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -3419,7 +3420,7 @@ fn class_relation_theme_is_not_applicable_without_relations() {
         None,
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
         .unwrap()
         .expect("Class source should produce a render model");
@@ -3479,7 +3480,7 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
     ] {
         let theme = theme_for(selector);
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Class ordinal source should produce a render model");
@@ -3524,7 +3525,7 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
 
     let theme = theme_for(OrdinalSelector::exact(1).unwrap());
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(ONE_RELATION, ParseOptions::strict())
         .unwrap()
         .expect("Class exact ordinal source should produce a render model");
@@ -3564,7 +3565,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
     );
     let parse = |source| {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Class Node source should produce a render model")
@@ -3659,7 +3660,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         )
         .expect("compile superseded Class Node rules");
     let parsed = superseded_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
         .unwrap()
         .expect("superseded Class Node source should produce a render model");
@@ -3707,7 +3708,7 @@ fn class_mixed_direct_width_and_scalar_paint_share_terminal_evidence() {
         ThemePortabilityRequirement::RequirePortable,
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync("classDiagram\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -3736,7 +3737,7 @@ fn flowchart_common_style_node_preserves_best_effort_paint_and_source_precedence
     );
     let render = |source: &str, portability| {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart choice source should produce a render model");
@@ -3791,7 +3792,7 @@ fn flowchart_unemitted_source_paint_cannot_hide_theme_residual() {
     ] {
         let parse = || {
             theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart source should produce a render model")
@@ -3853,7 +3854,7 @@ fn flowchart_generated_default_class_css_is_a_real_start_paint_surface() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nclassDef default fill:#22c55e\nA@{ shape: start }\n",
             ParseOptions::strict(),
@@ -3888,7 +3889,7 @@ fn flowchart_start_uses_the_generated_css_winner_that_reaches_its_wrapper() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nclassDef default fill:#22c55e\nclassDef explicit fill:#f97316\nA@{ shape: start }\nclass A explicit\n",
                 ParseOptions::strict(),
@@ -3926,7 +3927,7 @@ fn flowchart_anchor_dynamic_generated_css_is_fail_closed() {
     let source = "flowchart LR\nclassDef default opacity:var(--alpha)\nA@{ shape: anchor }\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -3980,7 +3981,7 @@ fn flowchart_anchor_dynamic_generated_css_is_fail_closed() {
 
 #[test]
 fn flowchart_generated_css_emits_important_once() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nclassDef default fill:#22c55e !important\nA@{ shape: start }\n",
             ParseOptions::strict(),
@@ -4004,7 +4005,7 @@ fn flowchart_direct_class_style_outranks_generated_class_css() {
     let source = "flowchart LR\nclassDef z fill:var(--paint)\nclassDef default fill:#22c55e\nA[Alpha]:::z\nstyle A --paint:#f97316\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4061,7 +4062,7 @@ fn flowchart_direct_class_style_outranks_generated_class_css() {
 
 #[test]
 fn flowchart_hand_drawn_keeps_dynamic_source_paint_in_the_render_transport() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n",
                 ParseOptions::strict(),
@@ -4103,7 +4104,7 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
     };
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new().with_site_config(
+            .install_parse_compatibility(MermaidEngine::new().with_site_config(
                 PresentationConfig::from_value(json!({
                     "secure": [
                         "secure",
@@ -4174,7 +4175,7 @@ fn raw_theme_css_rejects_strict_output_when_typed_rules_are_not_applicable() {
     );
     let source =
         "%%{init: {\"themeCSS\": \".node rect { fill: #f97316; }\"}}%%\nflowchart LR\nA[Alpha]\n";
-    let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+    let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
         PresentationConfig::from_value(json!({
             "secure": [
                 "secure",
@@ -4226,7 +4227,7 @@ fn flowchart_emitted_dynamic_shape_property_is_a_source_residual() {
     let source = "flowchart LR\nstyle A stroke-width:var(--width)\nA[Alpha]\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4287,7 +4288,7 @@ fn flowchart_edge_dynamic_shape_style_is_a_source_residual() {
     let source = "flowchart LR\nA --> B\nlinkStyle 0 stroke:var(--marker),stroke:#111827,stroke-width:var(--width),opacity:var(--alpha),filter:url(#alpha)\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4353,7 +4354,7 @@ fn flowchart_assigned_class_marker_style_is_a_source_residual() {
         "flowchart LR\nA edge@--> B\nclassDef dynamic stroke:var(--edge)\nclass edge dynamic\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4409,7 +4410,7 @@ fn flowchart_invalid_assigned_edge_class_declaration_is_a_source_residual() {
         "flowchart LR\nA edge@--> B\nclassDef unsafe filter:url(#alpha)\nclass edge unsafe\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4477,7 +4478,7 @@ fn flowchart_edge_label_invalid_typography_is_a_source_residual() {
     let source = "flowchart LR\nA -->|label| B\nlinkStyle 0 font-weight:banana\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4542,7 +4543,7 @@ B --> C
 linkStyle 1 font-weight:banana
 "#;
     let canonical_39 = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -4583,7 +4584,7 @@ fn flowchart_cluster_dynamic_shape_style_is_a_source_residual() {
     let source = "flowchart TD\nsubgraph S[Service]\nA\nend\nstyle S stroke-width:var(--width),transform:translateX(1px)\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4668,7 +4669,7 @@ style Lane fill:#f8fafc,stroke:#ef4444,stroke-width:2px,stroke-dasharray:4 2
         ),
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("hand-drawn cluster source should produce a render model");
@@ -4728,7 +4729,7 @@ end
 style Empty font-weight:banana
 "#;
     let canonical_42 = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -4776,7 +4777,7 @@ fn swimlane_cluster_dynamic_shape_style_is_a_source_residual() {
     let source = "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nsubgraph Lane[Lane]\nA\nend\nstyle Lane opacity:var(--alpha),stroke-width:var(--width)\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Swimlane source should produce a render model")
@@ -4862,7 +4863,7 @@ end
 style Empty font-weight:banana
 "#;
     let canonical_45 = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Swimlane source should produce a render model");
@@ -4910,7 +4911,7 @@ fn swimlane_empty_edge_label_still_records_emitted_shape_style() {
         .expect("compile Swimlane Node theme");
     let source = "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA -->| | B\nlinkStyle 0 opacity:var(--alpha)\n";
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Swimlane source should produce a render model");
@@ -4942,7 +4943,7 @@ fn flowchart_dynamic_label_typography_is_a_source_residual() {
     let source = "flowchart LR\nclassDef default --size:40px,font-size:var(--size)\nA[Alpha]\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -4998,7 +4999,7 @@ fn flowchart_icon_label_typography_is_emitted_and_residualized() {
     let source = "flowchart LR\nclassDef default --size:40px,font-size:var(--size)\nA@{ icon: \"missing:icon\", label: \"Alpha\" }\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -5053,7 +5054,7 @@ fn flowchart_empty_subgraph_consumes_typed_node_paint() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nsubgraph Empty\nA\nend\n",
             ParseOptions::strict(),
@@ -5099,7 +5100,7 @@ fn flowchart_icon_without_asset_retains_unemitted_fill_as_residual() {
     let source = "flowchart LR\nI@{ shape: icon, label: \"Plain\" }\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart icon source should produce a render model")
@@ -5179,7 +5180,7 @@ fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
         .expect("compile unsupported Flowchart theme");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
@@ -5250,7 +5251,7 @@ fn require_portable_accepts_flowchart_and_swimlane_node_ordinal_palette_after_sv
         ),
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("source should produce a render model");
@@ -5315,7 +5316,7 @@ fn require_portable_accepts_flowchart_ordinal_rule_when_a_node_matches() {
         .expect("compile ordinal Flowchart rule");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[Alpha] --> B[Beta]\n",
                 ParseOptions::strict(),
@@ -5354,7 +5355,7 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
         CanvasPaint::solid("#ef4444").unwrap(),
     );
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -5394,7 +5395,7 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
 fn require_portable_accepts_swimlane_transparent_edge_stroke_after_svg_emission() {
     let theme = flowchart_edge_stroke_theme(DiagramFamilyId::SWIMLANE, CanvasPaint::Transparent);
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: swimlane\n---\nflowchart LR\nA --> B\n",
             ParseOptions::strict(),
@@ -5450,7 +5451,7 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
                 Some(crate::diagram_theme::ThemeVariant::Default),
             );
             let parsed = theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart-family source should produce a render model");
@@ -5495,7 +5496,7 @@ fn require_portable_accepts_flowchart_and_swimlane_edge_dasharray_after_svg_emis
     ] {
         let theme = flowchart_edge_stroke_dasharray_theme(family, [4.0, 2.0]);
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -5534,7 +5535,7 @@ fn require_portable_accepts_flowchart_and_swimlane_edge_dasharray_after_svg_emis
 fn flowchart_edge_source_dasharray_owns_typed_precedence() {
     let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "flowchart LR\nA --> B\nlinkStyle 0 stroke-dasharray:8 3\n",
             ParseOptions::strict(),
@@ -5576,7 +5577,7 @@ fn flowchart_edge_source_dasharray_owns_typed_precedence() {
 fn flowchart_neo_edge_dasharray_is_the_terminal_style_winner() {
     let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
     let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\nB animated@==> C\nanimated@{ animate: true }\n",
                 ParseOptions::strict(),
@@ -5639,7 +5640,7 @@ fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
         "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("hand-drawn Flowchart source should produce a render model")
@@ -5689,7 +5690,7 @@ fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
 fn elk_flowchart_reuses_the_typed_edge_dasharray_writer() {
     let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: elk\n---\nflowchart LR\nA --> B\n",
             ParseOptions::strict(),
@@ -5726,19 +5727,19 @@ fn flowchart_edge_source_and_explicit_line_color_own_typed_precedence() {
     );
     let cases = [
         (
-            theme.install_parse_compatibility(Engine::new()),
+            theme.install_parse_compatibility(MermaidEngine::new()),
             "flowchart LR\nA edge@--> B\nlinkStyle 0 stroke:#22c55e\n",
             "stroke:#22c55e",
             Some("stroke:#22c55e"),
         ),
         (
-            theme.install_parse_compatibility(Engine::new()),
+            theme.install_parse_compatibility(MermaidEngine::new()),
             "flowchart LR\nA edge@--> B\nclassDef source stroke:#2563eb\nclass edge source\n",
             "stroke:#2563eb",
             Some("stroke:#2563eb"),
         ),
         (
-            theme.install_parse_compatibility(Engine::new().with_site_config(
+            theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
                 PresentationConfig::from_value(json!({
                     "theme": "base",
                     "themeVariables": {"lineColor": "#16a34a"}
@@ -5812,7 +5813,7 @@ fn flowchart_hand_drawn_class_stroke_does_not_shadow_typed_edge_stroke() {
         CanvasPaint::solid("#ef4444").unwrap(),
     );
     let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA edge@--> B\nclassDef source stroke:#2563eb\nclass edge source\n",
                 ParseOptions::strict(),
@@ -5864,7 +5865,7 @@ fn require_portable_accepts_sequence_actor_fill_after_svg_emission() {
         )
         .expect("compile Sequence actor theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -5918,7 +5919,7 @@ fn require_portable_accepts_sequence_actor_stroke_after_svg_emission() {
         )
         .expect("compile Sequence actor stroke theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -5991,7 +5992,7 @@ fn require_portable_accepts_sequence_lifeline_scalar_paint_after_actor_line_emis
             )
             .expect("compile Sequence Lifeline theme");
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -6057,7 +6058,7 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emis
         )
         .expect("compile Sequence Lifeline width theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -6109,7 +6110,7 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_clear_after_baseline_
         )
         .expect("compile cleared Sequence Lifeline width theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -6178,7 +6179,7 @@ fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile combined Sequence Lifeline theme");
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -6242,14 +6243,14 @@ fn sequence_explicit_actor_line_color_owns_precedence_over_typed_lifeline_paint(
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"actorLineColor": "#22c55e"}
             }))),
             "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -6360,7 +6361,7 @@ fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission
         .expect("compile unsupported Sequence Lifeline gradient");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -6443,7 +6444,7 @@ fn require_portable_accepts_sequence_message_scalar_paints_after_line_emission()
             )
             .expect("compile Sequence Message theme");
         let parsed = theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(
                     "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Back\n",
                     ParseOptions::strict(),
@@ -6517,7 +6518,7 @@ fn sequence_message_stroke_winner_marks_shadowed_fill_not_applicable() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile combined Sequence Message theme");
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -6588,7 +6589,7 @@ fn sequence_message_stroke_rule_without_a_terminal_line_is_not_applicable() {
         "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\n",
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -6640,14 +6641,14 @@ fn sequence_explicit_signal_color_owns_precedence_over_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"signalColor": "#22c55e"}
             }))),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -6753,7 +6754,7 @@ fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"textColor": "#22c55e"}
             }))),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
@@ -6762,7 +6763,7 @@ fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
         ),
         (
             "init directive",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -6903,7 +6904,7 @@ fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
         .expect("compile unsupported Sequence Message gradient");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -6984,7 +6985,7 @@ fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
             )
             .expect("compile Sequence Note theme");
         let parsed = theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(
                     "sequenceDiagram\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\nAlice->>Bob: Hello\n",
                     ParseOptions::strict(),
@@ -7056,7 +7057,7 @@ fn sequence_note_rule_without_a_terminal_note_rect_is_not_applicable() {
         )
         .expect("compile Sequence Note theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -7124,7 +7125,7 @@ fn require_portable_accepts_sequence_activation_scalar_paints_after_rect_emissio
             )
             .expect("compile Sequence Activation theme");
         let parsed = theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(
                     "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\nAlice->>Bob: Pending\nactivate Bob\n",
                     ParseOptions::strict(),
@@ -7190,7 +7191,7 @@ fn sequence_activation_rule_without_a_terminal_rect_is_not_applicable() {
         "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Pending\nactivate Bob\n",
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -7261,7 +7262,7 @@ fn sequence_explicit_activation_and_note_paints_own_precedence_over_typed_paints
             )
             .expect("compile Sequence paint theme");
         let parsed = theme
-            .install_parse_compatibility(Engine::new().with_site_config(
+            .install_parse_compatibility(MermaidEngine::new().with_site_config(
                 PresentationConfig::from_value(json!({"themeVariables": variables})),
             ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -7335,7 +7336,7 @@ fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
             ),
         )
         .expect("compile Sequence actor stroke theme");
-    let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+    let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
         PresentationConfig::from_value(json!({
             "themeVariables": {"actorBorder": "#22c55e"}
         })),
@@ -7400,7 +7401,7 @@ fn sequence_actor_stroke_with_unhandled_shapes_fails_closed() {
         "sequenceDiagram\nparticipant Alice\nparticipant Bob\nproperties Alice: {\"class\":\"custom\"}\nAlice->>Bob: Hello\n",
     ] {
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -7444,7 +7445,7 @@ fn sequence_actor_stroke_tracks_every_css_covered_shape() {
             "sequenceDiagram\nparticipant Alice@{{\"type\":\"{actor_type}\"}}\nparticipant Bob\nAlice->>Bob: Hello\n"
         );
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -7496,7 +7497,7 @@ fn sequence_actor_stroke_transparent_paint_is_signed_only_for_covered_shapes() {
         .expect("compile transparent Sequence actor stroke theme");
     let parse = |source: &str| {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
@@ -7558,7 +7559,7 @@ fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() 
         )
         .expect("compile Sequence actor stroke theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -7623,7 +7624,7 @@ fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
             ),
         )
         .expect("compile Sequence actor theme");
-    let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+    let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
         PresentationConfig::from_value(json!({
             "themeVariables": {"actorBkg": "#22c55e"}
         })),
@@ -7690,7 +7691,7 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
         .expect("compile unsupported Sequence actor gradient");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
                 ParseOptions::strict(),
@@ -7739,7 +7740,7 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
 
     let configured_parse = || {
         theme
-            .install_parse_compatibility(Engine::new().with_site_config(
+            .install_parse_compatibility(MermaidEngine::new().with_site_config(
                 PresentationConfig::from_value(json!({
                     "themeVariables": {"actorBkg": "#22c55e"}
                 })),
@@ -7798,7 +7799,7 @@ Alice->>Bob: Hello
 "#;
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
@@ -7890,7 +7891,7 @@ fn sequence_actor_fill_tracks_actor_man_css_and_inline_precedence() {
             "sequenceDiagram\nparticipant Alice@{{\"type\":\"{actor_type}\"}}\nparticipant Bob\nAlice->>Bob: Hello\n"
         );
         let parsed = theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
@@ -7944,7 +7945,7 @@ fn sequence_actor_fill_accounts_for_rules_without_matching_actors() {
         )
         .expect("compile unmatched ordinal Sequence actor theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -8024,7 +8025,7 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
@@ -8056,7 +8057,7 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     // two actor visits and two scans of three rules are charged once before any SVG output.
     let control_theme = build_theme(false);
     let canonical_69 = control_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("parse static Sequence control");
@@ -8156,7 +8157,7 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
         )
         .expect("compile competing Sequence actor rules");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             ParseOptions::strict(),
@@ -8203,7 +8204,7 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
 
 #[test]
 fn state_style_residual_survives_terminal_svg_completion() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -8257,7 +8258,7 @@ fn state_ordinal_palette_is_applied_by_an_observed_state_binding() {
             ))
             .expect("compile ordinal State theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
             ParseOptions::strict(),
@@ -8312,7 +8313,7 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         )
         .expect("compile State node theme");
     let node_parsed = node_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\nReady --> Done\n",
             ParseOptions::strict(),
@@ -8373,7 +8374,7 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         ))
         .expect("compile State transition theme");
     let edge_parsed = edge_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\nReady --> Done\n",
             ParseOptions::strict(),
@@ -8426,7 +8427,7 @@ fn require_portable_rechecks_state_theme_after_debug_visibility_filter() {
         )
         .expect("compile strict State theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\nReady --> Done\n",
             ParseOptions::strict(),
@@ -8472,7 +8473,7 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
         )
         .expect("compile State typography theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "---\ntitle: Architecture\n---\nstateDiagram-v2\n[*] --> Ready\nReady --> Done\n",
             ParseOptions::strict(),
@@ -8535,28 +8536,29 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
     for (origin, engine, source) in [
         (
             "site",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": {"fontFamily": "serif", "fontSize": 30}
             }))),
             source.to_string(),
         ),
         (
             "source",
-            Engine::new(),
+            MermaidEngine::new(),
             format!(
                 "%%{{init: {{\"themeVariables\": {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}}}%%\n{source}"
             ),
         ),
         (
             "site-root",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "fontFamily": "serif", "fontSize": 30
             }))),
             source.to_string(),
         ),
         (
             "source-root",
-            Engine::new().with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
+            MermaidEngine::new()
+                .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
             format!("%%{{init: {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}%%\n{source}"),
         ),
     ] {
@@ -8651,7 +8653,7 @@ fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
         )
         .expect("compile State spacing theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\nReady --> Done\n",
             ParseOptions::strict(),
@@ -8706,7 +8708,7 @@ fn state_rule_without_a_matching_document_target_is_not_applicable() {
         )
         .expect("compile Note theme");
     let parsed = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
             ParseOptions::strict(),
@@ -8775,7 +8777,7 @@ fn require_portable_rejects_state_semantic_residual_before_layout() {
         .expect("compile gradient theme");
     let parse = || {
         theme
-            .install_parse_compatibility(Engine::new())
+            .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -8836,7 +8838,7 @@ fn require_portable_rejects_state_style_residual_before_layout() {
         .expect("compile portable theme recipe");
     let parse = || {
         theme
-                .install_parse_compatibility(Engine::new())
+                .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(
                     "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
                     ParseOptions::strict(),
@@ -8890,7 +8892,7 @@ fn parsed_theme_binding_must_match_render_session_theme() {
         .compile_preset(crate::diagram_theme::ThemePreset::EditorLight)
         .expect("render theme should compile");
     let parsed = parsed_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\n",
             ParseOptions::strict(),
@@ -8924,7 +8926,7 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
         let plan =
             ThemeCompatibilityPlan::try_new(*theme.recipe_fingerprint().as_bytes(), compatibility)
                 .expect("bounded compatibility config");
-        let parsed = install_theme_compatibility(Engine::new(), &plan)
+        let parsed = install_theme_compatibility(MermaidEngine::new(), &plan)
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\n",
                 ParseOptions::strict(),
@@ -8950,7 +8952,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
         .expect("theme should compile");
 
     let themed_parse = theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\n",
             ParseOptions::strict(),
@@ -8965,7 +8967,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
         Err(Error::ThemeParseBindingMismatch)
     ));
 
-    let unthemed_parse = Engine::new()
+    let unthemed_parse = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\n",
             ParseOptions::strict(),
@@ -8980,7 +8982,7 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
         Err(Error::ThemeParseBindingMismatch)
     ));
 
-    let unthemed_parse = Engine::new()
+    let unthemed_parse = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "stateDiagram-v2\n[*] --> Ready\n",
             ParseOptions::strict(),
@@ -9019,7 +9021,7 @@ fn equivalent_theme_instances_retain_selected_family_typed_evidence() {
     );
 
     let parsed = parse_theme
-        .install_parse_compatibility(Engine::new())
+        .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -9048,7 +9050,7 @@ fn equivalent_theme_instances_retain_selected_family_typed_evidence() {
 
 #[test]
 fn planned_family_drives_flowchart_router_before_layout() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let options = LayoutOptions::default();
 
     let flowchart = engine
@@ -9083,7 +9085,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
 
 #[test]
 fn flowchart_router_rejects_an_incompatible_planned_family() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
@@ -9106,7 +9108,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
 
 #[test]
 fn family_artifact_rejects_planned_family_drift() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
@@ -9132,7 +9134,7 @@ fn family_artifact_rejects_planned_family_drift() {
 
 #[test]
 fn unthemed_family_completion_has_no_theme_identity() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
@@ -9292,7 +9294,7 @@ classDef strong font-size:30px!important
 class A strong
 style A font-size:10px
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Flowchart important typography")
         .expect("detect Flowchart important typography");
@@ -9341,7 +9343,7 @@ fn prepare_mindmap_with_host_limit(
     max_layout_work_units: Option<usize>,
 ) -> (FamilyFixture, Arc<SidecarRecordingHost>) {
     let source = "mindmap\n  Root\n    First child\n    Second child\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse mindmap")
         .expect("detect mindmap");
@@ -9376,7 +9378,7 @@ config:
 flowchart LR
 A -->|control label| B
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
@@ -9407,7 +9409,7 @@ flowchart LR
 A ordinary-edge@-->|ordinary owner sentinel| B
 A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through the logical render id alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron| A
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
@@ -9540,7 +9542,7 @@ A styled@-->|swimlane semantic owner keeps wrapped label rows through the genera
 linkStyle default font-size:24px,font-weight:bold
 linkStyle 0 font-size:12px,font-style:italic
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
         .expect("detect Swimlane");
@@ -9647,7 +9649,7 @@ linkStyle 0 font-size:12px,font-style:italic
 }
 
 fn prepare_with_model_item_limit(source: &str, max_model_items: usize) -> FamilyFixture {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
@@ -9666,7 +9668,7 @@ fn prepare_with_model_item_limit(source: &str, max_model_items: usize) -> Family
 }
 
 fn prepare_with_layout_work_limit(source: &str, max_layout_work_units: usize) -> FamilyFixture {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
@@ -9685,7 +9687,7 @@ fn prepare_with_layout_work_limit(source: &str, max_layout_work_units: usize) ->
 }
 
 fn prepare_with_unbounded_layout_work(source: &str) -> FamilyFixture {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("source should produce a render model");
@@ -9763,7 +9765,7 @@ fn session_report_accounts_for_every_metered_layout_family() {
     };
 
     for (source, expected_family) in cases {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .unwrap()
             .expect("the layout-work fixture should produce a render model");
@@ -9878,7 +9880,7 @@ fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary()
 
 #[test]
 fn requirement_layout_projection_excludes_operation_prepared_labels() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"requirementDiagram
 requirement req1 {
@@ -9957,7 +9959,7 @@ end
 A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second node]
 "#
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Flowchart")
         .expect("detect Flowchart");
@@ -10111,7 +10113,7 @@ subgraph Lane["$$x^2$$"]
   A[Node]
 end
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
         .expect("detect Swimlane");
@@ -10160,7 +10162,7 @@ end
 
 #[test]
 fn flowchart_special_shape_intersections_reuse_layout_label_metrics() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"---
 config:
@@ -10269,7 +10271,7 @@ D --> P
 
 #[test]
 fn swimlane_family_renderer_reuses_the_original_semantic_edge_owner() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"---
 config:
@@ -10367,7 +10369,7 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
             "SwimlaneDiagram",
         ),
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse Flowchart family")
             .expect("detect Flowchart family");
@@ -10406,7 +10408,7 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
 
 #[test]
 fn layout_json_projects_its_paired_semantics_and_layout() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "treemap\ntitle Product Map\n\"Root\"\n  \"Leaf\": 42\n",
             ParseOptions::strict(),
@@ -10443,7 +10445,7 @@ fn layout_json_observes_cancellation_inside_the_owned_semantic_projection() {
 #[cfg(feature = "diagram-block")]
 #[test]
 fn layout_json_preserves_the_original_owned_projection_error() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -10526,7 +10528,7 @@ fn swimlane_rejects_pairwise_routing_work_before_layout() {
 
 #[test]
 fn mindmap_node_limit_is_checked_before_layout_allocation_or_backend_dispatch() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "mindmap\n  Root\n    First child\n    Second child\n",
             ParseOptions::strict(),
@@ -10562,7 +10564,7 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
         "flowchart TD\nA -->|#36;#36;edge#36;#36;| B\n",
         "flowchart TD\nsubgraph S[\"#36;#36;group#36;#36;\"]\nA\nend\n",
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -10582,7 +10584,7 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
             .expect("encoded dollar entities must not require a Math renderer");
     }
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA[\"$$x$$\"]\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -10621,7 +10623,7 @@ impl crate::math::MathRenderer for CountingMathRenderer {
 
 #[test]
 fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA[\"$$x$$\"]\n", ParseOptions::strict())
         .unwrap()
         .expect("Flowchart source should produce a render model");
@@ -10695,7 +10697,7 @@ fn native_math_geometry_observation_ignores_unrelated_paths() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
             ParseOptions::strict(),
@@ -10742,7 +10744,7 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
             ParseOptions::strict(),
@@ -10784,7 +10786,7 @@ fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
             ParseOptions::strict(),
@@ -10826,7 +10828,7 @@ fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs
             "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x$$\n",
         ),
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
@@ -10854,7 +10856,7 @@ fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs
 #[cfg(feature = "math")]
 #[test]
 fn compiled_flowchart_unmatched_math_delimiter_remains_plain_in_resvg() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"literal $$\"] --> B[Done]\n",
             ParseOptions::strict(),
@@ -10883,7 +10885,7 @@ fn compiled_flowchart_unmatched_math_delimiter_remains_plain_in_resvg() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n",
             ParseOptions::strict(),
@@ -10928,7 +10930,7 @@ fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_sequence_unmatched_math_delimiter_remains_plain_in_resvg() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: literal $$\n",
             ParseOptions::strict(),
@@ -10957,7 +10959,7 @@ fn compiled_sequence_unmatched_math_delimiter_remains_plain_in_resvg() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_sequence_mixed_math_with_unmatched_delimiter_stays_native_unavailable() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: valid $$x$$<br>literal $$\n",
             ParseOptions::strict(),
@@ -10993,7 +10995,7 @@ fn compiled_sequence_mixed_math_with_unmatched_delimiter_stays_native_unavailabl
 #[cfg(feature = "math")]
 #[test]
 fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissions() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "sequenceDiagram\nactor A as $$x$$\nparticipant B\nA->>B: hi\n",
             ParseOptions::strict(),
@@ -11064,7 +11066,7 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
 #[test]
 fn compiled_sequence_multiline_participant_math_expands_each_terminal_actor_box() {
     let formula = "$$x$$<br>$$x$$<br>$$x$$<br>$$x$$<br>$$x$$<br>$$x$$";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             &format!("sequenceDiagram\nparticipant A as {formula}\nparticipant B\nA->>B: hi\n"),
             ParseOptions::strict(),
@@ -11164,7 +11166,7 @@ fn compiled_class_and_mindmap_math_fail_closed_until_their_native_projection_is_
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    formula[\"$$x^2$$\"]\n",
         ),
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
@@ -11208,7 +11210,7 @@ mindmap
   root[Root]
     formula["$$x^2$$"]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("mindmap source should produce a render model");
@@ -11245,7 +11247,7 @@ mindmap
 #[test]
 fn mindmap_svg_text_does_not_require_a_math_renderer() {
     let source = "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: false\n---\nmindmap\nRoot\n  formula[\"$$x^2$$\"]\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -11307,7 +11309,7 @@ mindmap
   root[Root]
     formula["$$x^2$$"]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("mindmap source should produce a render model");
@@ -11337,7 +11339,7 @@ fn class_math_label_requires_the_math_capability() {
     let source = r#"classDiagram
 class Formula["$$x^2$$"]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Class source should produce a render model");
@@ -11404,7 +11406,7 @@ fn class_math_label_is_consumed_by_the_math_renderer() {
     let source = r#"classDiagram
 class Formula["$$x^2$$"]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Class source should produce a render model");
@@ -11430,7 +11432,7 @@ class Formula["$$x^2$$"]
 }
 
 fn render_class_math(source: &str) -> String {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .expect("Class source should produce a render model");
@@ -11489,7 +11491,7 @@ class Formula
 $$interface$$ ()-- Formula
 "#,
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Class source should produce a render model");
@@ -11535,7 +11537,7 @@ fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
 
 #[test]
 fn custom_semantic_json_is_explicitly_non_renderable() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("customDiagram", custom_semantic_parser);
@@ -11567,7 +11569,7 @@ fn custom_semantic_json_is_explicitly_non_renderable() {
 
 #[test]
 fn custom_render_overlay_cannot_masquerade_as_a_builtin_family() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .render_diagram_registry_mut()
         .insert("flowchart-v2", custom_render_parser);
@@ -11599,7 +11601,7 @@ fn custom_render_overlay_cannot_masquerade_as_a_builtin_family() {
 
 #[test]
 fn gantt_time_axis_diagnostics_invert_rendered_x_without_exposing_layout() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"---
 config:
@@ -11639,7 +11641,7 @@ Second: second,after first,2ms
 
 #[test]
 fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA -->", ParseOptions::lenient())
         .unwrap()
         .unwrap();
@@ -11674,7 +11676,7 @@ subgraph S["service words"]
 end
 A traced-edge@-->|edge label words| B["delta epsilon"]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart");
@@ -11880,7 +11882,7 @@ impl HostTextMeasurer for CancellingSuccessfulHost {
 
 #[test]
 fn family_layout_stops_host_measurement_after_callback_cancellation() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
             ParseOptions::strict(),
@@ -11977,7 +11979,7 @@ fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
     let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
         .unwrap();
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
         .expect("parse info diagram")
         .expect("detect info diagram");
@@ -12012,7 +12014,7 @@ fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
 
 #[test]
 fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
         .expect("parse info diagram")
         .expect("detect info diagram");
@@ -12126,7 +12128,7 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
         "ishikawa-beta\nEffect\n  Cause",
         "agentflow-beta\nA --> B",
     ] {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

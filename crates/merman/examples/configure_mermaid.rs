@@ -1,5 +1,5 @@
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
     presentation::PresentationConfig,
 };
 
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }));
     let renderer = Renderer::new()
-        .with_engine(Engine::new().with_site_config(site_config))
+        .with_presentation_engine(MermaidEngine::new().with_site_config(site_config))
         .with_parse_options(merman::ParseOptions::strict());
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {

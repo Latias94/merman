@@ -4,7 +4,7 @@ use merman_ascii::{
     AsciiRenderOptions, AsciiRenderer, AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::{Engine, OperationControl, SemanticParser};
+use merman_core::{MermaidEngine, OperationControl, SemanticParser};
 use unicode_width::UnicodeWidthStr;
 
 mod support;
@@ -50,7 +50,7 @@ fn render_report_with_options_and_resources(
     resources: merman_ascii::AsciiResourcePolicy,
 ) -> merman_ascii::Result<merman_ascii::AsciiOutput> {
     let parsed = parsed_model(source);
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     AsciiRenderer::new(options)?.render_parsed_report(
@@ -292,7 +292,7 @@ fn sequence_fallback_preserves_empty_authored_property_objects() {
 #[test]
 fn empty_extent_is_reportable_without_special_sentinel_text() {
     let model = RenderSemanticModel::Timeline(Default::default());
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = AsciiRenderer::new(AsciiRenderOptions::ascii())
@@ -322,7 +322,7 @@ fn compact_profile_is_explicit_and_reported() {
     )
     .expect("compact options should validate");
     let parsed = parsed_model("flowchart LR\nA[Alpha] --> B[Beta]");
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = renderer
@@ -345,7 +345,7 @@ fn compact_profile_preserves_explicit_canonical_values_from_builders() {
         .with_flowchart_node_label_wrap_width(40);
     let renderer = AsciiRenderer::new(options).expect("options should validate");
     let parsed = parsed_model("flowchart LR\nA[Alpha] --> B[Beta]");
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = renderer

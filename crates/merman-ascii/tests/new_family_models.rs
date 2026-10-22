@@ -38,7 +38,7 @@ fn render_with_scheduled_cancellation(
     model: RenderSemanticModel,
     successful_checkpoints: usize,
 ) -> AsciiError {
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     let context = engine
         .begin_operation()
         .expect("deterministic operation context should be available");

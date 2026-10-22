@@ -1905,7 +1905,7 @@ mod browser_measurements_tests;
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use merman_core::{Engine, ParseOptions};
+    use merman_core::{MermaidEngine, ParseOptions};
     use serde_json::json;
 
     const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
@@ -1923,7 +1923,7 @@ mod tests {
             let source = format!(
                 "flowchart TB\nsubgraph G[Group]\nA --> B\nend\nG@{{algorithm: {requested}}}\n"
             );
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                 .expect("parse")
                 .expect("diagram");
@@ -2053,7 +2053,7 @@ mod tests {
 
     #[test]
     fn elk_preserves_operation_computed_length_precision() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
@@ -2124,7 +2124,7 @@ mod tests {
 
     #[test]
     fn elk_collapsed_projection_keeps_prepared_math_bound_to_original_owners() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"flowchart TD
 subgraph Hidden
@@ -2361,7 +2361,7 @@ C["$$x$$"] -->|"$$x$$"| D
         let source = format!(
             "flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\nE[\"&lt;Less&lt;\"]\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
@@ -4006,7 +4006,7 @@ C["$$x$$"] -->|"$$x$$"| D
         let source = include_str!(
             "../../../../fixtures/flowchart/stress_flowchart_cluster_dense_children_021.mmd"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse")
             .expect("diagram");

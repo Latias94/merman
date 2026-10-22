@@ -3137,7 +3137,7 @@ mod tests {
         ClassDiagram, ClassInterface, ClassNote, NamespaceTopologyView,
     };
     use merman_core::resources::ResourceProfile;
-    use merman_core::{Engine, ParseOptions};
+    use merman_core::{MermaidEngine, ParseOptions};
     use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
@@ -3176,7 +3176,7 @@ mod tests {
     }
 
     fn parsed_class_model(input: &str) -> ClassDiagram {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
             .expect("class diagram should parse")
             .expect("class diagram should be detected");

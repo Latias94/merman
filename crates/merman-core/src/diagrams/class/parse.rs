@@ -14,7 +14,7 @@ use crate::{
     parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
-use crate::{ParseMetadata, Result};
+use crate::{PresentationMetadata, Result};
 #[cfg(feature = "editor-facts")]
 use crate::{
     parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span},
@@ -150,7 +150,7 @@ impl ClassSemanticFailure {
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
@@ -299,7 +299,7 @@ pub(crate) fn parse_class_semantic_model_controlled(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_class_semantic_source<'a>(
     code: &str,
-    meta: &'a ParseMetadata,
+    meta: &'a PresentationMetadata,
 ) -> Result<ClassSemanticSource<'a>> {
     construct_class_semantic_source(
         code,
@@ -313,14 +313,14 @@ fn parse_class_semantic_source<'a>(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_class(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_class_typed_with_render_context(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<(
     class_typed::ClassDiagram,
     class_typed::ClassStylePrecedenceFacts,
@@ -338,7 +338,7 @@ pub(crate) fn parse_class_typed_with_render_context(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_class_typed_with_render_context_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<
     Result<(
@@ -376,7 +376,7 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_class_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_class_semantic_source(
@@ -1665,8 +1665,8 @@ Client --> Service
     }
 
     #[cfg(feature = "presentation")]
-    fn full_metadata() -> ParseMetadata {
-        ParseMetadata {
+    fn full_metadata() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "classDiagram".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::PresentationConfig::empty_object(),

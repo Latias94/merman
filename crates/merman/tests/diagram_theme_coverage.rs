@@ -451,16 +451,16 @@ fn er_authored_redux_palettes_override_only_their_typed_paint_channel() {
                 diagram.to_owned()
             };
             let engine = if source_owned {
-                merman::Engine::new()
+                merman::MermaidEngine::new()
             } else {
-                merman::Engine::new()
+                merman::MermaidEngine::new()
                     .with_site_config(merman::presentation::PresentationConfig::from_value(config))
             };
             let mut renderer = TypedSvgRenderer::new()
                 .with_theme(theme.clone())
                 .with_deterministic_text_measurer()
                 .with_diagram_id("er-palette-owner");
-            renderer.renderer = Renderer::new().with_engine(engine);
+            renderer.renderer = Renderer::new().with_presentation_engine(engine);
             let baseline = if source_owned {
                 // Source arrays append to the calculated palette. Preserve that merge contract
                 // instead of assuming an authored color occupies the first entity's slot.

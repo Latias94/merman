@@ -1,5 +1,5 @@
 use crate::{
-    DetectorRegistry, DiagramRegistry, Engine, RenderDiagramRegistry,
+    DetectorRegistry, DiagramRegistry, MermaidEngine, RenderDiagramRegistry,
     built_in_typed_render_families, diagram_family_capabilities, diagram_header_facts,
     supported_diagrams,
 };
@@ -95,7 +95,7 @@ fn canonical_catalog_has_no_undeclared_semantic_or_editor_capability_gaps() {
 
 #[test]
 fn canonical_characterization_matrix_executes_representative_and_malformed_contracts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let mut malformed_contract_mismatches = Vec::new();
     let mut recovery_contract_mismatches = Vec::new();
 
@@ -593,7 +593,7 @@ fn empty_registries_are_explicit_overlay_starting_points() {
 
 #[test]
 fn engine_uses_the_canonical_catalog_regardless_of_host_features() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (source, expected) in [
         ("mindmap\n  root", "mindmap"),
         (
@@ -622,7 +622,7 @@ fn engine_uses_the_canonical_catalog_regardless_of_host_features() {
 }
 
 fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_snapshot_sync(source)
         .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
         .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
@@ -634,7 +634,7 @@ fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
 
 #[test]
 fn class_er_pie_semantic_entrypoints_construct_once_without_editor_projection() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let mut unexpected_editor_work = Vec::new();
     for (diagram_type, source) in [
         (
@@ -834,7 +834,7 @@ fn sankey_combined_parse_constructs_family_syntax_once() {
 }
 
 fn assert_combined_projections_match_standalone(
-    engine: &Engine,
+    engine: &MermaidEngine,
     family: &str,
     source: &str,
     volatile_top_level_json_field: Option<&str>,
@@ -894,7 +894,7 @@ fn assert_combined_projections_match_standalone(
 
 #[test]
 fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_projections() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for row in FAMILY_CHARACTERIZATION_MATRIX
         .iter()
@@ -979,7 +979,7 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
         "  child2\n",
     );
     let model = assert_combined_projections_match_standalone(
-        &Engine::new(),
+        &MermaidEngine::new(),
         "mindmap",
         source,
         Some("diagramId"),
@@ -990,7 +990,7 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
 
 #[test]
 fn railroad_combined_projections_match_standalone_public_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (family, source) in [
         (
             "railroad",
@@ -1022,7 +1022,7 @@ fn sankey_combined_projections_match_standalone_public_entrypoints() {
         "Target,Done,2\n",
     );
     let model =
-        assert_combined_projections_match_standalone(&Engine::new(), "sankey", source, None);
+        assert_combined_projections_match_standalone(&MermaidEngine::new(), "sankey", source, None);
     assert_eq!(model["graph"]["links"][0]["source"], "Source, Inc.");
     assert_eq!(model["graph"]["links"][0]["target"], "Target \"quoted\"");
 }
@@ -1039,7 +1039,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
     crate::preprocess::reset_public_parse_preprocess_count();
     crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
 
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_sync(source)
         .expect("snapshot operation")
         .expect("detected mindmap");
@@ -1071,7 +1071,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
 
 #[test]
 fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unknown() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     *engine.diagram_registry_mut() = DiagramRegistry::new();
     *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
     let source = "flowchart-elk TD\nA-->B\n";
@@ -1116,7 +1116,7 @@ fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unk
 
 #[test]
 fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     *engine.diagram_registry_mut() = DiagramRegistry::new();
     *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
     engine

@@ -1,7 +1,7 @@
 use super::*;
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "usecase".to_string(),
         config: crate::MermaidConfig::empty_object(),
         effective_config: crate::presentation::PresentationConfig::empty_object(),

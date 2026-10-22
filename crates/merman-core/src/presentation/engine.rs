@@ -511,28 +511,7 @@ fn generated_default_effective_config()
         .clone()
 }
 
-/// Parser behavior switches for model-producing parse facades.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParseOptions {
-    /// Return an `error` diagram model from JSON/render facades when diagram parsing fails.
-    pub suppress_errors: bool,
-}
-
-impl ParseOptions {
-    /// Strict parsing (errors are returned).
-    pub fn strict() -> Self {
-        Self {
-            suppress_errors: false,
-        }
-    }
-
-    /// Lenient model parsing: return an `error` diagram from JSON/render facades on failure.
-    pub fn lenient() -> Self {
-        Self {
-            suppress_errors: true,
-        }
-    }
-}
+pub use crate::ParseOptions;
 
 /// Metadata extracted before semantic diagram parsing.
 #[derive(Debug, Clone)]

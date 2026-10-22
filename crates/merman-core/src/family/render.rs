@@ -4,7 +4,7 @@ macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
         pub(super) fn $fn_name(
             code: &str,
-            meta: &ParseMetadata,
+            meta: &PresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
             control.checkpoint()?;
@@ -25,7 +25,7 @@ macro_rules! render_parser_controlled {
     ($fn_name:ident, $parser:path, $variant:path) => {
         pub(super) fn $fn_name(
             code: &str,
-            meta: &ParseMetadata,
+            meta: &PresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
             control.checkpoint()?;
@@ -70,7 +70,7 @@ render_parser_controlled!(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) fn render_flowchart(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     let result = crate::diagrams::flowchart::parse_flowchart_model_with_render_context_controlled(
@@ -82,7 +82,7 @@ pub(super) fn render_flowchart(
 #[cfg(feature = "diagram-class")]
 pub(super) fn render_class(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;

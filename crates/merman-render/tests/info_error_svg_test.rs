@@ -1,5 +1,5 @@
 use merman_core::presentation::PresentationConfig;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -198,7 +198,7 @@ fn try_render_family(
     family: InheritedTextFamily,
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     try_render_family_with_requirement(
@@ -215,7 +215,7 @@ fn try_render_family_with_requirement(
     family: InheritedTextFamily,
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
@@ -234,7 +234,7 @@ fn try_render_family_with_preinstalled_parse_compatibility(
     family: InheritedTextFamily,
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
@@ -253,7 +253,7 @@ fn try_render_family_with_environment(
     family: InheritedTextFamily,
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
     environment: RenderEnvironment,
@@ -465,7 +465,7 @@ fn info_transparent_text_fill_is_owned_by_the_same_terminal() {
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "info-transparent-text-fill",
     )
     .expect("transparent Info text must remain portable");
@@ -497,7 +497,7 @@ fn info_text_fill_is_written_and_proved_by_the_version_terminal() {
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "info-direct-text-fill",
     )
     .expect("Info must directly own its visible Text.fill terminal");
@@ -528,11 +528,13 @@ fn info_text_palette_respects_static_fill_and_config_ownership() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile Info palette theme");
         let engine = if case == "config" {
-            Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "textColor": "#123456" }
-            })))
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "textColor": "#123456" }
+                }),
+            ))
         } else {
-            Engine::new()
+            MermaidEngine::new()
         };
         let family = InheritedTextFamily::Info;
         let result =
@@ -606,7 +608,7 @@ fn info_explicit_default_text_fill_is_typed_and_verified() {
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "info-explicit-default-text-fill",
     )
     .expect("explicit-Default Info text fill must remain portable");
@@ -619,7 +621,7 @@ fn info_config_text_color_outranks_typed_text_fill_per_property() {
     let family = InheritedTextFamily::Info;
     let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);
     let engine =
-        Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "textColor": "#abcdef" }
         })));
     let rendered = try_render_family(
@@ -668,7 +670,7 @@ fn info_and_error_direct_font_stack_above_legacy_limit_reaches_css_dom_and_evide
             family,
             family.base_source(),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &diagram_id,
         )
         .expect("render directly themed inherited text family");
@@ -686,7 +688,8 @@ fn info_and_error_direct_font_stack_drives_terminal_geometry_and_canvas_bounds()
             FontStack::single("WideInheritedFont").expect("valid wide inherited font"),
         );
         let diagram_id = format!("{}-wide-inherited-font", family.aria_roledescription());
-        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let engine =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
         let rendered = try_render_family_with_environment(
             family,
             family.base_source(),
@@ -757,33 +760,41 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
         let cases = [
             (
                 "site-theme-variable",
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "themeVariables": { "fontFamily": "SiteVariableFont,serif" }
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontFamily": "SiteVariableFont,serif" }
+                    }),
+                )),
                 family.base_source().to_string(),
                 "SiteVariableFont,serif",
             ),
             (
                 "site-root",
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "fontFamily": "SiteRootFont,monospace"
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "fontFamily": "SiteRootFont,monospace"
+                    }),
+                )),
                 family.base_source().to_string(),
                 "SiteRootFont,monospace",
             ),
             (
                 "source-theme-variable",
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "secure": []
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                )),
                 source_theme_variable,
                 "SourceVariableFont,serif",
             ),
             (
                 "source-root",
-                Engine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "secure": []
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                )),
                 source_root,
                 "SourceRootFont,monospace",
             ),
@@ -825,7 +836,7 @@ fn info_and_error_unsupported_paint_is_explicit_best_effort_evidence() {
             family,
             family.base_source(),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             case,
             ThemePortabilityRequirement::BestEffort,
         )
@@ -859,7 +870,7 @@ fn info_and_error_unsupported_paint_is_explicit_best_effort_evidence() {
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "error-mixed-unsupported-paint",
         ThemePortabilityRequirement::BestEffort,
     )
@@ -903,9 +914,15 @@ fn info_and_error_unsupported_paint_fails_require_portable_as_residual_not_incom
         ),
     ] {
         let theme = inherited_paint_theme(family, targets);
-        let error = try_render_family(family, family.base_source(), &theme, Engine::new(), case)
-            .err()
-            .expect("strict portability must reject unsupported inherited-family paint");
+        let error = try_render_family(
+            family,
+            family.base_source(),
+            &theme,
+            MermaidEngine::new(),
+            case,
+        )
+        .err()
+        .expect("strict portability must reject unsupported inherited-family paint");
 
         assert_eq!(
             error.unverified_family_theme(),
@@ -923,7 +940,7 @@ fn info_and_error_fixed_terminals_reject_unsupported_base_font_size() {
             family,
             family.base_source(),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &format!("{}-unsupported-font-size", family.aria_roledescription()),
         )
         .err()
@@ -949,7 +966,7 @@ fn lenient_error_reconciles_the_detected_flowchart_typography_for_a_global_font_
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "lenient-error-global-font-stack",
     )
     .expect("a typed Error font stack must retire the parse-family compatibility evidence");
@@ -978,7 +995,7 @@ fn lenient_error_retires_font_size_compatibility_but_keeps_the_typed_theme_resid
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "lenient-error-font-stack-size-best-effort",
         ThemePortabilityRequirement::BestEffort,
     )
@@ -996,7 +1013,7 @@ fn lenient_error_retires_font_size_compatibility_but_keeps_the_typed_theme_resid
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "lenient-error-font-stack-size-strict",
     )
     .err()
@@ -1018,7 +1035,7 @@ fn lenient_error_does_not_invent_compatibility_for_typed_flowchart_node_fill() {
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "lenient-error-typed-flowchart-node-fill",
     )
     .expect("a retired projection must not create a phantom compatibility residual");
@@ -1060,11 +1077,11 @@ fn info_unsupported_fill_only_tracks_its_final_winning_facet() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
         let engine = if owner == "config" {
-            Engine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
             ))
         } else {
-            Engine::new()
+            MermaidEngine::new()
         };
         let result = try_render_family(
             InheritedTextFamily::Info,

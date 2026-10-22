@@ -16,6 +16,7 @@ use crate::diagrams::langium_common::{
 #[derive(Debug, Clone)]
 struct ArchitectureSpannedValue {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
     selection: SourceSpan,
 }
@@ -85,7 +86,7 @@ struct ArchitectureTrace {
     entries: Vec<ArchitectureTraceEntry>,
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", any(test, feature = "editor-facts")))]
 #[derive(Debug)]
 pub(super) struct ArchitectureSemanticSource {
     db: ArchitectureDb,
@@ -809,14 +810,15 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn spanned(
         &self,
         value: String,
-        span_start: usize,
-        span_end: usize,
+        _span_start: usize,
+        _span_end: usize,
         selection_start: usize,
         selection_end: usize,
     ) -> ArchitectureSpannedValue {
         ArchitectureSpannedValue {
             value,
-            span: SourceSpan::new(self.base_offset + span_start, self.base_offset + span_end),
+            #[cfg(feature = "editor-facts")]
+            span: SourceSpan::new(self.base_offset + _span_start, self.base_offset + _span_end),
             selection: SourceSpan::new(
                 self.base_offset + selection_start,
                 self.base_offset + selection_end,
@@ -883,7 +885,7 @@ fn convert_architecture_title(raw: &str) -> String {
 #[cfg(all(test, feature = "compat-json"))]
 pub(super) fn parse_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<ArchitectureSemanticSource> {
     let trace = parse_trace_controlled(
         code,
@@ -948,7 +950,7 @@ pub(super) fn parse_semantic_model_controlled(
 #[cfg(feature = "editor-facts")]
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
@@ -1301,6 +1303,7 @@ fn architecture_common_trace_entry(
 fn architecture_common_value(fact: &LangiumCommonFact) -> ArchitectureSpannedValue {
     ArchitectureSpannedValue {
         value: fact.value.clone(),
+        #[cfg(feature = "editor-facts")]
         span: fact.raw_span,
         selection: fact.value_span,
     }
@@ -1662,10 +1665,10 @@ impl ArchitectureTrace {
     }
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", any(test, feature = "editor-facts")))]
 impl ArchitectureSemanticSource {
     #[cfg(test)]
-    pub(super) fn compat_json(&self, meta: &ParseMetadata) -> Value {
+    pub(super) fn compat_json(&self, meta: &PresentationMetadata) -> Value {
         super::render_model_to_compat_json(&self.db.semantic_model(), meta)
             .expect("Architecture typed model must remain JSON-serializable")
     }
@@ -1683,7 +1686,7 @@ impl ArchitectureSemanticSource {
     #[cfg(feature = "editor-facts")]
     pub(super) fn into_combined_parts_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         control.checkpoint()?;
