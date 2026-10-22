@@ -23,10 +23,9 @@ fn render_flowchart_with_resources(
     options: &AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
-        .expect("flowchart should parse")
-        .expect("flowchart should be detected");
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(input)
+        .expect("canonical flowchart should parse");
 
     let context = merman_core::runtime::RuntimePolicy::deterministic()
         .begin_operation()

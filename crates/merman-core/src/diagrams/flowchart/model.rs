@@ -49,6 +49,12 @@ pub struct FlowchartSubgraphStyles {
     sources: Option<Arc<IndexMap<String, FlowSubgraphVertexStyleSource>>>,
 }
 
+impl Serialize for FlowchartSubgraphStyles {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.sources.as_deref().serialize(serializer)
+    }
+}
+
 impl FlowchartSubgraphStyles {
     pub(crate) fn effective_subgraph_css<'a>(
         &'a self,
@@ -117,16 +123,82 @@ impl FlowchartSubgraphStyles {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub(crate) struct FlowSubgraphVertexStyle {
     pub(crate) classes: Vec<String>,
     pub(crate) styles: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct FlowSubgraphVertexStyleSource {
+    #[serde(rename = "declarationOrdinal")]
     declaration_ordinal: usize,
     style: FlowSubgraphVertexStyle,
+}
+
+#[cfg(test)]
+mod subgraph_style_serialization_tests {
+    use super::*;
+
+    fn styles() -> FlowchartSubgraphStyles {
+        FlowchartSubgraphStyles {
+            sources: Some(Arc::new(IndexMap::from([
+                (
+                    "z".to_owned(),
+                    FlowSubgraphVertexStyleSource {
+                        declaration_ordinal: 7,
+                        style: FlowSubgraphVertexStyle {
+                            classes: vec!["paint".to_owned(), "typography".to_owned()],
+                            styles: vec!["fill:red".to_owned(), "stroke:blue".to_owned()],
+                        },
+                    },
+                ),
+                (
+                    "a".to_owned(),
+                    FlowSubgraphVertexStyleSource {
+                        declaration_ordinal: 0,
+                        style: FlowSubgraphVertexStyle::default(),
+                    },
+                ),
+            ]))),
+        }
+    }
+
+    #[test]
+    fn borrowed_subgraph_styles_preserve_none_and_an_empty_owner() {
+        assert_eq!(
+            serde_json::to_string(&FlowchartSubgraphStyles::default()).unwrap(),
+            "null"
+        );
+        let empty = FlowchartSubgraphStyles {
+            sources: Some(Arc::new(IndexMap::new())),
+        };
+        assert_eq!(serde_json::to_string(&empty).unwrap(), "{}");
+    }
+
+    #[test]
+    fn borrowed_subgraph_styles_preserve_ordinals_and_css_encounter_order() {
+        assert_eq!(
+            serde_json::to_string(&styles()).unwrap(),
+            concat!(
+                r#"{"z":{"declarationOrdinal":7,"style":{"classes":["paint","typography"],"styles":["fill:red","stroke:blue"]}},"#,
+                r#""a":{"declarationOrdinal":0,"style":{"classes":[],"styles":[]}}}"#,
+            )
+        );
+    }
+
+    #[test]
+    fn subgraph_styles_remain_excluded_from_the_existing_typed_wire_and_complexity() {
+        let mut model: FlowchartModel = serde_json::from_str(r#"{"nodes":[],"edges":[]}"#).unwrap();
+        let wire = serde_json::to_string(&model).unwrap();
+        let complexity = crate::resources::ModelComplexity::from_serializable(&model);
+        model.subgraph_vertex_styles = styles();
+        assert_eq!(serde_json::to_string(&model).unwrap(), wire);
+        assert_eq!(
+            crate::resources::ModelComplexity::from_serializable(&model),
+            complexity
+        );
+    }
 }
 
 impl FlowchartModel {

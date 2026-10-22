@@ -30,6 +30,8 @@ use crate::diagrams::treemap::TreemapDiagramModel;
 use crate::diagrams::zenuml::{ZenumlDiagramModel, ZenumlStatementKind};
 #[cfg(all(feature = "diagram-class", feature = "presentation"))]
 use crate::models::class_diagram::ClassDiagram;
+#[cfg(feature = "diagram-class")]
+use crate::models::class_diagram::ClassTopologyView;
 use serde::Serialize;
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
@@ -1612,7 +1614,7 @@ impl IshikawaComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(all(feature = "diagram-class", feature = "presentation"))]
+#[cfg(feature = "diagram-class")]
 pub struct ClassComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1718,9 +1720,15 @@ impl MindmapComplexity {
     }
 }
 
-#[cfg(all(feature = "diagram-class", feature = "presentation"))]
+#[cfg(feature = "diagram-class")]
 impl ClassComplexity {
+    #[cfg(feature = "presentation")]
     pub fn from_model(model: &ClassDiagram) -> Self {
+        Self::from_view(&model.topology_view())
+    }
+
+    /// Counts the same effective Class projection without requiring a visual carrier.
+    pub fn from_view(model: &ClassTopologyView<'_>) -> Self {
         let class_label_bytes = model
             .classes()
             .map(|(_, node)| {
@@ -1798,11 +1806,16 @@ impl ClassComplexity {
                 .saturating_add(note_label_bytes)
                 .saturating_add(interface_label_bytes)
                 .saturating_add(namespace_label_bytes),
-            ..Self::topology_from_model(model)
+            ..Self::topology_from_view(model)
         }
     }
 
+    #[cfg(feature = "presentation")]
     fn topology_from_model(model: &ClassDiagram) -> Self {
+        Self::topology_from_view(&model.topology_view())
+    }
+
+    pub(crate) fn topology_from_view(model: &ClassTopologyView<'_>) -> Self {
         Self {
             nodes: model
                 .classes()
@@ -1816,7 +1829,7 @@ impl ClassComplexity {
                 .saturating_add(model.notes().filter(|note| note.class_id.is_some()).count()),
             namespaces: model.namespaces().len(),
             label_bytes: 0,
-            namespace_depth: class_namespace_depth(&model.presentation().namespaces),
+            namespace_depth: class_namespace_depth(model.effective_namespaces()),
         }
     }
 

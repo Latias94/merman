@@ -7,7 +7,8 @@ use crate::MermaidConfig;
 const MINDMAP_SECTION_COUNT: usize = 11;
 
 /// Shape and section rules shared by graphical and terminal Mindmap consumers.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MindmapDisplayPolicy {
     default_shape: &'static str,
     color_by_depth: bool,

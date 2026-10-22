@@ -1,20 +1,24 @@
-#[cfg(feature = "editor-facts")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use super::parse::SequenceSemanticSource;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
-#[cfg(feature = "editor-facts")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::OperationControlResult;
-#[cfg(feature = "editor-facts")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
 use crate::{OperationControl, ParseMetadata, Result};
 
 use super::model::SequenceDiagramModel;
+#[cfg(feature = "compat-json")]
 use super::parse::{construct_sequence_semantic_source, sequence_wrap_enabled_from_config};
 use super::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
 
 impl SequenceDiagramModel {
+    #[cfg(feature = "compat-json")]
     pub(crate) fn to_compat_json(&self, diagram_type: &str) -> Value {
         serde_json::to_value(self.compatibility_projection(diagram_type))
             .expect("the typed Sequence compatibility projection only contains JSON values")
@@ -88,6 +92,7 @@ const SEQUENCE_CONSTANTS: SequenceConstants = SequenceConstants {
     },
 };
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SequenceDiagramModel,
     meta: &ParseMetadata,
@@ -95,6 +100,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(model.to_compat_json(&meta.diagram_type))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let construction = construct_sequence_semantic_source(
         code,
@@ -109,7 +115,7 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
     Ok(source.db.into_model().to_compat_json(&meta.diagram_type))
 }
 
-#[cfg(feature = "editor-facts")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
@@ -133,4 +139,67 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
     );
     control.checkpoint()?;
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn borrowed_compatibility_serializer_preserves_base_owner_records() {
+        let source = concat!(
+            "sequenceDiagram\ntitle: Delivery\naccTitle: Delivery sequence\naccDescr: Description\n",
+            "autonumber 10 5\nparticipant Alice\nactor Bob\n",
+            "box rgb(240,240,240) Team\nparticipant Carol\nend\n",
+            "Alice->>Bob: Request\nNote over Alice,Bob: Review\n",
+            "create participant Worker\nBob->>Worker: Start\ndestroy Worker\nWorker-->>Bob: Done\n",
+        );
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let crate::SemanticDiagramModel::Sequence(model) = &parsed.model else {
+            panic!("expected canonical Sequence");
+        };
+        let projection = model.compatibility_projection(&parsed.metadata.diagram_type);
+        assert!(std::ptr::eq(projection.model, model));
+        let value = serde_json::to_value(projection).unwrap();
+        assert_eq!(value["type"], parsed.metadata.diagram_type);
+        assert_eq!(value["title"], serde_json::to_value(&model.title).unwrap());
+        assert_eq!(
+            value["accTitle"],
+            serde_json::to_value(&model.acc_title).unwrap()
+        );
+        assert_eq!(
+            value["accDescr"],
+            serde_json::to_value(&model.acc_descr).unwrap()
+        );
+        assert_eq!(
+            value["actorOrder"],
+            serde_json::to_value(&model.actor_order).unwrap()
+        );
+        assert_eq!(
+            value["actors"],
+            serde_json::to_value(&model.actors).unwrap()
+        );
+        assert_eq!(
+            value["messages"],
+            serde_json::to_value(&model.messages).unwrap()
+        );
+        assert_eq!(value["notes"], serde_json::to_value(&model.notes).unwrap());
+        assert_eq!(value["boxes"], serde_json::to_value(&model.boxes).unwrap());
+        assert_eq!(
+            value["createdActors"],
+            serde_json::to_value(&model.created_actors).unwrap()
+        );
+        assert_eq!(
+            value["destroyedActors"],
+            serde_json::to_value(&model.destroyed_actors).unwrap()
+        );
+        assert_eq!(
+            value["constants"]["placement"]["over"],
+            super::PLACEMENT_OVER
+        );
+        assert!(!model.notes.is_empty());
+        assert!(!model.boxes.is_empty());
+        assert!(!model.created_actors.is_empty());
+        assert!(!model.destroyed_actors.is_empty());
+    }
 }

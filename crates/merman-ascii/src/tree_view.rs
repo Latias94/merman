@@ -8,7 +8,7 @@ use crate::safe_text::{
     try_concat_layout_text, try_repeat_layout_char,
 };
 use crate::text::display_width_with_profile;
-use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 use std::collections::HashSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -41,7 +41,7 @@ impl TreeViewChars {
 }
 
 pub(super) fn render_tree_view_diagram(
-    model: &TreeViewDiagramRenderModel,
+    model: &TreeViewDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -128,10 +128,7 @@ pub(super) fn render_tree_view_diagram(
     document.finish_with_execution(execution)
 }
 
-fn validate_tree_view_model(
-    root: &TreeViewNodeRenderModel,
-    resources: &mut ResourceContext,
-) -> Result<()> {
+fn validate_tree_view_model(root: &TreeViewNode, resources: &mut ResourceContext) -> Result<()> {
     let mut seen_ids = HashSet::new();
     let mut stack = Vec::new();
     resources.charge_layout_work(1)?;
@@ -185,7 +182,7 @@ fn validate_tree_view_model(
 }
 
 struct TreeFrame<'a> {
-    node: &'a TreeViewNodeRenderModel,
+    node: &'a TreeViewNode,
     prefix: String,
     is_last: bool,
     depth: usize,
@@ -210,7 +207,7 @@ fn push_frame<'a>(
 fn push_wrapped_node(
     document: &mut BudgetedTextDocument,
     prefix: &str,
-    node: &TreeViewNodeRenderModel,
+    node: &TreeViewNode,
     options: &AsciiRenderOptions,
 ) -> Result<()> {
     let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
@@ -269,12 +266,8 @@ mod tests {
 
     const DEEP_NESTING: usize = 256;
 
-    fn node(
-        id: i64,
-        name: &str,
-        children: Vec<TreeViewNodeRenderModel>,
-    ) -> TreeViewNodeRenderModel {
-        TreeViewNodeRenderModel {
+    fn node(id: i64, name: &str, children: Vec<TreeViewNode>) -> TreeViewNode {
+        TreeViewNode {
             id,
             level: id - 1,
             name: name.to_string(),
@@ -283,12 +276,12 @@ mod tests {
         }
     }
 
-    fn chain(depth: usize) -> TreeViewDiagramRenderModel {
+    fn chain(depth: usize) -> TreeViewDiagramModel {
         let mut current = node(depth as i64, "leaf", Vec::new());
         for level in (1..depth).rev() {
             current = node(level as i64, &format!("level-{level}"), vec![current]);
         }
-        TreeViewDiagramRenderModel {
+        TreeViewDiagramModel {
             root: node(0, "/", vec![current]),
             ..Default::default()
         }
@@ -338,7 +331,7 @@ mod tests {
 
     #[test]
     fn tree_view_rejects_duplicate_node_ids_before_rendering() {
-        let model = TreeViewDiagramRenderModel {
+        let model = TreeViewDiagramModel {
             root: node(
                 0,
                 "/",

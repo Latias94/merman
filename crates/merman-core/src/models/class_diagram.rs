@@ -94,7 +94,8 @@ impl ClassDiagramModel {
 ///
 /// Namespace ids historically named `namespace_dom_ids` are also the stable route identities
 /// used by terminal output. Class DOM ids are owned separately by `ClassPresentation`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClassTopology {
     pub namespace_dom_ids: IndexMap<String, String>,
     pub namespaces: IndexMap<String, Namespace>,
@@ -785,8 +786,13 @@ mod topology_admission_tests {
 }
 
 /// A canonical Class graph borrowed together with its privately paired topology.
-#[derive(Debug)]
+///
+/// Serialization preserves the canonical authored fields at the top level and adds the paired
+/// effective namespace and routing facts under `topology`. It does not construct a visual Class
+/// carrier or class DOM ids, and it is not Mermaid's compatibility JSON projection.
+#[derive(Debug, Serialize)]
 pub struct ClassTopologyView<'a> {
+    #[serde(flatten)]
     model: &'a ClassDiagramModel,
     topology: Cow<'a, ClassTopology>,
 }
@@ -799,6 +805,26 @@ impl ClassTopologyView<'_> {
     /// Bytes retained by the requested topology, excluding the borrowed canonical graph.
     pub fn retained_bytes(&self) -> usize {
         self.topology.retained_bytes()
+    }
+
+    /// Counts the requested graph projection and its retained authored and topology text.
+    pub fn complexity(&self) -> crate::resources::ModelComplexity {
+        let mut complexity =
+            crate::resources::ClassComplexity::topology_from_view(self).as_model_complexity();
+        let authored = crate::resources::ModelComplexity::from_serializable(self.model);
+        let topology = crate::resources::ModelComplexity::from_serializable(self.topology.as_ref());
+        complexity.text_bytes = authored
+            .text_bytes
+            .saturating_add(self.topology.retained_bytes());
+        complexity.nesting_depth = complexity
+            .nesting_depth
+            .max(authored.nesting_depth)
+            .max(topology.nesting_depth.saturating_add(1));
+        complexity
+    }
+
+    pub(crate) fn effective_namespaces(&self) -> &IndexMap<String, Namespace> {
+        &self.topology.namespaces
     }
 
     pub fn classes(&self) -> impl ExactSizeIterator<Item = (&str, ClassNodeTopologyView<'_>)> {
@@ -867,6 +893,283 @@ impl ClassTopologyView<'_> {
                 interface,
                 id: &self.topology.interface_ids[index],
             })
+    }
+}
+
+#[cfg(test)]
+mod topology_serialization_tests {
+    use super::*;
+    use crate::resources::{ClassComplexity, ModelComplexity};
+
+    fn authored_model() -> ClassDiagramModel {
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(concat!(
+                "classDiagram\nnamespace A.B {\nclass Service\nnote \"namespace note\"\n}\n",
+                "class note0\nclass interface0\nIService ()-- Service\n",
+            ))
+            .unwrap();
+        let crate::SemanticDiagramModel::Class(model) = parsed.model else {
+            panic!("expected a canonical Class model");
+        };
+        model
+    }
+
+    fn flat_config() -> crate::MermaidConfig {
+        let mut config = crate::MermaidConfig::empty_object();
+        config.set_value("class.hierarchicalNamespaces", false.into());
+        config
+    }
+
+    #[test]
+    fn class_topology_serializes_all_authored_fields_and_effective_routing() {
+        let mut model = authored_model();
+        model.acc_title = Some("Class title".to_owned());
+        model.acc_descr = Some("Class description".to_owned());
+        model
+            .namespace_facade_aliases
+            .insert("Facade".to_owned(), "A.B".to_owned());
+        model.classes["Service"].callback = Some(
+            serde_json::from_value(serde_json::json!({
+                "unknownMember": {"items": ["authored value", 7, {"nested": true}]}
+            }))
+            .unwrap(),
+        );
+        model.classes["Service"].members.push(ClassMember {
+            member_type: "attribute".to_owned(),
+            visibility: "+".to_owned(),
+            id: "field".to_owned(),
+            classifier: "static".to_owned(),
+            parameters: "parameter".to_owned(),
+            return_type: "Result".to_owned(),
+            display_text: "+field: Result".to_owned(),
+            css_style: "font-weight:bold".to_owned(),
+        });
+        model.style_precedence_facts.inline_paint = Some(ClassStyleDeclarationWitness {
+            target: "Service".to_owned(),
+            styles: vec!["stroke:red".to_owned()],
+            style_event_ordinal: 7,
+        });
+        let authored = serde_json::to_value(&model).unwrap();
+        let view = model
+            .topology(&flat_config(), &crate::OperationControl::new())
+            .unwrap();
+        let serialized = serde_json::to_value(&view).unwrap();
+        for (field, value) in authored.as_object().unwrap() {
+            assert_eq!(serialized.get(field), Some(value), "authored field {field}");
+        }
+        assert_eq!(
+            serialized.as_object().unwrap().len(),
+            authored.as_object().unwrap().len() + 1
+        );
+        assert_eq!(serialized["type"], "classDiagram");
+        assert!(serialized["classes"]["Service"].get("domId").is_none());
+        assert_eq!(
+            serialized["classes"]["Service"]["callback"]["unknownMember"]["items"][0],
+            "authored value"
+        );
+        assert_eq!(serialized["namespaceFacadeAliases"]["Facade"], "A.B");
+        assert_eq!(
+            serialized["stylePrecedenceFacts"]["inline_paint"]["target"],
+            "Service"
+        );
+        assert!(serialized["namespaces"].get("A").is_some());
+        assert!(serialized["topology"]["namespaces"].get("A").is_none());
+        assert_eq!(
+            serialized["topology"]["namespaceDomIds"]["A"],
+            "classId-A-0"
+        );
+        assert_eq!(
+            serialized["topology"]["namespaceDomIds"]["A.B"],
+            "classId-A.B-1"
+        );
+        assert_eq!(serialized["topology"]["classParents"]["Service"], "A.B");
+        assert_eq!(serialized["topology"]["namespaces"]["A.B"]["label"], "A.B");
+        assert_eq!(
+            serialized["topology"]["namespaces"]["A.B"]["classIds"],
+            serde_json::json!(["Service"])
+        );
+        assert_eq!(
+            serialized["topology"]["namespaces"]["A.B"]["noteIds"],
+            serde_json::json!(["note0$1"])
+        );
+        assert_eq!(serialized["notes"][0]["id"], "note0");
+        assert_eq!(
+            serialized["topology"]["noteIds"],
+            serde_json::json!(["note0$1"])
+        );
+        assert_eq!(
+            serialized["topology"]["noteParents"],
+            serde_json::json!(["A.B"])
+        );
+        assert_eq!(serialized["interfaces"][0]["id"], "interface0");
+        assert_eq!(
+            serialized["topology"]["interfaceIds"],
+            serde_json::json!(["interface0$1"])
+        );
+        assert_eq!(
+            serialized["topology"]["interfaceIdRemaps"]["interface0"],
+            "interface0$1"
+        );
+        assert!(std::ptr::eq(view.model(), &model));
+    }
+
+    #[test]
+    fn class_topology_complexity_reuses_effective_projection_and_complete_authored_text() {
+        let mut model = authored_model();
+        model.classes["Service"].callback = Some(
+            serde_json::from_value(serde_json::json!({
+                "unknownMember": {"retained": "all nested callback text"}
+            }))
+            .unwrap(),
+        );
+        let view = model
+            .topology(&flat_config(), &crate::OperationControl::new())
+            .unwrap();
+        let projected = ClassComplexity::from_view(&view);
+        assert_eq!(projected.nodes, 6);
+        assert_eq!(projected.edges, 1);
+        assert_eq!(projected.namespaces, 1);
+        assert_eq!(projected.namespace_depth, 1);
+        let expected = ModelComplexity::new(
+            projected.nodes + projected.edges,
+            ModelComplexity::from_serializable(&model).text_bytes + view.retained_bytes(),
+            projected
+                .namespace_depth
+                .max(ModelComplexity::from_serializable(&view).nesting_depth),
+        );
+        assert_eq!(view.complexity(), expected);
+        let policy = crate::resources::InputResourcePolicy::for_profile(
+            crate::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        policy
+            .with_limit(
+                crate::resources::InputResourceLimitId::MaxModelTextBytes,
+                expected.text_bytes,
+            )
+            .unwrap()
+            .check_model_complexity(view.complexity())
+            .unwrap();
+        let error = policy
+            .with_limit(
+                crate::resources::InputResourceLimitId::MaxModelTextBytes,
+                expected.text_bytes - 1,
+            )
+            .unwrap()
+            .check_model_complexity(view.complexity())
+            .unwrap_err();
+        assert_eq!(error.actual, expected.text_bytes);
+    }
+
+    #[test]
+    fn class_topology_admits_callback_json_depth_before_serialization() {
+        use crate::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
+
+        for array_depth in [8, 129] {
+            let mut model = authored_model();
+            let mut value = Value::String("callback text".to_owned());
+            for _ in 0..array_depth {
+                value = Value::Array(vec![value]);
+            }
+            model.classes["Service"].callback =
+                Some(Map::from_iter([("unknownMember".to_owned(), value)]));
+            let view = model
+                .topology(&flat_config(), &crate::OperationControl::new())
+                .unwrap();
+            let complexity = view.complexity();
+            // Class root -> classes map -> Class node -> callback map -> authored arrays.
+            let depth = array_depth + 3;
+            assert_eq!(complexity.nesting_depth, depth);
+            assert_eq!(complexity.items, 7);
+            let policy =
+                InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+            policy
+                .with_limit(InputResourceLimitId::MaxModelNestingDepth, depth)
+                .unwrap()
+                .check_model_complexity(complexity)
+                .unwrap();
+            let error = policy
+                .with_limit(InputResourceLimitId::MaxModelNestingDepth, depth - 1)
+                .unwrap()
+                .check_model_complexity(complexity)
+                .unwrap_err();
+            assert_eq!(error.limit, "max_model_nesting_depth");
+            assert_eq!(error.actual, depth);
+            assert_eq!(error.max, depth - 1);
+            assert_eq!(
+                complexity.nesting_depth,
+                ModelComplexity::from_serializable(&view).nesting_depth
+            );
+        }
+    }
+
+    #[test]
+    fn class_topology_depth_includes_the_effective_topology_envelope() {
+        let model = authored_model();
+        let view = model
+            .topology(&flat_config(), &crate::OperationControl::new())
+            .unwrap();
+        let authored_depth = ModelComplexity::from_serializable(&model).nesting_depth;
+        let topology_depth =
+            ModelComplexity::from_serializable(view.topology.as_ref()).nesting_depth;
+        assert_eq!(authored_depth, topology_depth);
+        assert_eq!(view.complexity().nesting_depth, topology_depth + 1);
+        assert_eq!(
+            view.complexity().nesting_depth,
+            ModelComplexity::from_serializable(&view).nesting_depth
+        );
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn full_class_topology_serialization_borrows_detached_wire_identities() {
+        let mut full = ClassDiagram::new(authored_model(), &flat_config());
+        let topology = &mut full.inner.presentation.topology;
+        topology.namespace_dom_ids["A.B"] = "detached namespace route".to_owned();
+        topology.note_ids[0] = "detached note route".to_owned();
+        topology.namespaces["A.B"].note_ids[0] = "detached note route".to_owned();
+        topology.interface_ids[0] = "detached interface route".to_owned();
+        topology.interface_id_remaps.insert(
+            "interface0".to_owned(),
+            "detached interface route".to_owned(),
+        );
+        let view = full.topology_view();
+        assert!(matches!(view.topology, Cow::Borrowed(_)));
+        assert!(std::ptr::eq(
+            view.topology.as_ref(),
+            &full.inner.presentation.topology
+        ));
+        let serialized = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            serialized["topology"]["namespaceDomIds"]["A.B"],
+            "detached namespace route"
+        );
+        assert_eq!(serialized["topology"]["noteIds"][0], "detached note route");
+        assert_eq!(
+            serialized["topology"]["interfaceIds"][0],
+            "detached interface route"
+        );
+        assert_eq!(
+            serialized["topology"]["interfaceIdRemaps"]["interface0"],
+            "detached interface route"
+        );
+        assert_eq!(
+            ClassComplexity::from_model(&full),
+            ClassComplexity::from_view(&view)
+        );
+        let class_dom_bytes = full
+            .presentation()
+            .class_dom_ids
+            .iter()
+            .map(|(id, dom_id)| id.len() + dom_id.len())
+            .sum::<usize>();
+        assert_eq!(
+            full.presentation().retained_bytes() - class_dom_bytes,
+            view.retained_bytes()
+        );
+        let full_serialized = serde_json::to_value(&full).unwrap();
+        assert!(full_serialized.get("topology").is_none());
+        assert!(full_serialized["classes"]["Service"].get("domId").is_some());
+        assert_eq!(full_serialized["notes"][0]["id"], "detached note route");
     }
 }
 

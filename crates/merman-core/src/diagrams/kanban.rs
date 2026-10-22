@@ -149,6 +149,139 @@ impl<'a> KanbanTerminalView<'a> {
     pub fn node(self, index: usize) -> Option<KanbanTerminalNode<'a>> {
         (index < self.nodes().len()).then(|| self.node_at(index))
     }
+
+    pub fn complexity(self) -> crate::resources::ModelComplexity {
+        match self.0 {
+            KanbanTerminalBacking::Canonical(model) => {
+                crate::resources::ModelComplexity::from_kanban_semantic(model)
+            }
+            #[cfg(feature = "presentation")]
+            KanbanTerminalBacking::Full(model) => {
+                let mut complexity = crate::resources::ModelComplexity::from_kanban(model);
+                for node in &model.nodes {
+                    for text in [
+                        node.compatibility.css_classes.as_deref(),
+                        node.compatibility.shape.as_deref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        complexity.text_bytes = complexity.text_bytes.saturating_add(text.len());
+                    }
+                }
+                complexity
+            }
+        }
+    }
+}
+
+impl Serialize for KanbanTerminalView<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        match self.0 {
+            KanbanTerminalBacking::Canonical(model) => {
+                #[derive(Serialize)]
+                struct Wire<'a> {
+                    nodes: CanonicalTerminalNodes<'a>,
+                }
+                Wire {
+                    nodes: CanonicalTerminalNodes(&model.nodes),
+                }
+                .serialize(serializer)
+            }
+            #[cfg(feature = "presentation")]
+            KanbanTerminalBacking::Full(model) => {
+                #[derive(Serialize)]
+                struct Wire<'a> {
+                    nodes: FullTerminalNodes<'a>,
+                }
+                Wire {
+                    nodes: FullTerminalNodes(&model.nodes),
+                }
+                .serialize(serializer)
+            }
+        }
+    }
+}
+
+struct CanonicalTerminalNodes<'a>(&'a [KanbanNodeModel]);
+
+impl Serialize for CanonicalTerminalNodes<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Node<'a> {
+            id: &'a str,
+            label: &'a str,
+            level: usize,
+            node_type: i32,
+            span: &'a SourceSpan,
+            is_group: bool,
+            parent_id: Option<&'a str>,
+            ticket: Option<&'a str>,
+            priority: Option<&'a str>,
+            assigned: Option<&'a str>,
+            icon: Option<&'a str>,
+            css_classes: Option<&'a str>,
+            shape: Option<&'a str>,
+            metadata: Option<&'a Value>,
+        }
+
+        serializer.collect_seq(self.0.iter().map(|node| {
+            Node {
+                id: &node.id,
+                label: &node.label,
+                level: node.level,
+                node_type: node.node_type,
+                span: &node.span,
+                is_group: node.is_group,
+                parent_id: node.parent_id.as_deref(),
+                ticket: node.ticket.as_deref(),
+                priority: node.priority.as_deref(),
+                assigned: node.assigned.as_deref(),
+                icon: node.icon.as_deref(),
+                css_classes: node.css_classes.as_deref(),
+                shape: node.shape.as_deref(),
+                metadata: node
+                    .metadata
+                    .as_ref()
+                    .map(crate::json_value::ManagedJson::as_value),
+            }
+        }))
+    }
+}
+
+#[cfg(feature = "presentation")]
+struct FullTerminalNodes<'a>(&'a [KanbanRenderNode]);
+
+#[cfg(feature = "presentation")]
+impl Serialize for FullTerminalNodes<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Node<'a> {
+            #[serde(flatten)]
+            node: &'a KanbanRenderNode,
+            level: usize,
+            #[serde(rename = "cssClasses", skip_serializing_if = "Option::is_none")]
+            css_classes: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            shape: Option<&'a str>,
+        }
+        serializer.collect_seq(self.0.iter().map(|node| Node {
+            node,
+            level: node.compatibility.level,
+            css_classes: node.compatibility.css_classes.as_deref(),
+            shape: node.compatibility.shape.as_deref(),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2544,6 +2677,88 @@ mod tests {
 mod semantic_tests {
     use super::*;
 
+    #[test]
+    fn terminal_fallback_serializes_admitted_metadata_beyond_managed_serde_limit() {
+        let mut metadata = Value::String("leaf".to_string());
+        for _ in 0..129 {
+            metadata = Value::Array(vec![metadata]);
+        }
+        let model = KanbanDiagramModel {
+            nodes: vec![KanbanNodeModel {
+                id: "card".to_string(),
+                label: "Card".to_string(),
+                level: 0,
+                node_type: NODE_TYPE_DEFAULT,
+                span: SourceSpan::new(0, 0),
+                is_group: false,
+                parent_id: None,
+                ticket: None,
+                priority: None,
+                assigned: None,
+                icon: None,
+                css_classes: None,
+                shape: None,
+                metadata: Some(crate::json_value::ManagedJson::from_value(metadata)),
+            }],
+        };
+        let typed_error = serde_json::to_value(&model).unwrap_err();
+        assert!(typed_error.to_string().contains("128-container depth"));
+        let terminal = KanbanTerminalView::from_model(&model);
+        assert_eq!(
+            terminal.complexity(),
+            crate::resources::ModelComplexity::new(130, 12, 129)
+        );
+        let fallback = serde_json::to_value(terminal)
+            .expect("admitted terminal metadata must use the caller's nesting policy");
+        let mut value = &fallback["nodes"][0]["metadata"];
+        for _ in 0..129 {
+            let values = value.as_array().unwrap();
+            assert_eq!(values.len(), 1);
+            value = &values[0];
+        }
+        assert_eq!(value.as_str(), Some("leaf"));
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn detached_terminal_fallback_keeps_hidden_authored_facts_without_changing_typed_wire() {
+        let mut node = KanbanRenderNode::new("host", "Host card");
+        node.ticket = Some("MC-42".to_string());
+        node.compatibility = KanbanRenderNodeCompatibility {
+            level: 7,
+            css_classes: Some("host-class".to_string()),
+            shape: Some("host-shape".to_string()),
+            ..Default::default()
+        };
+        let model = KanbanDiagramRenderModel { nodes: vec![node] };
+        let typed = serde_json::to_value(&model).unwrap();
+        assert!(typed["nodes"][0].get("level").is_none());
+        assert!(typed["nodes"][0].get("cssClasses").is_none());
+        assert!(typed["nodes"][0].get("shape").is_none());
+        let terminal = KanbanTerminalView::from_render(&model);
+        let fallback = serde_json::to_value(terminal).unwrap();
+        assert_eq!(fallback.as_object().unwrap().len(), 1);
+        assert_eq!(fallback["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            fallback["nodes"][0],
+            serde_json::json!({
+                "id": "host", "label": "Host card", "isGroup": false, "parentId": null,
+                "ticket": "MC-42", "priority": null, "assigned": null, "icon": null,
+                "level": 7, "cssClasses": "host-class", "shape": "host-shape"
+            })
+        );
+        let base = crate::resources::ModelComplexity::from_kanban(&model);
+        assert_eq!(
+            terminal.complexity(),
+            crate::resources::ModelComplexity::new(
+                base.items,
+                base.text_bytes + "host-class".len() + "host-shape".len(),
+                base.nesting_depth
+            )
+        );
+        assert_eq!(serde_json::to_value(&model).unwrap(), typed);
+    }
+
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "kanban".to_string(),
@@ -2580,6 +2795,19 @@ mod semantic_tests {
             card.metadata.as_ref().unwrap()["custom"],
             serde_json::json!([1, 2])
         );
+        let terminal = KanbanTerminalView::from_model(&model);
+        assert_eq!(
+            serde_json::to_value(terminal).unwrap(),
+            serde_json::to_value(&model).unwrap()
+        );
+        assert_eq!(
+            terminal.complexity(),
+            crate::resources::ModelComplexity::from_kanban_semantic(&model)
+        );
+        assert!(std::ptr::eq(
+            terminal.node(1).unwrap().authored().unwrap(),
+            card
+        ));
         assert_eq!(kanban_syntax_construction_count(), 1);
         #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
@@ -2705,6 +2933,39 @@ mod semantic_tests {
         let projected = canonical
             .into_render_model(&MermaidConfig::empty_object())
             .unwrap();
+        let terminal = KanbanTerminalView::from_render(&projected);
+        let mut fallback = serde_json::to_value(terminal).unwrap();
+        for (wire, node) in fallback["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(&projected.nodes)
+        {
+            let fields = wire.as_object_mut().unwrap();
+            assert_eq!(
+                fields.remove("level").unwrap(),
+                serde_json::json!(node.compatibility.level)
+            );
+            assert_eq!(
+                fields.remove("cssClasses"),
+                node.compatibility
+                    .css_classes
+                    .as_ref()
+                    .map(|value| serde_json::json!(value))
+            );
+            assert_eq!(
+                fields.remove("shape"),
+                node.compatibility
+                    .shape
+                    .as_ref()
+                    .map(|value| serde_json::json!(value))
+            );
+        }
+        assert_eq!(fallback, serde_json::to_value(&projected).unwrap());
+        assert_eq!(
+            terminal.complexity(),
+            crate::resources::ModelComplexity::from_kanban(&projected)
+        );
         let ids: Vec<_> = projected
             .nodes
             .iter()

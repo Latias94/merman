@@ -66,7 +66,6 @@ const PLACEMENT_RIGHT_OF: i32 = 1;
 const PLACEMENT_OVER: i32 = 2;
 
 mod ast;
-#[cfg(feature = "compat-json")]
 mod compat;
 mod db;
 mod lexer;
@@ -78,6 +77,7 @@ mod presentation;
 use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
+pub use compat::SequenceCompatibilityProjection;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use compat::parse_sequence_json_and_editor_facts;
 #[cfg(feature = "compat-json")]

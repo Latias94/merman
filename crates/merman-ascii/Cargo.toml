@@ -93,7 +93,7 @@ default = []
 
 [dependencies]
 dugong = { workspace = true, optional = true }
-merman-core = { workspace = true, features = ["presentation", "compat-json"] }
+merman-core.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true
@@ -103,7 +103,7 @@ rustc-hash = { workspace = true, optional = true }
 
 [dev-dependencies]
 data-encoding.workspace = true
-merman-core = { workspace = true, features = ["test-support"] }
+merman-core = { workspace = true, features = ["test-support", "presentation", "compat-json"] }
 sha2.workspace = true
 
 [[test]]

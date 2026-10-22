@@ -106,17 +106,21 @@ fn main() {
                 let context = engine.begin_operation().unwrap();
                 let control = merman_core::OperationControl::new();
                 let resources = merman_ascii::AsciiResourcePolicy::default();
-                let rendered = renderer.render_parsed(&parsed, &control, &context, resources);
-                let report = renderer.render_parsed_report(
-                    &parsed,
-                    merman_ascii::AsciiViewportPolicy::unrestricted(),
-                    &control,
-                    &context,
-                    resources,
-                );
                 if enabled.contains(family) {
-                    let rendered = rendered.unwrap();
-                    let report = report.unwrap();
+                    let parsed = merman_core::SemanticParser::new()
+                        .parse_diagram_sync(source)
+                        .unwrap();
+                    let rendered =
+                        renderer.render_parsed(&parsed, &control, &context, resources).unwrap();
+                    let report = renderer
+                        .render_parsed_report(
+                            &parsed,
+                            merman_ascii::AsciiViewportPolicy::unrestricted(),
+                            &control,
+                            &context,
+                            resources,
+                        )
+                        .unwrap();
                     for text in [&rendered, &report.text] {
                         assert!(!text.is_empty(), "{family}");
                         if matches!(family, "flowchart" | "swimlane") {
@@ -125,20 +129,42 @@ fn main() {
                         }
                     }
                 } else {
-                    assert!(
-                        matches!(
-                            rendered,
-                            Err(merman_ascii::AsciiError::UnsupportedDiagram { .. })
+                    let semantic = merman_core::SemanticParser::new().parse_diagram_sync(source);
+                    match semantic {
+                        Ok(parsed) => {
+                            let rendered = renderer.render_parsed(
+                                &parsed,
+                                &control,
+                                &context,
+                                resources,
+                            );
+                            let report = renderer.render_parsed_report(
+                                &parsed,
+                                merman_ascii::AsciiViewportPolicy::unrestricted(),
+                                &control,
+                                &context,
+                                resources,
+                            );
+                            assert!(
+                                matches!(
+                                    rendered,
+                                    Err(merman_ascii::AsciiError::UnsupportedDiagram { .. })
+                                ),
+                                "{family}: {rendered:?}"
+                            );
+                            assert!(
+                                matches!(
+                                    report,
+                                    Err(merman_ascii::AsciiError::UnsupportedDiagram { .. })
+                                ),
+                                "{family}: {report:?}"
+                            );
+                        }
+                        Err(error) => assert!(
+                            matches!(error, merman_core::Error::UnsupportedDiagram { .. }),
+                            "{family}: {error:?}"
                         ),
-                        "{family}: {rendered:?}"
-                    );
-                    assert!(
-                        matches!(
-                            report,
-                            Err(merman_ascii::AsciiError::UnsupportedDiagram { .. })
-                        ),
-                        "{family}: {report:?}"
-                    );
+                    }
                 }
             }
             let _ = parsed;

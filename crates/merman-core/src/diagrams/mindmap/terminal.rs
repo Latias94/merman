@@ -2,6 +2,7 @@ use super::{MindmapDiagramModel, MindmapDisplayPolicy, MindmapNodeModel};
 #[cfg(feature = "presentation")]
 use super::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
 use crate::MermaidConfig;
+use serde::Serialize;
 
 /// Terminal graph identity, preserving numeric canonical IDs and detached string IDs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -226,11 +227,148 @@ impl<'a> MindmapTerminalView<'a> {
             _ => None,
         }
     }
+
+    /// Counts the canonical graph and generated display text, without counting display fields
+    /// as additional graph nodes, edges, or nesting levels.
+    pub fn complexity(self) -> crate::resources::ModelComplexity {
+        use crate::resources::MindmapComplexity;
+        match self.backing {
+            MindmapTerminalBacking::Semantic(model, display) => {
+                let mut complexity =
+                    MindmapComplexity::from_semantic_model(model).as_model_complexity();
+                complexity.text_bytes = complexity
+                    .text_bytes
+                    .saturating_add(display.shape(super::NODE_TYPE_DEFAULT).len());
+                for node in &model.nodes {
+                    complexity.text_bytes = complexity
+                        .text_bytes
+                        .saturating_add(display.shape(node.node_type).len());
+                }
+                complexity
+            }
+            #[cfg(feature = "presentation")]
+            MindmapTerminalBacking::Render(model) => {
+                MindmapComplexity::from_model(model).as_model_complexity()
+            }
+        }
+    }
+}
+
+impl Serialize for MindmapTerminalView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.backing {
+            MindmapTerminalBacking::Semantic(model, display) => {
+                #[derive(Serialize)]
+                struct Wire<'a> {
+                    nodes: CanonicalNodes<'a>,
+                    display: MindmapDisplayPolicy,
+                }
+                Wire {
+                    nodes: CanonicalNodes {
+                        nodes: &model.nodes,
+                        display,
+                    },
+                    display,
+                }
+                .serialize(serializer)
+            }
+            #[cfg(feature = "presentation")]
+            MindmapTerminalBacking::Render(model) => model.serialize(serializer),
+        }
+    }
+}
+
+struct CanonicalNodes<'a> {
+    nodes: &'a [MindmapNodeModel],
+    display: MindmapDisplayPolicy,
+}
+
+impl Serialize for CanonicalNodes<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Node<'a> {
+            #[serde(flatten)]
+            authored: &'a MindmapNodeModel,
+            shape: &'static str,
+        }
+        serializer.collect_seq(self.nodes.iter().map(|node| Node {
+            authored: node,
+            shape: self.display.shape(node.node_type),
+        }))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_fallback_retains_all_authored_fields_and_explicit_display_policy() {
+        let mut model = semantic("mindmap\n root\n  left\n   leaf\n  right\n");
+        model.nodes[1].class = Some("highlight".to_string());
+        model.nodes[1].icon = Some("star".to_string());
+        let config = MermaidConfig::from_value(
+            serde_json::json!({"theme": "redux", "mindmap": {"colorBy": "depth"}}),
+        );
+        let view = MindmapTerminalView::from_semantic(&model, &config);
+        let wire = serde_json::to_value(view).unwrap();
+        assert_eq!(
+            wire["display"],
+            serde_json::json!({"defaultShape": "rounded", "colorByDepth": true})
+        );
+        assert_eq!(wire["nodes"].as_array().unwrap().len(), model.nodes.len());
+        for (index, authored) in model.nodes.iter().enumerate() {
+            let mut expected = serde_json::to_value(authored).unwrap();
+            expected["shape"] = "rounded".into();
+            assert_eq!(wire["nodes"][index], expected);
+        }
+        let base =
+            crate::resources::MindmapComplexity::from_semantic_model(&model).as_model_complexity();
+        assert_eq!(
+            view.complexity(),
+            crate::resources::ModelComplexity::new(
+                base.items,
+                base.text_bytes + "rounded".len() * (model.nodes.len() + 1),
+                base.nesting_depth
+            )
+        );
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn detached_fallback_keeps_full_custom_shapes_sections_and_dimensions() {
+        let mut model = MindmapDiagramRenderModel::default();
+        model.nodes.push(MindmapDiagramRenderNode {
+            id: "host-node".to_string(),
+            dom_id: "host-dom".to_string(),
+            label: "Host".to_string(),
+            label_type: "text".to_string(),
+            is_group: true,
+            shape: "custom-host-shape".to_string(),
+            width: 73.0,
+            height: 29.0,
+            padding: 3.0,
+            css_classes: "host-class".to_string(),
+            css_styles: vec!["fill:red".to_string()],
+            look: "host-look".to_string(),
+            icon: Some("star".to_string()),
+            x: Some(17.0),
+            y: Some(19.0),
+            level: 4,
+            node_id: "authored-host".to_string(),
+            node_type: 0,
+            section: Some(9),
+        });
+        let view = MindmapTerminalView::from_render(&model);
+        assert_eq!(
+            serde_json::to_value(view).unwrap(),
+            serde_json::to_value(&model).unwrap()
+        );
+        assert_eq!(
+            view.complexity(),
+            crate::resources::MindmapComplexity::from_model(&model).as_model_complexity()
+        );
+    }
 
     fn semantic(source: &str) -> MindmapDiagramModel {
         let parsed = crate::SemanticParser::new()

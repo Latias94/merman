@@ -4,7 +4,8 @@ use super::{GanttDiagramRenderModel, GanttRenderTask};
 use std::collections::HashMap;
 
 /// Borrowed diagram fields shared by canonical and full Gantt terminal output.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GanttTerminalMetadata<'a> {
     pub title: &'a Option<String>,
     pub acc_title: &'a Option<String>,
@@ -142,12 +143,78 @@ impl<'a> GanttTerminalView<'a> {
     pub fn task(self, index: usize) -> Option<GanttTerminalTaskView<'a>> {
         self.task_slice().get(index)
     }
+
+    /// Counts the owning model plus the admitted display-mode text retained by this view.
+    pub fn complexity(self) -> crate::resources::ModelComplexity {
+        use crate::resources::ModelComplexity;
+        match self.model {
+            Model::Canonical(model) => {
+                let mut complexity = ModelComplexity::from_serializable(model);
+                complexity.text_bytes = complexity
+                    .text_bytes
+                    .saturating_add(self.display_mode.len());
+                complexity
+            }
+            #[cfg(feature = "presentation")]
+            Model::Full(model) => ModelComplexity::from_serializable(model),
+        }
+    }
+}
+
+impl serde::Serialize for GanttTerminalView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.model {
+            Model::Canonical(_) => {
+                #[derive(serde::Serialize)]
+                struct Wire<'a> {
+                    #[serde(flatten)]
+                    metadata: GanttTerminalMetadata<'a>,
+                    tasks: TaskSequence<'a>,
+                }
+                Wire {
+                    metadata: self.metadata(),
+                    tasks: TaskSequence(self.task_slice()),
+                }
+                .serialize(serializer)
+            }
+            #[cfg(feature = "presentation")]
+            Model::Full(model) => model.serialize(serializer),
+        }
+    }
+}
+
+struct TaskSequence<'a>(Tasks<'a>);
+
+impl serde::Serialize for TaskSequence<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(GanttTerminalTaskIter {
+            tasks: self.0,
+            index: 0,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct GanttTerminalTaskView<'a> {
     pub semantic: &'a GanttTask,
     pub render_end_ms: Option<i64>,
+}
+
+impl serde::Serialize for GanttTerminalTaskView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(serde::Serialize)]
+        struct Wire<'a> {
+            #[serde(flatten)]
+            semantic: &'a GanttTask,
+            #[serde(rename = "renderEndTime")]
+            render_end_ms: Option<i64>,
+        }
+        Wire {
+            semantic: self.semantic,
+            render_end_ms: self.render_end_ms,
+        }
+        .serialize(serializer)
+    }
 }
 
 impl std::ops::Deref for GanttTerminalTaskView<'_> {
@@ -185,6 +252,56 @@ impl std::iter::FusedIterator for GanttTerminalTaskIter<'_> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_fallback_preserves_complete_task_rules_metadata_and_visible_end() {
+        let mut model = GanttDiagramModel {
+            title: Some("Schedule".to_string()),
+            sections: vec!["Delivery".to_string(), "Delivery".to_string()],
+            tasks: vec![GanttTask {
+                id: "ship".to_string(),
+                section: "Delivery".to_string(),
+                section_index: Some(1),
+                start_constraint: super::super::GanttTaskStartConstraint::After {
+                    dependency_ids: vec!["build".to_string(), "test".to_string()],
+                },
+                end_constraint: super::super::GanttTaskEndConstraint::Until {
+                    dependency_ids: vec!["release".to_string()],
+                },
+                render_end_ms: Some(42),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        model
+            .links
+            .insert("ship".to_string(), "https://example.com/ship".to_string());
+        model.click_events.insert(
+            "ship".to_string(),
+            GanttClickEvent {
+                function_name: "onShip".to_string(),
+                function_args: vec!["ship".to_string()],
+                raw_function_args: Some("'ship'".to_string()),
+            },
+        );
+        let config = crate::MermaidConfig::from_value(
+            serde_json::json!({"gantt": {"displayMode": "compact"}}),
+        );
+        let view = GanttTerminalView::from_model(&model, &config);
+        let mut expected = serde_json::to_value(&model).unwrap();
+        expected["displayMode"] = "compact".into();
+        expected["tasks"][0]["renderEndTime"] = 42.into();
+        assert_eq!(serde_json::to_value(view).unwrap(), expected);
+        let base = crate::resources::ModelComplexity::from_serializable(&model);
+        assert_eq!(
+            view.complexity(),
+            crate::resources::ModelComplexity::new(
+                base.items,
+                base.text_bytes + "compact".len(),
+                base.nesting_depth
+            )
+        );
+    }
 
     #[test]
     fn canonical_terminal_view_borrows_metadata_and_exact_task_iterator() {
@@ -236,5 +353,13 @@ mod tests {
         assert_eq!(task.render_end_ms, Some(42));
         assert_eq!(task.semantic.render_end_ms, Some(23));
         assert!(std::ptr::eq(view.metadata().links, &full.model.links));
+        assert_eq!(
+            serde_json::to_value(view).unwrap(),
+            serde_json::to_value(&full).unwrap()
+        );
+        assert_eq!(
+            view.complexity(),
+            crate::resources::ModelComplexity::from_serializable(&full)
+        );
     }
 }

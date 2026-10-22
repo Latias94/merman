@@ -1428,6 +1428,58 @@ fn render_document_target(
 }
 
 #[cfg(feature = "ascii")]
+#[doc(hidden)]
+pub fn ascii_diagram_from_full(
+    model: &merman_core::RenderSemanticModel,
+) -> merman_ascii::AsciiDiagram<'_> {
+    use merman_ascii::AsciiDiagram;
+    use merman_core::RenderSemanticModel;
+
+    match model {
+        #[cfg(feature = "diagram-class")]
+        RenderSemanticModel::Class(model) => AsciiDiagram::Class(model.topology_view()),
+        #[cfg(feature = "diagram-er")]
+        RenderSemanticModel::Er(model) => AsciiDiagram::Er(model),
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        RenderSemanticModel::Flowchart(model) => AsciiDiagram::Flowchart(model),
+        #[cfg(feature = "diagram-gantt")]
+        RenderSemanticModel::Gantt(model) => {
+            AsciiDiagram::Gantt(merman_core::diagrams::gantt::GanttTerminalView::from_render(model))
+        }
+        #[cfg(feature = "diagram-git-graph")]
+        RenderSemanticModel::GitGraph(model) => AsciiDiagram::GitGraph(model),
+        #[cfg(feature = "diagram-journey")]
+        RenderSemanticModel::Journey(model) => AsciiDiagram::Journey(&model.semantic),
+        #[cfg(feature = "diagram-kanban")]
+        RenderSemanticModel::Kanban(model) => AsciiDiagram::Kanban(
+            merman_core::diagrams::kanban::KanbanTerminalView::from_render(model),
+        ),
+        #[cfg(feature = "diagram-mindmap")]
+        RenderSemanticModel::Mindmap(model) => AsciiDiagram::Mindmap(
+            merman_core::diagrams::mindmap::MindmapTerminalView::from_render(model),
+        ),
+        #[cfg(feature = "diagram-packet")]
+        RenderSemanticModel::Packet(model) => AsciiDiagram::Packet(&model.semantic),
+        #[cfg(feature = "diagram-sequence")]
+        RenderSemanticModel::Sequence(model) => AsciiDiagram::Sequence(model),
+        #[cfg(feature = "diagram-state")]
+        RenderSemanticModel::State(model) => {
+            AsciiDiagram::State(merman_core::diagrams::state::StateTerminalView::from_render(model))
+        }
+        #[cfg(feature = "diagram-timeline")]
+        RenderSemanticModel::Timeline(model) => AsciiDiagram::Timeline(&model.semantic),
+        #[cfg(feature = "diagram-tree-view")]
+        RenderSemanticModel::TreeView(model) => AsciiDiagram::TreeView(model),
+        #[cfg(feature = "diagram-xychart")]
+        RenderSemanticModel::XyChart(model) => AsciiDiagram::XyChart {
+            model: &model.semantic,
+            display: model.display,
+        },
+        _ => AsciiDiagram::Unsupported(model.kind()),
+    }
+}
+
+#[cfg(feature = "ascii")]
 fn render_ascii_target(
     semantic: SemanticArtifact,
     request: AsciiRequest,
@@ -1437,8 +1489,18 @@ fn render_ascii_target(
     let renderer = merman_ascii::AsciiRenderer::new(request.options);
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;
-    let result = renderer.render_parsed_report(
-        parsed.parsed(),
+    let parsed = parsed.parsed();
+    let view = ascii_diagram_from_full(parsed.model());
+    let metadata = parsed.metadata();
+    let source = merman_ascii::AsciiSourceContext {
+        diagram_type: &metadata.diagram_type,
+        config: &metadata.config,
+        semantic_config: metadata.effective_config.as_config(),
+        title: metadata.title.as_deref(),
+    };
+    let result = renderer.render_model_report(
+        &view,
+        source,
         request.viewport,
         &operation.control,
         &operation.context,

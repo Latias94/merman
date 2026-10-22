@@ -2,8 +2,11 @@ use merman_ascii::{
     AsciiOutput, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy, AsciiViewportPolicy,
     TerminalWidthProfile,
 };
+pub(crate) mod full_model;
 use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
-use merman_core::{Engine, OperationControl, ParseOptions, runtime::OperationContext};
+use merman_core::{
+    Engine, OperationControl, ParseOptions, SemanticParser, runtime::OperationContext,
+};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
 
@@ -117,8 +120,15 @@ pub(crate) fn render_model_report(
     let context = merman_core::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic test operation context");
+    let config = merman_core::MermaidConfig::empty_object();
     AsciiRenderer::new(*options)?.render_model_report(
-        model,
+        &full_model::view(model),
+        merman_ascii::AsciiSourceContext {
+            diagram_type: model.kind(),
+            config: &config,
+            semantic_config: &config,
+            title: None,
+        },
         viewport,
         &OperationControl::new(),
         &context,
@@ -127,24 +137,42 @@ pub(crate) fn render_model_report(
 }
 
 #[allow(dead_code)]
-pub(crate) fn render_parsed(
+pub(crate) fn render_full_parsed(
     parsed: &ParsedDiagramRender,
     options: &AsciiRenderOptions,
 ) -> merman_ascii::Result<String> {
     let context = merman_core::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic test operation context");
-    AsciiRenderer::new(*options)?.render_parsed(
-        parsed,
-        &OperationControl::new(),
-        &context,
-        AsciiResourcePolicy::default(),
-    )
+    AsciiRenderer::new(*options)?
+        .render_model_report(
+            &full_model::view(parsed.model()),
+            full_model::source(parsed.metadata()),
+            AsciiViewportPolicy::unrestricted(),
+            &OperationControl::new(),
+            &context,
+            AsciiResourcePolicy::default(),
+        )
+        .map(|output| output.text)
 }
 
 #[allow(dead_code)]
 pub(crate) fn render_source(source: &str) -> String {
-    render_model(&parse_model(source), &AsciiRenderOptions::ascii()).expect("diagram should render")
+    let parsed = SemanticParser::new()
+        .parse_diagram_sync(source)
+        .expect("canonical diagram should parse");
+    let context = merman_core::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .unwrap();
+    AsciiRenderer::new(AsciiRenderOptions::ascii())
+        .unwrap()
+        .render_parsed(
+            &parsed,
+            &OperationControl::new(),
+            &context,
+            AsciiResourcePolicy::default(),
+        )
+        .expect("canonical diagram should render")
 }
 
 pub(crate) fn render_controlled_model(
@@ -154,5 +182,10 @@ pub(crate) fn render_controlled_model(
     context: &OperationContext,
     resources: AsciiResourcePolicy,
 ) -> merman_ascii::Result<String> {
-    AsciiRenderer::new(*options)?.render_model(model, control, context, resources)
+    AsciiRenderer::new(*options)?.render_model(
+        &full_model::view(model),
+        control,
+        context,
+        resources,
+    )
 }

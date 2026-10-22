@@ -65,22 +65,22 @@ impl Serialize for StateRecords<'_> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StateModelFields<'a> {
-    document: FlatDocuments<'a>,
-    direction: &'a str,
-    acc_title: &'a Option<String>,
-    acc_descr: &'a Option<String>,
-    nodes: &'a [StateNode],
-    edges: &'a [StateEdge],
-    relations: &'a [StateRelation],
-    links: &'a HashMap<String, StateLinks>,
-    states: StateRecords<'a>,
-    style_classes: &'a IndexMap<String, StateStyleClass>,
+pub(super) struct StateModelFields<'a, N, E> {
+    pub document: FlatDocuments<'a>,
+    pub direction: &'a str,
+    pub acc_title: &'a Option<String>,
+    pub acc_descr: &'a Option<String>,
+    pub nodes: N,
+    pub edges: E,
+    pub relations: &'a [StateRelation],
+    pub links: &'a HashMap<String, StateLinks>,
+    pub states: StateRecords<'a>,
+    pub style_classes: &'a IndexMap<String, StateStyleClass>,
 }
 
 impl StateDiagramModel {
-    pub(crate) fn model_complexity(&self) -> ModelComplexity {
-        let mut complexity = ModelComplexity::from_serializable(&StateModelFields {
+    pub(super) fn terminal_fields(&self) -> StateModelFields<'_, &[StateNode], &[StateEdge]> {
+        StateModelFields {
             document: FlatDocuments(&self.document),
             direction: &self.direction,
             acc_title: &self.acc_title,
@@ -94,7 +94,11 @@ impl StateDiagramModel {
                 include_documents: true,
             },
             style_classes: &self.style_classes,
-        });
+        }
+    }
+
+    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+        let mut complexity = ModelComplexity::from_serializable(&self.terminal_fields());
         complexity.nesting_depth = complexity
             .nesting_depth
             .max(self.document.semantic_nesting_depth());
@@ -103,7 +107,7 @@ impl StateDiagramModel {
 }
 
 impl StateDocument {
-    fn semantic_nesting_depth(&self) -> usize {
+    pub(super) fn semantic_nesting_depth(&self) -> usize {
         let Some(root) = self.root else {
             return 0;
         };
@@ -124,7 +128,7 @@ impl StateDocument {
     }
 }
 
-struct FlatDocuments<'a>(&'a StateDocument);
+pub(super) struct FlatDocuments<'a>(pub &'a StateDocument);
 
 impl Serialize for FlatDocuments<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

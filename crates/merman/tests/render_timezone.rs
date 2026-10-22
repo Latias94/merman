@@ -143,10 +143,11 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
     let context = runtime_policy
         .begin_operation()
         .expect("capture New York operation context");
+    let ascii_model = merman::render::ascii_diagram_from_full(&RenderSemanticModel::Gantt(model));
     let rendered = AsciiRenderer::new(AsciiRenderOptions::ascii())
         .expect("ASCII options should validate")
         .render_model(
-            &RenderSemanticModel::Gantt(model),
+            &ascii_model,
             &OperationControl::new(),
             &context,
             AsciiResourcePolicy::default(),

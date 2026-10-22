@@ -53,14 +53,14 @@ impl StateStylePlan {
     ) -> Result<Self> {
         let mut node_by_index = Vec::new();
         node_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
         let mut group_by_index = Vec::new();
         group_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
 
-        for (index, node) in model.nodes.iter().enumerate() {
+        for (index, node) in model.nodes().iter().enumerate() {
             checkpoint_projection(execution, index)?;
             let prepared = prepare_state_style(
                 node.css_compiled_styles
@@ -160,7 +160,7 @@ fn from_state_view_transactional(
     let style_plan = StateStylePlan::try_new(model, resources, execution)?;
     let parent_projection = validate_supported_state_model(model, resources, execution)?;
 
-    let direction = parse_state_direction(model.direction)?;
+    let direction = parse_state_direction(model.direction())?;
     let group_members = group_members_by_id(model, execution)?;
     let note_node_parent_by_id = note_node_parent_by_id(model, execution)?;
     let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id, execution)?;
@@ -180,10 +180,14 @@ fn from_state_view_transactional(
     let state_directions =
         state_direction_projection(model, direction, &parent_projection, resources, execution)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
-    graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
+    graph.try_reserve_projection(
+        model.nodes().len(),
+        model.edges().len(),
+        model.nodes().len(),
+    )?;
     graph.use_incoming_edge_roots();
 
-    for (index, (node, text_plan)) in model.nodes.iter().zip(node_text_plans).enumerate() {
+    for (index, (node, text_plan)) in model.nodes().iter().zip(node_text_plans).enumerate() {
         checkpoint_projection(execution, index)?;
         if is_group_container(node, &group_members) {
             continue;
@@ -229,7 +233,7 @@ fn from_state_view_transactional(
         checkpoint_projection(execution, index)?;
         let node_index = group.node_index;
         let node = model
-            .nodes
+            .nodes()
             .get(node_index)
             .ok_or_else(|| unsupported("state group index"))?;
         let members = materialize_group_members(
@@ -263,7 +267,7 @@ fn from_state_view_transactional(
         );
     }
 
-    for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
+    for (index, (edge, label_plan)) in model.edges().iter().zip(edge_labels).enumerate() {
         checkpoint_projection(execution, index)?;
         let mut from = remap_note_endpoint(edge.start, &note_node_parent_by_id);
         let mut to = remap_note_endpoint(edge.end, &note_node_parent_by_id);
@@ -300,8 +304,8 @@ fn preflight_state_projection_text(
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    charge_text_layout(resources, model.direction)?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    charge_text_layout(resources, model.direction())?;
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         charge_text_layout(resources, node.id)?;
         if let Some(parent_id) = node.parent_id {
@@ -311,7 +315,7 @@ fn preflight_state_projection_text(
             charge_text_layout(resources, position)?;
         }
     }
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         charge_text_layout(resources, edge.start)?;
         charge_text_layout(resources, edge.end)?;
@@ -330,18 +334,18 @@ fn plan_state_texts<'a>(
 ) -> Result<StateProjectionTextPlan<'a>> {
     let mut nodes = Vec::new();
     nodes
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut group_titles = HashMap::new();
     group_titles
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut work_units = 0usize;
     let mut retained_document_cells = 0usize;
     let mut planned_document_cells = 0usize;
     let mut output_bytes = 0usize;
 
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if is_group_container(node, group_members) {
             nodes.push(None);
@@ -413,9 +417,9 @@ fn plan_state_texts<'a>(
 
     let mut edge_labels = Vec::new();
     edge_labels
-        .try_reserve_exact(model.edges.len())
+        .try_reserve_exact(model.edges().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let from = remap_note_endpoint(edge.start, note_node_parent_by_id);
         let to = remap_note_endpoint(edge.end, note_node_parent_by_id);
@@ -556,7 +560,7 @@ fn state_projection_work(
     execution: AsciiExecution<'_>,
 ) -> Result<usize> {
     let mut authored_items = 0usize;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let label_items = node
             .label
@@ -577,7 +581,7 @@ fn state_projection_work(
         })?;
     }
     let node_containers = model
-        .nodes
+        .nodes()
         .len()
         .checked_mul(STATE_NODE_PROJECTION_WORK_UNITS)
         .ok_or_else(|| {
@@ -586,7 +590,7 @@ fn state_projection_work(
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
     let edge_containers = model
-        .edges
+        .edges()
         .len()
         .checked_mul(STATE_EDGE_PROJECTION_WORK_UNITS)
         .ok_or_else(|| {
@@ -617,9 +621,9 @@ fn validate_supported_state_model(
 ) -> Result<StateParentProjection> {
     let mut node_index_by_id = HashMap::new();
     node_index_by_id
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if node_index_by_id.insert(node.id, index).is_some() {
             return Err(unsupported("duplicate node ids"));
@@ -629,7 +633,7 @@ fn validate_supported_state_model(
     let parent_projection =
         StateParentProjection::try_new(model, &node_index_by_id, resources, execution)?;
 
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if !node_index_by_id.contains_key(edge.start) || !node_index_by_id.contains_key(edge.end) {
             return Err(unsupported("edges with missing endpoint nodes"));
@@ -653,9 +657,9 @@ impl StateParentProjection {
     ) -> Result<Self> {
         let mut parent_by_index = Vec::new();
         parent_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
-        for (node_index, node) in model.nodes.iter().enumerate() {
+        for (node_index, node) in model.nodes().iter().enumerate() {
             checkpoint_projection(execution, node_index)?;
             let parent_index = node
                 .parent_id
@@ -668,7 +672,7 @@ impl StateParentProjection {
                 .transpose()?;
             if let Some(parent_index) = parent_index {
                 let parent = model
-                    .nodes
+                    .nodes()
                     .get(parent_index)
                     .ok_or_else(|| unsupported("state parent index"))?;
                 if !parent.is_group {
@@ -844,9 +848,9 @@ fn group_members_by_id<'a>(
 ) -> Result<StateGroupMembers<'a>> {
     let mut members = StateGroupMembers::new();
     members
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let Some(parent_id) = node.parent_id else {
             continue;
@@ -917,9 +921,9 @@ fn note_node_parent_by_id<'a>(
 ) -> Result<StateNoteParentIndex<'a>> {
     let mut parents = HashMap::new();
     parents
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if !is_state_note_node(node) {
             continue;
@@ -939,9 +943,9 @@ fn note_side_constraints<'a>(
 ) -> Result<StateNoteSideConstraints<'a>> {
     let mut note_group_by_id = HashMap::<&str, Option<&str>>::new();
     note_group_by_id
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if is_state_note_group(node) {
             note_group_by_id.insert(node.id, node.position);
@@ -952,7 +956,7 @@ fn note_side_constraints<'a>(
     constraints
         .try_reserve(note_group_by_id.len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if !is_note_edge(edge) {
             continue;
@@ -1019,9 +1023,9 @@ fn sorted_group_nodes(
 ) -> Result<Vec<StateGroupOrderEntry>> {
     let mut groups = Vec::new();
     groups
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (node_index, node) in model.nodes.iter().enumerate() {
+    for (node_index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, node_index)?;
         if !is_group_container(node, group_members) {
             continue;
@@ -1063,9 +1067,9 @@ fn state_direction_projection(
 ) -> Result<StateDirectionProjection> {
     let mut explicit_by_index = Vec::new();
     explicit_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let explicit = if node.explicit_dir == Some(true) {
             Some(parse_state_direction(node.dir.ok_or_else(|| {
@@ -1079,9 +1083,9 @@ fn state_direction_projection(
 
     let mut inherited_by_index = Vec::new();
     inherited_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    inherited_by_index.resize(model.nodes.len(), None);
+    inherited_by_index.resize(model.nodes().len(), None);
     // Validation cached a parent-first order, so every inherited value is already available here.
     for (iteration, node_index) in parent_projection
         .parent_first_indices
@@ -1114,11 +1118,11 @@ fn state_direction_projection(
 
     let mut node_by_index = Vec::new();
     node_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut group_by_index = Vec::new();
     group_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     for (index, (explicit, inherited)) in explicit_by_index
         .into_iter()

@@ -812,7 +812,7 @@ pub fn ascii_capabilities() -> &'static [AsciiCapability] {
                     merman_core::diagram_type_metadata_id(family.logical_family_kind)
                         .unwrap_or(family.logical_family_kind),
                 );
-                if !family.has_render_parser
+                if !family.has_semantic_parser
                     || diagram_type == "error"
                     || capabilities
                         .iter()
@@ -981,7 +981,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let core_types = core_families
             .iter()
-            .filter(|family| family.has_render_parser && family.logical_family_kind != "error")
+            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
             .map(|family| {
                 merman_core::diagram_type_metadata_id(family.logical_family_kind).unwrap()
             })

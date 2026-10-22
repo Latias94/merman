@@ -42,7 +42,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         "merman",
         &["system-fonts", "experimental-system-font-query"],
     ),
-    ("merman-analysis", &[]),
+    ("merman-analysis", &["compat-json"]),
     ("merman-android-jni", &["native-runtime"]),
     ("merman-ascii", &[]),
     ("merman-bindings-core", &["native-runtime"]),
@@ -50,7 +50,16 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         "merman-cli",
         &["system-fonts", "experimental-system-font-query"],
     ),
-    ("merman-core", &["operation-deadlines", "test-support"]),
+    (
+        "merman-core",
+        &[
+            "compat-json",
+            "editor-facts",
+            "operation-deadlines",
+            "presentation",
+            "test-support",
+        ],
+    ),
     ("merman-editor-core", &[]),
     (
         "merman-export",

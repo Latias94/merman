@@ -14,7 +14,7 @@ use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceControlRole,
-    SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage,
+    SequenceDiagramModel, SequenceMessage as CoreSequenceMessage,
     SequenceMessageDirection as CoreSequenceMessageDirection,
     SequenceMessageKind as CoreSequenceMessageKind,
     SequenceMessageMarker as CoreSequenceMessageMarker, SequenceMessagePayload,
@@ -275,7 +275,7 @@ pub(super) struct SequenceNote {
 }
 
 fn preflight_sequence_projection(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -336,7 +336,7 @@ fn preflight_sequence_projection(
 }
 
 pub(crate) fn from_sequence_model(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -352,7 +352,7 @@ pub(crate) fn from_sequence_model(
 }
 
 fn from_sequence_model_transactional(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -603,7 +603,7 @@ fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<
 }
 
 fn sequence_participants(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -636,7 +636,7 @@ fn sequence_participants(
 
 fn push_sequence_participant(
     participants: &mut Vec<SequenceParticipant>,
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     id: &str,
     layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
@@ -671,7 +671,7 @@ fn push_sequence_participant(
 }
 
 fn sequence_boxes(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     participant_index: &HashMap<&str, usize>,
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceGroupBox>> {
@@ -814,9 +814,7 @@ mod tests {
         Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
     };
 
-    fn parse_sequence_model(
-        source: &str,
-    ) -> merman_core::diagrams::sequence::SequenceDiagramRenderModel {
+    fn parse_sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("sequence cancellation fixture should parse")

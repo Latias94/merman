@@ -26,7 +26,13 @@ fn render_typed_model(
     let context = merman::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context");
-    AsciiRenderer::new(options)?.render_model(model, &OperationControl::new(), &context, resources)
+    let ascii_model = merman::render::ascii_diagram_from_full(model);
+    AsciiRenderer::new(options)?.render_model(
+        &ascii_model,
+        &OperationControl::new(),
+        &context,
+        resources,
+    )
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {
@@ -286,9 +292,10 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
             let context = merman::runtime::RuntimePolicy::deterministic()
                 .begin_operation()
                 .expect("deterministic operation context");
+            let ascii_model = merman::render::ascii_diagram_from_full(&model);
             let rendered = AsciiRenderer::new(options)
                 .expect("ASCII options should validate")
-                .render_model(&model, &control, &context, resources)
+                .render_model(&ascii_model, &control, &context, resources)
                 .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })

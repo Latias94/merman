@@ -3,13 +3,13 @@ use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
-    SequenceCentralDecoration, SequenceDiagramRenderModel, SequenceMessage, SequenceMessageKind,
+    SequenceCentralDecoration, SequenceDiagramModel, SequenceMessage, SequenceMessageKind,
     SequenceMessagePayload, SequenceNote,
 };
 use std::collections::HashSet;
 
 pub(super) fn validate_supported_sequence_model(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     validate_actor_order(model, execution)?;
@@ -45,7 +45,7 @@ pub(super) fn validate_supported_sequence_model(
 }
 
 fn validate_message_payloads(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for message in &model.messages {
@@ -63,7 +63,7 @@ fn validate_message_payloads(
 }
 
 fn validate_message_record_shapes(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for message in &model.messages {
@@ -121,7 +121,7 @@ fn validate_message_record_shapes(
 }
 
 fn validate_autonumber_values(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for message in &model.messages {
@@ -142,7 +142,7 @@ fn validate_autonumber_values(
 }
 
 fn validate_central_records(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let mut index = 0;
@@ -203,10 +203,7 @@ fn validate_central_records(
     Ok(())
 }
 
-fn validate_actor_order(
-    model: &SequenceDiagramRenderModel,
-    execution: AsciiExecution<'_>,
-) -> Result<()> {
+fn validate_actor_order(model: &SequenceDiagramModel, execution: AsciiExecution<'_>) -> Result<()> {
     if model.actor_order.is_empty() {
         return Ok(());
     }
@@ -236,7 +233,7 @@ fn validate_actor_order(
 }
 
 fn validate_note_projection(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     if model.notes.is_empty() {
@@ -266,7 +263,7 @@ fn validate_note_projection(
 }
 
 fn next_note_message<'a>(
-    model: &'a SequenceDiagramRenderModel,
+    model: &'a SequenceDiagramModel,
     next_message: &mut usize,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<&'a SequenceMessage>> {
@@ -305,7 +302,7 @@ fn note_matches_message(note: &SequenceNote, message: &SequenceMessage) -> bool 
 }
 
 fn validate_activated_signals(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for (index, message) in model.messages.iter().enumerate() {
