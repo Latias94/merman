@@ -18,6 +18,7 @@ from native_symbol_contract import (
     assert_symbol_contract,
     canonicalize_owned_symbol,
     main,
+    parse_coff_exports,
     parse_llvm_nm_posix,
     read_defined_dynamic_symbols,
     read_macho_architectures,
@@ -157,6 +158,51 @@ __imp_merman_get_native_api I 00000000 00000000
                     ]
                 ],
             )
+
+    def test_reader_checks_dll_exports_instead_of_import_library_symbols(self) -> None:
+        output = """File: merman_ffi.dll
+Format: COFF-x86-64
+Export {
+  Ordinal: 1
+  Name: merman_get_native_api
+  RVA: 0x14F5A
+}
+Export {
+  Ordinal: 2
+  Name: merman_render_svg
+  RVA: 0x15000
+}
+"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            library = root / "merman_ffi.dll"
+            llvm_nm = root / "llvm-nm.exe"
+            readobj = root / "llvm-readobj.exe"
+            for path in (library, llvm_nm, readobj):
+                path.touch()
+            with patch(
+                "native_symbol_contract.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, stdout=output, stderr=""),
+            ) as runner:
+                symbols = read_defined_dynamic_symbols(library, llvm_nm, runner=runner)
+            runner.assert_called_once_with(
+                [str(readobj), "--coff-exports", str(library)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            with self.assertRaisesRegex(RuntimeError, "unexpected Merman-owned.*merman_render_svg"):
+                assert_symbol_contract(symbols, C_ABI_SYMBOL_CONTRACT, label="DLL")
+
+    def test_coff_parser_rejects_empty_partial_or_unnamed_exports(self) -> None:
+        for output in (
+            "File: merman_ffi.dll\nFormat: COFF-x86-64\n",
+            "Export {\n  Name: merman_get_native_api\n",
+            "Export {\n  Ordinal: 1\n  Name: \n  RVA: 0x100\n}\n",
+            "Export {\n  Name: merman_get_native_api\n  Name: other\n}\n",
+        ):
+            with self.subTest(output=output), self.assertRaises(RuntimeError):
+                parse_coff_exports(output)
 
     def test_reader_can_select_one_macho_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
