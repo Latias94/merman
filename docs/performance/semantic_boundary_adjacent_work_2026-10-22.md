@@ -347,3 +347,46 @@ Do not reconstruct original raw samples from these tables or present replacement
 original frozen executables. Any renewed allocation or timing admission needs a fresh controlled
 run with explicit source, recipe, output, and executable identities. The unresolved timing
 classification above remains unchanged.
+
+## Renewed adjacent allocation evidence (2026-10-23)
+
+Fresh clean Cargo builds repeated the original U3 and U4 revision pairs, workload scales,
+five operation/zero pairs per scale, seed `0x4D45524D414E`, and 10,000 bootstrap resamples.
+All 28 required lane reports and manifests were frozen and verified outside Cargo targets at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/final-d0d26db24-20261023/`.
+Each side retains a copied probe executable with a matching SHA-256. These are new observations,
+not reconstructed samples or the original deleted executable bytes.
+
+The seven-lane results reproduce the historical medians in this document. U3 passes all
+35 preregistered allocation checks: four ordinary State/Sequence routes strictly reduce
+100x allocation counts and bytes, their peak/retained growth does not increase, and the
+requested-snapshot/Flowchart controls stay within the original bounds. U4 passes all
+178 checks, including 168 non-increasing metric/scale cells, the seven unchanged candidate
+caps and three strictly decreasing State byte counts. All paired semantic output identities
+match, and every observed result drop releases operation-owned growth.
+
+| Allocation comparison | State typed bytes at 100x | State JSON bytes at 100x | State snapshot bytes at 100x |
+| --- | ---: | ---: | ---: |
+| U3 editor demand | 1,626,029 -> 1,319,235 | 3,108,667 -> 2,801,873 | 3,200,859 -> 3,037,339 |
+| U4 State transfer | 1,319,235 -> 1,310,627 | 2,801,873 -> 2,793,265 | 3,037,339 -> 3,028,731 |
+
+| Retained receipt | SHA-256 |
+| --- | --- |
+| `u3-base/freeze.json` | `95723f07b8dba9aef9d8b8c4a430e1e61385c10f9aa52cc85cff5390f1528067` |
+| `u3-head/freeze.json` | `8de3a6ce5308643a8960b4c5595f4b66ea12c7e214d7758947b9b8c742f1928c` |
+| `u4-base/freeze.json` | `5d63c96b230df3bd5a6c21f33cfd3906666300d70cab5137fdb08d09ff990eed` |
+| `u4-head/freeze.json` | `8375dc8c809b559b89c10c4065d3aa613c04afdb9e2d8e3fc20409a71c2b22cf` |
+| `u3-allocation-comparison.json` | `fbf6a8d51c82a142deedc1eac64bbcab8fae3ff7819180effe0bfb1cfaefcc22` |
+| `u4-allocation-comparison.json` | `833de0d6ad4fb19b1bf917a9b43dee7713488d458ef087406ec981bcd2f0682a` |
+
+Concurrent unrelated Cargo activity was observed during some probe builds and recorded in
+`environment-observations.jsonl`. No uncontended-host, latency or RSS claim follows from these
+System allocator observations. The renewed public-operation timing schedule has not started;
+the historical U3 timing result remains NOT ADMITTED.
+
+A final completion review found missing lean Flowchart accessibility normalization and eager
+full-engine initialization in binding analysis/ASCII construction. Those corrections require
+their own focused tests and new final-source artifact evidence. The queued optional integrated
+allocation observation of `d0d26db24` was cancelled before sampling because that product source
+was superseded; all required U3/U4 samples remain retained. Allocation passes alone do not
+close R14, the same-contract timing controls, or the complete U1-U9 plan.
