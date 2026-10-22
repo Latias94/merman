@@ -390,3 +390,40 @@ their own focused tests and new final-source artifact evidence. The queued optio
 allocation observation of `d0d26db24` was cancelled before sampling because that product source
 was superseded; all required U3/U4 samples remain retained. Allocation passes alone do not
 close R14, the same-contract timing controls, or the complete U1-U9 plan.
+
+## Renewed U3 warm-parse confirmation (2026-10-23)
+
+The renewed registered U3 `parse` group completed with six
+`confirmed_non_regression` results and zero contract failures or inconclusive rows. This is
+a new observation of the existing adjacent timing pair `a7142d3a4` to `4ee66d7ca`, not a
+reclassification of the historical 22 inconclusive rows. Both clean executables, shared
+benchmark/corpus bytes, output identities and the discovery trust anchor were verified.
+
+The original `generic_v2`, `long`, eight A/A calibration pairs per runner, maximum 32 fresh
+AB/BA pairs, sample size 30, two-second warmup, three-second measurement, 10% AND 50,000 ns,
+95% simultaneous confidence, seed 0, 10,000 resamples and divisor one were unchanged.
+Every row passed all A/A identity/order/budget checks; calibration selected eight fresh
+confirmation pairs. Each row contains the complete balanced AB/BA sequence and repeated
+preflight/postflight output identity. Post-sampling source, fixture and discovery verification
+also passed.
+
+| Warm full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 154.810 us | 142.955 us | Confirmed non-regression | 8 |
+| State medium | 168.500 us | 157.481 us | Confirmed non-regression | 8 |
+| Class medium | 225.194 us | 206.931 us | Confirmed non-regression | 8 |
+| ER medium | 141.335 us | 135.269 us | Confirmed non-regression | 8 |
+| Pie medium | 6.199 us | 5.455 us | Confirmed non-regression | 8 |
+| Flowchart medium | 368.453 us | 359.608 us | Confirmed non-regression | 8 |
+
+All six mirrored improvement results are `confirmed_non_improvement` under the registered
+materiality contract. The measured means do not establish an admitted speedup. This group
+supplies only the warm full-parser non-regression control; the other 18 U3 rows and 48
+U4/integrated rows are still pending. No whole-plan or U3 performance admission follows yet.
+
+The new raw JSON, Markdown, log, discovery and copied executables are retained under
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/final-f0365e6a4-20261023/timing-u3/`.
+The parent evidence root's `u3-parse-confirmation-audit.json` checks the complete six-row
+schedule, unchanged contract and output/fixture/discovery identities; its SHA-256 is
+`adf9790743e74da5328491af6427fe94c21437c45bf3d775f0864ce59ab0fcba`.
+Concurrent unrelated project work remains possible; this is not an uncontended-host claim.
