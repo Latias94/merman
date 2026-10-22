@@ -4,9 +4,9 @@ This audit follows the complete
 [approved U1-U9 plan](../plans/2026-10-20-1252-refactor-semantic-capability-boundaries-plan.md).
 The product revision is `f0365e6a4948c4baff2f16adb735e0f143ee38c6` on
 `refactor/semantic-capability-boundaries`. Later prose corrections do not change its product
-inputs. The objective remains open: registered timing controls and the final local evidence
-commits are still pending. The corrected 27-step integration queue, including actual CLI
-archive execution, has passed. No push, PR, merge, publication,
+inputs. The objective remains open: registered timing controls, exact production-feature
+Clippy and the final local evidence commits are still pending. The corrected 27-step integration
+queue, including actual CLI archive execution, has passed. No push, PR, merge, publication,
 or release is authorized or implied.
 
 ## Evidence ownership
@@ -63,7 +63,8 @@ review. No entire historical command is relabeled as a new command on the final 
 
 | Gate | Observed evidence | Applicability |
 | --- | --- | --- |
-| Workspace, production Clippy, full doctests, generated contracts, legal projections and SVG DOM | Adjacent root `strict-historical/semantic-integrated-strict-external.log`; 13,307/13,307 tests, 661 feature cases and 27 recipes passed before the browser failure. | Historical integrated source; affected subsequent aliases and behavioral corrections have separate scoped receipts. |
+| Workspace tests, all-target/all-feature Clippy, full doctests, generated contracts, legal projections and SVG DOM | Adjacent root `strict-historical/semantic-integrated-strict-external.log`; 13,307/13,307 tests, 661 feature cases and 27 recipes passed before the browser failure. | Historical integrated source; affected subsequent aliases and behavioral corrections have separate scoped receipts. All-feature lint does not prove each exact production-feature selection. |
+| Production-feature Clippy | Exact owned selections required by the plan's Production quality gate. | Pending: retained all-feature Clippy receipts do not establish this separate gate. Run bounded semantic, language, facade, binding and CLI production selections serially after timing. |
 | Historical strict terminal status | Exit 1: Chromium 187 passed, one stale-WASM provenance failure, nine not run; non-Chromium 79 passed. | Remains a failed command. The complete mounted spec was subsequently rebuilt and rerun. |
 | Alias retirement | Final root `scoped-retention-addendum/semantic-family-retirement-tests-corrected.log`, Clippy and isolated lean doctest logs. | 1,494/1,494 plus eight negative-import doctests passed. Failed initial selection log is retained. |
 | Correctness corrections | Adjacent root `audit-fixes-steps.json`. | Lean core 9, full core/projection 18, bindings 370, no-SVG binding 2, isolated Tree-sitter 30: 429 passed; owning Clippy and fmt passed. |
@@ -87,5 +88,6 @@ and JSON manifests. No latency improvement or uncontended-host claim is made.
 
 1. Complete the registered timing schedule and inspect every row, retaining inconclusive and
    negative results without changing thresholds, protocol or sample caps.
-2. Reconcile these results against U1-U9, R1-R16 and AE1-AE12, and commit task-owned documentation.
+2. Complete exact production-feature Clippy without relying on all-feature union.
+3. Reconcile these results against U1-U9, R1-R16 and AE1-AE12, and commit task-owned documentation.
    The source-pinned integration queue has finished; timing uses its separate clean checkouts.
