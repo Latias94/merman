@@ -60,6 +60,7 @@ class PerfRunnerContractsTest(unittest.TestCase):
         self.assertIn("cold parse (flowchart_medium)", out)
         self.assertIn("parse_cold_engine/flowchart_medium", out)
         self.assertIn("cold parse (architecture_medium)", out)
+        self.assertIn("--features all-diagrams,svg,compat-json,editor-facts", out)
 
     def test_frontmatter_profile_dry_run_adds_preprocess_steps(self) -> None:
         buf = io.StringIO()
@@ -114,6 +115,7 @@ class PerfRunnerContractsTest(unittest.TestCase):
         self.assertNotIn("docs/performance/", command)
         self.assertIn("docs/performance/", publication)
         self.assertNotIn("run_native_memory.py", out)
+        self.assertIn("--features all-diagrams,svg,compat-json,editor-facts", out)
 
     def test_write_docs_publishes_only_after_every_measurement_step(self) -> None:
         calls: list[str] = []

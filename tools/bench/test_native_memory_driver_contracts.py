@@ -733,7 +733,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
         self.assertEqual(recipe.package, "merman")
         self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
-        self.assertEqual(recipe.features, ("all-diagrams", "svg"))
+        self.assertEqual(recipe.features, ("all-diagrams", "svg", "compat-json"))
         self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
         self.assertEqual(
             [entry["path"] for entry in contract["probe"]["inputs"]],

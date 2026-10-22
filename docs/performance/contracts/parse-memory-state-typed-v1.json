@@ -10,13 +10,15 @@
     "package_manifest": "crates/merman/Cargo.toml",
     "bench": "parse_memory",
     "features": [
-      "all-diagrams"
+      "all-diagrams",
+      "compat-json",
+      "editor-facts"
     ],
     "default_features": false,
     "inputs": [
       {
         "path": "crates/merman/benches/parse_memory.rs",
-        "sha256": "d1e6ecab220fcd57a15a8207fa0d12f95c52877d32640964b80f08676a8f79a8"
+        "sha256": "78df1a38d7a702cbcc7cc18ce5fff2fc0b5c78a0f1bfd3e6a98aa5b56c4574c6"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",

@@ -100,7 +100,9 @@ def validate_pipeline_bench_list(
     corpus: Corpus,
     output: str,
     *,
-    enabled_features: Sequence[str] = ("all-diagrams", "svg"),
+    enabled_features: Sequence[str] = (
+        "all-diagrams", "svg", "compat-json", "editor-facts"
+    ),
 ) -> dict[str, object]:
     current, historical = _pipeline_lane_groups(
         corpus,
@@ -291,7 +293,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", default=str(ROOT))
     parser.add_argument("--corpus", default="tools/bench/corpus.json")
     parser.add_argument("--target-dir", default="target")
-    parser.add_argument("--features", default="all-diagrams,svg")
+    parser.add_argument(
+        "--features",
+        default="all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math",
+    )
     parser.add_argument("--package", default="merman")
     parser.add_argument("--bench", default="pipeline")
     parser.add_argument("--toolchain")

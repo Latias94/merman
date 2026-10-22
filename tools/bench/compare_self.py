@@ -4432,8 +4432,14 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument("--head-package", default="merman")
     parser.add_argument("--base-bench", default="pipeline")
     parser.add_argument("--head-bench", default="pipeline")
-    parser.add_argument("--base-features", default="svg")
-    parser.add_argument("--head-features", default="svg")
+    parser.add_argument(
+        "--base-features",
+        default="svg",
+        help="Base checkout's features; override independently for its benchmark recipe.",
+    )
+    parser.add_argument(
+        "--head-features", default="all-diagrams,svg,compat-json,editor-facts"
+    )
     parser.add_argument(
         "--base-default-features", action=argparse.BooleanOptionalAction, default=True
     )

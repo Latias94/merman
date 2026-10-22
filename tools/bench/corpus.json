@@ -24,7 +24,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "parse/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -44,7 +44,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "compatibility_json_parse/{fixture}",
       "history_aliases": ["parse_known_type/{fixture}"],
       "size_vector": [],
@@ -64,7 +64,7 @@
       "engine_lifecycle": "cold-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "parse_cold_engine/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -84,7 +84,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "editor_snapshot/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -104,7 +104,7 @@
       "engine_lifecycle": "not-applicable",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "frontmatter_preprocess/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -127,7 +127,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "end_to_end/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -147,7 +147,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "layout/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -167,7 +167,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json", "editor-facts"],
       "selector": "render/{fixture}",
       "history_aliases": [],
       "size_vector": [],
@@ -217,7 +217,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json"],
       "selector": "memory/flowchart_svg_label_artifact/{fixture}",
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
@@ -291,7 +291,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json"],
       "selector": "memory/sequence_message_repeated/{fixture}",
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
@@ -326,7 +326,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
-      "required_features": ["all-diagrams", "svg"],
+      "required_features": ["all-diagrams", "svg", "compat-json"],
       "selector": "memory/sequence_message_unique/{fixture}",
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
@@ -362,7 +362,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_flowchart_typed/{fixture}",
       "history_aliases": [],
@@ -409,7 +411,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_flowchart_json/{fixture}",
       "history_aliases": [],
@@ -456,7 +460,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_flowchart_snapshot/{fixture}",
       "history_aliases": [],
@@ -503,7 +509,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_sequence_typed/{fixture}",
       "history_aliases": [],
@@ -550,7 +558,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_sequence_json/{fixture}",
       "history_aliases": [],
@@ -597,7 +607,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_sequence_snapshot/{fixture}",
       "history_aliases": [],
@@ -644,7 +656,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_state_typed/{fixture}",
       "history_aliases": [],
@@ -691,7 +705,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_state_json/{fixture}",
       "history_aliases": [],
@@ -738,7 +754,9 @@
       "logical_operations_per_estimate": 1,
       "transport": "native-system-allocator-subprocess",
       "required_features": [
-        "all-diagrams"
+        "all-diagrams",
+        "compat-json",
+        "editor-facts"
       ],
       "selector": "memory/parse_state_snapshot/{fixture}",
       "history_aliases": [],
