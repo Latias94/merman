@@ -333,3 +333,17 @@ Their results cannot be inferred from these receipts, and this checkpoint does n
 reclassify their current status. A final U9 decision must join the applicable evidence at
 the intended integration revision, preserve every failed/inconclusive/platform-deferred
 result, and satisfy the approved plan's Done criteria without changing the frozen rules.
+
+## Later local artifact retention update
+
+At 2026-10-22 21:51 UTC+08:00, following a local `cargo clean`, the ignored
+`target/bench/semantic-boundary/u3-confirmation-memory/`,
+`u3-timing-a7142d3a4-4ee66d7ca/`, and `u4-adjacent-post-pr227/` directories were absent.
+The earlier read-only audit and its hashes describe the artifacts that existed at audit time;
+the raw reports and frozen executables can no longer be independently rehashed or replayed
+from this checkout. Their named source commits and this historical audit remain in Git.
+
+Do not reconstruct original raw samples from these tables or present replacement builds as the
+original frozen executables. Any renewed allocation or timing admission needs a fresh controlled
+run with explicit source, recipe, output, and executable identities. The unresolved timing
+classification above remains unchanged.

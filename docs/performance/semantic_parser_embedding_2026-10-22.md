@@ -42,9 +42,26 @@ The three consumed output SHA-256 digests are identical on both sides:
 
 The semantic probe also accepted the three enabled families and returned the expected
 `merman.parse.unsupported_diagram` control result for an omitted Sequence family in its subset
-check. Full machine receipts remain in the ignored local artifact directories
+check. Full machine receipts were retained in the ignored local artifact directories
 `target/bench/semantic-boundary/size-base/` and `target/bench/semantic-boundary/size-head-final/`.
 
 The baseline receipt retains the pre-boundary full parser probe; the head receipt uses the migrated
 `SemanticParser` probe. This preserves the API-break migration evidence required by the refactor
 plan while comparing the same runtime-fed meaning and corpus bytes.
+
+## Verification Receipt
+
+- Passed: semantic output equivalence, isolated size measurement, feature-matrix and artifact-profile
+  validation, representative dependency-closure checks, parser differential, Rust/Node legal
+  projection checks, native ABI and binding contracts, and the focused ASCII suite.
+- Platform-deferred: `python scripts/verify-platform-bindings.py` reached the Flutter phase but the
+  installed `F:\SDKs\flutter_old` reports Dart 3.9.2 while this repository requires Dart >=3.10.0.
+  No source or SDK files were changed; rerun that phase with a compatible Flutter SDK.
+
+## Artifact retention update
+
+At 2026-10-22 21:51 UTC+08:00, following a local `cargo clean`, both ignored size evidence
+directories were absent. The results above remain historical observations at the named revisions;
+their machine receipts and executables are no longer available locally for rehashing or replay.
+They do not certify final integration revision `6b2d15d19`. Fresh committed-source measurements
+must produce new receipts and equivalent consumed output before final size admission.
