@@ -594,3 +594,31 @@ The final root retains `u4-cold-parse-confirmation-audit.json`, SHA-256
 `2184da6ad3ec5120670a10eb4dfd1d804289ef929c5f4a34d2dbcbb35c1ff7be`, and the raw
 `timing-u4/parse_cold_engine.{json,md,log}` files. Original protocols/caps and the U3
 inconclusive result remain unchanged; concurrent unrelated host activity is possible.
+
+## Renewed U4 known-type JSON confirmation (2026-10-23)
+
+The registered U4 `compatibility_json_parse` group completed with six
+`confirmed_non_regression` rows, zero contract failures and zero inconclusive rows. This
+known-type operation excludes detection. Both runners passed eight A/A pairs; every fixture
+completed eight fresh balanced AB/BA pairs under unchanged protocol, thresholds and budget.
+The parent checked pair order/completeness, divisor one, output/preflight/postflight identity,
+clean source files, fixture bytes, frozen executables and discovery retention after sampling.
+
+| Known-type JSON fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 155.321 us | 156.827 us | Confirmed non-regression | 8 |
+| State medium | 341.456 us | 342.714 us | Confirmed non-regression | 8 |
+| Class medium | 267.993 us | 266.925 us | Confirmed non-regression | 8 |
+| ER medium | 143.593 us | 145.387 us | Confirmed non-regression | 8 |
+| Pie medium | 6.810 us | 6.893 us | Confirmed non-regression | 8 |
+| Flowchart medium | 497.882 us | 495.572 us | Confirmed non-regression | 8 |
+
+All mirrored improvement outcomes are `confirmed_non_improvement`; positive means are retained
+without an admitted speedup. U4 now supplies 18 confirmed controls, with six E2E rows still
+without terminal classification. Overall, 41 confirm non-regression, one U3 State E2E remains
+inconclusive and 30 U4/integrated rows remain open. U3's failed calibration and whole-plan
+performance limitation are unchanged. Concurrent unrelated host activity remains possible.
+
+The final root retains `u4-json-parse-confirmation-audit.json`, SHA-256
+`e8e1e842c0fd975738a250a2a2d2ceb17e140c21e71b81080cf217aaf73368f3`, and the raw
+`timing-u4/compatibility_json_parse.{json,md,log}` files. The fixed queue advanced to U4 E2E.
