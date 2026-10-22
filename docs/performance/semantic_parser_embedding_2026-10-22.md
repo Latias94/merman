@@ -211,8 +211,8 @@ preflight, not a publication or a claim about another platform.
 | `cli-archive-math-receipt.json` | `227d36412a7ed7fc610084285e4b0bde1e8fe2c7171eb9fc984e3526a1db9648` |
 
 Registered U3/U4/integrated timing controls are now running with unchanged thresholds,
-protocol and sample caps. The separately sampled U3 warm and cold-engine full-parse groups
-have since confirmed 12 non-regression controls; the other 60 registered rows remain open. See the
+protocol and sample caps. The separately sampled U3 warm/cold full-parse and known-type JSON
+groups have since confirmed 18 non-regression controls; the other 54 registered rows remain open. See the
 [adjacent-work report](semantic_boundary_adjacent_work_2026-10-22.md#renewed-u3-warm-parse-confirmation-2026-10-23)
 for its protocol, row classifications and retained receipt. The completed artifact queue does
 not establish latency, and no speedup or whole-plan admission is claimed.

@@ -456,3 +456,31 @@ The final evidence root retains `u3-cold-parse-confirmation-audit.json`, SHA-256
 `d6e0da49e758f4545899a9d3ea96ca5fff531465ffab5c36c25ff7abb0873cc4`, and the raw
 `timing-u3/parse_cold_engine.{json,md,log}` files. Concurrent unrelated host activity remains
 possible.
+
+## Renewed U3 known-type JSON confirmation (2026-10-23)
+
+The registered `compatibility_json_parse` group completed with six
+`confirmed_non_regression` rows, zero contract failures and zero inconclusive rows. This is
+the known-type compatibility JSON operation, which excludes detection. Both runners passed
+eight stable A/A pairs; every fixture then completed eight fresh balanced AB/BA pairs. The
+registered protocol, thresholds, sample budget and divisor one were unchanged. Output
+identities, preflight/postflight, clean sources, fixture bytes, frozen executables and discovery
+retention were checked after sampling.
+
+| Known-type JSON fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 170.111 us | 157.915 us | Confirmed non-regression | 8 |
+| State medium | 355.649 us | 343.216 us | Confirmed non-regression | 8 |
+| Class medium | 280.960 us | 268.846 us | Confirmed non-regression | 8 |
+| ER medium | 149.243 us | 144.032 us | Confirmed non-regression | 8 |
+| Pie medium | 7.667 us | 6.769 us | Confirmed non-regression | 8 |
+| Flowchart medium | 505.812 us | 490.835 us | Confirmed non-regression | 8 |
+
+All mirrored improvement results are `confirmed_non_improvement`. These observations bring
+the renewed controls to 18 of 72; six U3 E2E and 48 U4/integrated rows remain open. No speedup,
+complete U3 performance admission or whole-plan completion follows. Concurrent unrelated host
+activity remains possible, and historical inconclusive observations remain unchanged.
+
+The final root retains `u3-json-parse-confirmation-audit.json`, SHA-256
+`62e222b8fbd25b948b0257b3380d1815db3aba828de7e040fd2ea467a00a70ae`, and the raw
+`timing-u3/compatibility_json_parse.{json,md,log}` files.
