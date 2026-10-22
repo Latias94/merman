@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-> **Binding contract:** Merman `0.9.1` uses direct UniFFI binding API `7`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Binding contract:** Merman `0.9.2` uses direct UniFFI binding API `7`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -13,11 +13,11 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
-This guide targets Merman `0.9.1` with UniFFI API `7`. Use matching generated Swift and native slices; see the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks). Alpha.6 artifacts retain API `6`.
+This guide targets Merman `0.9.2` with UniFFI API `7`. Use matching generated Swift and native slices; see the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks). Alpha.6 artifacts retain API `6`.
 
-Compiled-theme APIs in this checkout are unreleased. Published `0.9.1` retains Options JSON
+Compiled-theme APIs in this checkout are unreleased. Published `0.9.2` retains Options JSON
 schema `2`; use its tagged guide even though both interfaces retain UniFFI API `7`.
-See the [release boundary](../../docs/release/README.md#merman-091).
+See the [release boundary](../../docs/release/README.md#merman-092).
 
 ## Add A Release XCFramework
 

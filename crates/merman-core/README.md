@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide targets `merman-core 0.9.1`. For earlier versions, use their tagged documentation and matching dependencies.
+This guide targets `merman-core 0.9.2`. For earlier versions, use their tagged documentation and matching dependencies.
 
 ## Source Feature Migration
 
@@ -29,7 +29,7 @@ suppression, and Cargo feature-unification rules.
 Add the stable release with all built-in parsers:
 
 ```sh
-cargo add merman-core@0.9.1 --features all-diagrams
+cargo add merman-core@0.9.2 --features all-diagrams
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:
@@ -133,7 +133,7 @@ fn main() -> Result<(), merman_core::Error> {
 
 Semantic JSON uses `ManagedSemanticJson`; keep its managed owner for deep clone, equality, destruction, and output. Direct State, Block, Treemap, and Ishikawa model users must migrate to canonical document/child indices. See the [0.8.0 to 0.9.0 migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#rust-models-and-json).
 
-Published Merman 0.9.1 retains the Mermaid `12.1.0` baseline selected by stable 0.8.0. Development
+Published Merman 0.9.2 retains the Mermaid `12.1.0` baseline selected by stable 0.8.0. Development
 targets Mermaid `12.2.0`; use the matching release tag for published parser behavior. The selected
 pinned upstream behavior graph is the compatibility authority for the current checkout.
 Compatibility semantic JSON is the public serialized parser projection. It is not a second

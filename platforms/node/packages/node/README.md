@@ -10,7 +10,7 @@ This package is experimental. Pin an exact package version when reproducible ins
 Install the loader package, not a platform package:
 
 ```sh
-npm install @mermanjs/node@0.9.1
+npm install @mermanjs/node@0.9.2
 ```
 
 ```js

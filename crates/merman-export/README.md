@@ -12,7 +12,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets `merman-export 0.9.1`. Match the documentation and generated artifacts to the version installed in your project.
+This guide targets `merman-export 0.9.2`. Match the documentation and generated artifacts to the version installed in your project.
 
 ## Choose A Feature
 
@@ -67,7 +67,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "0.9.1", default-features = false, features = ["diagram-flowchart", "png"] }
+merman = { version = "0.9.2", default-features = false, features = ["diagram-flowchart", "png"] }
 ```
 
 ```rust
@@ -110,9 +110,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "0.9.1", default-features = false }
-merman-render = { version = "0.9.1", default-features = false }
-merman-export = { version = "0.9.1", default-features = false, features = ["png"] }
+merman-core = { version = "0.9.2", default-features = false }
+merman-render = { version = "0.9.2", default-features = false }
+merman-export = { version = "0.9.2", default-features = false, features = ["png"] }
 ```
 
 ```rust
