@@ -49,10 +49,6 @@ pub struct TimelineTask {
     pub events: Vec<String>,
 }
 
-/// Backwards-compatible name for a semantic Timeline task.
-#[cfg(feature = "presentation")]
-pub type TimelineRenderTask = TimelineTask;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TimelineDirection {
     #[default]

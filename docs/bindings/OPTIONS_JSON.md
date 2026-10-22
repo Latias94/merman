@@ -277,8 +277,10 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 ## Site Config
 
 `site_config` accepts a bounded Mermaid configuration object applied through
-`Engine::with_site_config(...)` before constructing a `Renderer`. It is intended for host-level
-defaults such as theme selection and `themeVariables`:
+`MermaidEngine::with_site_config(...)` before constructing a `Renderer` with
+`with_presentation_engine(...)`. The binding owner converts the admitted object to
+`PresentationConfig`. It is intended for host-level defaults such as theme selection and
+`themeVariables`:
 
 ```json
 {

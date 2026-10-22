@@ -2,7 +2,7 @@ use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
 use crate::requirement::requirement_color_indices;
-use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::diagrams::requirement::RequirementDiagramModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
@@ -70,7 +70,7 @@ where
 
 pub(crate) fn render_requirement_diagram_svg_model(
     prepared: &crate::requirement::RequirementPreparedArtifact,
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     paint_theme: &crate::requirement::RequirementPaintThemePlan,
     sanitize_config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
@@ -1287,8 +1287,7 @@ mod tests {
     use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
     use merman_core::diagrams::requirement::{
-        RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
-        RequirementRenderRelationship,
+        RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
     };
     use std::cell::Cell;
     use std::collections::BTreeMap;
@@ -1338,8 +1337,8 @@ mod tests {
         }
     }
 
-    fn empty_requirement_model() -> RequirementDiagramRenderModel {
-        RequirementDiagramRenderModel {
+    fn empty_requirement_model() -> RequirementDiagramModel {
+        RequirementDiagramModel {
             acc_title: None,
             acc_descr: None,
             direction: String::new(),
@@ -1350,9 +1349,9 @@ mod tests {
         }
     }
 
-    fn prepared_requirement_model() -> RequirementDiagramRenderModel {
-        RequirementDiagramRenderModel {
-            requirements: vec![RequirementRenderNode {
+    fn prepared_requirement_model() -> RequirementDiagramModel {
+        RequirementDiagramModel {
+            requirements: vec![RequirementNode {
                 name: "requirement-a".to_string(),
                 node_type: "Requirement".to_string(),
                 requirement_id: "REQ-1".to_string(),
@@ -1362,14 +1361,14 @@ mod tests {
                 css_styles: Vec::new(),
                 classes: Vec::new(),
             }],
-            elements: vec![RequirementRenderElement {
+            elements: vec![RequirementElement {
                 name: "element-b".to_string(),
                 element_type: "System".to_string(),
                 doc_ref: "DOC-1".to_string(),
                 css_styles: Vec::new(),
                 classes: Vec::new(),
             }],
-            relationships: vec![RequirementRenderRelationship {
+            relationships: vec![RequirementRelationship {
                 rel_type: "satisfies".to_string(),
                 src: "element-b".to_string(),
                 dst: "requirement-a".to_string(),
@@ -1378,8 +1377,8 @@ mod tests {
         }
     }
 
-    fn requirement_node(name: &str) -> RequirementRenderNode {
-        RequirementRenderNode {
+    fn requirement_node(name: &str) -> RequirementNode {
+        RequirementNode {
             name: name.to_string(),
             node_type: "Requirement".to_string(),
             requirement_id: String::new(),
@@ -1393,9 +1392,9 @@ mod tests {
 
     #[test]
     fn requirement_redux_colors_follow_requirement_then_element_order() {
-        let model = RequirementDiagramRenderModel {
+        let model = RequirementDiagramModel {
             requirements: vec![
-                RequirementRenderNode {
+                RequirementNode {
                     name: "requirement-a".to_string(),
                     node_type: "Requirement".to_string(),
                     requirement_id: String::new(),
@@ -1405,7 +1404,7 @@ mod tests {
                     css_styles: Vec::new(),
                     classes: Vec::new(),
                 },
-                RequirementRenderNode {
+                RequirementNode {
                     name: "requirement-b".to_string(),
                     node_type: "Requirement".to_string(),
                     requirement_id: String::new(),
@@ -1416,7 +1415,7 @@ mod tests {
                     classes: Vec::new(),
                 },
             ],
-            elements: vec![RequirementRenderElement {
+            elements: vec![RequirementElement {
                 name: "element-c".to_string(),
                 element_type: "Element".to_string(),
                 doc_ref: String::new(),
@@ -1535,7 +1534,7 @@ mod tests {
     }
 
     fn render_requirement_for_test(
-        model: &RequirementDiagramRenderModel,
+        model: &RequirementDiagramModel,
         effective_config: &serde_json::Value,
         diagram_title: Option<&str>,
         measurer: &dyn TextMeasurer,
@@ -1561,7 +1560,7 @@ mod tests {
 
     fn render_prepared_requirement_for_test(
         prepared: &crate::requirement::RequirementPreparedArtifact,
-        model: &RequirementDiagramRenderModel,
+        model: &RequirementDiagramModel,
         effective_config: &merman_core::presentation::PresentationConfig,
         diagram_title: Option<&str>,
         measurer: &dyn TextMeasurer,
@@ -1874,12 +1873,12 @@ mod tests {
     fn requirement_prepared_edge_plan_keeps_parallel_relationships() {
         let mut model = prepared_requirement_model();
         model.relationships = vec![
-            RequirementRenderRelationship {
+            RequirementRelationship {
                 rel_type: "satisfies".to_string(),
                 src: "element-b".to_string(),
                 dst: "requirement-a".to_string(),
             },
-            RequirementRenderRelationship {
+            RequirementRelationship {
                 rel_type: "contains".to_string(),
                 src: "element-b".to_string(),
                 dst: "requirement-a".to_string(),
@@ -1925,7 +1924,7 @@ mod tests {
 
     #[test]
     fn requirement_prepared_edge_plan_disambiguates_colliding_endpoint_text() {
-        let model = RequirementDiagramRenderModel {
+        let model = RequirementDiagramModel {
             requirements: vec![
                 requirement_node("a-b"),
                 requirement_node("c"),
@@ -1933,12 +1932,12 @@ mod tests {
                 requirement_node("b-c"),
             ],
             relationships: vec![
-                RequirementRenderRelationship {
+                RequirementRelationship {
                     rel_type: "contains".to_string(),
                     src: "a-b".to_string(),
                     dst: "c".to_string(),
                 },
-                RequirementRenderRelationship {
+                RequirementRelationship {
                     rel_type: "satisfies".to_string(),
                     src: "a".to_string(),
                     dst: "b-c".to_string(),
@@ -2032,7 +2031,7 @@ mod tests {
             "stroke-width:2px".to_owned(),
             "color:#778899".to_owned(),
         ];
-        let model = RequirementDiagramRenderModel {
+        let model = RequirementDiagramModel {
             requirements: vec![node],
             ..empty_requirement_model()
         };
@@ -2067,9 +2066,9 @@ mod tests {
 
     #[test]
     fn requirement_self_loop_preserves_pinned_segment_identity_and_dom() {
-        let model = RequirementDiagramRenderModel {
+        let model = RequirementDiagramModel {
             requirements: vec![requirement_node("req1")],
-            relationships: vec![RequirementRenderRelationship {
+            relationships: vec![RequirementRelationship {
                 rel_type: "satisfies".to_string(),
                 src: "req1".to_string(),
                 dst: "req1".to_string(),
@@ -2195,9 +2194,9 @@ mod tests {
 
     #[test]
     fn requirement_contains_self_loop_keeps_only_the_first_segment_start_marker() {
-        let model = RequirementDiagramRenderModel {
+        let model = RequirementDiagramModel {
             requirements: vec![requirement_node("req1")],
-            relationships: vec![RequirementRenderRelationship {
+            relationships: vec![RequirementRelationship {
                 rel_type: "contains".to_string(),
                 src: "req1".to_string(),
                 dst: "req1".to_string(),
@@ -2336,8 +2335,8 @@ mod tests {
             "fontSize": 10,
             "themeVariables": {"fontSize": "24px"}
         });
-        let model = RequirementDiagramRenderModel {
-            requirements: vec![RequirementRenderNode {
+        let model = RequirementDiagramModel {
+            requirements: vec![RequirementNode {
                 name: "req_font_size".to_string(),
                 node_type: "Requirement".to_string(),
                 requirement_id: "req_font_size".to_string(),

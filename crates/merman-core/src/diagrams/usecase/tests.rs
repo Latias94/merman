@@ -8,7 +8,7 @@ fn meta() -> PresentationMetadata {
         title: None,
     }
 }
-fn model(source: &str) -> UsecaseDiagramRenderModel {
+fn model(source: &str) -> UsecaseDiagramModel {
     parse_usecase_model_for_render_controlled(source, &meta(), &OperationControl::new())
         .unwrap()
         .unwrap()
@@ -245,7 +245,7 @@ json Data@{"positive":1e309,"negative":-1e309,"null":null}
         "negative"
     );
     assert_eq!(
-        serde_json::from_value::<UsecaseDiagramRenderModel>(encoded).unwrap(),
+        serde_json::from_value::<UsecaseDiagramModel>(encoded).unwrap(),
         parsed
     );
     let compat = render_model_to_compat_json(&parsed, &meta()).unwrap();

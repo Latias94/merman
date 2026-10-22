@@ -3,8 +3,8 @@
 use super::*;
 use crate::usecase::{UsecaseLabelPlan, UsecaseNodePlan, UsecasePreparedArtifact};
 use merman_core::diagrams::usecase::{
-    UsecaseActorType, UsecaseAnimation, UsecaseDiagramRenderModel, UsecaseLabelType,
-    UsecaseNodeKind, UsecaseRelationshipType,
+    UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
+    UsecaseRelationshipType,
 };
 use std::collections::HashMap;
 
@@ -251,7 +251,7 @@ fn write_label(
 
 pub(crate) fn render_usecase_diagram_svg_model(
     prepared: &UsecasePreparedArtifact,
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,

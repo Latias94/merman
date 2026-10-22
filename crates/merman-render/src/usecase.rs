@@ -5,7 +5,7 @@ use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_core::diagrams::usecase::{UsecaseDiagramRenderModel, UsecaseLabelType};
+use merman_core::diagrams::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -136,7 +136,7 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
 }
 
 pub(crate) fn requires_math(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     config: &merman_core::presentation::PresentationConfig,
 ) -> bool {
     if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
@@ -235,7 +235,7 @@ pub(crate) fn requires_math(
 }
 
 pub(crate) fn prepare_usecase_diagram(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,

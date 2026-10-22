@@ -1814,7 +1814,7 @@ pub(crate) struct ClassFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-c4")]
 pub(crate) struct C4FamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::c4::C4DiagramModel, C4DiagramLayout>,
     cluster_theme: crate::c4::C4ClusterThemePlan,
     typography_theme: crate::c4::C4TypographyThemePlan,
     text_paint: crate::c4::C4TextPaintPlan,
@@ -1827,7 +1827,7 @@ impl<'parsed> C4FamilyArtifact<'parsed> {
     }
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::c4::C4DiagramRenderModel, C4DiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::c4::C4DiagramModel, C4DiagramLayout> {
         &self.pair
     }
 
@@ -1926,7 +1926,7 @@ impl<'parsed> JourneyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-quadrant-chart")]
 pub(crate) struct QuadrantChartFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
+        &'parsed diagrams::quadrant_chart::QuadrantChartDiagramModel,
         QuadrantChartDiagramLayout,
     >,
     point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
@@ -1942,7 +1942,7 @@ impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
+        &'parsed diagrams::quadrant_chart::QuadrantChartDiagramModel,
         QuadrantChartDiagramLayout,
     > {
         &self.pair
@@ -1978,7 +1978,7 @@ pub(crate) struct RadarFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-sankey")]
 pub(crate) struct SankeyFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramModel, SankeyDiagramLayout>,
     node_palette: crate::sankey::SankeyNodePalettePlan,
     typography_theme: crate::sankey::SankeyTypographyThemePlan,
 }
@@ -1986,7 +1986,7 @@ pub(crate) struct SankeyFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-venn")]
 pub(crate) struct VennFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::venn::VennDiagramModel, VennDiagramLayout>,
     title_theme: crate::venn::VennTitleThemePlan,
     typography_theme: crate::venn::VennTypographyThemePlan,
 }
@@ -1995,7 +1995,7 @@ pub(crate) struct VennFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-zenuml")]
 pub(crate) struct ZenumlFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
+        &'parsed diagrams::zenuml::ZenumlDiagramModel,
         crate::zenuml::ZenumlDiagramLayout,
     >,
     theme_plan: crate::zenuml::ZenumlThemePlan,
@@ -2006,7 +2006,7 @@ impl<'parsed> ZenumlFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
+        &'parsed diagrams::zenuml::ZenumlDiagramModel,
         crate::zenuml::ZenumlDiagramLayout,
     > {
         &self.pair
@@ -2021,7 +2021,7 @@ impl<'parsed> ZenumlFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-event-modeling")]
 pub(crate) struct EventModelingFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        &'parsed diagrams::eventmodeling::EventModelingDiagramModel,
         EventModelingDiagramLayout,
     >,
     text_theme: crate::eventmodeling::EventModelingTextThemePlan,
@@ -2030,8 +2030,7 @@ pub(crate) struct EventModelingFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-ishikawa")]
 pub(crate) struct IshikawaFamilyArtifact<'parsed> {
-    pair:
-        FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramModel, IshikawaDiagramLayout>,
     text_theme: crate::ishikawa::IshikawaTextThemePlan,
 }
 
@@ -2039,8 +2038,7 @@ pub(crate) struct IshikawaFamilyArtifact<'parsed> {
 impl<'parsed> IshikawaFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>
-    {
+    ) -> &FamilyPair<&'parsed diagrams::ishikawa::IshikawaDiagramModel, IshikawaDiagramLayout> {
         &self.pair
     }
 
@@ -2054,7 +2052,7 @@ impl<'parsed> EventModelingFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        &'parsed diagrams::eventmodeling::EventModelingDiagramModel,
         EventModelingDiagramLayout,
     > {
         &self.pair
@@ -2069,7 +2067,7 @@ impl<'parsed> EventModelingFamilyArtifact<'parsed> {
 impl<'parsed> VennFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::venn::VennDiagramRenderModel, VennDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::venn::VennDiagramModel, VennDiagramLayout> {
         &self.pair
     }
 
@@ -2146,8 +2144,7 @@ impl<'parsed> BlockFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-railroad")]
 pub(crate) struct RailroadFamilyArtifact<'parsed> {
-    pair:
-        FamilyPair<&'parsed diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::railroad::RailroadDiagramModel, RailroadDiagramLayout>,
     typography_theme: crate::railroad::RailroadTypographyThemePlan,
 }
 
@@ -2155,8 +2152,7 @@ pub(crate) struct RailroadFamilyArtifact<'parsed> {
 impl<'parsed> RailroadFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>
-    {
+    ) -> &FamilyPair<&'parsed diagrams::railroad::RailroadDiagramModel, RailroadDiagramLayout> {
         &self.pair
     }
 
@@ -2206,7 +2202,7 @@ impl<'parsed> InfoFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-cynefin")]
 pub(crate) struct CynefinFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramModel, CynefinDiagramLayout>,
     typography_theme: crate::cynefin::CynefinTypographyThemePlan,
 }
 
@@ -2214,8 +2210,7 @@ pub(crate) struct CynefinFamilyArtifact<'parsed> {
 impl<'parsed> CynefinFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>
-    {
+    ) -> &FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramModel, CynefinDiagramLayout> {
         &self.pair
     }
 
@@ -2227,7 +2222,7 @@ impl<'parsed> CynefinFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-wardley")]
 pub(crate) struct WardleyFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::wardley::WardleyDiagramModel, WardleyDiagramLayout>,
     typography_theme: crate::wardley::WardleyTypographyThemePlan,
 }
 
@@ -2235,8 +2230,7 @@ pub(crate) struct WardleyFamilyArtifact<'parsed> {
 impl<'parsed> WardleyFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>
-    {
+    ) -> &FamilyPair<&'parsed diagrams::wardley::WardleyDiagramModel, WardleyDiagramLayout> {
         &self.pair
     }
 
@@ -2249,7 +2243,7 @@ impl<'parsed> WardleyFamilyArtifact<'parsed> {
 impl<'parsed> SankeyFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::sankey::SankeyDiagramModel, SankeyDiagramLayout> {
         &self.pair
     }
 
@@ -2270,7 +2264,7 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-git-graph")]
 pub(crate) struct GitGraphFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphDiagramModel, GitGraphDiagramLayout>,
     node_palette: crate::gitgraph::GitGraphNodePalettePlan,
     static_paint: crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
@@ -2280,7 +2274,8 @@ pub(crate) struct GitGraphFamilyArtifact<'parsed> {
 impl<'parsed> GitGraphFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::git_graph::GitGraphDiagramModel, GitGraphDiagramLayout>
+    {
         &self.pair
     }
 
@@ -2316,7 +2311,7 @@ pub(crate) struct TreemapFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-requirement")]
 pub(crate) struct RequirementFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        &'parsed diagrams::requirement::RequirementDiagramRenderModel,
+        &'parsed diagrams::requirement::RequirementDiagramModel,
         crate::requirement::RequirementPreparedArtifact,
     >,
     paint_theme: crate::requirement::RequirementPaintThemePlan,
@@ -2347,7 +2342,7 @@ impl<'parsed> RequirementFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        &'parsed diagrams::requirement::RequirementDiagramRenderModel,
+        &'parsed diagrams::requirement::RequirementDiagramModel,
         crate::requirement::RequirementPreparedArtifact,
     > {
         &self.pair
@@ -2445,8 +2440,7 @@ impl<'parsed> XyChartFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-tree-view")]
 pub(crate) struct TreeViewFamilyArtifact<'parsed> {
-    pair:
-        FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramModel, TreeViewDiagramLayout>,
     theme: crate::tree_view::TreeViewThemePlan,
 }
 
@@ -2479,7 +2473,7 @@ impl<'parsed> MindmapFamilyArtifact<'parsed> {
 #[derive(Debug)]
 #[cfg(feature = "diagram-er")]
 pub(crate) struct ErFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::er::ErDiagramRenderModel, ErDiagramLayout>,
+    pair: FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
 }
 
@@ -2487,7 +2481,7 @@ pub(crate) struct ErFamilyArtifact<'parsed> {
 impl<'parsed> ErFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::er::ErDiagramRenderModel, ErDiagramLayout> {
+    ) -> &FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout> {
         &self.pair
     }
 
@@ -2535,7 +2529,7 @@ impl<'parsed> TimelineFamilyArtifact<'parsed> {
 impl<'parsed> TreeViewFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
-    ) -> &FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>
+    ) -> &FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramModel, TreeViewDiagramLayout>
     {
         &self.pair
     }
@@ -2588,7 +2582,7 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-architecture")]
 pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
     pair: FamilyPair<
-        &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
+        &'parsed diagrams::architecture::ArchitectureDiagramModel,
         ArchitectureDiagramLayout,
     >,
     group_theme: crate::architecture::ArchitectureGroupThemePlan,
@@ -2600,7 +2594,7 @@ impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
-        &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
+        &'parsed diagrams::architecture::ArchitectureDiagramModel,
         ArchitectureDiagramLayout,
     > {
         &self.pair
@@ -2702,7 +2696,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Usecase(
         Box<
             FamilyPair<
-                &'parsed diagrams::usecase::UsecaseDiagramRenderModel,
+                &'parsed diagrams::usecase::UsecaseDiagramModel,
                 crate::usecase::UsecasePreparedArtifact,
             >,
         >,

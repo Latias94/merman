@@ -224,7 +224,7 @@ impl C4TextPaintPlan {
 
     pub(crate) fn bind_source_terminal_paint(
         &self,
-        model: &merman_core::diagrams::c4::C4DiagramRenderModel,
+        model: &merman_core::diagrams::c4::C4DiagramModel,
         layout: &crate::model::C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
         config: &PresentationConfig,

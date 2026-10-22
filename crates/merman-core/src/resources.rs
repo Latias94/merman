@@ -2911,7 +2911,7 @@ mod tests {
             #[cfg(feature = "diagram-radar")]
             RenderSemanticModel::Radar({
                 let mut model = crate::diagrams::radar::RadarDiagramRenderModel::default();
-                model.axes = vec![crate::diagrams::radar::RadarRenderAxis {
+                model.axes = vec![crate::diagrams::radar::RadarAxis {
                     name: "speed".to_string(),
                     label: "Speed".to_string(),
                 }];
@@ -2920,7 +2920,7 @@ mod tests {
             #[cfg(feature = "diagram-requirement")]
             RenderSemanticModel::Requirement(RequirementDiagramModel {
                 direction: "TB".to_string(),
-                requirements: vec![crate::diagrams::requirement::RequirementRenderNode {
+                requirements: vec![crate::diagrams::requirement::RequirementNode {
                     name: "R1".to_string(),
                     node_type: "requirement".to_string(),
                     requirement_id: "1".to_string(),

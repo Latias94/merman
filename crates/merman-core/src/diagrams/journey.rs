@@ -59,10 +59,6 @@ pub struct JourneyTask {
     pub task: String,
 }
 
-/// Backwards-compatible name for a semantic Journey task.
-#[cfg(feature = "presentation")]
-pub type JourneyRenderTask = JourneyTask;
-
 /// Canonical meaning of a Journey diagram, without compatibility-output state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct JourneyDiagramModel {

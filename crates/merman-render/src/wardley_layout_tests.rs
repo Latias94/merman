@@ -5,11 +5,9 @@ use crate::wardley::{
     layout_wardley_diagram_typed,
 };
 use merman_core::diagrams::wardley::{
-    WardleyAcceleratorRenderModel, WardleyAnnotationRenderModel, WardleyAxesRenderModel,
-    WardleyDeacceleratorRenderModel, WardleyDiagramRenderModel, WardleyFlowDirection,
-    WardleyLinkRenderModel, WardleyNodeRenderModel, WardleyNoteRenderModel,
-    WardleyPipelineRenderModel, WardleyPointRenderModel, WardleySizeRenderModel,
-    WardleySourceStrategy, WardleyTrendRenderModel,
+    WardleyAccelerator, WardleyAnnotation, WardleyAxes, WardleyDeaccelerator, WardleyDiagramModel,
+    WardleyFlowDirection, WardleyLink, WardleyNode, WardleyNote, WardleyPipeline, WardleyPoint,
+    WardleySize, WardleySourceStrategy, WardleyTrend,
 };
 use serde_json::json;
 use std::cell::RefCell;
@@ -82,8 +80,8 @@ impl TextMeasurer for PrimitiveProbe {
     }
 }
 
-fn node(id: &str, x: f64, y: f64) -> WardleyNodeRenderModel {
-    WardleyNodeRenderModel {
+fn node(id: &str, x: f64, y: f64) -> WardleyNode {
+    WardleyNode {
         id: id.to_string(),
         label: id.to_string(),
         x,
@@ -98,8 +96,8 @@ fn node(id: &str, x: f64, y: f64) -> WardleyNodeRenderModel {
     }
 }
 
-fn point(x: f64, y: f64) -> WardleyPointRenderModel {
-    WardleyPointRenderModel { x, y }
+fn point(x: f64, y: f64) -> WardleyPoint {
+    WardleyPoint { x, y }
 }
 
 fn assert_close(actual: f64, expected: f64) {
@@ -112,7 +110,7 @@ fn assert_close(actual: f64, expected: f64) {
 #[test]
 fn config_size_and_title_precedence_are_resolved_before_svg() {
     let defaults = layout_wardley_diagram_typed(
-        &WardleyDiagramRenderModel::default(),
+        &WardleyDiagramModel::default(),
         None,
         &json!({}),
         &PrimitiveProbe::default(),
@@ -129,9 +127,9 @@ fn config_size_and_title_precedence_are_resolved_before_svg() {
     assert!(defaults.use_max_width);
     assert!(defaults.grid.is_empty());
 
-    let mut model = WardleyDiagramRenderModel {
+    let mut model = WardleyDiagramModel {
         title: Some("Body title".to_string()),
-        size: Some(WardleySizeRenderModel {
+        size: Some(WardleySize {
             width: 640.0,
             height: 480.0,
         }),
@@ -204,8 +202,8 @@ fn config_size_and_title_precedence_are_resolved_before_svg() {
 
 #[test]
 fn stages_use_complete_custom_boundaries_or_equal_distribution() {
-    let custom = WardleyDiagramRenderModel {
-        axes: WardleyAxesRenderModel {
+    let custom = WardleyDiagramModel {
+        axes: WardleyAxes {
             stages: vec!["A".into(), "B".into(), "C".into()],
             stage_boundaries: vec![0.2, 0.7, 1.0],
             ..Default::default()
@@ -244,7 +242,7 @@ fn stages_use_complete_custom_boundaries_or_equal_distribution() {
 fn pipelines_sort_children_relocate_parent_and_filter_child_parent_links() {
     let mut parent = node("parent", 50.0, 50.0);
     parent.is_pipeline_parent = true;
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         nodes: vec![
             parent,
             node("c3", 80.0, 40.0),
@@ -252,26 +250,26 @@ fn pipelines_sort_children_relocate_parent_and_filter_child_parent_links() {
             node("c2", 50.0, 40.0),
             node("outside", 90.0, 80.0),
         ],
-        pipelines: vec![WardleyPipelineRenderModel {
+        pipelines: vec![WardleyPipeline {
             node_id: "parent".into(),
             component_ids: vec!["c3".into(), "c1".into(), "missing".into(), "c2".into()],
         }],
         links: vec![
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "c1".into(),
                 target: "parent".into(),
                 dashed: false,
                 label: None,
                 flow: None,
             },
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "parent".into(),
                 target: "outside".into(),
                 dashed: false,
                 label: None,
                 flow: None,
             },
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "missing".into(),
                 target: "outside".into(),
                 dashed: false,
@@ -315,31 +313,31 @@ fn pipelines_sort_children_relocate_parent_and_filter_child_parent_links() {
 
 #[test]
 fn links_clip_endpoints_place_readable_labels_and_precompute_flow_markers() {
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         nodes: vec![node("a", 80.0, 30.0), node("b", 20.0, 70.0)],
         links: vec![
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "a".into(),
                 target: "b".into(),
                 dashed: true,
                 label: Some("flow".into()),
                 flow: Some(WardleyFlowDirection::Forward),
             },
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "a".into(),
                 target: "b".into(),
                 dashed: false,
                 label: None,
                 flow: Some(WardleyFlowDirection::Backward),
             },
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "a".into(),
                 target: "b".into(),
                 dashed: false,
                 label: None,
                 flow: Some(WardleyFlowDirection::Bidirectional),
             },
-            WardleyLinkRenderModel {
+            WardleyLink {
                 source: "a".into(),
                 target: "b".into(),
                 dashed: false,
@@ -382,9 +380,9 @@ fn links_clip_endpoints_place_readable_labels_and_precompute_flow_markers() {
 
 #[test]
 fn zero_distance_links_are_rejected_instead_of_serializing_nan() {
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         nodes: vec![node("a", 50.0, 50.0), node("b", 50.0, 50.0)],
-        links: vec![WardleyLinkRenderModel {
+        links: vec![WardleyLink {
             source: "a".into(),
             target: "b".into(),
             dashed: false,
@@ -418,7 +416,7 @@ fn strategies_market_inertia_and_labels_are_fully_positioned() {
     let mut parent = node("parent", 90.0, 60.0);
     parent.is_pipeline_parent = true;
     parent.inertia = Some(true);
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         nodes: vec![anchor, build, buy, outsource, market, parent],
         ..Default::default()
     };
@@ -483,19 +481,19 @@ fn strategies_market_inertia_and_labels_are_fully_positioned() {
 #[test]
 fn annotations_use_exact_dom_primitives_source_buffer_and_clamping() {
     let probe = PrimitiveProbe::default();
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         annotations: vec![
-            WardleyAnnotationRenderModel {
+            WardleyAnnotation {
                 number: 2,
                 coordinates: vec![point(10.0, 20.0), point(30.0, 40.0)],
                 text: Some("long".into()),
             },
-            WardleyAnnotationRenderModel {
+            WardleyAnnotation {
                 number: 1,
                 coordinates: vec![point(50.0, 60.0)],
                 text: Some("short".into()),
             },
-            WardleyAnnotationRenderModel {
+            WardleyAnnotation {
                 number: 3,
                 coordinates: vec![point(70.0, 80.0)],
                 text: Some(String::new()),
@@ -543,31 +541,31 @@ fn annotations_use_exact_dom_primitives_source_buffer_and_clamping() {
 
 #[test]
 fn notes_trends_and_acceleration_arrows_are_projected_once() {
-    let model = WardleyDiagramRenderModel {
+    let model = WardleyDiagramModel {
         nodes: vec![node("origin", 10.0, 20.0)],
         trends: vec![
-            WardleyTrendRenderModel {
+            WardleyTrend {
                 node_id: "origin".into(),
                 target_x: 50.0,
                 target_y: 60.0,
             },
-            WardleyTrendRenderModel {
+            WardleyTrend {
                 node_id: "origin".into(),
                 target_x: 10.0,
                 target_y: 20.0,
             },
         ],
-        notes: vec![WardleyNoteRenderModel {
+        notes: vec![WardleyNote {
             text: "A note".into(),
             x: 25.0,
             y: 75.0,
         }],
-        accelerators: vec![WardleyAcceleratorRenderModel {
+        accelerators: vec![WardleyAccelerator {
             name: "Fast".into(),
             x: 20.0,
             y: 30.0,
         }],
-        deaccelerators: vec![WardleyDeacceleratorRenderModel {
+        deaccelerators: vec![WardleyDeaccelerator {
             name: "Slow".into(),
             x: 60.0,
             y: 70.0,

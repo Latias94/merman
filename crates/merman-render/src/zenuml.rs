@@ -6,7 +6,7 @@ use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::zenuml::{
-    ZenumlDiagramRenderModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
+    ZenumlDiagramModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
     ZenumlStatementKind,
 };
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,7 @@ const MESSAGE_LABEL_PADDING: f64 = 10.0;
 const DEFAULT_STARTER: &str = "_STARTER_";
 
 pub(crate) fn resolve_zenuml_title<'a>(
-    model: &'a ZenumlDiagramRenderModel,
+    model: &'a ZenumlDiagramModel,
     diagram_title: Option<&'a str>,
 ) -> Option<&'a str> {
     model
@@ -380,7 +380,7 @@ pub struct ZenumlGroupLayout {
 }
 
 pub(crate) fn layout_zenuml_diagram_typed(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     typography: &ZenumlTypography,
     measurer: &dyn TextMeasurer,
 ) -> Result<ZenumlDiagramLayout> {
@@ -825,7 +825,7 @@ fn finite_layout_geometry(layout: &ZenumlDiagramLayout) -> bool {
 }
 
 fn apply_message_width_constraints(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     participants: &mut [ZenumlParticipantLayout],
     measurer: &dyn TextMeasurer,
     typography: &ZenumlTypography,
@@ -1070,7 +1070,7 @@ fn collect_fragment_frames(
 }
 
 fn self_message_extra_width(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     positions: &HashMap<String, f64>,
     half_widths: &HashMap<String, f64>,
     measurer: &dyn TextMeasurer,

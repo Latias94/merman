@@ -170,18 +170,6 @@ impl std::ops::DerefMut for GanttRenderTask {
     }
 }
 
-#[cfg(feature = "presentation")]
-pub type GanttRenderTaskRaw = GanttTaskRaw;
-
-#[cfg(feature = "presentation")]
-pub type GanttRenderTaskStart = GanttTaskStart;
-
-#[cfg(feature = "presentation")]
-pub type GanttRenderTaskEnd = GanttTaskEnd;
-
-#[cfg(feature = "presentation")]
-pub type GanttRenderClickEvent = GanttClickEvent;
-
 #[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum CompatibilityOutputState {

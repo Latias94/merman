@@ -204,42 +204,6 @@ pub struct WardleyDiagramModel {
     pub size: Option<WardleySize>,
 }
 
-#[cfg(feature = "presentation")]
-pub type WardleyDiagramRenderModel = WardleyDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type WardleyPointRenderModel = WardleyPoint;
-
-#[cfg(feature = "presentation")]
-pub type WardleyNodeRenderModel = WardleyNode;
-
-#[cfg(feature = "presentation")]
-pub type WardleyLinkRenderModel = WardleyLink;
-
-#[cfg(feature = "presentation")]
-pub type WardleyTrendRenderModel = WardleyTrend;
-
-#[cfg(feature = "presentation")]
-pub type WardleyPipelineRenderModel = WardleyPipeline;
-
-#[cfg(feature = "presentation")]
-pub type WardleyAnnotationRenderModel = WardleyAnnotation;
-
-#[cfg(feature = "presentation")]
-pub type WardleyNoteRenderModel = WardleyNote;
-
-#[cfg(feature = "presentation")]
-pub type WardleyAcceleratorRenderModel = WardleyAccelerator;
-
-#[cfg(feature = "presentation")]
-pub type WardleyDeacceleratorRenderModel = WardleyDeaccelerator;
-
-#[cfg(feature = "presentation")]
-pub type WardleyAxesRenderModel = WardleyAxes;
-
-#[cfg(feature = "presentation")]
-pub type WardleySizeRenderModel = WardleySize;
-
 impl WardleyDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -3042,7 +3006,7 @@ mod tests {
         }
     }
 
-    fn parse(source: &str) -> WardleyDiagramRenderModel {
+    fn parse(source: &str) -> WardleyDiagramModel {
         parse_wardley_model_for_render(source, &meta()).unwrap()
     }
 
@@ -3083,9 +3047,9 @@ mod tests {
 
     #[test]
     fn wardley_json_projection_observes_cancellation_inside_large_model_collections() {
-        let model = WardleyDiagramRenderModel {
+        let model = WardleyDiagramModel {
             nodes: (0..512)
-                .map(|index| WardleyNodeRenderModel {
+                .map(|index| WardleyNode {
                     id: format!("node-{index}"),
                     label: format!("Node {index}"),
                     x: 50.0,
@@ -3099,7 +3063,7 @@ mod tests {
                     source_strategy: None,
                 })
                 .collect(),
-            ..WardleyDiagramRenderModel::default()
+            ..WardleyDiagramModel::default()
         };
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
@@ -3198,7 +3162,7 @@ deaccelerator "Legacy Data" [0.45, 0.35]
         assert_eq!(model.acc_title.as_deref(), Some("Platform map"));
         assert_eq!(
             model.size,
-            Some(WardleySizeRenderModel {
+            Some(WardleySize {
                 width: 1100.0,
                 height: 800.0
             })
@@ -3251,11 +3215,11 @@ deaccelerator "Legacy Data" [0.45, 0.35]
         assert_eq!(model.links[5].target, "Database_File System");
         assert_eq!(
             model.annotations_box,
-            Some(WardleyPointRenderModel { x: 20.0, y: 10.0 })
+            Some(WardleyPoint { x: 20.0, y: 10.0 })
         );
         assert_eq!(
             model.annotations[0].coordinates[0],
-            WardleyPointRenderModel { x: 82.0, y: 78.0 }
+            WardleyPoint { x: 82.0, y: 78.0 }
         );
         assert_eq!(
             (model.accelerators[0].x, model.accelerators[0].y),

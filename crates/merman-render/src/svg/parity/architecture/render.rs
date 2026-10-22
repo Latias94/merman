@@ -58,7 +58,7 @@ struct ArchitectureTimingState<'a> {
 
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramModel,
     effective_config: &merman_core::presentation::PresentationConfig,
     group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,

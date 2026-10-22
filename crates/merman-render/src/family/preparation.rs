@@ -160,7 +160,7 @@ fn prepare_mindmap_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-sankey")]
 fn prepare_sankey_family<'parsed>(
-    model: &'parsed diagrams::sankey::SankeyDiagramRenderModel,
+    model: &'parsed diagrams::sankey::SankeyDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -267,7 +267,7 @@ fn prepare_block_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-railroad")]
 fn prepare_railroad_family<'parsed>(
-    model: &'parsed diagrams::railroad::RailroadDiagramRenderModel,
+    model: &'parsed diagrams::railroad::RailroadDiagramModel,
     diagram_type: &str,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
@@ -340,7 +340,7 @@ fn prepare_info_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-cynefin")]
 fn prepare_cynefin_family<'parsed>(
-    model: &'parsed diagrams::cynefin::CynefinDiagramRenderModel,
+    model: &'parsed diagrams::cynefin::CynefinDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -366,7 +366,7 @@ fn prepare_cynefin_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-wardley")]
 fn prepare_wardley_family<'parsed>(
-    model: &'parsed diagrams::wardley::WardleyDiagramRenderModel,
+    model: &'parsed diagrams::wardley::WardleyDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -505,7 +505,7 @@ fn prepare_flowchart_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-architecture")]
 fn prepare_architecture_family<'parsed>(
-    model: &'parsed diagrams::architecture::ArchitectureDiagramRenderModel,
+    model: &'parsed diagrams::architecture::ArchitectureDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -534,7 +534,7 @@ fn prepare_architecture_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-c4")]
 fn prepare_c4_family<'parsed>(
-    model: &'parsed diagrams::c4::C4DiagramRenderModel,
+    model: &'parsed diagrams::c4::C4DiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -818,7 +818,7 @@ fn prepare_treemap_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-er")]
 fn prepare_er_family<'parsed>(
-    model: &'parsed diagrams::er::ErDiagramRenderModel,
+    model: &'parsed diagrams::er::ErDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -869,7 +869,7 @@ fn prepare_er_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-quadrant-chart")]
 fn prepare_quadrant_chart_family<'parsed>(
-    model: &'parsed diagrams::quadrant_chart::QuadrantChartRenderModel,
+    model: &'parsed diagrams::quadrant_chart::QuadrantChartDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -957,7 +957,7 @@ fn prepare_xy_chart_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-git-graph")]
 fn prepare_gitgraph_family<'parsed>(
-    model: &'parsed diagrams::git_graph::GitGraphRenderModel,
+    model: &'parsed diagrams::git_graph::GitGraphDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1006,7 +1006,7 @@ fn prepare_gitgraph_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-tree-view")]
 fn prepare_tree_view_family<'parsed>(
-    model: &'parsed diagrams::tree_view::TreeViewDiagramRenderModel,
+    model: &'parsed diagrams::tree_view::TreeViewDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1061,7 +1061,7 @@ fn prepare_packet_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-requirement")]
 fn prepare_requirement_family<'parsed>(
-    model: &'parsed diagrams::requirement::RequirementDiagramRenderModel,
+    model: &'parsed diagrams::requirement::RequirementDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1190,7 +1190,7 @@ fn prepare_class_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-venn")]
 fn prepare_venn_family<'parsed>(
-    model: &'parsed diagrams::venn::VennDiagramRenderModel,
+    model: &'parsed diagrams::venn::VennDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1236,7 +1236,7 @@ fn prepare_venn_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-zenuml")]
 fn prepare_zenuml_family<'parsed>(
-    model: &'parsed diagrams::zenuml::ZenumlDiagramRenderModel,
+    model: &'parsed diagrams::zenuml::ZenumlDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1275,7 +1275,7 @@ fn prepare_zenuml_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-event-modeling")]
 fn prepare_eventmodeling_family<'parsed>(
-    model: &'parsed diagrams::eventmodeling::EventModelingDiagramRenderModel,
+    model: &'parsed diagrams::eventmodeling::EventModelingDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1304,7 +1304,7 @@ fn prepare_eventmodeling_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-ishikawa")]
 fn prepare_ishikawa_family<'parsed>(
-    model: &'parsed diagrams::ishikawa::IshikawaDiagramRenderModel,
+    model: &'parsed diagrams::ishikawa::IshikawaDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {

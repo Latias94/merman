@@ -28,11 +28,7 @@ pub use terminal::{
 };
 
 #[cfg(feature = "presentation")]
-pub use render_model::{
-    StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
-    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
-};
+pub use render_model::{StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode};
 #[cfg(feature = "compat-json")]
 pub(crate) use render_model::{
     render_model_to_compat_json, render_model_to_compat_json_controlled,

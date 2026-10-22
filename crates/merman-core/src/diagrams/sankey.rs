@@ -59,16 +59,6 @@ pub struct SankeyDiagramModel {
     pub graph: SankeyGraph,
 }
 
-/// Full-parser spellings retained for presentation consumers.
-#[cfg(feature = "presentation")]
-pub type SankeyRenderNode = SankeyNode;
-#[cfg(feature = "presentation")]
-pub type SankeyRenderLink = SankeyLink;
-#[cfg(feature = "presentation")]
-pub type SankeyRenderGraph = SankeyGraph;
-#[cfg(feature = "presentation")]
-pub type SankeyDiagramRenderModel = SankeyDiagramModel;
-
 #[derive(Debug, Default, Clone)]
 struct SankeyDb {
     nodes: Vec<SankeyNode>,
@@ -197,7 +187,7 @@ impl SankeySemanticSource {
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &SankeyDiagramRenderModel,
+    model: &SankeyDiagramModel,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut out = Map::with_capacity(3);
@@ -248,7 +238,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
 pub(crate) fn parse_sankey_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
-) -> Result<SankeyDiagramRenderModel> {
+) -> Result<SankeyDiagramModel> {
     parse_sankey_model(code, meta)
 }
 
@@ -257,7 +247,7 @@ pub(crate) fn parse_sankey_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<SankeyDiagramRenderModel>> {
+) -> crate::OperationControlResult<Result<SankeyDiagramModel>> {
     Ok(construct_sankey_semantic_source_controlled(
         code,
         &meta.diagram_type,

@@ -181,9 +181,9 @@ mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     #[cfg(feature = "diagram-journey")]
-    use merman_core::diagrams::journey::JourneyRenderTask;
+    use merman_core::diagrams::journey::JourneyTask;
     #[cfg(feature = "diagram-timeline")]
-    use merman_core::diagrams::timeline::TimelineRenderTask;
+    use merman_core::diagrams::timeline::TimelineTask;
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
@@ -227,7 +227,7 @@ mod tests {
     fn timeline_section_plan_admits_exact_work_before_allocating() {
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![
-            TimelineRenderTask {
+            TimelineTask {
                 id: 0,
                 section: "Repeated".to_string(),
                 section_index: Some(0),
@@ -236,7 +236,7 @@ mod tests {
                 score: 0,
                 events: Vec::new(),
             },
-            TimelineRenderTask {
+            TimelineTask {
                 id: 1,
                 section: "Repeated".to_string(),
                 section_index: Some(1),
@@ -255,7 +255,7 @@ mod tests {
     fn journey_section_plan_admits_exact_work_before_allocating() {
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![
-            JourneyRenderTask {
+            JourneyTask {
                 score: 5,
                 score_is_nan: false,
                 people: Vec::new(),
@@ -264,7 +264,7 @@ mod tests {
                 task_type: "Repeated".to_string(),
                 task: "First".to_string(),
             },
-            JourneyRenderTask {
+            JourneyTask {
                 score: 3,
                 score_is_nan: false,
                 people: Vec::new(),
@@ -284,7 +284,7 @@ mod tests {
         const PRIOR_WORK: usize = 3;
         const PRIOR_CELLS: usize = 2;
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
-        let tasks = vec![JourneyRenderTask {
+        let tasks = vec![JourneyTask {
             score: 5,
             score_is_nan: false,
             people: Vec::new(),

@@ -5,8 +5,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
 use merman_core::diagrams::eventmodeling::{
-    EventModelingDataEntityRenderModel, EventModelingDiagramRenderModel,
-    EventModelingFrameRenderModel,
+    EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -33,12 +32,12 @@ const TEXT_FONT_SIZE: f64 = 16.0;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
 pub(crate) fn layout_eventmodeling_diagram_typed_with_binding(
-    model: &EventModelingDiagramRenderModel,
+    model: &EventModelingDiagramModel,
     theme: &EventModelingCssBinding,
     measurer: &dyn TextMeasurer,
 ) -> Result<EventModelingDiagramLayout> {
     let cfg = theme.layout_settings;
-    let data_entities: HashMap<&str, &EventModelingDataEntityRenderModel> = model
+    let data_entities: HashMap<&str, &EventModelingDataEntity> = model
         .data_entities
         .iter()
         .map(|entity| (entity.name.as_str(), entity))
@@ -271,7 +270,7 @@ struct TextDimension {
 }
 
 fn calculate_swimlane_props(
-    frame: &EventModelingFrameRenderModel,
+    frame: &EventModelingFrame,
     swimlanes: &BTreeMap<i64, SwimlaneState>,
 ) -> SwimlaneProps {
     let namespace = extract_namespace(&frame.entity_identifier);
@@ -418,8 +417,8 @@ fn recalculate_swimlane_y(swimlanes: &mut BTreeMap<i64, SwimlaneState>) {
 }
 
 fn frame_text(
-    frame: &EventModelingFrameRenderModel,
-    data_entities: &HashMap<&str, &EventModelingDataEntityRenderModel>,
+    frame: &EventModelingFrame,
+    data_entities: &HashMap<&str, &EventModelingDataEntity>,
 ) -> String {
     let mut text = extract_name(&frame.entity_identifier).to_string();
     if let Some(data) = frame.data_inline_value.as_deref() {
@@ -435,8 +434,8 @@ fn frame_text(
 }
 
 fn measure_frame_text(
-    frame: &EventModelingFrameRenderModel,
-    data_entities: &HashMap<&str, &EventModelingDataEntityRenderModel>,
+    frame: &EventModelingFrame,
+    data_entities: &HashMap<&str, &EventModelingDataEntity>,
     measurer: &dyn TextMeasurer,
 ) -> TextDimension {
     let style = TextStyle {
@@ -532,8 +531,8 @@ fn measure_eventmodeling_label_html_with_style(
 }
 
 fn frame_label_html_for_measurement(
-    frame: &EventModelingFrameRenderModel,
-    data_entities: &HashMap<&str, &EventModelingDataEntityRenderModel>,
+    frame: &EventModelingFrame,
+    data_entities: &HashMap<&str, &EventModelingDataEntity>,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> (String, bool) {

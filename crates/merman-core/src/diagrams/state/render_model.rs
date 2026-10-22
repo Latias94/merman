@@ -8,11 +8,9 @@ use std::collections::HashMap;
 use super::CSS_EDGE_NOTE_EDGE;
 use super::StateDocument;
 use super::complexity::StateRecords;
-use super::model::{StateDiagramModel, StateModelConstruction, StateNode};
-pub use super::model::{
-    StateLink as StateDiagramRenderLink, StateLinks as StateDiagramRenderLinks,
-    StateNote as StateDiagramRenderNote, StateRecord as StateDiagramRenderState,
-    StateRelation as StateDiagramRenderRelation, StateStyleClass as StateDiagramRenderStyleClass,
+use super::model::{
+    StateDiagramModel, StateLinks, StateModelConstruction, StateNode, StateRecord, StateRelation,
+    StateStyleClass,
 };
 #[cfg(feature = "compat-json")]
 use super::{StateDocumentId, StateStatement};
@@ -45,10 +43,10 @@ pub struct StateDiagramRenderModel {
     pub acc_descr: Option<String>,
     pub nodes: Vec<StateDiagramRenderNode>,
     pub edges: Vec<StateDiagramRenderEdge>,
-    pub relations: Vec<StateDiagramRenderRelation>,
-    pub links: HashMap<String, StateDiagramRenderLinks>,
-    pub states: HashMap<String, StateDiagramRenderState>,
-    pub style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
+    pub relations: Vec<StateRelation>,
+    pub links: HashMap<String, StateLinks>,
+    pub states: HashMap<String, StateRecord>,
+    pub style_classes: IndexMap<String, StateStyleClass>,
 }
 
 pub(super) struct StateNodePresentation {
@@ -141,11 +139,11 @@ struct StateModelFields<'a> {
     acc_descr: &'a Option<String>,
     nodes: &'a [StateDiagramRenderNode],
     edges: &'a [StateDiagramRenderEdge],
-    relations: &'a [StateDiagramRenderRelation],
-    links: &'a HashMap<String, StateDiagramRenderLinks>,
+    relations: &'a [StateRelation],
+    links: &'a HashMap<String, StateLinks>,
     states: StateRecords<'a>,
     #[serde(rename = "styleClasses")]
-    style_classes: &'a IndexMap<String, StateDiagramRenderStyleClass>,
+    style_classes: &'a IndexMap<String, StateStyleClass>,
 }
 
 impl StateDiagramRenderModel {

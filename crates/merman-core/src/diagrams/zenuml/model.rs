@@ -16,9 +16,6 @@ pub struct ZenumlDiagramModel {
     pub statements: Vec<ZenumlStatement>,
 }
 
-#[cfg(feature = "presentation")]
-pub type ZenumlDiagramRenderModel = ZenumlDiagramModel;
-
 impl Serialize for ZenumlDiagramModel {
     fn serialize<S: serde::Serializer>(
         &self,

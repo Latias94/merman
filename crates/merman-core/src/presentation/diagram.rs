@@ -398,19 +398,19 @@ pub enum RenderSemanticModel {
     #[cfg(feature = "diagram-sequence")]
     Sequence(crate::diagrams::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-zenuml")]
-    Zenuml(crate::diagrams::zenuml::ZenumlDiagramRenderModel),
+    Zenuml(crate::diagrams::zenuml::ZenumlDiagramModel),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-architecture")]
-    Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
+    Architecture(crate::diagrams::architecture::ArchitectureDiagramModel),
     #[cfg(feature = "diagram-class")]
     Class(crate::models::class_diagram::ClassDiagram),
     #[cfg(feature = "diagram-c4")]
-    C4(crate::diagrams::c4::C4DiagramRenderModel),
+    C4(crate::diagrams::c4::C4DiagramModel),
     #[cfg(feature = "diagram-cynefin")]
-    Cynefin(crate::diagrams::cynefin::CynefinDiagramRenderModel),
+    Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
     #[cfg(feature = "diagram-railroad")]
-    Railroad(crate::diagrams::railroad::RailroadDiagramRenderModel),
+    Railroad(crate::diagrams::railroad::RailroadDiagramModel),
     #[cfg(feature = "diagram-kanban")]
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
     #[cfg(feature = "diagram-gantt")]
@@ -424,9 +424,9 @@ pub enum RenderSemanticModel {
     #[cfg(feature = "diagram-journey")]
     Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
     #[cfg(feature = "diagram-requirement")]
-    Requirement(crate::diagrams::requirement::RequirementDiagramRenderModel),
+    Requirement(crate::diagrams::requirement::RequirementDiagramModel),
     #[cfg(feature = "diagram-sankey")]
-    Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
+    Sankey(crate::diagrams::sankey::SankeyDiagramModel),
     #[cfg(feature = "diagram-radar")]
     Radar(crate::diagrams::radar::RadarDiagramRenderModel),
     #[cfg(feature = "diagram-info")]
@@ -436,25 +436,25 @@ pub enum RenderSemanticModel {
     #[cfg(feature = "diagram-block")]
     Block(crate::diagrams::block::BlockDiagramRenderModel),
     #[cfg(feature = "diagram-er")]
-    Er(crate::diagrams::er::ErDiagramRenderModel),
+    Er(crate::diagrams::er::ErDiagramModel),
     #[cfg(feature = "diagram-quadrant-chart")]
-    QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartRenderModel),
+    QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartDiagramModel),
     #[cfg(feature = "diagram-xychart")]
     XyChart(crate::diagrams::xychart::XyChartDiagramRenderModel),
     #[cfg(feature = "diagram-git-graph")]
-    GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
+    GitGraph(crate::diagrams::git_graph::GitGraphDiagramModel),
     #[cfg(feature = "diagram-tree-view")]
-    TreeView(crate::diagrams::tree_view::TreeViewDiagramRenderModel),
+    TreeView(crate::diagrams::tree_view::TreeViewDiagramModel),
     #[cfg(feature = "diagram-ishikawa")]
-    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramRenderModel),
+    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramModel),
     #[cfg(feature = "diagram-event-modeling")]
-    EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
+    EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramModel),
     #[cfg(feature = "diagram-venn")]
-    Venn(crate::diagrams::venn::VennDiagramRenderModel),
+    Venn(crate::diagrams::venn::VennDiagramModel),
     #[cfg(feature = "diagram-wardley")]
-    Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
+    Wardley(crate::diagrams::wardley::WardleyDiagramModel),
     #[cfg(feature = "diagram-usecase")]
-    Usecase(crate::diagrams::usecase::UsecaseDiagramRenderModel),
+    Usecase(crate::diagrams::usecase::UsecaseDiagramModel),
     #[cfg(feature = "diagram-agentflow")]
     Agentflow(crate::diagrams::agentflow::AgentflowDiagramRenderModel),
 }
@@ -678,7 +678,7 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-zenuml")]
     impl_builtin_render_semantic_controlled!(
-        crate::diagrams::zenuml::ZenumlDiagramRenderModel,
+        crate::diagrams::zenuml::ZenumlDiagramModel,
         crate::diagrams::zenuml::render_model_to_compat_json,
         crate::diagrams::zenuml::render_model_to_compat_json_controlled
     );
@@ -689,7 +689,7 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-architecture")]
     impl_builtin_render_semantic_controlled!(
-        crate::diagrams::architecture::ArchitectureDiagramRenderModel,
+        crate::diagrams::architecture::ArchitectureDiagramModel,
         crate::diagrams::architecture::render_model_to_compat_json,
         crate::diagrams::architecture::render_model_to_compat_json_controlled
     );
@@ -700,17 +700,17 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-c4")]
     impl_builtin_render_semantic!(
-        crate::diagrams::c4::C4DiagramRenderModel,
+        crate::diagrams::c4::C4DiagramModel,
         crate::diagrams::c4::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-cynefin")]
     impl_builtin_render_semantic!(
-        crate::diagrams::cynefin::CynefinDiagramRenderModel,
+        crate::diagrams::cynefin::CynefinDiagramModel,
         crate::diagrams::cynefin::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-railroad")]
     impl_builtin_render_semantic!(
-        crate::diagrams::railroad::RailroadDiagramRenderModel,
+        crate::diagrams::railroad::RailroadDiagramModel,
         crate::diagrams::railroad::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-kanban")]
@@ -746,12 +746,12 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-requirement")]
     impl_builtin_render_semantic!(
-        crate::diagrams::requirement::RequirementDiagramRenderModel,
+        crate::diagrams::requirement::RequirementDiagramModel,
         crate::diagrams::requirement::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-sankey")]
     impl_builtin_render_semantic!(
-        crate::diagrams::sankey::SankeyDiagramRenderModel,
+        crate::diagrams::sankey::SankeyDiagramModel,
         crate::diagrams::sankey::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-radar")]
@@ -778,12 +778,12 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-er")]
     impl_builtin_render_semantic!(
-        crate::diagrams::er::ErDiagramRenderModel,
+        crate::diagrams::er::ErDiagramModel,
         crate::diagrams::er::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-quadrant-chart")]
     impl_builtin_render_semantic!(
-        crate::diagrams::quadrant_chart::QuadrantChartRenderModel,
+        crate::diagrams::quadrant_chart::QuadrantChartDiagramModel,
         crate::diagrams::quadrant_chart::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-xychart")]
@@ -793,39 +793,39 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-git-graph")]
     impl_builtin_render_semantic!(
-        crate::diagrams::git_graph::GitGraphRenderModel,
+        crate::diagrams::git_graph::GitGraphDiagramModel,
         crate::diagrams::git_graph::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-tree-view")]
     impl_builtin_render_semantic!(
-        crate::diagrams::tree_view::TreeViewDiagramRenderModel,
+        crate::diagrams::tree_view::TreeViewDiagramModel,
         crate::diagrams::tree_view::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-ishikawa")]
     impl_builtin_render_semantic_controlled!(
-        crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
+        crate::diagrams::ishikawa::IshikawaDiagramModel,
         crate::diagrams::ishikawa::render_model_to_compat_json,
         crate::diagrams::ishikawa::render_model_to_compat_json_controlled
     );
     #[cfg(feature = "diagram-event-modeling")]
     impl_builtin_render_semantic!(
-        crate::diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        crate::diagrams::eventmodeling::EventModelingDiagramModel,
         crate::diagrams::eventmodeling::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-venn")]
     impl_builtin_render_semantic!(
-        crate::diagrams::venn::VennDiagramRenderModel,
+        crate::diagrams::venn::VennDiagramModel,
         crate::diagrams::venn::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-wardley")]
     impl_builtin_render_semantic_controlled!(
-        crate::diagrams::wardley::WardleyDiagramRenderModel,
+        crate::diagrams::wardley::WardleyDiagramModel,
         crate::diagrams::wardley::render_model_to_compat_json,
         crate::diagrams::wardley::render_model_to_compat_json_controlled
     );
     #[cfg(feature = "diagram-usecase")]
     impl_builtin_render_semantic!(
-        crate::diagrams::usecase::UsecaseDiagramRenderModel,
+        crate::diagrams::usecase::UsecaseDiagramModel,
         crate::diagrams::usecase::render_model_to_compat_json
     );
     #[cfg(feature = "diagram-agentflow")]

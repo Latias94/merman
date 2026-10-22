@@ -2,9 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
-use merman_core::diagrams::tree_view::{
-    TreeViewDiagramRenderModel, TreeViewNodeRenderModel as TreeViewNode,
-};
+use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -185,7 +183,7 @@ impl TreeViewThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::presentation::PresentationConfig,
-        model: &TreeViewDiagramRenderModel,
+        model: &TreeViewDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let inherited_font_stack =
@@ -941,7 +939,7 @@ mod tests {
                 "treeView": {"labelFontSize": "22px", "lineColor": "var(--line)"}
             }
         }));
-        let model = TreeViewDiagramRenderModel::default();
+        let model = TreeViewDiagramModel::default();
         let plan = TreeViewThemePlan::resolve(None, &config, &model, &work_meter())
             .expect("bind Mermaid-only Tree View");
         assert_eq!(plan.css().font_family, "Custom Font");
@@ -965,7 +963,7 @@ mod tests {
             let plan = TreeViewThemePlan::resolve(
                 Some(theme),
                 &merman_core::presentation::PresentationConfig::empty_object(),
-                &TreeViewDiagramRenderModel::default(),
+                &TreeViewDiagramModel::default(),
                 &work_meter(),
             )
             .expect("bind requested TreeView recipe");
@@ -976,7 +974,7 @@ mod tests {
     #[test]
     fn terminal_binding_keeps_property_local_config_ownership() {
         let theme = resolved_fill(ThemeTarget::NodeLabel);
-        let model = TreeViewDiagramRenderModel::default();
+        let model = TreeViewDiagramModel::default();
         let mut config = merman_core::presentation::PresentationConfig::empty_object();
         let typed = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
             .expect("bind typed Tree View");
@@ -1059,7 +1057,7 @@ mod tests {
     #[test]
     fn visible_tree_node_keeps_unsupported_fill_as_a_residual() {
         let theme = resolved_fill(ThemeTarget::Node);
-        let model = TreeViewDiagramRenderModel::default();
+        let model = TreeViewDiagramModel::default();
 
         let evidence = collect_evidence(&theme, |evidence| {
             TreeViewThemePlan::resolve(
@@ -1086,7 +1084,7 @@ mod tests {
     #[test]
     fn tree_view_model_title_is_not_a_visible_title_terminal() {
         let theme = resolved_fill(ThemeTarget::Title);
-        let model = TreeViewDiagramRenderModel {
+        let model = TreeViewDiagramModel {
             title: Some("Not rendered".to_string()),
             ..Default::default()
         };

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::diagrams::requirement::RequirementDiagramModel;
 use merman_core::presentation::PresentationConfig;
 
 use super::source_typography::RequirementNodeTypography;
@@ -85,7 +85,7 @@ impl RequirementPaintThemePlan {
     pub(crate) fn resolve_with_title(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-        model: &RequirementDiagramRenderModel,
+        model: &RequirementDiagramModel,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -495,7 +495,7 @@ impl RequirementPaintThemePlan {
 }
 
 fn requirement_source_owned_fill_mask(
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     node_indices: &BTreeMap<String, usize>,
     paint_owners: &[(bool, bool)],
 ) -> Vec<bool> {
@@ -564,7 +564,7 @@ fn typed_stroke_expectation(
 fn requirement_paint_owners(
     config: &PresentationConfig,
     css: &super::RequirementCssBinding,
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     node_indices: &BTreeMap<String, usize>,
 ) -> Vec<(bool, bool)> {
     let owns = |key| merman_core::__private::config_paint_overrides_typed_default(config, key);
@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn unthemed_plan_keeps_config_without_per_node_evidence() {
-        use merman_core::diagrams::requirement::RequirementRenderElement;
+        use merman_core::diagrams::requirement::RequirementElement;
 
         let config = PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
@@ -876,13 +876,13 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for node_count in [0, 1, 4096] {
-            let model = RequirementDiagramRenderModel {
+            let model = RequirementDiagramModel {
                 acc_title: None,
                 acc_descr: None,
                 direction: "TB".to_owned(),
                 requirements: Vec::new(),
                 elements: (0..node_count)
-                    .map(|index| RequirementRenderElement {
+                    .map(|index| RequirementElement {
                         name: format!("element_{index}"),
                         element_type: "component".to_owned(),
                         doc_ref: String::new(),

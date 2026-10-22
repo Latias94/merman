@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::timeline::{
-    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
+    TimelineDiagramRenderModel, TimelineDirection, TimelineTask,
 };
 use std::borrow::Cow;
 
@@ -761,7 +761,7 @@ fn layout_timeline_horizontal(
 
 #[allow(clippy::too_many_arguments)]
 fn layout_vertical_tasks<'a>(
-    tasks: impl IntoIterator<Item = &'a TimelineRenderTask>,
+    tasks: impl IntoIterator<Item = &'a TimelineTask>,
     timeline_x: f64,
     start_y: f64,
     task_spacing: f64,
@@ -1150,8 +1150,8 @@ mod tests {
         section: &str,
         section_index: Option<usize>,
         task: &str,
-    ) -> TimelineRenderTask {
-        TimelineRenderTask {
+    ) -> TimelineTask {
+        TimelineTask {
             id,
             section: section.to_string(),
             section_index,

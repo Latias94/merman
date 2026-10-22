@@ -2,9 +2,9 @@ use super::*;
 
 #[test]
 fn git_graph_render_model_renders_branches_commits_and_warnings() {
-    let model = GitGraphRenderModel {
+    let model = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
-        commits: vec![GitGraphCommitRenderModel {
+        commits: vec![GitGraphCommit {
             id: "c0".to_string(),
             message: "init".to_string(),
             seq: 0,
@@ -16,10 +16,10 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
             custom_id: Some(true),
         }],
         branches: vec![
-            GitGraphBranchRenderModel {
+            GitGraphBranch {
                 name: "main".to_string(),
             },
-            GitGraphBranchRenderModel {
+            GitGraphBranch {
                 name: "feature".to_string(),
             },
         ],
@@ -53,7 +53,7 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
 
 #[test]
 fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
-    let base = GitGraphRenderModel {
+    let base = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: Vec::new(),
         branches: Vec::new(),
@@ -65,7 +65,7 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
         warning_facts: Vec::new(),
     };
     let mut message = base.clone();
-    message.commits.push(GitGraphCommitRenderModel {
+    message.commits.push(GitGraphCommit {
         id: "c0".to_string(),
         message: "init tags=[v1]".to_string(),
         seq: 0,
@@ -77,7 +77,7 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
         custom_id: None,
     });
     let mut metadata = base;
-    metadata.commits.push(GitGraphCommitRenderModel {
+    metadata.commits.push(GitGraphCommit {
         id: "c0".to_string(),
         message: "init".to_string(),
         seq: 0,
@@ -102,9 +102,9 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
             && metadata_output.contains("tags=[bytes=2 \"v1\"]")
     );
 
-    let mut comma_message = GitGraphRenderModel {
+    let mut comma_message = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
-        commits: vec![GitGraphCommitRenderModel {
+        commits: vec![GitGraphCommit {
             id: "c0".to_string(),
             message: "x".to_string(),
             seq: 0,
@@ -149,9 +149,9 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
 #[test]
 fn git_graph_render_model_rejects_unknown_commit_types() {
     for commit_type in [98, 99] {
-        let model = GitGraphRenderModel {
+        let model = GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
-            commits: vec![GitGraphCommitRenderModel {
+            commits: vec![GitGraphCommit {
                 id: "c0".to_string(),
                 message: "unknown".to_string(),
                 seq: 0,
@@ -188,7 +188,7 @@ fn git_graph_render_model_rejects_unknown_commit_types() {
 
 #[test]
 fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
-    let base = GitGraphRenderModel {
+    let base = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: Vec::new(),
         branches: Vec::new(),
@@ -200,15 +200,15 @@ fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
         warning_facts: Vec::new(),
     };
     let mut joined_branches = base.clone();
-    joined_branches.branches = vec![GitGraphBranchRenderModel {
+    joined_branches.branches = vec![GitGraphBranch {
         name: "main, feature".to_string(),
     }];
     let mut split_branches = base.clone();
     split_branches.branches = vec![
-        GitGraphBranchRenderModel {
+        GitGraphBranch {
             name: "main".to_string(),
         },
-        GitGraphBranchRenderModel {
+        GitGraphBranch {
             name: "feature".to_string(),
         },
     ];
@@ -219,7 +219,7 @@ fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
     );
 
     let mut joined_identity = base.clone();
-    joined_identity.commits.push(GitGraphCommitRenderModel {
+    joined_identity.commits.push(GitGraphCommit {
         id: "c0 x".to_string(),
         message: String::new(),
         seq: 0,
@@ -231,7 +231,7 @@ fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
         custom_id: None,
     });
     let mut split_identity = base;
-    split_identity.commits.push(GitGraphCommitRenderModel {
+    split_identity.commits.push(GitGraphCommit {
         id: "x".to_string(),
         message: String::new(),
         seq: 0,
@@ -251,10 +251,10 @@ fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
 
 #[test]
 fn git_graph_summary_loop_observes_operation_cancellation() {
-    let model = GitGraphRenderModel {
+    let model = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: (0..32)
-            .map(|seq| GitGraphCommitRenderModel {
+            .map(|seq| GitGraphCommit {
                 id: format!("c{seq}"),
                 message: format!("commit {seq}"),
                 seq,
@@ -266,7 +266,7 @@ fn git_graph_summary_loop_observes_operation_cancellation() {
                 custom_id: None,
             })
             .collect(),
-        branches: vec![GitGraphBranchRenderModel {
+        branches: vec![GitGraphBranch {
             name: "main".to_string(),
         }],
         current_branch: "main".to_string(),

@@ -15,7 +15,7 @@ use crate::resources::OperationWorkMeter;
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use crate::{Error, Result};
 use indexmap::IndexMap;
-use merman_core::diagrams::venn::VennDiagramRenderModel;
+use merman_core::diagrams::venn::VennDiagramModel;
 use ryu_js::Buffer;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{PI, TAU};
@@ -51,7 +51,7 @@ pub(crate) fn rendered_text_node_label(node: &VennTextNodeLayout) -> &str {
 
 #[cfg(test)]
 pub(crate) fn layout_venn_diagram_typed(
-    model: &VennDiagramRenderModel,
+    model: &VennDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     resource_limits: RenderResourcePolicy,
@@ -61,7 +61,7 @@ pub(crate) fn layout_venn_diagram_typed(
 }
 
 pub(crate) fn layout_venn_diagram_typed_with_work_meter(
-    model: &VennDiagramRenderModel,
+    model: &VennDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     work_meter: &OperationWorkMeter,
@@ -160,15 +160,13 @@ pub(crate) fn layout_venn_diagram_typed_with_work_meter(
 }
 
 fn layout_text_nodes(
-    model: &VennDiagramRenderModel,
+    model: &VennDiagramModel,
     layout_by_key: &HashMap<String, &VennLayoutArea>,
     scale: f64,
     use_debug_layout: bool,
 ) -> (Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>) {
-    let mut nodes_by_area: IndexMap<
-        String,
-        Vec<&merman_core::diagrams::venn::VennTextNodeRenderModel>,
-    > = IndexMap::new();
+    let mut nodes_by_area: IndexMap<String, Vec<&merman_core::diagrams::venn::VennTextNodeModel>> =
+        IndexMap::new();
     for node in &model.text_nodes {
         nodes_by_area
             .entry(stable_sets_key(&node.sets))
@@ -2169,7 +2167,7 @@ fn weighted_sum(ret: &mut [f64], w1: f64, v1: &[f64], w2: f64, v2: &[f64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::venn::{VennDiagramRenderModel, VennSubsetRenderModel};
+    use merman_core::diagrams::venn::{VennDiagramModel, VennSubsetModel};
 
     fn c(set: &str, x: f64, y: f64, radius: f64) -> VennCircle {
         VennCircle {
@@ -2184,8 +2182,8 @@ mod tests {
         VennArea::new(sets.iter().copied(), size)
     }
 
-    fn subset(sets: &[&str], size: f64) -> VennSubsetRenderModel {
-        VennSubsetRenderModel {
+    fn subset(sets: &[&str], size: f64) -> VennSubsetModel {
+        VennSubsetModel {
             sets: sets.iter().map(|set| (*set).to_string()).collect(),
             size,
             label: None,
@@ -2470,7 +2468,7 @@ mod tests {
 
     #[test]
     fn typed_layout_adds_render_only_pairwise_subsets_for_three_set_union() {
-        let model = VennDiagramRenderModel {
+        let model = VennDiagramModel {
             subsets: vec![
                 subset(&["A"], 12.0),
                 subset(&["B"], 8.0),
@@ -2507,9 +2505,9 @@ mod tests {
 
     #[test]
     fn typed_layout_rejects_mds_optimizer_work_before_matrix_allocation() {
-        let model = VennDiagramRenderModel {
+        let model = VennDiagramModel {
             subsets: (0..700)
-                .map(|index| VennSubsetRenderModel {
+                .map(|index| VennSubsetModel {
                     sets: vec![format!("S{index}")],
                     size: 1.0,
                     label: None,

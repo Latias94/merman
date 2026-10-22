@@ -4,13 +4,13 @@ use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayo
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
+use merman_core::diagrams::sankey::SankeyDiagramModel;
 use serde_json::Value;
 
 const SANKEY_RELAXATION_ITERATIONS: usize = 6;
 const SANKEY_BASE_LAYOUT_PASSES: usize = 4;
 
-fn sankey_layout_work_units(model: &SankeyDiagramRenderModel) -> usize {
+fn sankey_layout_work_units(model: &SankeyDiagramModel) -> usize {
     let nodes = model.graph.nodes.len();
     let links = model.graph.links.len();
     let base_work = nodes
@@ -167,7 +167,7 @@ fn compute_node_heights(nodes: &mut [Node], links: &[Link]) -> Result<()> {
 
 #[cfg(test)]
 pub(crate) fn layout_sankey_diagram_typed(
-    model: &SankeyDiagramRenderModel,
+    model: &SankeyDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<SankeyDiagramLayout> {
@@ -178,7 +178,7 @@ pub(crate) fn layout_sankey_diagram_typed(
 /// Lays out a Sankey model under the resource policy owned by the render operation.
 #[cfg(test)]
 pub(crate) fn layout_sankey_diagram_typed_with_resource_policy(
-    model: &SankeyDiagramRenderModel,
+    model: &SankeyDiagramModel,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
@@ -194,7 +194,7 @@ pub(crate) fn layout_sankey_diagram_typed_with_resource_policy(
 
 /// Lays out a Sankey model under the cumulative work meter owned by the render operation.
 pub(crate) fn layout_sankey_diagram_typed_with_work_meter(
-    model: &SankeyDiagramRenderModel,
+    model: &SankeyDiagramModel,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
@@ -718,23 +718,21 @@ mod tests {
     };
     use crate::text::DeterministicTextMeasurer;
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
-    use merman_core::diagrams::sankey::{
-        SankeyDiagramRenderModel, SankeyRenderGraph, SankeyRenderLink, SankeyRenderNode,
-    };
+    use merman_core::diagrams::sankey::{SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode};
     use serde_json::json;
 
-    fn model() -> SankeyDiagramRenderModel {
-        SankeyDiagramRenderModel {
-            graph: SankeyRenderGraph {
+    fn model() -> SankeyDiagramModel {
+        SankeyDiagramModel {
+            graph: SankeyGraph {
                 nodes: vec![
-                    SankeyRenderNode {
+                    SankeyNode {
                         id: "A".to_string(),
                     },
-                    SankeyRenderNode {
+                    SankeyNode {
                         id: "B".to_string(),
                     },
                 ],
-                links: vec![SankeyRenderLink {
+                links: vec![SankeyLink {
                     source: "A".to_string(),
                     target: "B".to_string(),
                     value: json!(1.0),
@@ -837,18 +835,18 @@ mod tests {
     #[test]
     fn parallel_sankey_links_are_rejected_by_degree_aware_budget_before_relaxation() {
         const LINK_COUNT: usize = 1_024;
-        let model = SankeyDiagramRenderModel {
-            graph: SankeyRenderGraph {
+        let model = SankeyDiagramModel {
+            graph: SankeyGraph {
                 nodes: vec![
-                    SankeyRenderNode {
+                    SankeyNode {
                         id: "A".to_string(),
                     },
-                    SankeyRenderNode {
+                    SankeyNode {
                         id: "B".to_string(),
                     },
                 ],
                 links: (0..LINK_COUNT)
-                    .map(|_| SankeyRenderLink {
+                    .map(|_| SankeyLink {
                         source: "A".to_string(),
                         target: "B".to_string(),
                         value: json!(1.0),
@@ -879,19 +877,19 @@ mod tests {
     fn long_sankey_chain_uses_linear_topological_depth_and_height_propagation() {
         const NODE_COUNT: usize = 10_000;
         let nodes = (0..NODE_COUNT)
-            .map(|index| SankeyRenderNode {
+            .map(|index| SankeyNode {
                 id: format!("node-{index}"),
             })
             .collect();
         let links = (0..NODE_COUNT - 1)
-            .map(|index| SankeyRenderLink {
+            .map(|index| SankeyLink {
                 source: format!("node-{index}"),
                 target: format!("node-{}", index + 1),
                 value: json!(1.0),
             })
             .collect();
-        let model = SankeyDiagramRenderModel {
-            graph: SankeyRenderGraph { nodes, links },
+        let model = SankeyDiagramModel {
+            graph: SankeyGraph { nodes, links },
         };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,

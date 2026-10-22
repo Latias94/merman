@@ -140,7 +140,7 @@ fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeS
 impl RequirementPaintThemePlan {
     pub(super) fn prepare_node_visuals(
         mut self,
-        model: &RequirementDiagramRenderModel,
+        model: &RequirementDiagramModel,
         config: &PresentationConfig,
         work: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn source_visual_keeps_property_order_last_value_and_requirement_identity() {
-        let model: RequirementDiagramRenderModel = serde_json::from_value(serde_json::json!({
+        let model: RequirementDiagramModel = serde_json::from_value(serde_json::json!({
             "requirements": [
                 {"name": "same", "type": "Requirement", "cssStyles": ["fill:#000000"]},
                 {"name": "same", "type": "Requirement", "cssStyles": ["fill:#112233", "stroke:#445566", "fill:#778899 !important", "color:#abcdef"]}
@@ -312,7 +312,7 @@ mod tests {
             )
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::REQUIREMENT);
-        let model: RequirementDiagramRenderModel = serde_json::from_value(serde_json::json!({
+        let model: RequirementDiagramModel = serde_json::from_value(serde_json::json!({
             "requirements": [{"name": "a", "type": "Requirement", "cssStyles": ["fill:#123456"]}]
         }))
         .unwrap();

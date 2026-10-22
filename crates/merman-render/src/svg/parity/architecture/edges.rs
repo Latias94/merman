@@ -722,9 +722,7 @@ mod tests {
     use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::architecture::{
-        ArchitectureDiagramRenderModel, ArchitectureRenderEdge,
-    };
+    use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
     use std::fmt;
     use std::ops::Range;
 
@@ -794,8 +792,8 @@ mod tests {
         }
     }
 
-    fn render_edge(title: &str) -> ArchitectureRenderEdge {
-        ArchitectureRenderEdge {
+    fn render_edge(title: &str) -> ArchitectureEdgeModel {
+        ArchitectureEdgeModel {
             lhs_id: "api".to_string(),
             lhs_dir: 'R',
             lhs_into: None,
@@ -810,7 +808,7 @@ mod tests {
 
     #[test]
     fn architecture_edges_stop_after_the_first_svg_sink_failure() {
-        let model = ArchitectureDiagramRenderModel {
+        let model = ArchitectureDiagramModel {
             title: None,
             acc_title: None,
             acc_descr: None,

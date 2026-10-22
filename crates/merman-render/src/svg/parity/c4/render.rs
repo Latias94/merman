@@ -5,9 +5,9 @@ use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel, C4ShapeRenderModel};
-type C4SvgModelShape = C4ShapeRenderModel;
-type C4SvgModelBoundary = C4BoundaryRenderModel;
+use merman_core::diagrams::c4::{C4Boundary, C4DiagramModel, C4Shape};
+type C4SvgModelShape = C4Shape;
+type C4SvgModelBoundary = C4Boundary;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
@@ -769,7 +769,7 @@ fn c4_write_unified_shape(
 )]
 pub(crate) fn render_c4_diagram_svg_typed(
     layout: &crate::model::C4DiagramLayout,
-    model: &C4DiagramRenderModel,
+    model: &C4DiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,

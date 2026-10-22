@@ -62,11 +62,6 @@ impl TreemapDiagramModel {
 }
 
 #[cfg(feature = "presentation")]
-pub type TreemapNodeRenderModel = TreemapNode;
-#[cfg(feature = "presentation")]
-pub type TreemapClassDefRenderModel = TreemapClassDef;
-
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Default)]
 pub struct TreemapVisuals {
     pub root_styles: Option<Vec<String>>,

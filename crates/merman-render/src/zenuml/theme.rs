@@ -1,4 +1,4 @@
-use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
+use merman_core::diagrams::zenuml::ZenumlDiagramModel;
 
 use super::{ZenumlDiagramLayout, resolve_zenuml_title};
 use crate::diagram_theme::{
@@ -399,7 +399,7 @@ pub(crate) struct ZenumlThemePlan {
 impl ZenumlThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        model: &ZenumlDiagramRenderModel,
+        model: &ZenumlDiagramModel,
         layout: &ZenumlDiagramLayout,
         diagram_title: Option<&str>,
         work_meter: &OperationWorkMeter,
@@ -549,7 +549,7 @@ impl ZenumlThemeReceipt {
 
 fn terminal_source_owners(
     target: ThemeTarget,
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     layout: &ZenumlDiagramLayout,
     title: Option<&str>,
     source_style: &ZenumlSourceStyle,
@@ -626,7 +626,7 @@ fn rendered_participants(
 
 fn terminal_count(
     target: ThemeTarget,
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     layout: &ZenumlDiagramLayout,
     title: Option<&str>,
 ) -> usize {

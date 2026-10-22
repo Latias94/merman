@@ -567,7 +567,7 @@ click S2 href "https://example.com/omitted"
         panic!("expected typed state render model");
     };
 
-    let crate::diagrams::state::StateDiagramRenderLinks::Many(repeated) =
+    let crate::diagrams::state::StateLinks::Many(repeated) =
         model.links.get("S1").expect("S1 links")
     else {
         panic!("expected repeated S1 links");
@@ -578,8 +578,7 @@ click S2 href "https://example.com/omitted"
     assert_eq!(repeated[1].url, "https://example.com/last");
     assert_eq!(repeated[1].tooltip, "");
 
-    let crate::diagrams::state::StateDiagramRenderLinks::One(omitted) =
-        model.links.get("S2").expect("S2 link")
+    let crate::diagrams::state::StateLinks::One(omitted) = model.links.get("S2").expect("S2 link")
     else {
         panic!("expected one S2 link");
     };

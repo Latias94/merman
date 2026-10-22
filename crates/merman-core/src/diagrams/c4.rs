@@ -30,15 +30,6 @@ pub(crate) fn c4_syntax_construction_count() -> usize {
     C4_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[cfg(feature = "presentation")]
-pub type C4DiagramRenderModel = C4DiagramModel;
-#[cfg(feature = "presentation")]
-pub type C4ShapeRenderModel = C4Shape;
-#[cfg(feature = "presentation")]
-pub type C4BoundaryRenderModel = C4Boundary;
-#[cfg(feature = "presentation")]
-pub type C4RelRenderModel = C4Relation;
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum C4Text {

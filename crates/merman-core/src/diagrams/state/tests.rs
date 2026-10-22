@@ -402,10 +402,10 @@ fn state_compatibility_projection_handles_shared_documents() {
         let id = format!("Shared{index}");
         model.states.insert(
             id.clone(),
-            StateDiagramRenderState {
+            StateRecord {
                 id,
                 doc,
-                ..StateDiagramRenderState::default()
+                ..StateRecord::default()
             },
         );
     }

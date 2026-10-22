@@ -1462,7 +1462,7 @@ mod tests {
         ThemeRuleSet, ThemeStylePatch,
     };
     use crate::resources::RenderResourcePolicy;
-    use merman_core::diagrams::pie::PieRenderSection;
+    use merman_core::diagrams::pie::PieSection;
     use serde_json::json;
 
     #[test]
@@ -1539,7 +1539,7 @@ mod tests {
         model.sections = colors
             .iter()
             .enumerate()
-            .map(|(index, _)| PieRenderSection {
+            .map(|(index, _)| PieSection {
                 label: format!("Slice {index}"),
                 value: 1.0,
             })
@@ -1562,7 +1562,7 @@ mod tests {
         let mut model = PieDiagramRenderModel::default();
         model.sections = ["Alpha", "Beta"]
             .into_iter()
-            .map(|label| PieRenderSection {
+            .map(|label| PieSection {
                 label: label.to_string(),
                 value: 1.0,
             })

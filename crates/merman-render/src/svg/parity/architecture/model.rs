@@ -61,7 +61,7 @@ pub(super) trait ArchitectureModelAccess {
 }
 
 pub(super) struct TypedGroupsIter<'a> {
-    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderGroup>,
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureGroupModel>,
 }
 
 impl<'a> Iterator for TypedGroupsIter<'a> {
@@ -78,7 +78,7 @@ impl<'a> Iterator for TypedGroupsIter<'a> {
 }
 
 pub(super) struct TypedServicesIter<'a> {
-    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderNode>,
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureNodeModel>,
 }
 
 impl<'a> Iterator for TypedServicesIter<'a> {
@@ -86,9 +86,7 @@ impl<'a> Iterator for TypedServicesIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         for n in self.iter.by_ref() {
-            if n.node_type
-                != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service
-            {
+            if n.node_type != merman_core::diagrams::architecture::ArchitectureNodeKind::Service {
                 continue;
             }
             return Some(ArchitectureServiceRef {
@@ -104,7 +102,7 @@ impl<'a> Iterator for TypedServicesIter<'a> {
 }
 
 pub(super) struct TypedJunctionsIter<'a> {
-    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderNode>,
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureNodeModel>,
 }
 
 impl<'a> Iterator for TypedJunctionsIter<'a> {
@@ -112,9 +110,7 @@ impl<'a> Iterator for TypedJunctionsIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         for n in self.iter.by_ref() {
-            if n.node_type
-                != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction
-            {
+            if n.node_type != merman_core::diagrams::architecture::ArchitectureNodeKind::Junction {
                 continue;
             }
             return Some(ArchitectureJunctionRef {
@@ -127,7 +123,7 @@ impl<'a> Iterator for TypedJunctionsIter<'a> {
 }
 
 pub(super) struct TypedEdgesIter<'a> {
-    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderEdge>,
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureEdgeModel>,
 }
 
 impl<'a> Iterator for TypedEdgesIter<'a> {
@@ -148,9 +144,7 @@ impl<'a> Iterator for TypedEdgesIter<'a> {
     }
 }
 
-impl ArchitectureModelAccess
-    for merman_core::diagrams::architecture::ArchitectureDiagramRenderModel
-{
+impl ArchitectureModelAccess for merman_core::diagrams::architecture::ArchitectureDiagramModel {
     type Groups<'a>
         = TypedGroupsIter<'a>
     where

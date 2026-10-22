@@ -8,7 +8,7 @@ use crate::text::{
     trim_start_ecmascript_whitespace,
 };
 use merman_core::diagrams::railroad::{
-    RailroadAstNode, RailroadDiagramRenderModel, RailroadRepeatBound, RailroadRuleModel,
+    RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
 
 mod theme;
@@ -83,7 +83,7 @@ impl RailroadRenderNode {
 
 #[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
@@ -92,7 +92,7 @@ pub(crate) fn layout_railroad_diagram_typed(
 
 #[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed_for_type(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -102,7 +102,7 @@ pub(crate) fn layout_railroad_diagram_typed_for_type(
 }
 
 pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     typography_theme: &RailroadTypographyThemePlan,
     measurer: &dyn TextMeasurer,
@@ -116,7 +116,7 @@ pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
 }
 
 fn layout_railroad_diagram_typed_for_type_with_style(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     style: &RailroadStyle,
     measurer: &dyn TextMeasurer,

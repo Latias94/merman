@@ -4,7 +4,7 @@ use crate::wardley::{
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
     WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout,
 };
-use merman_core::diagrams::wardley::WardleyDiagramRenderModel;
+use merman_core::diagrams::wardley::WardleyDiagramModel;
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {
@@ -277,7 +277,7 @@ fn write_grid(
 fn write_pipelines(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     theme: &crate::wardley::WardleyPaintBinding,
 ) -> Result<()> {
     if model.pipelines.is_empty() {
@@ -750,7 +750,7 @@ fn write_defs(
 
 pub(crate) fn render_wardley_diagram_svg_model(
     layout: &WardleyDiagramLayout,
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     _diagram_title: Option<&str>,
     typography_theme: &crate::wardley::WardleyTypographyThemePlan,
     options: &SvgExecution<'_>,
@@ -876,7 +876,7 @@ mod tests {
         let typography =
             crate::wardley::WardleyTypographyThemePlan::resolve(Some(&theme), &config, &work_meter)
                 .unwrap();
-        let model: WardleyDiagramRenderModel = serde_json::from_value(serde_json::json!({
+        let model: WardleyDiagramModel = serde_json::from_value(serde_json::json!({
             "nodes": [{
                 "id": "evolved", "label": "Evolved API", "x": 0.8, "y": 0.6,
                 "className": "evolved"
@@ -906,7 +906,7 @@ mod tests {
     fn render_wardley_with_policy(
         policy: RenderResourcePolicy,
     ) -> crate::Result<root_svg::RootedSvg> {
-        let model = WardleyDiagramRenderModel::default();
+        let model = WardleyDiagramModel::default();
         let effective_config = serde_json::json!({});
         let effective_mermaid_config =
             merman_core::presentation::PresentationConfig::from_value(effective_config.clone());

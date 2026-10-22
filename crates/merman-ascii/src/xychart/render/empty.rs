@@ -134,8 +134,8 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::xychart::plot::TerminalChartCardinality;
     use merman_core::diagrams::xychart::{
-        XyChartAxisRenderModel, XyChartDiagramModel, XyChartDiagramRenderModel,
-        XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
+        XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel, XyChartDisplayPolicy,
+        XyChartPlotModel, XyChartPlotType,
     };
     use merman_core::resources::ResourceProfile;
 
@@ -146,16 +146,16 @@ mod tests {
                 title: Some("No samples".to_string()),
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Band {
+                x_axis: XyChartAxisModel::Band {
                     title: "Category".to_string(),
                     categories: Vec::new(),
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: "Score".to_string(),
                     min: Some(0.0),
                     max: Some(10.0),
                 },
-                plots: vec![XyChartPlotRenderModel {
+                plots: vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Line,
                     title: Some("Forecast".to_string()),
                     values: Vec::new(),

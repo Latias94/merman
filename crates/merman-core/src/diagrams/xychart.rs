@@ -178,11 +178,6 @@ impl XyChartDiagramModel {
     }
 }
 
-#[cfg(feature = "presentation")]
-pub type XyChartAxisRenderModel = XyChartAxisModel;
-#[cfg(feature = "presentation")]
-pub type XyChartPlotRenderModel = XyChartPlotModel;
-
 /// The canonical chart owner plus the requested display policy.
 #[cfg(feature = "presentation")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

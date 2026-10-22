@@ -1,12 +1,12 @@
 use crate::{Error, Result};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineTask};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 #[derive(Debug)]
 pub(super) struct TimelineTaskIndex<'model> {
-    tasks_by_section: Vec<Vec<&'model TimelineRenderTask>>,
-    orphan_tasks: Vec<&'model TimelineRenderTask>,
+    tasks_by_section: Vec<Vec<&'model TimelineTask>>,
+    orphan_tasks: Vec<&'model TimelineTask>,
 }
 
 #[derive(Clone, Copy)]
@@ -79,11 +79,11 @@ impl<'model> TimelineTaskIndex<'model> {
         })
     }
 
-    pub(super) fn tasks_for_section(&self, section_index: usize) -> &[&'model TimelineRenderTask] {
+    pub(super) fn tasks_for_section(&self, section_index: usize) -> &[&'model TimelineTask] {
         &self.tasks_by_section[section_index]
     }
 
-    pub(super) fn orphan_tasks(&self) -> &[&'model TimelineRenderTask] {
+    pub(super) fn orphan_tasks(&self) -> &[&'model TimelineTask] {
         &self.orphan_tasks
     }
 }
@@ -92,13 +92,8 @@ impl<'model> TimelineTaskIndex<'model> {
 mod tests {
     use super::*;
 
-    fn task(
-        id: i64,
-        section: &str,
-        section_index: Option<usize>,
-        label: &str,
-    ) -> TimelineRenderTask {
-        TimelineRenderTask {
+    fn task(id: i64, section: &str, section_index: Option<usize>, label: &str) -> TimelineTask {
+        TimelineTask {
             id,
             section: section.to_string(),
             section_index,
@@ -109,7 +104,7 @@ mod tests {
         }
     }
 
-    fn labels<'task>(tasks: &[&'task TimelineRenderTask]) -> Vec<&'task str> {
+    fn labels<'task>(tasks: &[&'task TimelineTask]) -> Vec<&'task str> {
         tasks.iter().map(|task| task.task.as_str()).collect()
     }
 

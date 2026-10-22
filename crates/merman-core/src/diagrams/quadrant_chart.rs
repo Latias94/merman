@@ -84,10 +84,6 @@ pub struct QuadrantChartDiagramModel {
     pub classes: BTreeMap<String, QuadrantChartStyles>,
 }
 
-/// Full-parser spelling retained for presentation consumers.
-#[cfg(feature = "presentation")]
-pub type QuadrantChartRenderModel = QuadrantChartDiagramModel;
-
 impl QuadrantChartDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);

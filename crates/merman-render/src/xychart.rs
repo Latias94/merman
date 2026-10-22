@@ -5,7 +5,7 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
-    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
 use serde_json::Value;
 use std::fmt::Write as _;
@@ -313,7 +313,7 @@ const LEGEND_ITEM_SPACING_TO_FONT_RATIO: f64 = 0.5;
 const LEGEND_MARKER_SPACING_TO_FONT_RATIO: f64 = 0.35;
 
 fn calculate_legend_space(
-    plots: &[(usize, &XyChartPlotRenderModel)],
+    plots: &[(usize, &XyChartPlotModel)],
     chart_config: &ChartConfig,
     available_space: Dimension,
     font_family: &str,
@@ -357,7 +357,7 @@ fn calculate_legend_space(
 }
 
 fn legend_drawable_elements(
-    plots: &[(usize, &XyChartPlotRenderModel)],
+    plots: &[(usize, &XyChartPlotModel)],
     origin: Point,
     chart_config: &ChartConfig,
     legend_text_color: &str,
@@ -1302,13 +1302,13 @@ pub(crate) fn layout_xychart_diagram_typed(
         Vec::with_capacity(model.plots.len().saturating_mul(2).saturating_add(4));
 
     let (x_axis_kind, x_axis_title) = match &model.x_axis {
-        XyChartAxisRenderModel::Band { title, categories } => (
+        XyChartAxisModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisRenderModel::Linear { title, min, max } => (
+        XyChartAxisModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1316,13 +1316,13 @@ pub(crate) fn layout_xychart_diagram_typed(
         ),
     };
     let (y_axis_kind, y_axis_title) = match &model.y_axis {
-        XyChartAxisRenderModel::Band { title, categories } => (
+        XyChartAxisModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisRenderModel::Linear { title, min, max } => (
+        XyChartAxisModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1954,16 +1954,16 @@ mod tests {
                 title: Some(title.to_string()),
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Band {
+                x_axis: XyChartAxisModel::Band {
                     title: String::new(),
                     categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: "A fairly wide y-axis title".to_string(),
                     min: Some(0.0),
                     max: Some(100000.0),
                 },
-                plots: vec![XyChartPlotRenderModel {
+                plots: vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Bar,
                     title: Some("series".to_string()),
                     values: vec![10.0, 20.0, 30.0],

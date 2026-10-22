@@ -7,7 +7,7 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-mindmap")]
 use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 #[cfg(feature = "diagram-zenuml")]
-use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
+use merman_core::diagrams::zenuml::ZenumlDiagramModel;
 #[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::resources::{
@@ -749,7 +749,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-zenuml")]
     pub fn check_zenuml_complexity(
         &self,
-        model: &ZenumlDiagramRenderModel,
+        model: &ZenumlDiagramModel,
     ) -> Result<ZenumlComplexity, ResourceLimitExceeded> {
         self.input
             .check_zenuml_complexity(model)

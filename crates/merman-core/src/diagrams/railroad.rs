@@ -313,9 +313,6 @@ pub struct RailroadDiagramModel {
     acc_descr_span: Option<SourceSpan>,
 }
 
-#[cfg(feature = "presentation")]
-pub type RailroadDiagramRenderModel = RailroadDiagramModel;
-
 impl RailroadDiagramModel {
     fn new() -> Self {
         Self {
@@ -497,7 +494,7 @@ pub(crate) fn parse_railroad_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ir, control)
 }
 
@@ -506,7 +503,7 @@ pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ebnf, control)
 }
 
@@ -515,7 +512,7 @@ pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Abnf, control)
 }
 
@@ -524,7 +521,7 @@ pub(crate) fn parse_railroad_peg_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Peg, control)
 }
 
@@ -681,7 +678,7 @@ impl RailroadSemanticSource {
     }
 
     #[cfg(feature = "presentation")]
-    fn into_render_model(mut self, meta: &PresentationMetadata) -> RailroadDiagramRenderModel {
+    fn into_render_model(mut self, meta: &PresentationMetadata) -> RailroadDiagramModel {
         self.model
             .sanitize_common_db_fields(meta.effective_config.as_config());
         self.model
@@ -733,7 +730,7 @@ fn parse_railroad_model_for_render_dialect_controlled(
     meta: &PresentationMetadata,
     dialect: RailroadDialect,
     control: &OperationControl,
-) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+) -> OperationControlResult<Result<RailroadDiagramModel>> {
     let construction = construct_railroad_semantic_source(
         code,
         &meta.diagram_type,
@@ -782,7 +779,7 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({

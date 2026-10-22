@@ -52,7 +52,7 @@ pub struct PieDiagramRenderModel {
     pub acc_title: Option<String>,
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
-    pub sections: Vec<PieRenderSection>,
+    pub sections: Vec<PieSection>,
     #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compatibility_output: CompatibilityOutputState,
@@ -80,10 +80,6 @@ pub struct PieSection {
     pub label: String,
     pub value: f64,
 }
-
-/// Backwards-compatible name for a semantic Pie section.
-#[cfg(feature = "presentation")]
-pub type PieRenderSection = PieSection;
 
 struct PieSemanticSource {
     model: PieDiagramModel,

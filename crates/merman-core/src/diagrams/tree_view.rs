@@ -17,11 +17,6 @@ use serde_json::{Value, json};
 #[cfg(feature = "compat-json")]
 use std::collections::HashMap;
 
-#[cfg(feature = "presentation")]
-pub type TreeViewDiagramRenderModel = TreeViewDiagramModel;
-#[cfg(feature = "presentation")]
-pub type TreeViewNodeRenderModel = TreeViewNode;
-
 const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 

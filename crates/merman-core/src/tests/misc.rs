@@ -1,5 +1,5 @@
 #[cfg(feature = "all-diagrams")]
-use crate::diagrams::xychart::{XyChartAxisRenderModel, XyChartPlotType};
+use crate::diagrams::xychart::{XyChartAxisModel, XyChartPlotType};
 use crate::presentation::PresentationConfig;
 use crate::*;
 use futures::executor::block_on;
@@ -2342,14 +2342,14 @@ line "Series 2" [2 "early", 3 "late"]
             assert_eq!(model.acc_descr.as_deref(), Some("XY accDescription"));
             assert_eq!(
                 model.x_axis,
-                XyChartAxisRenderModel::Band {
+                XyChartAxisModel::Band {
                     title: "X Axis".to_string(),
                     categories: vec!["Alpha".to_string(), "Beta".to_string()],
                 }
             );
             assert_eq!(
                 model.y_axis,
-                XyChartAxisRenderModel::Linear {
+                XyChartAxisModel::Linear {
                     title: "Y Axis".to_string(),
                     min: Some(1.0),
                     max: Some(5.0),

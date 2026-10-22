@@ -1,7 +1,6 @@
 use indexmap::IndexMap;
 use merman_core::diagrams::state::{
-    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
-    StateDiagramRenderStyleClass,
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode, StateStyleClass,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -2105,7 +2104,7 @@ fn prepare_classes(
 }
 
 fn prepare_class_declarations(
-    class: &StateDiagramRenderStyleClass,
+    class: &StateStyleClass,
     raw_declarations: &[String],
     channel: SourceStyleChannel,
     residuals: &mut Vec<SourceStyleResidual>,
@@ -3616,7 +3615,7 @@ mod tests {
         ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
     use merman_core::diagrams::state::{
-        StateDiagramRenderEdge, StateDiagramRenderNode, StateDiagramRenderStyleClass,
+        StateDiagramRenderEdge, StateDiagramRenderNode, StateStyleClass,
     };
     use serde_json::json;
 
@@ -3781,7 +3780,7 @@ mod tests {
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "first".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "first".to_string(),
                 styles: vec!["font-size:18px".to_string(), "fill:#111".to_string()],
                 text_styles: Vec::new(),
@@ -3789,7 +3788,7 @@ mod tests {
         );
         model.style_classes.insert(
             "second".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "second".to_string(),
                 styles: vec!["font-size:20px".to_string()],
                 text_styles: Vec::new(),
@@ -3828,7 +3827,7 @@ mod tests {
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "source-type".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "source-type".to_string(),
                 styles: vec![
                     "font-family:\"Class Sans\", serif".to_string(),
@@ -3918,7 +3917,7 @@ mod tests {
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "title".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "title".to_string(),
                 styles: vec!["font-size:18px".to_string()],
                 text_styles: vec!["font-family:\"Class Sans\", serif".to_string()],
@@ -4739,7 +4738,7 @@ mod tests {
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "source-paint".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "source-paint".to_string(),
                 styles: source_styles,
                 text_styles: Vec::new(),
@@ -5031,7 +5030,7 @@ mod tests {
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "surface".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "surface".to_string(),
                 styles: vec!["fill:#111827".to_string()],
                 text_styles: Vec::new(),
@@ -5367,7 +5366,7 @@ mod tests {
             let mut model = StateDiagramRenderModel::default();
             model.style_classes.insert(
                 "repair".to_string(),
-                StateDiagramRenderStyleClass {
+                StateStyleClass {
                     id: "repair".to_string(),
                     styles: vec![
                         "font-family:serif".to_string(),

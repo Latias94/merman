@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
 use merman_core::diagrams::quadrant_chart::{
-    QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
+    QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
 };
 use merman_core::presentation::PresentationConfig;
 
@@ -117,7 +117,7 @@ impl QuadrantChartPointThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-        model: &QuadrantChartRenderModel,
+        model: &QuadrantChartDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let point_count = model.points.len();
@@ -890,7 +890,7 @@ mod tests {
 
     #[test]
     fn no_theme_omits_point_expectations_and_layout_keeps_source_and_class_values() {
-        let model: QuadrantChartRenderModel = serde_json::from_value(serde_json::json!({
+        let model: QuadrantChartDiagramModel = serde_json::from_value(serde_json::json!({
             "title": null, "accTitle": null, "accDescr": null,
             "quadrants": {
                 "quadrant1Text": "", "quadrant2Text": "",
@@ -944,7 +944,7 @@ mod tests {
             ThemeStylePatch,
         };
 
-        let model: QuadrantChartRenderModel = serde_json::from_value(serde_json::json!({
+        let model: QuadrantChartDiagramModel = serde_json::from_value(serde_json::json!({
             "title": null, "accTitle": null, "accDescr": null,
             "quadrants": { "quadrant1Text": "", "quadrant2Text": "", "quadrant3Text": "", "quadrant4Text": "" },
             "axes": { "xAxisLeftText": "", "xAxisRightText": "", "yAxisBottomText": "", "yAxisTopText": "" },

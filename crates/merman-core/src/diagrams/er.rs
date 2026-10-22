@@ -47,27 +47,6 @@ include_checked_in_lalrpop_parser!(
     "er_grammar.rs"
 );
 
-#[cfg(feature = "presentation")]
-pub type ErDiagramRenderModel = ErDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type ErAttributeRenderModel = ErAttribute;
-
-#[cfg(feature = "presentation")]
-pub type ErRelSpecRenderModel = ErRelSpec;
-
-#[cfg(feature = "presentation")]
-pub type ErRelationshipRenderModel = ErRelationship;
-
-#[cfg(feature = "presentation")]
-pub type ErClassDefRenderModel = ErClassDef;
-
-#[cfg(feature = "presentation")]
-pub type ErSubgraphRenderModel = ErSubgraph;
-
-#[cfg(feature = "presentation")]
-pub type ErEntityRenderModel = ErEntity;
-
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ErDiagramModel {
     #[serde(default, rename = "accTitle")]

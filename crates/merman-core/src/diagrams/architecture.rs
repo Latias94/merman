@@ -769,24 +769,6 @@ pub(crate) fn parse_architecture_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[cfg(feature = "presentation")]
-pub type ArchitectureDiagramRenderModel = ArchitectureDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type ArchitectureRenderNodeType = ArchitectureNodeKind;
-
-#[cfg(feature = "presentation")]
-pub type ArchitectureRenderNode = ArchitectureNodeModel;
-
-#[cfg(feature = "presentation")]
-pub type ArchitectureRenderGroup = ArchitectureGroupModel;
-
-#[cfg(feature = "presentation")]
-pub type ArchitectureRenderEdge = ArchitectureEdgeModel;
-
-#[cfg(feature = "presentation")]
-pub type ArchitectureRenderLayoutHint = ArchitectureLayoutHintModel;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ArchitectureDiagramModel {
     #[serde(default)]

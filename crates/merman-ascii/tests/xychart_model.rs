@@ -5,8 +5,8 @@ use merman_ascii::{
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
 use merman_core::diagrams::xychart::{
-    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramModel,
-    XyChartDiagramRenderModel, XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel,
+    XyChartDisplayPolicy, XyChartPlotModel, XyChartPlotType,
 };
 use merman_core::{MermaidEngine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
@@ -160,10 +160,10 @@ fn hidden_axis_policy() -> XyChartAxisDisplayPolicy {
 
 fn typed_xychart_model(
     orientation: &str,
-    x_axis: XyChartAxisRenderModel,
+    x_axis: XyChartAxisModel,
     y_min: f64,
     y_max: f64,
-    plots: Vec<XyChartPlotRenderModel>,
+    plots: Vec<XyChartPlotModel>,
 ) -> XyChartDiagramRenderModel {
     XyChartDiagramRenderModel {
         semantic: XyChartDiagramModel {
@@ -172,7 +172,7 @@ fn typed_xychart_model(
             acc_title: None,
             acc_descr: None,
             x_axis,
-            y_axis: XyChartAxisRenderModel::Linear {
+            y_axis: XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(y_min),
                 max: Some(y_max),
@@ -855,16 +855,16 @@ fn xychart_empty_plot_preserves_typed_series_metadata() {
             title: Some("No samples".to_string()),
             acc_title: None,
             acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
+            x_axis: XyChartAxisModel::Band {
                 title: "Category".to_string(),
                 categories: Vec::new(),
             },
-            y_axis: XyChartAxisRenderModel::Linear {
+            y_axis: XyChartAxisModel::Linear {
                 title: "Score".to_string(),
                 min: Some(0.0),
                 max: Some(10.0),
             },
-            plots: vec![XyChartPlotRenderModel {
+            plots: vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: Some("Forecast".to_string()),
                 values: Vec::new(),
@@ -969,11 +969,11 @@ fn xychart_empty_projection_enforces_authored_grapheme_budget() {
             title: Some(grapheme.to_string()),
             acc_title: None,
             acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
+            x_axis: XyChartAxisModel::Band {
                 title: String::new(),
                 categories: Vec::new(),
             },
-            y_axis: XyChartAxisRenderModel::Linear {
+            y_axis: XyChartAxisModel::Linear {
                 title: String::new(),
                 min: None,
                 max: None,
@@ -1013,11 +1013,11 @@ fn xychart_empty_projection_html_escapes_authored_fields() {
             title: Some("<empty & safe>".to_string()),
             acc_title: None,
             acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
+            x_axis: XyChartAxisModel::Band {
                 title: String::new(),
                 categories: Vec::new(),
             },
-            y_axis: XyChartAxisRenderModel::Linear {
+            y_axis: XyChartAxisModel::Linear {
                 title: String::new(),
                 min: None,
                 max: None,
@@ -1141,14 +1141,14 @@ fn xychart_imported_fixture_matrix_remains_smoke_green() {
 fn xychart_typed_data_is_the_coordinate_and_value_source_of_truth() {
     let mut model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Linear {
+        XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(10.0),
         },
         -3.0,
         1.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: Some("precision".to_string()),
             values: vec![999.0, 998.0, 997.0],
@@ -1186,14 +1186,14 @@ fn xychart_linear_x_coordinates_control_terminal_point_spacing() {
     let make_model = |second_x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(10.0),
             },
             0.0,
             1.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![0.5, 0.5],
@@ -1226,13 +1226,13 @@ fn xychart_linear_x_coordinates_control_terminal_point_spacing() {
 fn xychart_horizontal_line_series_draw_connected_paths() {
     let model = typed_xychart_model(
         "horizontal",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string(), "C".to_string()],
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![2.0, 8.0, 4.0],
@@ -1266,14 +1266,14 @@ fn xychart_horizontal_line_series_draw_connected_paths() {
 fn xychart_horizontal_linear_axis_labels_use_authored_sample_coordinates() {
     let mut model = typed_xychart_model(
         "horizontal",
-        XyChartAxisRenderModel::Linear {
+        XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(10.0),
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![2.0, 5.0, 8.0],
@@ -1314,13 +1314,13 @@ fn xychart_empty_band_domain_discloses_authored_sample_coordinates() {
         let render = |x: &str| {
             let model = typed_xychart_model(
                 orientation,
-                XyChartAxisRenderModel::Band {
+                XyChartAxisModel::Band {
                     title: String::new(),
                     categories: Vec::new(),
                 },
                 0.0,
                 10.0,
-                vec![XyChartPlotRenderModel {
+                vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Line,
                     title: None,
                     values: vec![5.0],
@@ -1353,13 +1353,13 @@ fn xychart_empty_band_domain_discloses_authored_sample_coordinates() {
 fn xychart_exact_disclosure_is_injective_for_authored_delimiters() {
     let split_fields = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         },
         0.0,
         2.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Bar,
             title: None,
             values: vec![0.0, 2.0],
@@ -1369,13 +1369,13 @@ fn xychart_exact_disclosure_is_injective_for_authored_delimiters() {
     );
     let authored_delimiters = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["unused".to_string(), "A=0, B".to_string()],
         },
         0.0,
         2.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Bar,
             title: None,
             values: vec![2.0],
@@ -1400,13 +1400,13 @@ fn xychart_exact_disclosure_is_injective_for_authored_delimiters() {
 fn xychart_exact_disclosure_quotes_control_and_field_delimiters() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A\nB".to_string()],
         },
         0.0,
         2.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: Some("series=\"one\"\\two".to_string()),
             values: vec![2.0],
@@ -1437,13 +1437,13 @@ fn xychart_direct_model_title_owners_prevent_chart_axis_spoofing() {
     let render = |chart_title: Option<&str>, y_title: &str, show_chart: bool, show_y: bool| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![5.0],
@@ -1452,7 +1452,7 @@ fn xychart_direct_model_title_owners_prevent_chart_axis_spoofing() {
             }],
         );
         model.title = chart_title.map(str::to_string);
-        model.y_axis = XyChartAxisRenderModel::Linear {
+        model.y_axis = XyChartAxisModel::Linear {
             title: y_title.to_string(),
             min: Some(0.0),
             max: Some(10.0),
@@ -1539,13 +1539,13 @@ fn xychart_direct_model_title_frames_preserve_trim_and_esc() {
     let render = |chart_title: &str, x_title: &str, y_title: &str| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: x_title.to_string(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![5.0],
@@ -1554,7 +1554,7 @@ fn xychart_direct_model_title_frames_preserve_trim_and_esc() {
             }],
         );
         model.title = Some(chart_title.to_string());
-        model.y_axis = XyChartAxisRenderModel::Linear {
+        model.y_axis = XyChartAxisModel::Linear {
             title: y_title.to_string(),
             min: Some(0.0),
             max: Some(10.0),
@@ -1600,13 +1600,13 @@ fn xychart_direct_model_title_frames_distinguish_lf_from_literal_escape() {
     let render = |chart_title: &str| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![5.0],
@@ -1644,13 +1644,13 @@ fn xychart_single_series_title_remains_visible() {
     let render = |title: Option<&str>| {
         let model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: title.map(str::to_string),
                 values: vec![5.0],
@@ -1679,13 +1679,13 @@ fn xychart_single_series_title_remains_visible() {
 fn xychart_rejects_unknown_direct_model_orientation() {
     let model = typed_xychart_model(
         "diagonal",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![5.0],
@@ -1709,13 +1709,13 @@ fn xychart_rejects_unknown_direct_model_orientation() {
 fn xychart_rejects_direct_model_band_y_axis() {
     let mut model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![5.0],
@@ -1723,7 +1723,7 @@ fn xychart_rejects_direct_model_band_y_axis() {
             point_labels: Vec::new(),
         }],
     );
-    model.y_axis = XyChartAxisRenderModel::Band {
+    model.y_axis = XyChartAxisModel::Band {
         title: "invalid".to_string(),
         categories: vec!["low".to_string(), "high".to_string()],
     };
@@ -1743,13 +1743,13 @@ fn xychart_rejects_direct_model_band_y_axis() {
 fn xychart_accessibility_metadata_is_intentionally_omitted() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![5.0],
@@ -1777,7 +1777,7 @@ fn xychart_accessibility_metadata_is_intentionally_omitted() {
 fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
     let mut model = typed_xychart_model(
         "horizontal",
-        XyChartAxisRenderModel::Linear {
+        XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(10.0),
@@ -1785,14 +1785,14 @@ fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
         0.0,
         10.0,
         vec![
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: Some("Sparse".to_string()),
                 values: vec![1.0, 9.0],
                 data: vec![("0".to_string(), Some(1.0)), ("10".to_string(), Some(9.0))],
                 point_labels: Vec::new(),
             },
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: Some("Dense".to_string()),
                 values: vec![2.0, 4.0, 6.0, 8.0],
@@ -1836,13 +1836,13 @@ fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
 fn xychart_unicode_line_topology_resolves_rounded_corners() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![2.0, 8.0],
@@ -1866,21 +1866,21 @@ fn xychart_unicode_line_topology_resolves_rounded_corners() {
 fn xychart_horizontal_grouped_bars_get_independent_rows() {
     let model = typed_xychart_model(
         "horizontal",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         },
         0.0,
         10.0,
         vec![
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: Some("first".to_string()),
                 values: vec![2.0, 8.0],
                 data: vec![("A".to_string(), Some(2.0)), ("B".to_string(), Some(8.0))],
                 point_labels: Vec::new(),
             },
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: Some("second".to_string()),
                 values: vec![7.0, 3.0],
@@ -1907,21 +1907,21 @@ fn xychart_horizontal_grouped_bars_get_independent_rows() {
 fn xychart_grouped_horizontal_extent_is_budgeted_before_allocation() {
     let model = typed_xychart_model(
         "horizontal",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         },
         0.0,
         10.0,
         vec![
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![2.0, 8.0],
                 data: Vec::new(),
                 point_labels: Vec::new(),
             },
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![7.0, 3.0],
@@ -1949,21 +1949,21 @@ fn xychart_grouped_horizontal_extent_is_budgeted_before_allocation() {
 fn xychart_vertical_grouped_bars_use_distinct_category_lanes() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         0.0,
         10.0,
         vec![
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: Some("full".to_string()),
                 values: vec![10.0],
                 data: vec![("A".to_string(), Some(10.0))],
                 point_labels: Vec::new(),
             },
-            XyChartPlotRenderModel {
+            XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: Some("half".to_string()),
                 values: vec![5.0],
@@ -2030,13 +2030,13 @@ line [0.001, 0.005]
 fn xychart_degenerate_range_keeps_data_visible() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         5.0,
         5.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Bar,
             title: None,
             values: vec![5.0],
@@ -2060,13 +2060,13 @@ fn xychart_degenerate_range_keeps_data_visible() {
 fn xychart_reversed_value_range_preserves_authored_axis_direction() {
     let mut model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         },
         10.0,
         0.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![10.0, 0.0],
@@ -2097,13 +2097,13 @@ fn xychart_reversed_value_range_preserves_authored_axis_direction() {
 fn xychart_orphan_point_labels_and_clipped_values_are_disclosed() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         },
         0.0,
         1.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![2.0],
@@ -2130,13 +2130,13 @@ fn xychart_point_labels_preserve_authored_whitespace_and_presence() {
     let render = |point_labels: Vec<&str>| {
         let model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![5.0],
@@ -2180,13 +2180,13 @@ fn xychart_nonempty_domain_discloses_empty_series_title_and_type() {
     let render = |plot_type, title: &str| {
         let model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type,
                 title: Some(title.to_string()),
                 values: Vec::new(),
@@ -2224,21 +2224,21 @@ fn xychart_overwide_band_category_discloses_the_complete_axis_domain() {
     let render = |unused_category: &str| {
         let model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string(), unused_category.to_string()],
             },
             0.0,
             10.0,
             vec![
-                XyChartPlotRenderModel {
+                XyChartPlotModel {
                     plot_type: XyChartPlotType::Line,
                     title: None,
                     values: vec![5.0],
                     data: vec![("A".to_string(), Some(5.0))],
                     point_labels: Vec::new(),
                 },
-                XyChartPlotRenderModel {
+                XyChartPlotModel {
                     plot_type: XyChartPlotType::Line,
                     title: None,
                     values: Vec::new(),
@@ -2272,13 +2272,13 @@ fn xychart_centered_band_projection_discloses_colliding_categories() {
     for (orientation, second) in [("vertical", " A "), ("horizontal", "  A")] {
         let mut model = typed_xychart_model(
             orientation,
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string(), second.to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![4.0, 8.0],
@@ -2315,13 +2315,13 @@ fn xychart_trailing_band_projection_discloses_trimmed_category() {
     for orientation in ["vertical", "horizontal"] {
         let mut model = typed_xychart_model(
             orientation,
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A  ".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![5.0],
@@ -2345,13 +2345,13 @@ fn xychart_band_domain_discloses_terminal_normalization_identity() {
     let render = |category: &str| {
         let model = typed_xychart_model(
             "horizontal",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec![category.to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![5.0],
@@ -2382,13 +2382,13 @@ fn xychart_band_domain_discloses_terminal_normalization_identity() {
 fn xychart_duplicate_categories_keep_source_order_and_disclosure_identity() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Band {
+        XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["B".to_string(), "A".to_string(), "A".to_string()],
         },
         0.0,
         3.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![0.0, 1.0, 2.0],
@@ -2426,13 +2426,13 @@ fn xychart_missing_samples_break_paths_and_remain_explicit() {
     for orientation in ["vertical", "horizontal"] {
         let model = typed_xychart_model(
             orientation,
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string(), "B".to_string(), "C".to_string()],
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![2.0, 8.0],
@@ -2472,14 +2472,14 @@ fn xychart_missing_samples_break_paths_and_remain_explicit() {
 fn xychart_quantized_line_collision_triggers_exact_disclosure() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Linear {
+        XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(100.0),
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: None,
             values: vec![5.0, 5.0],
@@ -2512,14 +2512,14 @@ fn xychart_single_linear_sample_preserves_authored_x_across_models() {
     let build = |x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(100.0),
             },
             0.0,
             100.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![50.0],
@@ -2547,14 +2547,14 @@ fn xychart_linear_x_lexemes_remain_injective_after_numeric_projection() {
     let build = |x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(100.0),
             },
             0.0,
             10.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![4.0],
@@ -2582,7 +2582,7 @@ fn xychart_linear_and_band_axes_have_distinct_owner_disclosure() {
             x_axis,
             0.0,
             1.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![0.0, 1.0],
@@ -2596,7 +2596,7 @@ fn xychart_linear_and_band_axes_have_distinct_owner_disclosure() {
     };
 
     let band = render_typed_xychart(
-        &build(XyChartAxisRenderModel::Band {
+        &build(XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["0".to_string(), "1".to_string()],
         }),
@@ -2604,7 +2604,7 @@ fn xychart_linear_and_band_axes_have_distinct_owner_disclosure() {
     )
     .expect("the Band-axis model should render");
     let linear = render_typed_xychart(
-        &build(XyChartAxisRenderModel::Linear {
+        &build(XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(1.0),
@@ -2625,13 +2625,13 @@ fn xychart_implicit_and_explicit_band_domains_remain_injective() {
     let build = |categories, show_x_labels| {
         let mut model = typed_xychart_model(
             "horizontal",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories,
             },
             0.0,
             1.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![1.0],
@@ -2670,14 +2670,14 @@ fn xychart_blank_authored_x_values_preserve_utf8_identity() {
     let build = |x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(1.0),
             },
             0.0,
             1.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![1.0],
@@ -2702,13 +2702,13 @@ fn xychart_hidden_axis_ranges_are_disclosed_exactly() {
     let build = |y_min: f64, y_max: f64| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             y_min,
             y_max,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![4.0],
@@ -2739,13 +2739,13 @@ fn xychart_inferred_visible_range_discloses_authored_and_resolved_identity() {
     let build = |max_value: f64| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string(), "B".to_string()],
             },
             0.0,
             max_value,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![0.0, max_value],
@@ -2753,7 +2753,7 @@ fn xychart_inferred_visible_range_discloses_authored_and_resolved_identity() {
                 point_labels: Vec::new(),
             }],
         );
-        model.y_axis = XyChartAxisRenderModel::Linear {
+        model.y_axis = XyChartAxisModel::Linear {
             title: String::new(),
             min: None,
             max: None,
@@ -2783,13 +2783,13 @@ fn xychart_visible_high_precision_range_uses_exact_domain_disclosure() {
     let build = |max_value: f64| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             max_value,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![max_value],
@@ -2818,13 +2818,13 @@ fn xychart_empty_series_preserves_exact_y_domain_identity() {
     let build = |max_value: f64| {
         let mut model = typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["ABCD".to_string()],
             },
             0.0,
             max_value,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: Vec::new(),
@@ -2856,13 +2856,13 @@ fn xychart_single_quantized_y_value_remains_exact_across_models() {
     let build = |value: f64| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Band {
+            XyChartAxisModel::Band {
                 title: String::new(),
                 categories: vec!["A".to_string()],
             },
             0.0,
             100.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![value],
@@ -2887,14 +2887,14 @@ fn xychart_multisample_quantized_x_remains_exact_across_models() {
     let build = |first_x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(100.0),
             },
             0.0,
             100.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Line,
                 title: None,
                 values: vec![20.0, 80.0],
@@ -2922,14 +2922,14 @@ fn xychart_single_bar_quantized_x_remains_exact_across_models() {
     let build = |x: &str| {
         typed_xychart_model(
             "vertical",
-            XyChartAxisRenderModel::Linear {
+            XyChartAxisModel::Linear {
                 title: String::new(),
                 min: Some(0.0),
                 max: Some(100.0),
             },
             0.0,
             100.0,
-            vec![XyChartPlotRenderModel {
+            vec![XyChartPlotModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
                 values: vec![40.0],
@@ -2953,14 +2953,14 @@ fn xychart_single_bar_quantized_x_remains_exact_across_models() {
 fn xychart_dense_linear_bar_overlap_triggers_exact_disclosure() {
     let model = typed_xychart_model(
         "vertical",
-        XyChartAxisRenderModel::Linear {
+        XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(0.0),
             max: Some(100.0),
         },
         0.0,
         10.0,
-        vec![XyChartPlotRenderModel {
+        vec![XyChartPlotModel {
             plot_type: XyChartPlotType::Bar,
             title: None,
             values: vec![5.0, 8.0],

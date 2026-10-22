@@ -2002,8 +2002,8 @@ mod tests {
         AsciiResourcePolicy, Result, TerminalWidthProfile,
     };
     use merman_core::diagrams::xychart::{
-        XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramModel,
-        XyChartDiagramRenderModel, XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
+        XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel,
+        XyChartDisplayPolicy, XyChartPlotModel, XyChartPlotType,
     };
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
@@ -2088,16 +2088,16 @@ mod tests {
                 title: Some("<Ops 👩‍💻>\u{1b}[31m".to_string()),
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Band {
+                x_axis: XyChartAxisModel::Band {
                     title: String::new(),
                     categories: vec!["A".to_string(), "·".to_string()],
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(10.0),
                 },
-                plots: vec![XyChartPlotRenderModel {
+                plots: vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Bar,
                     title: None,
                     values: vec![5.0, 8.0],
@@ -2133,16 +2133,16 @@ mod tests {
                 title: title.map(str::to_string),
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Band {
+                x_axis: XyChartAxisModel::Band {
                     title: String::new(),
                     categories: vec!["A".to_string()],
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(1.0),
                 },
-                plots: vec![XyChartPlotRenderModel {
+                plots: vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Bar,
                     title: None,
                     values: vec![1.0],
@@ -2170,7 +2170,7 @@ mod tests {
     fn compact_horizontal_model() -> XyChartDiagramRenderModel {
         let mut model = compact_vertical_model(None);
         model.orientation = "horizontal".to_string();
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         };
@@ -2180,7 +2180,7 @@ mod tests {
 
     fn disclosure_budget_model() -> XyChartDiagramRenderModel {
         let mut model = compact_vertical_model(None);
-        model.plots[0] = XyChartPlotRenderModel {
+        model.plots[0] = XyChartPlotModel {
             plot_type: XyChartPlotType::Line,
             title: Some("a disclosure title that dominates the compact plot width".to_string()),
             values: vec![1.0],
@@ -2206,17 +2206,17 @@ mod tests {
                 title: None,
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Linear {
+                x_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(1.0),
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(1.0),
                 },
-                plots: vec![XyChartPlotRenderModel {
+                plots: vec![XyChartPlotModel {
                     plot_type: XyChartPlotType::Line,
                     title,
                     values: Vec::new(),
@@ -2241,25 +2241,25 @@ mod tests {
                 title: None,
                 acc_title: None,
                 acc_descr: None,
-                x_axis: XyChartAxisRenderModel::Linear {
+                x_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(1.0),
                 },
-                y_axis: XyChartAxisRenderModel::Linear {
+                y_axis: XyChartAxisModel::Linear {
                     title: String::new(),
                     min: Some(0.0),
                     max: Some(1.0),
                 },
                 plots: vec![
-                    XyChartPlotRenderModel {
+                    XyChartPlotModel {
                         plot_type: XyChartPlotType::Line,
                         title: None,
                         values: Vec::new(),
                         data: vec![(left_x, Some(0.25))],
                         point_labels: Vec::new(),
                     },
-                    XyChartPlotRenderModel {
+                    XyChartPlotModel {
                         plot_type: XyChartPlotType::Line,
                         title: None,
                         values: Vec::new(),
@@ -2399,11 +2399,11 @@ mod tests {
     fn xychart_titles_always_use_owned_utf8_byte_frames() {
         let mut model = authored_text_model();
         model.title = Some("\ttitle\r".to_string());
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: "\tx-axis\r".to_string(),
             categories: vec!["A".to_string(), "B".to_string()],
         };
-        model.y_axis = XyChartAxisRenderModel::Linear {
+        model.y_axis = XyChartAxisModel::Linear {
             title: "\ty-axis\r".to_string(),
             min: Some(0.0),
             max: Some(10.0),
@@ -2781,7 +2781,7 @@ mod tests {
     #[test]
     fn xychart_vertical_document_budget_uses_retained_plot_widths() {
         let mut model = compact_vertical_model(None);
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         };
@@ -2851,7 +2851,7 @@ mod tests {
     #[test]
     fn xychart_vertical_tick_only_baseline_admits_its_retained_width_exactly() {
         let mut model = compact_vertical_model(None);
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string(), "B".to_string()],
         };
@@ -2995,11 +2995,11 @@ mod tests {
     #[test]
     fn xychart_overlapping_inside_labels_admit_last_writer_width_exactly() {
         let mut model = compact_vertical_model(None);
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A".to_string()],
         };
-        model.y_axis = XyChartAxisRenderModel::Linear {
+        model.y_axis = XyChartAxisModel::Linear {
             title: String::new(),
             min: Some(-100.0),
             max: Some(100.0),
@@ -3036,7 +3036,7 @@ mod tests {
     #[test]
     fn xychart_plain_horizontal_prefix_uses_plain_finalizer_trim_semantics() {
         let mut model = compact_horizontal_model();
-        model.x_axis = XyChartAxisRenderModel::Band {
+        model.x_axis = XyChartAxisModel::Band {
             title: String::new(),
             categories: vec!["A ".to_string()],
         };

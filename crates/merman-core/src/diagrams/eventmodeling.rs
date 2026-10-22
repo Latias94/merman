@@ -69,15 +69,6 @@ pub struct EventModelingDiagramModel {
     pub data_entities: Vec<EventModelingDataEntity>,
 }
 
-#[cfg(feature = "presentation")]
-pub type EventModelingDiagramRenderModel = EventModelingDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type EventModelingFrameRenderModel = EventModelingFrame;
-
-#[cfg(feature = "presentation")]
-pub type EventModelingDataEntityRenderModel = EventModelingDataEntity;
-
 impl EventModelingDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);

@@ -5,7 +5,7 @@ pub(crate) use css_binding::BlockCssThemeBinding;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
-use merman_core::diagrams::block::BlockClassDefRenderModel;
+use merman_core::diagrams::block::BlockClassDef;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -322,10 +322,7 @@ pub(crate) struct BlockTypographyThemePlan {
 impl BlockTypographyThemePlan {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
+        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
     ) {
         self.css_binding.prepare_class_definitions(definitions);
     }
@@ -918,7 +915,7 @@ struct BlockNodePaintSourceOwnership {
 }
 
 impl BlockNodePaintSourceOwnership {
-    pub(crate) fn new(class_defs: &IndexMap<String, BlockClassDefRenderModel>) -> Self {
+    pub(crate) fn new(class_defs: &IndexMap<String, BlockClassDef>) -> Self {
         let (fill_classes, stroke_classes) = classes_owning_node_paint(class_defs);
         Self {
             fill_classes,
@@ -940,7 +937,7 @@ impl BlockNodePaintSourceOwnership {
 }
 
 fn classes_owning_node_paint(
-    class_defs: &IndexMap<String, BlockClassDefRenderModel>,
+    class_defs: &IndexMap<String, BlockClassDef>,
 ) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut fill_classes = BTreeSet::new();
     let mut stroke_classes = BTreeSet::new();
@@ -1124,7 +1121,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // Empty fragments preserve the earlier source, just as the terminal writer does.
-            let fragment = merman_core::diagrams::block::BlockNodeRenderModel {
+            let fragment = merman_core::diagrams::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 ..Default::default()
@@ -1137,7 +1134,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            let fragment = merman_core::diagrams::block::BlockNodeRenderModel {
+            let fragment = merman_core::diagrams::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 styles: vec!["stroke:#00bb00".to_string()],
@@ -1157,7 +1154,7 @@ mod tests {
     fn source_all_reset_owns_each_node_class_paint_channel() {
         for id in ["default", "node", "flowchart-label"] {
             let mut classes = IndexMap::new();
-            let mut class = BlockClassDefRenderModel::default();
+            let mut class = BlockClassDef::default();
             class.id = id.into();
             class.styles = vec!["all:unset".into()];
             classes.insert(id.into(), class);
@@ -1170,7 +1167,7 @@ mod tests {
     #[test]
     fn source_ownership_tracks_fill_and_stroke_independently() {
         let mut class_defs = IndexMap::new();
-        let mut accent = BlockClassDefRenderModel::default();
+        let mut accent = BlockClassDef::default();
         accent.id = "accent".to_string();
         accent.styles = vec!["fill:#abcdef".to_string()];
         class_defs.insert("accent".to_string(), accent);
@@ -1182,7 +1179,7 @@ mod tests {
         assert!(!ownership.owns_stroke(false, &["accent".to_string()]));
         assert!(!ownership.owns_fill(false, &["other".to_string()]));
 
-        let mut default_class = BlockClassDefRenderModel::default();
+        let mut default_class = BlockClassDef::default();
         default_class.id = "default".to_string();
         default_class.styles = vec!["FILL:#fedcba".to_string(), "STROKE:#abcdef".to_string()];
         class_defs.insert("default".to_string(), default_class);

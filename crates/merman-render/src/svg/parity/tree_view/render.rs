@@ -6,7 +6,7 @@ use crate::tree_view::{
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
     TreeViewThemePlan, TreeViewThemeReceipt, is_tree_view_highlight_class,
 };
-use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
+use merman_core::diagrams::tree_view::TreeViewDiagramModel;
 
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
@@ -21,7 +21,7 @@ struct TreeViewNodeRenderContext<'a, 'id> {
 
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
-    model: &TreeViewDiagramRenderModel,
+    model: &TreeViewDiagramModel,
     theme: &TreeViewThemePlan,
     effective_config: &merman_core::presentation::PresentationConfig,
     options: &SvgExecution<'_>,

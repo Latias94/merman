@@ -276,10 +276,7 @@ fn join_class_styles_with_work(
 
 fn clone_node_styles_with_work(
     node: &HierNode,
-    classes: &std::collections::BTreeMap<
-        String,
-        merman_core::diagrams::treemap::TreemapClassDefRenderModel,
-    >,
+    classes: &std::collections::BTreeMap<String, merman_core::diagrams::treemap::TreemapClassDef>,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<Vec<String>>> {
     if let Some(styles) = node.css_compiled_styles.as_deref() {
@@ -682,34 +679,33 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 #[cfg(test)]
 mod tests {
     use merman_core::diagrams::treemap::{
-        TreemapClassDefRenderModel, TreemapDiagramModel, TreemapDiagramRenderModel,
-        TreemapNodeRenderModel,
+        TreemapClassDef, TreemapDiagramModel, TreemapDiagramRenderModel, TreemapNode,
     };
 
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn work_budget_fixture() -> TreemapDiagramRenderModel {
         TreemapDiagramRenderModel::from_semantic_model(TreemapDiagramModel {
-            root: TreemapNodeRenderModel {
+            root: TreemapNode {
                 name: "root".to_string(),
                 children: Some(vec![0]),
-                ..TreemapNodeRenderModel::default()
+                ..TreemapNode::default()
             },
             nodes: vec![
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Section".to_string(),
                     children: Some(vec![1, 2]),
-                    ..TreemapNodeRenderModel::default()
+                    ..TreemapNode::default()
                 },
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Alpha".to_string(),
                     value: Some(serde_json::json!(3).into()),
-                    ..TreemapNodeRenderModel::default()
+                    ..TreemapNode::default()
                 },
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Beta".to_string(),
                     value: Some(serde_json::json!(2).into()),
-                    ..TreemapNodeRenderModel::default()
+                    ..TreemapNode::default()
                 },
             ],
             ..TreemapDiagramModel::default()
@@ -721,7 +717,7 @@ mod tests {
         model.nodes[0].class_selector = Some("important".to_string());
         model.classes.insert(
             "important".to_string(),
-            TreemapClassDefRenderModel {
+            TreemapClassDef {
                 id: "important".to_string(),
                 styles,
                 text_styles: Vec::new(),

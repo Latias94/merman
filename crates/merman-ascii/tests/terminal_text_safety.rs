@@ -2,7 +2,7 @@ mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::git_graph::{GitGraphBranchRenderModel, GitGraphRenderModel};
+use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphDiagramModel};
 use merman_core::models::class_diagram::ClassDiagram;
 use support::{parse_model, render_model};
 use unicode_width::UnicodeWidthStr;
@@ -12,10 +12,10 @@ fn render(source: &str, options: &AsciiRenderOptions) -> String {
 }
 
 fn git_graph_with_authored_text(text: &str) -> RenderSemanticModel {
-    RenderSemanticModel::GitGraph(GitGraphRenderModel {
+    RenderSemanticModel::GitGraph(GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: Vec::new(),
-        branches: vec![GitGraphBranchRenderModel {
+        branches: vec![GitGraphBranch {
             name: text.to_string(),
         }],
         current_branch: text.to_string(),

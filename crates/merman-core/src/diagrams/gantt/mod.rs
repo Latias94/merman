@@ -28,10 +28,7 @@ pub use model::{
     GanttTaskRaw, GanttTaskStart, GanttTaskStartConstraint,
 };
 #[cfg(feature = "presentation")]
-pub use model::{
-    GanttDiagramRenderModel, GanttRenderClickEvent, GanttRenderTask, GanttRenderTaskEnd,
-    GanttRenderTaskRaw, GanttRenderTaskStart,
-};
+pub use model::{GanttDiagramRenderModel, GanttRenderTask};
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use parse::parse_gantt_model_for_render;
 #[cfg(feature = "presentation")]

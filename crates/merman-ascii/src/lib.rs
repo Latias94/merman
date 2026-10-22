@@ -880,7 +880,7 @@ mod tests {
     #[cfg(feature = "diagram-mindmap")]
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     #[cfg(feature = "diagram-tree-view")]
-    use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+    use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -1180,28 +1180,28 @@ mod tests {
     }
 
     #[cfg(feature = "diagram-tree-view")]
-    fn tree_view_model() -> TreeViewDiagramRenderModel {
-        TreeViewDiagramRenderModel {
+    fn tree_view_model() -> TreeViewDiagramModel {
+        TreeViewDiagramModel {
             acc_title: None,
             acc_descr: None,
             title: None,
-            root: TreeViewNodeRenderModel {
+            root: TreeViewNode {
                 id: 0,
                 level: -1,
                 name: "/".to_string(),
-                children: vec![TreeViewNodeRenderModel {
+                children: vec![TreeViewNode {
                     id: 1,
                     level: 0,
                     name: "Root".to_string(),
                     children: vec![
-                        TreeViewNodeRenderModel {
+                        TreeViewNode {
                             id: 2,
                             level: 1,
                             name: "Child1".to_string(),
                             children: Vec::new(),
                             ..Default::default()
                         },
-                        TreeViewNodeRenderModel {
+                        TreeViewNode {
                             id: 3,
                             level: 1,
                             name: "Child2".to_string(),

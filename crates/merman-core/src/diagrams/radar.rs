@@ -178,14 +178,6 @@ impl RadarDiagramModel {
     }
 }
 
-/// Full-parser spellings retained for presentation consumers.
-#[cfg(feature = "presentation")]
-pub type RadarRenderAxis = RadarAxis;
-#[cfg(feature = "presentation")]
-pub type RadarRenderCurve = RadarCurve;
-#[cfg(feature = "presentation")]
-pub type RadarRenderOptions = RadarOptions;
-
 #[cfg(feature = "presentation")]
 impl RadarDiagramRenderModel {
     fn from_semantic_model(model: RadarDiagramModel) -> Self {
@@ -1841,7 +1833,7 @@ mod tests {
 
     #[test]
     fn radar_detailed_entries_keep_the_first_duplicate_value() {
-        let axes = vec![RadarRenderAxis {
+        let axes = vec![RadarAxis {
             name: "cost".to_string(),
             label: "Cost".to_string(),
         }];

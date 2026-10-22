@@ -9,7 +9,7 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel};
+use merman_core::diagrams::c4::{C4Boundary, C4DiagramModel};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -734,7 +734,7 @@ impl C4BoundaryFrame {
 }
 
 fn prepare_c4_boundary_layout(
-    boundary: &C4BoundaryRenderModel,
+    boundary: &C4Boundary,
     width_limit: f64,
     ctx: &C4LayoutContext<'_>,
 ) -> (PendingC4BoundaryLayout, f64) {
@@ -994,7 +994,7 @@ fn layout_inside_boundary(
 
 /// Lays out a typed C4 render model without a compatibility-JSON round trip.
 pub(crate) fn layout_c4_diagram_typed(
-    model: &C4DiagramRenderModel,
+    model: &C4DiagramModel,
     effective_config: &Value,
     typography: &super::C4TypographyThemePlan,
     measurer: &dyn TextMeasurer,

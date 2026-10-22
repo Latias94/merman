@@ -21,8 +21,6 @@ use crate::{PresentationMetadata, Result};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
-#[cfg(feature = "presentation")]
-pub use model::ZenumlDiagramRenderModel;
 pub use model::{
     ZenumlDiagramModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup, ZenumlMessageStyle,
     ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
@@ -47,7 +45,7 @@ pub(crate) fn parse_zenuml(code: &str, meta: &PresentationMetadata) -> Result<Va
 pub(crate) fn parse_zenuml_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
-) -> Result<ZenumlDiagramRenderModel> {
+) -> Result<ZenumlDiagramModel> {
     Ok(parse_semantic_source(code, meta)?.model)
 }
 
@@ -56,7 +54,7 @@ pub(crate) fn parse_zenuml_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<ZenumlDiagramRenderModel>> {
+) -> OperationControlResult<Result<ZenumlDiagramModel>> {
     let source = construct_semantic_source(
         code,
         #[cfg(feature = "editor-facts")]

@@ -177,12 +177,12 @@ fn gantt_direct_model_renders_only_typed_constraints() {
                 dependency_ids: vec!["release".to_string()],
             },
             prev_task_id: Some("legacy-previous".to_string()),
-            raw: GanttRenderTaskRaw {
+            raw: GanttTaskRaw {
                 data: "implementation,after raw-start,until raw-end".to_string(),
-                start_time: GanttRenderTaskStart::GetStartDate {
+                start_time: GanttTaskStart::GetStartDate {
                     start_data: "after raw-start".to_string(),
                 },
-                end_time: GanttRenderTaskEnd {
+                end_time: GanttTaskEnd {
                     data: "until raw-end".to_string(),
                 },
             },

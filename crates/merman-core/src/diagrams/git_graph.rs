@@ -95,15 +95,6 @@ pub struct GitGraphDiagramModel {
     pub warning_facts: Vec<DiagramWarningFact>,
 }
 
-#[cfg(feature = "presentation")]
-pub type GitGraphRenderModel = GitGraphDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type GitGraphBranchRenderModel = GitGraphBranch;
-
-#[cfg(feature = "presentation")]
-pub type GitGraphCommitRenderModel = GitGraphCommit;
-
 impl GitGraphDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);

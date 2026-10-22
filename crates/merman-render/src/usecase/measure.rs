@@ -58,7 +58,7 @@ pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
 }
 
 fn styles(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     classes: &[String],
     inline: &[String],
 ) -> indexmap::IndexMap<String, String> {
@@ -324,7 +324,7 @@ fn escaped_markdown(text: &str) -> String {
 }
 
 pub(super) fn measure(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     full_config: &merman_core::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
@@ -754,8 +754,8 @@ mod tests {
     use serde_json::json;
     use std::collections::BTreeMap;
 
-    fn model() -> UsecaseDiagramRenderModel {
-        UsecaseDiagramRenderModel {
+    fn model() -> UsecaseDiagramModel {
+        UsecaseDiagramModel {
             direction: "LR".into(),
             nodes: Vec::new(),
             boundaries: Vec::new(),
@@ -775,7 +775,7 @@ mod tests {
         )))
     }
 
-    fn styled_model() -> UsecaseDiagramRenderModel {
+    fn styled_model() -> UsecaseDiagramModel {
         let mut model = model();
         model.class_defs = vec![
             UsecaseClassDef {

@@ -50,16 +50,6 @@ pub struct VennDiagramModel {
     pub style_entries: Vec<VennStyleEntryModel>,
 }
 
-/// Full-parser spellings retained for presentation consumers.
-#[cfg(feature = "presentation")]
-pub type VennSubsetRenderModel = VennSubsetModel;
-#[cfg(feature = "presentation")]
-pub type VennTextNodeRenderModel = VennTextNodeModel;
-#[cfg(feature = "presentation")]
-pub type VennStyleEntryRenderModel = VennStyleEntryModel;
-#[cfg(feature = "presentation")]
-pub type VennDiagramRenderModel = VennDiagramModel;
-
 impl VennDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -556,7 +546,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
 pub(crate) fn parse_venn_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
-) -> Result<VennDiagramRenderModel> {
+) -> Result<VennDiagramModel> {
     Ok(parse_venn_semantic_source(code, meta)?.model)
 }
 
@@ -565,7 +555,7 @@ pub(crate) fn parse_venn_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<VennDiagramRenderModel>> {
+) -> crate::OperationControlResult<Result<VennDiagramModel>> {
     let outcome = construct_venn_parse_outcome_controlled(
         code,
         &meta.diagram_type,
@@ -578,7 +568,7 @@ pub(crate) fn parse_venn_model_for_render_controlled(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &VennDiagramRenderModel,
+    model: &VennDiagramModel,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({
@@ -1584,7 +1574,7 @@ mod tests {
         }
     }
 
-    fn parse(input: &str) -> VennDiagramRenderModel {
+    fn parse(input: &str) -> VennDiagramModel {
         parse_venn_model_for_render(input, &meta()).unwrap()
     }
 
@@ -1603,17 +1593,17 @@ mod tests {
         assert_eq!(
             model.subsets,
             vec![
-                VennSubsetRenderModel {
+                VennSubsetModel {
                     sets: vec!["A".to_string()],
                     size: 10.0,
                     label: None,
                 },
-                VennSubsetRenderModel {
+                VennSubsetModel {
                     sets: vec!["B".to_string()],
                     size: 10.0,
                     label: None,
                 },
-                VennSubsetRenderModel {
+                VennSubsetModel {
                     sets: vec!["A".to_string(), "B".to_string()],
                     size: 2.5,
                     label: None,
@@ -1680,22 +1670,22 @@ mod tests {
         assert_eq!(
             model.text_nodes,
             vec![
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["A".to_string()],
                     id: "A1".to_string(),
                     label: Some("React".to_string()),
                 },
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["A".to_string()],
                     id: "A2".to_string(),
                     label: None,
                 },
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["B".to_string()],
                     id: "B1".to_string(),
                     label: None,
                 },
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["A".to_string(), "B".to_string()],
                     id: "AB1".to_string(),
                     label: Some("OpenAPI".to_string()),
@@ -1719,12 +1709,12 @@ text A,B 42
         assert_eq!(
             model.text_nodes,
             vec![
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["A".to_string()],
                     id: "alpha".to_string(),
                     label: Some("Alpha note".to_string()),
                 },
-                VennTextNodeRenderModel {
+                VennTextNodeModel {
                     sets: vec!["A".to_string(), "B".to_string()],
                     id: "42".to_string(),
                     label: None,

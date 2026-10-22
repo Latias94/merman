@@ -5,7 +5,7 @@ use crate::model::{
     JourneyTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
+use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
@@ -27,7 +27,7 @@ pub(crate) const JOURNEY_FACE_RADIUS_PX: f64 = 15.0;
 const JOURNEY_FACE_BASE_Y_PX: f64 = 300.0;
 const JOURNEY_FACE_SCORE_STEP_Y_PX: f64 = 30.0;
 
-fn actors_from_tasks(tasks: &[JourneyRenderTask]) -> Vec<String> {
+fn actors_from_tasks(tasks: &[JourneyTask]) -> Vec<String> {
     let mut set = BTreeSet::<String>::new();
     for t in tasks {
         for p in &t.people {

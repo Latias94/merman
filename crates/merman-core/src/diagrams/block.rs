@@ -244,13 +244,6 @@ struct BlockNodeCompatibility {
 }
 
 #[cfg(feature = "presentation")]
-pub type BlockNodeRenderModel = BlockNode;
-#[cfg(feature = "presentation")]
-pub type BlockEdgeRenderModel = BlockEdge;
-#[cfg(feature = "presentation")]
-pub type BlockClassDefRenderModel = BlockClassDef;
-
-#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, Default)]
 pub struct BlockVisuals {
     /// Palette slots in canonical insertion order; the root has no slot.

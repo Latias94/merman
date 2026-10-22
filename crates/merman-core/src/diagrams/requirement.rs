@@ -105,21 +105,6 @@ pub struct RequirementDiagramModel {
     pub classes: BTreeMap<String, RequirementClass>,
 }
 
-#[cfg(feature = "presentation")]
-pub type RequirementDiagramRenderModel = RequirementDiagramModel;
-
-#[cfg(feature = "presentation")]
-pub type RequirementRenderNode = RequirementNode;
-
-#[cfg(feature = "presentation")]
-pub type RequirementRenderElement = RequirementElement;
-
-#[cfg(feature = "presentation")]
-pub type RequirementRenderRelationship = RequirementRelationship;
-
-#[cfg(feature = "presentation")]
-pub type RequirementRenderClass = RequirementClass;
-
 impl RequirementDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);

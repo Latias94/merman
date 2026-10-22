@@ -76,6 +76,73 @@ layout/session while borrowing canonical model and render context. Update by-val
 `layout_json_with_compatibility_json` was removed: request `artifact.layout_json()` so semantics
 are projected from the exact artifact that owns the layout, under its active control.
 
+## Use canonical family type names
+
+Pure public render aliases have been removed. Use the canonical types from
+`merman_core::diagrams::<family>` in semantic and full consumers, including imports,
+reexports, model construction, and explicit type annotations. The same canonical spelling
+now describes the shared family data on both paths; selecting `presentation` does not add
+an alternate name for that data. These types remain available with their diagram family
+without requiring `presentation`.
+
+This is a Rust source migration. It does not rename parse/layout/render functions, change
+compatibility JSON fields, or change the full parser's capability requirements. Upgrade
+coupled crates together. The following table includes the older Cynefin and Railroad aliases
+so that consumers can retire every pure family render spelling in one pass. Error and
+Sequence migrations are listed in the preceding source-migration table.
+
+| Family module | Removed spelling -> canonical spelling |
+| --- | --- |
+| `architecture` | `ArchitectureDiagramRenderModel` -> `ArchitectureDiagramModel`<br>`ArchitectureRenderNodeType` -> `ArchitectureNodeKind`<br>`ArchitectureRenderNode` -> `ArchitectureNodeModel`<br>`ArchitectureRenderGroup` -> `ArchitectureGroupModel`<br>`ArchitectureRenderEdge` -> `ArchitectureEdgeModel`<br>`ArchitectureRenderLayoutHint` -> `ArchitectureLayoutHintModel` |
+| `block` | `BlockNodeRenderModel` -> `BlockNode`<br>`BlockEdgeRenderModel` -> `BlockEdge`<br>`BlockClassDefRenderModel` -> `BlockClassDef` |
+| `c4` | `C4DiagramRenderModel` -> `C4DiagramModel`<br>`C4ShapeRenderModel` -> `C4Shape`<br>`C4BoundaryRenderModel` -> `C4Boundary`<br>`C4RelRenderModel` -> `C4Relation` |
+| `cynefin` | `CynefinDiagramRenderModel` -> `CynefinDiagramModel` |
+| `er` | `ErDiagramRenderModel` -> `ErDiagramModel`<br>`ErAttributeRenderModel` -> `ErAttribute`<br>`ErRelSpecRenderModel` -> `ErRelSpec`<br>`ErRelationshipRenderModel` -> `ErRelationship`<br>`ErClassDefRenderModel` -> `ErClassDef`<br>`ErSubgraphRenderModel` -> `ErSubgraph`<br>`ErEntityRenderModel` -> `ErEntity` |
+| `eventmodeling` | `EventModelingDiagramRenderModel` -> `EventModelingDiagramModel`<br>`EventModelingFrameRenderModel` -> `EventModelingFrame`<br>`EventModelingDataEntityRenderModel` -> `EventModelingDataEntity` |
+| `gantt` | `GanttRenderTaskRaw` -> `GanttTaskRaw`<br>`GanttRenderTaskStart` -> `GanttTaskStart`<br>`GanttRenderTaskEnd` -> `GanttTaskEnd`<br>`GanttRenderClickEvent` -> `GanttClickEvent` |
+| `git_graph` | `GitGraphRenderModel` -> `GitGraphDiagramModel`<br>`GitGraphBranchRenderModel` -> `GitGraphBranch`<br>`GitGraphCommitRenderModel` -> `GitGraphCommit` |
+| `ishikawa` | `IshikawaDiagramRenderModel` -> `IshikawaDiagramModel`<br>`IshikawaNodeRenderModel` -> `IshikawaNode` |
+| `journey` | `JourneyRenderTask` -> `JourneyTask` |
+| `pie` | `PieRenderSection` -> `PieSection` |
+| `quadrant_chart` | `QuadrantChartRenderModel` -> `QuadrantChartDiagramModel` |
+| `radar` | `RadarRenderAxis` -> `RadarAxis`<br>`RadarRenderCurve` -> `RadarCurve`<br>`RadarRenderOptions` -> `RadarOptions` |
+| `railroad` | `RailroadDiagramRenderModel` -> `RailroadDiagramModel` |
+| `requirement` | `RequirementDiagramRenderModel` -> `RequirementDiagramModel`<br>`RequirementRenderNode` -> `RequirementNode`<br>`RequirementRenderElement` -> `RequirementElement`<br>`RequirementRenderRelationship` -> `RequirementRelationship`<br>`RequirementRenderClass` -> `RequirementClass` |
+| `sankey` | `SankeyRenderNode` -> `SankeyNode`<br>`SankeyRenderLink` -> `SankeyLink`<br>`SankeyRenderGraph` -> `SankeyGraph`<br>`SankeyDiagramRenderModel` -> `SankeyDiagramModel` |
+| `state` | `StateDiagramRenderLink` -> `StateLink`<br>`StateDiagramRenderLinks` -> `StateLinks`<br>`StateDiagramRenderNote` -> `StateNote`<br>`StateDiagramRenderState` -> `StateRecord`<br>`StateDiagramRenderRelation` -> `StateRelation`<br>`StateDiagramRenderStyleClass` -> `StateStyleClass` |
+| `timeline` | `TimelineRenderTask` -> `TimelineTask` |
+| `tree_view` | `TreeViewDiagramRenderModel` -> `TreeViewDiagramModel`<br>`TreeViewNodeRenderModel` -> `TreeViewNode` |
+| `treemap` | `TreemapNodeRenderModel` -> `TreemapNode`<br>`TreemapClassDefRenderModel` -> `TreemapClassDef` |
+| `usecase` | `UsecaseDiagramRenderModel` -> `UsecaseDiagramModel` |
+| `venn` | `VennSubsetRenderModel` -> `VennSubsetModel`<br>`VennTextNodeRenderModel` -> `VennTextNodeModel`<br>`VennStyleEntryRenderModel` -> `VennStyleEntryModel`<br>`VennDiagramRenderModel` -> `VennDiagramModel` |
+| `wardley` | `WardleyDiagramRenderModel` -> `WardleyDiagramModel`<br>`WardleyPointRenderModel` -> `WardleyPoint`<br>`WardleyNodeRenderModel` -> `WardleyNode`<br>`WardleyLinkRenderModel` -> `WardleyLink`<br>`WardleyTrendRenderModel` -> `WardleyTrend`<br>`WardleyPipelineRenderModel` -> `WardleyPipeline`<br>`WardleyAnnotationRenderModel` -> `WardleyAnnotation`<br>`WardleyNoteRenderModel` -> `WardleyNote`<br>`WardleyAcceleratorRenderModel` -> `WardleyAccelerator`<br>`WardleyDeacceleratorRenderModel` -> `WardleyDeaccelerator`<br>`WardleyAxesRenderModel` -> `WardleyAxes`<br>`WardleySizeRenderModel` -> `WardleySize` |
+| `xychart` | `XyChartAxisRenderModel` -> `XyChartAxisModel`<br>`XyChartPlotRenderModel` -> `XyChartPlotModel` |
+| `zenuml` | `ZenumlDiagramRenderModel` -> `ZenumlDiagramModel` |
+
+State's shared `StateLink`, `StateLinks`, `StateNote`, `StateRecord`, `StateRelation`, and
+`StateStyleClass` are exported directly from `diagrams::state`. Import them there instead
+of using the removed `StateDiagramRender*` reexports. The full State model still owns its
+render nodes, render edges, and document graph.
+
+Actual presentation carriers keep their names and gates. In particular:
+
+- `BlockDiagramRenderModel` / `BlockVisuals` and `TreemapDiagramRenderModel` /
+  `TreemapVisuals` retain rendering state alongside canonical records.
+- `AgentflowDiagramRenderModel` / `AgentflowVisuals` retain parser-assigned DOM ordinals.
+- `GanttDiagramRenderModel` and `GanttRenderTask` retain display mode and rendered task ends;
+  their raw/start/end/click records use the canonical names in the table.
+- `JourneyDiagramRenderModel`, `TimelineDiagramRenderModel`, `PacketDiagramRenderModel`,
+  `PieDiagramRenderModel`, `RadarDiagramRenderModel`, and `InfoDiagramRenderModel` retain
+  their full-output or compatibility state.
+- `StateDiagramRenderModel`, `StateDiagramRenderNode`, `StateDiagramRenderEdge`, and
+  `XyChartDiagramRenderModel` retain their presentation data. Other actual render carriers,
+  including Class, Flowchart, Mindmap, and Kanban records, are likewise unchanged.
+
+Do not replace an actual full carrier with its semantic model solely because some nested
+records now use canonical names. For example, `Vec<PieSection>` is shared data while
+`PieDiagramRenderModel` remains the full owner. Journey, Timeline, and Packet continue to
+expose their canonical owner through `semantic` as described above.
+
 ## Migrate edge geometry budgets
 
 `edge-geometry-json` retains payload schema `1`, source occurrence order, duplicate edge IDs,

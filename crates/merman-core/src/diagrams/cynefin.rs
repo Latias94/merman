@@ -57,9 +57,6 @@ pub struct CynefinDiagramModel {
     pub transitions: Vec<CynefinTransitionModel>,
 }
 
-#[cfg(feature = "presentation")]
-pub type CynefinDiagramRenderModel = CynefinDiagramModel;
-
 impl CynefinDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -170,7 +167,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(json!({
@@ -187,7 +184,7 @@ pub(crate) fn render_model_to_compat_json(
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
-) -> Result<CynefinDiagramRenderModel> {
+) -> Result<CynefinDiagramModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(meta.effective_config.as_config());
     Ok(model)
@@ -198,7 +195,7 @@ pub(crate) fn parse_cynefin_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<CynefinDiagramRenderModel>> {
+) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
     parse_cynefin_model_controlled(
         code,
         &meta.diagram_type,

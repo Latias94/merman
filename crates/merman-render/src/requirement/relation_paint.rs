@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::diagrams::requirement::RequirementDiagramModel;
 use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
@@ -31,7 +31,7 @@ impl RequirementRelationPaintPlan {
     pub(crate) fn resolve(
         theme: &ResolvedDiagramTheme,
         config: &PresentationConfig,
-        model: &RequirementDiagramRenderModel,
+        model: &RequirementDiagramModel,
         evidence: &mut FamilyThemeOutcomes,
         work_meter: &OperationWorkMeter,
     ) -> Result<Option<Self>, OperationWorkError> {

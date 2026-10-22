@@ -26,9 +26,9 @@ pub(crate) use theme::{
     subgraph_svg_text_facts,
 };
 
-pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
-pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
-pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
+pub(crate) type ErEntity = merman_core::diagrams::er::ErEntity;
+pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationship;
+pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraph;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErBoxLabel {
@@ -177,7 +177,7 @@ pub(crate) struct ErPreparedLabels {
 
 impl ErPreparedLabels {
     fn prepare(
-        model: &merman_core::diagrams::er::ErDiagramRenderModel,
+        model: &merman_core::diagrams::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
     ) -> Self {
@@ -241,7 +241,7 @@ impl ErPreparedLabels {
 
 #[cfg(test)]
 pub(crate) fn prepare_er_labels(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Arc<ErPreparedLabels> {
@@ -1016,7 +1016,7 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
 #[cfg(not(feature = "layout-elk"))]
 /// Lays out an ER model with an optional renderer-owned inherited typography override.
 pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     font_family_css: Option<&str>,
@@ -1038,7 +1038,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
 #[cfg(feature = "layout-elk")]
 /// Lays out an ER model through ELK with renderer-owned inherited typography.
 pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_resolved_typography(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     operation_seed: elk::ElkOperationSeed,
@@ -1067,7 +1067,7 @@ enum ErElkAuthority {
 }
 
 fn layout_er_diagram_typed_with_elk_authority(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     elk_authority: ErElkAuthority,
@@ -1108,7 +1108,7 @@ fn layout_er_diagram_typed_with_elk_authority(
 }
 
 fn validate_er_relationship_endpoints(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
 ) -> Result<()> {
     let mut node_ids: HashSet<&str> = model
         .entities
@@ -1136,7 +1136,7 @@ fn validate_er_relationship_endpoints(
 }
 
 fn er_layout_adapter_work(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     let attribute_count = model.entities.values().try_fold(0usize, |count, entity| {
@@ -1163,7 +1163,7 @@ fn er_layout_adapter_work(
 }
 
 fn layout_er_diagram_dagre_typed(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
     prepared_labels: Arc<ErPreparedLabels>,
@@ -1731,7 +1731,7 @@ fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds
 
 #[cfg(feature = "layout-elk")]
 fn layout_er_diagram_elk_typed(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
@@ -1935,7 +1935,7 @@ fn layout_er_diagram_elk_typed(
 
 #[cfg(feature = "layout-elk")]
 fn er_elk_graph(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
@@ -2144,14 +2144,14 @@ mod tests {
     fn er_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
         use std::num::NonZeroU64;
 
-        let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+        let mut model = merman_core::diagrams::er::ErDiagramModel {
             direction: "TB".to_string(),
             ..Default::default()
         };
         for id in ["CUSTOMER", "ORDER"] {
             model.entities.insert(
                 id.to_string(),
-                merman_core::diagrams::er::ErEntityRenderModel {
+                merman_core::diagrams::er::ErEntity {
                     id: id.to_string(),
                     label: id.to_string(),
                     ..Default::default()
@@ -2160,7 +2160,7 @@ mod tests {
         }
         model
             .relationships
-            .push(merman_core::diagrams::er::ErRelationshipRenderModel {
+            .push(merman_core::diagrams::er::ErRelationship {
                 entity_a: "CUSTOMER".to_string(),
                 role_a: "places".to_string(),
                 entity_b: "ORDER".to_string(),
@@ -2201,7 +2201,7 @@ mod tests {
     fn er_elk_cyclic_entry_follows_edge_order_in_root_and_nested_scopes() {
         for declared in [["B", "A", "C"], ["C", "B", "A"]] {
             for nested in [false, true] {
-                let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+                let mut model = merman_core::diagrams::er::ErDiagramModel {
                     direction: "TB".to_string(),
                     ..Default::default()
                 };
@@ -2352,7 +2352,7 @@ mod tests {
         let entity = super::ErEntity {
             id: "entity-BOOK-0".to_string(),
             label: "BOOK".to_string(),
-            attributes: vec![merman_core::diagrams::er::ErAttributeRenderModel {
+            attributes: vec![merman_core::diagrams::er::ErAttribute {
                 ty: "string".to_string(),
                 name: "title".to_string(),
                 keys: vec!["PK".to_string()],
@@ -2446,13 +2446,13 @@ mod tests {
 
     #[test]
     fn er_prepared_labels_defer_visible_style_parsing_until_theme_evidence_needs_it() {
-        let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+        let mut model = merman_core::diagrams::er::ErDiagramModel {
             direction: "TB".to_string(),
             ..Default::default()
         };
         model.entities.insert(
             "ENTITY".to_string(),
-            merman_core::diagrams::er::ErEntityRenderModel {
+            merman_core::diagrams::er::ErEntity {
                 id: "entity-ENTITY-0".to_string(),
                 label: "**Entity**".to_string(),
                 ..Default::default()
@@ -2460,7 +2460,7 @@ mod tests {
         );
         model
             .relationships
-            .push(merman_core::diagrams::er::ErRelationshipRenderModel {
+            .push(merman_core::diagrams::er::ErRelationship {
                 entity_a: "entity-ENTITY-0".to_string(),
                 role_a: "**owns**".to_string(),
                 entity_b: "entity-ENTITY-0".to_string(),
