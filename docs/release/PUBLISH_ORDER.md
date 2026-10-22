@@ -8,7 +8,7 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 
 Latest verified workspace release across CLI/LSP, Rust crates, Web, Node, Python, Flutter, Android, and Apple: `0.9.2`. Typst wrapper 0.5.0 and the other independent surfaces retain separate publication boundaries.
 
-The `main` development checkout synchronizes the `0.9.1` package version baseline and published
+The `main` development checkout synchronizes the `0.9.2` package version baseline and published
 notes. Its `[Unreleased]` section retains subsequent development, including compiled themes and
 Mermaid `12.2.0`; package metadata alone does not make that source the published patch. Published
 artifacts continue to bind the immutable source recorded below. Choose the next workspace version

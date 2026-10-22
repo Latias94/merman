@@ -18,7 +18,7 @@ The generated transport exposes generic operation dispatch plus stable convenien
 
 The browser transport currently reports:
 
-- source-branch transport API version `8` (published `0.9.1` uses `5`);
+- source-branch transport API version `8` (published `0.9.2` uses `5`);
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;

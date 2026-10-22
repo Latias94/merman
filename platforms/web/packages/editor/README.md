@@ -8,7 +8,7 @@ Pin an exact package version when reproducible installs matter.
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-editor@0.9.1
+npm install @mermanjs/web-editor@0.9.2
 ```
 
 ```ts

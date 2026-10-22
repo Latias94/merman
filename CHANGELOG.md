@@ -6,16 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Native generic/default font selection excludes symbolic and pictorial faces even when their Unicode cmap covers ASCII; explicitly named symbol fonts remain available. [#234](https://github.com/Latias94/merman/pull/234), [issue #228](https://github.com/Latias94/merman/issues/228)
-- Host presets keep C4 children visible inside filled boundaries and style relationship labels and arrowheads; Gantt retains task states and readable label colors; Wardley anchors and ZenUML surfaces follow the selected host theme. Empty or typography-only ZenUML themes preserve independently authored border colors. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231)
-- Explicit diagram-source Mermaid themes preserve their derived paint palettes under host styling, including ER rows and Quadrant point labels. Site and recipe theme selections remain fallback palettes; explicit site/source color variables retain their property-specific precedence. ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Independent typography, effects and canvas decoration remain applicable. [#234](https://github.com/Latias94/merman/pull/234), [issue #232](https://github.com/Latias94/merman/issues/232)
-- Repeated Flowchart `classDef` declarations accumulate styles in source order, retaining earlier properties and applying later overrides. Unsupported Unicode characters produce whole-character error spans and allow lexing to continue on valid UTF-8 boundaries. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
-- Malformed Pie and Info headers now fail consistently across semantic, render, and editor parsing, with source spans and recovery facts retained; lenient parsing produces the normal error diagram. Empty XYChart sources use the same configured default model through each entrypoint. [#227](https://github.com/Latias94/merman/pull/227)
-- Look-based SVG selectors accept only supported looks, and Block/Requirement source styles reject unsafe declarations while retaining valid neighboring declarations. SVG CSS cleanup also rejects unterminated strings, comments, and URLs so finalized output is stable when checked again. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
-- Building Python wheels respects Cargo's configured target directory, including `CARGO_TARGET_DIR`, when locating both the native library and UniFFI metadata. [#178](https://github.com/Latias94/merman/pull/178)
-- Workspace crate publishing checks the current Typst plugin with its examples; the independently versioned wrapper retains its own version-pinned gate. [#210](https://github.com/Latias94/merman/pull/210)
-- Incremental Tree-sitter fuzz checks handle tolerant recovery trees using geometry checks and inverse-edit restoration; regression seeds retain their exact bytes across platforms. [#227](https://github.com/Latias94/merman/pull/227)
-
+- Compiled host presets retain Gantt task states and readable label colors; empty or typography-only ZenUML themes preserve independently authored border colors. [#234](https://github.com/Latias94/merman/pull/234)
+- Under compiled host styling, explicit diagram-source Mermaid themes preserve their derived palettes. Site and recipe theme selections remain fallback palettes, while explicit site/source color variables retain property-specific precedence. ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Independent typography, effects and canvas decoration remain applicable. [#234](https://github.com/Latias94/merman/pull/234)
 - Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes. PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero. PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict. [#178](https://github.com/Latias94/merman/pull/178), [#203](https://github.com/Latias94/merman/pull/203)
 - Rust binding engines can share an explicit operation-local font context across measurement and native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains the deterministic and native measurement choices. [#178](https://github.com/Latias94/merman/pull/178), [issue #199](https://github.com/Latias94/merman/issues/199)
 - Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships; ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their precedence. Compiled theme paint and text rules keep their independent owners; the retired presentation API is not restored. [#178](https://github.com/Latias94/merman/pull/178), [issue #197](https://github.com/Latias94/merman/issues/197), [issue #198](https://github.com/Latias94/merman/issues/198), and [issue #199](https://github.com/Latias94/merman/issues/199).
@@ -23,10 +15,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Preserve Agentflow's unmerged Dagre self-loop segments and SVG label order. Usecase SVG edge backgrounds participate in layout and label clearance, and classic markers retain their source variant. Swimlane synthetic colors follow nested declaration slots; unchanged pinned routes keep their label anchors inside the root viewport. [#196](https://github.com/Latias94/merman/pull/196)
 - Playground comparison keeps fallback fonts consistent across its rendering panes, including C4 on Windows. [#196](https://github.com/Latias94/merman/pull/196)
 - The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds no syntax family, Cargo feature, FFI version, or editor-facts schema version. [#196](https://github.com/Latias94/merman/pull/196)
-
-### Security
-
-- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [#234](https://github.com/Latias94/merman/pull/234), [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
 
 ### Theme integration
 
@@ -39,6 +27,40 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Contributors
 
 Thanks [@Latias94](https://github.com/Latias94) for the implementation and [@nerzhulart](https://github.com/nerzhulart) for the font and host-theme reports.
+
+## [0.9.2] - 2026-10-22
+
+### Fixed
+
+- Native exports exclude symbolic and pictorial fonts from implicit generic/default font selection, preventing Latin text from rendering as Greek or symbol glyphs. Explicitly named symbol fonts remain available. [#235](https://github.com/Latias94/merman/pull/235), [issue #228](https://github.com/Latias94/merman/issues/228)
+- Filled C4 boundaries no longer cover their children. Host themes also reach boundary labels, relationships, and arrowheads while explicit configuration and relationship styles retain priority. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229)
+- Wardley host themes reach anchor labels, component surfaces, and structural lines while preserving explicit colors and evolved-component styling. [#235](https://github.com/Latias94/merman/pull/235), [issue #230](https://github.com/Latias94/merman/issues/230)
+- ZenUML host themes consistently style the frame, participants, messages, lifelines, notes, groups, activations, and text. Explicit ZenUML settings retain priority, and layout uses the same typography as the rendered labels. [#235](https://github.com/Latias94/merman/pull/235), [issue #231](https://github.com/Latias94/merman/issues/231)
+- Explicit site or source theme selections preserve the selected Mermaid theme's complete derived palette instead of mixing it with host-derived colors. Independent host fonts remain available, and host roles fill only values missing from the selected theme. This fixes ER, Quadrant, and Timeline color combinations under host themes. [#235](https://github.com/Latias94/merman/pull/235), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Restrict look-based SVG selectors to supported looks; unsupported values use the normal fallback. [#235](https://github.com/Latias94/merman/pull/235)
+- Drop rejected Block inline CSS declarations instead of copying them into SVG, preserving valid sibling declarations. [#235](https://github.com/Latias94/merman/pull/235)
+- Validate Requirement source CSS while preserving declaration order, quoted values, and `!important` handling. [#235](https://github.com/Latias94/merman/pull/235)
+- Repeated Flowchart `classDef` declarations retain earlier properties and apply later overrides in source order. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- Unsupported Flowchart Unicode characters produce whole-character error spans and allow lexing to continue on valid UTF-8 boundaries. [#178](https://github.com/Latias94/merman/pull/178), [#237](https://github.com/Latias94/merman/pull/237)
+- Malformed Pie and Info headers fail consistently across semantic, render, and editor parsing, retaining source spans and recovery facts; lenient parsing produces the normal error diagram. Empty XYChart sources use the same configured default model through each entrypoint. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- SVG CSS cleanup rejects unterminated strings, comments, and URLs while preserving safe neighboring declarations, so finalized output is stable when checked again. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+- Building Python wheels respects Cargo's configured target directory, including `CARGO_TARGET_DIR`, when locating both the native library and UniFFI metadata. [#178](https://github.com/Latias94/merman/pull/178), [#237](https://github.com/Latias94/merman/pull/237)
+- Workspace crate publishing checks the current Typst plugin with its examples; the independently versioned Typst wrapper retains its own version-pinned test gate. [#210](https://github.com/Latias94/merman/pull/210), [#237](https://github.com/Latias94/merman/pull/237)
+- Incremental Tree-sitter fuzz checks handle tolerant recovery trees using geometry checks and inverse-edit restoration instead of requiring every edited tree to match a fresh parse. Regression seeds retain their exact bytes across platforms. [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+
+These fixes can change SVG and exported image/PDF snapshots. Malformed Pie/Info headers now follow the normal strict-failure/lenient-error path. Review regenerated output and handle those parse failures; the existing Presentation API and Options JSON schema 2 remain the integration contract.
+
+### Security
+
+- Update the locked certificate dependencies to `rustls-webpki 0.103.16` and `webpki-root-certs 1.0.10`, rejecting certificate paths through distrusted emSign intermediates. [#235](https://github.com/Latias94/merman/pull/235), [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
+
+### Changed
+
+- Refresh compatible Rust dependency locks, including AWS-LC, platform certificate loading, and Ratex, while retaining the pinned math, Tree-sitter, NAPI, and export-stack compatibility boundaries. [#237](https://github.com/Latias94/merman/pull/237)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the fixes and maintenance backports, and [@nerzhulart](https://github.com/nerzhulart) for reporting issues #228-232.
 
 ## [0.9.1] - 2026-10-18
 

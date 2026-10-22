@@ -12,19 +12,19 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 
 At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The default Android AAR carries the default native prebuilt SKU: SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
-This guide targets Merman `0.9.1` with Mermaid 12.1 and schema-3 ASCII output. See the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks); keep the Kotlin classes and native slices from one AAR together.
+This guide targets Merman `0.9.2` with Mermaid 12.1 and schema-3 ASCII output. See the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks); keep the Kotlin classes and native slices from one AAR together.
 
-Compiled-theme APIs in this checkout are unreleased. Published `0.9.1` retains Options JSON
+Compiled-theme APIs in this checkout are unreleased. Published `0.9.2` retains Options JSON
 schema `2`; use its tagged guide and matching AAR. See the
-[release boundary](../../docs/release/README.md#merman-091).
+[release boundary](../../docs/release/README.md#merman-092).
 
 ## Add A Release AAR
 
-Download `merman-android-v0.9.1.aar` from the matching [GitHub Release](https://github.com/Latias94/merman/releases), place it in the application's `app/libs/` directory, and add it as a local dependency:
+Download `merman-android-v0.9.2.aar` from the matching [GitHub Release](https://github.com/Latias94/merman/releases), place it in the application's `app/libs/` directory, and add it as a local dependency:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/merman-android-v0.9.1.aar"))
+    implementation(files("libs/merman-android-v0.9.2.aar"))
 }
 ```
 

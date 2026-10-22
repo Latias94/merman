@@ -17,11 +17,11 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. Version `0.9.1` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
+All public browser packages use one lockstep version. Version `0.9.2` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
 
 This checkout also documents unreleased compiled-theme, prepared-source and adaptive Kanban APIs with Web transport API `8`.
-Published `0.9.1` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
-matching artifacts. See the [release boundary](../../docs/release/README.md#merman-091).
+Published `0.9.2` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
+matching artifacts. See the [release boundary](../../docs/release/README.md#merman-092).
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -35,10 +35,10 @@ its documented DOM-admission helpers without owning the surrounding editor or te
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@0.9.1
+npm install @mermanjs/web@0.9.2
 ```
 
-For source builds, use the repository's package workspace and lockfile at the `v0.9.1` tag.
+For source builds, use the repository's package workspace and lockfile at the `v0.9.2` tag.
 
 ```ts
 import { initMerman, renderSvgToElement } from "@mermanjs/web";

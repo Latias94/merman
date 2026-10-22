@@ -1,8 +1,8 @@
-# v0.9.2 maintenance candidate
+# v0.9.2 maintenance release audit
 
 ## Follow-up commit and changelog audit
 
-Reviewed through 2026-10-22 against development `3119c614bf8c43d49cfe17ded0a53ec2e7fa983c` and the maintenance delta from immutable `v0.9.1` (`f6202f702dbde0a75049b1a62b3124feae709b3d`). Merged [#235](https://github.com/Latias94/merman/pull/235), source `ae3299f9a9db517e91c808e63a67cb8d30a1ce37`, contains the initial maintenance repairs. Follow-up [#237](https://github.com/Latias94/merman/pull/237) adds the independently applicable fixes identified below. Its base is `release/0.9.x`; neither the branch rename nor this preparation moves a published tag. The unpublished root and SDK 0.9.2 changelogs now use the intended date 2026-10-22.
+Reviewed through 2026-10-22 against development `3119c614bf8c43d49cfe17ded0a53ec2e7fa983c` and the maintenance delta from immutable `v0.9.1` (`f6202f702dbde0a75049b1a62b3124feae709b3d`). Merged [#235](https://github.com/Latias94/merman/pull/235), source `ae3299f9a9db517e91c808e63a67cb8d30a1ce37`, contains the initial maintenance repairs. Follow-up [#237](https://github.com/Latias94/merman/pull/237) adds the independently applicable fixes identified below. Its base is `release/0.9.x`; the published tag, channel receipts, and final source are recorded in [PUBLISH_ORDER.md](PUBLISH_ORDER.md). The published root and SDK 0.9.2 changelogs record the release date 2026-10-22.
 
 The earlier review missed independent parser, CSS, Python packaging, and release-gate fixes. It is superseded by this audit. The selected repairs still fit a 0.9.2 patch: Presentation, Options JSON schema 2, Mermaid 12.1.0, and public API signatures remain unchanged. Main's compiled theme API, schema 3, and Mermaid 12.2.0 are not backported.
 
@@ -89,7 +89,7 @@ After the dependency refresh at `07b19b741`, the core/render/analysis/editor reg
 
 PR #235 completed its selected checks, including `pr-gate`. Its merged implementation tree equals reviewed head `8d27e9e4f8aa35b7095b45a728f5953538cde438`; those earlier receipts remain attributable to that source. #237 changes runtime code and publisher behavior as well as documentation, so it needs its own source-scoped checks and CI. The historical green #235 result is not evidence for the new head.
 
-After #237 passes and merges, confirm the intended date across the root/package changelogs, freeze its final 40-character source SHA, and run full immutable preflight from `release/0.9.x` for that SHA and 0.9.2. Typst, grammar, Roughr, and VS Code retain independent versions. This review does not claim a 0.9.2 tag, successful immutable preflight, registry upload, or independent package publication.
+For the published 0.9.2 source, the immutable preflight and channel receipts are recorded in `PUBLISH_ORDER.md`; this main-branch synchronization keeps the same date across root/package changelogs. Typst, grammar, Roughr, and VS Code retain independent versions. This review does not replace the immutable release receipts or independently versioned publication records.
 
 ## Original local preparation snapshot
 

@@ -1,17 +1,23 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.1` is the latest published workspace release and retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.9.2` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
 Development now targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
 
-Source builds after `0.9.1` also have a
+Development source builds also have a
 [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
 covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
 
 ## 0.9 maintenance line
 
-`release/0.9.x` carries compatible patch releases, including the prepared 0.9.2 fixes. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+`release/0.9.x` carries compatible patch releases, including published `0.9.2`. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+
+## Merman 0.9.2
+
+This maintenance patch was released from `release/0.9.x`. It fixes native font fallback, C4/Wardley/ZenUML host styling, selected Mermaid palettes, parser recovery, SVG CSS validation, Python wheel construction, and release tooling, and refreshes compatible dependency locks. See the [0.9.2 changelog](../../CHANGELOG.md#092---2026-10-22) for the complete delta and the [publication snapshot](PUBLISH_ORDER.md#092-publication-snapshot) for channel evidence.
+
+Published `0.9.2` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Main's compiled themes, prepared-source APIs, Web transport API `8`, and Mermaid `12.2.0` remain unreleased. Main synchronizes the `0.9.2` package version baseline and published notes; use immutable `v0.9.2` for the published source and matching wrappers/artifacts.
 
 ## Merman 0.9.1
 
@@ -42,6 +48,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.9.1` | `0.9.2` | [Patch changelog](../../CHANGELOG.md#092---2026-10-22): font, host-theme, parser, CSS, and packaging fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.0` | `0.9.1` | [Patch changelog](../../CHANGELOG.md#091---2026-10-18): selected fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
 | `0.7.0` | `0.8.0` | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
