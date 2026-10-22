@@ -9,6 +9,12 @@ Clippy and the final local evidence commits are still pending. The corrected 27-
 queue, including actual CLI archive execution, has passed. No push, PR, merge, publication,
 or release is authorized or implied.
 
+The later uncommitted seven-file private-definition cfg cleanup is still under verification.
+It is not part of the measured product revision. Its reviewed callsite scope and pending
+lean/editor/full tests are recorded in the
+[continuity record](../knowledge/engineering/progress/2026-10/2026-10-22T200107Z-lean-definition-gates-pending-serial-verification-4245194f2c874d0585799b3b8ad87a31.md).
+Do not transfer final artifact acceptance to that patch before its owning checks complete.
+
 ## Evidence ownership
 
 Final corrected artifacts are retained outside Cargo targets at
@@ -30,7 +36,7 @@ review. No entire historical command is relabeled as a new command on the final 
 | --- | --- | --- |
 | U1 | Harness-only `8628c554a`; consumed semantic/SVG probes and frozen recipes; current size receipts preserve comparable toolchain, corpus and outputs. | None for the harness. Deleted original raw samples remain historical; fresh observations have distinct receipts. |
 | U2 | Percent/comment preprocessing and lexer correction; original UTF-8 spans; selected pinned Mermaid differential: 728 cases, 512 accepted, 216 rejected, zero mismatches. | No complete-language oracle claim. |
-| U3 | Private requested facts demand and actual collector/append counters; renewed seven-lane allocation comparison passes 35 checks and all 168 metric cells do not grow. | Registered warm/cold/JSON/E2E timing. |
+| U3 | Private requested facts demand and actual collector/append counters; renewed seven-lane allocation comparison passes 35 checks and all 168 metric cells do not grow. Warm full parse now confirms all six non-regression controls. | Registered cold/JSON/E2E timing: 18 rows. |
 | U4 | State consuming payload transfer, shared/hidden documents and required graph data; pointer-transfer, JSON/SVG and deep lifecycle checks; renewed allocation comparison passes 178 checks. | Registered same-operation timing. |
 | U5 | Distinct semantic/presentation APIs and gated definitions; one family construction and paired full projection; isolated lean imports/doctests and canonical/full request checks. | Final integrated timing is independent evidence. |
 | U6 | Facade, ASCII, analysis, editor/LSP and binding routes use requested work; full custom adapters remain explicit; prepared outputs retain fresh operation control. | Corrected host checks pass within their stated platforms; unavailable platform owners remain CI-scoped. |
@@ -55,7 +61,7 @@ review. No entire historical command is relabeled as a new command on the final 
 | R11 / AE8, AE10 | Actual Cargo defaults/edges, retired names, feature matrix, exact profile/closure evidence and CLI profile tests. | Math is absent from defaults and generic aggregates; positive selection remains available. Workspace union does not widen transport-owned catalogs. |
 | R12 / AE8 | Required-math negative probes in final Web/Node/Typst/Dart artifacts; explicit positive math tests/profile; binding owner-feature test; exact Windows archive formula render. | Typed missing capability retained, with family-specific literal behavior; installed positive CLI math passes. |
 | R13 / AE8, AE9 | CLI cargo-dist recipe and source defaults; CLI installation guidance, downstream recipe inspection, exact process matrix and actual archive verifier. | Official recipe explicitly selects math; source defaults omit it. The actual Windows ZIP reports math and renders a required formula. |
-| R14 / AE1, AE2, AE5 | Frozen size comparisons and fresh U3/U4 allocation receipts. | Size and allocation claims pass. Public-operation timing remains unadmitted; allocation results cannot replace it. |
+| R14 / AE1, AE2, AE5 | Frozen size comparisons, fresh U3/U4 allocation receipts and renewed U3 warm-parse confirmation. | Size/allocation and six warm controls pass. The other 66 timing rows remain open; no whole-plan performance admission or speedup claim. |
 | R15 / AE11 | Pinned oracle source/runtime identities, 728-case differential and original UTF-8 span tests. | Selected percent/comment observations match. This is not complete grammar equivalence. |
 | R16 / AE7, AE9, AE10 | Alias inventory, current migration guide, generated/legal gates and read-only final docs review. | Obsolete source APIs removed. Five remaining document defects corrected; final evidence and local commits remain open. No general Rust semantic analyzer was introduced. |
 
@@ -77,7 +83,7 @@ review. No entire historical command is relabeled as a new command on the final 
 | VS Code | Final root `prior-scoped-logs/semantic-vscode-final.log`. | Separate 255/255 pass after the historical strict command did not reach this gate. |
 | Platform aggregate | `scripts/verify-platform-bindings.py`; `.github/workflows/ci.yml` platform and instrumentation owners. | Not passed locally: installed Flutter bundles Dart 3.9.2, below package >=3.10. Standalone Dart 3.11.6 and native smoke do not prove Flutter UI, Android emulator or Apple runtimes. Existing CI owners remain authoritative for those platforms. |
 | CLI archive | Final root `cli-dist-local.log`, `cli-archive-execute.log`, `cli-archive-math-receipt.json`. | cargo-dist 0.32.0 built the local Windows ZIP; existing archive verifier executed it; exact ZIP math capability and formula render pass. No release was published. |
-| Timing | Final root `run_timing.py`, `timing-source-amendment.json`, `final-runner-freeze.json`. | U3/U4/integrated, four groups and six fixtures each; generic_v2, eight A/A pairs, maximum 32 fresh ABBA pairs. All 72 classifications must be audited. |
+| Timing | Final root `run_timing.py`, `timing-source-amendment.json`, `final-runner-freeze.json`, `u3-parse-confirmation-audit.json`. | U3 warm parse: six confirmed non-regression rows after stable A/A and eight fresh balanced pairs each; all mirrored results are confirmed_non_improvement. Other 66 registered rows remain open. The unchanged schedule uses generic_v2, eight A/A pairs and maximum 32 fresh ABBA pairs. |
 
 The historical retention loss from `cargo clean` is documented in the two performance reports.
 New samples do not reconstruct old data. The final corrected Web, Node, Typst and Dart receipts
@@ -88,6 +94,8 @@ and JSON manifests. No latency improvement or uncontended-host claim is made.
 
 1. Complete the registered timing schedule and inspect every row, retaining inconclusive and
    negative results without changing thresholds, protocol or sample caps.
-2. Complete exact production-feature Clippy without relying on all-feature union.
-3. Reconcile these results against U1-U9, R1-R16 and AE1-AE12, and commit task-owned documentation.
+2. Complete exact production-feature Clippy without relying on all-feature union, then inspect
+   the existing lean/editor/full owner tests for the private cfg cleanup before committing it.
+3. Reconcile these results and the cleanup's source applicability against U1-U9, R1-R16 and
+   AE1-AE12, and commit task-owned documentation.
    The source-pinned integration queue has finished; timing uses its separate clean checkouts.
