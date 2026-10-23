@@ -213,9 +213,49 @@ preflight, not a publication or a claim about another platform.
 Registered U3/U4/integrated timing controls are now running with unchanged thresholds,
 protocol and sample caps. The U3 schedule has since completed with 23 confirmed non-regression
 controls and one inconclusive State E2E row. U4 has also completed with 23 confirmed controls
-and one inconclusive Class E2E row; 24 integrated rows remain without terminal classifications.
+and one inconclusive Class E2E row. Integrated warm parse adds six confirmed controls;
+18 integrated rows remain without terminal classifications.
 Both inconclusive rows failed head A/A calibration, so adjacent and whole-plan performance
 acceptance remain unproven. See the
 [adjacent-work report](semantic_boundary_adjacent_work_2026-10-22.md#renewed-u3-warm-parse-confirmation-2026-10-23)
 for its protocol, row classifications and retained receipt. The completed artifact queue does
 not establish latency, and no speedup or whole-plan admission is claimed.
+
+## Integrated warm full-parse confirmation (2026-10-23)
+
+The registered integrated adapters are base `75def7949daaa2de9f51f727a77e8c9ab74a49fc` and
+head `bf6d101cd4ab5d2214682a4139ee6f922d786b11`. The head differs from product `f0365e6a4` only
+in the four preregistered benchmark/corpus adapter paths. Both checkouts remain clean; common
+pipeline, JSON identity helper, corpus and preflight contract bytes match. Discovery retains
+six comparable fixtures with matched consumed full typed output. Frozen executable SHA-256
+values are base `f4979b4606cac794543ab06b7a3de95ab294331965763b4bec2264b31e3246c2` and
+head `60168cfbadf1ab1bd312d2ef81ba298928e25fa3fdfad0964e63a51072cd803e`.
+
+Warm full parse completed with six `confirmed_non_regression` rows, zero contract failures and
+zero inconclusive rows. Both runners passed eight A/A pairs and each fixture completed eight
+fresh balanced AB/BA pairs. The original generic_v2/long protocol, sample size 30, 2s warmup,
+3s measurement, 10% AND 50,000 ns, 95% confidence, seed 0, 10,000 resamples, divisor one and
+maximum 32 pairs remain unchanged. Pair completeness/order, output/preflight/postflight identity,
+clean sources, fixtures, discovery and frozen executables were checked after sampling.
+
+| Warm full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 152.998 us | 132.854 us | Confirmed non-regression | 8 |
+| State medium | 165.751 us | 149.048 us | Confirmed non-regression | 8 |
+| Class medium | 220.366 us | 198.031 us | Confirmed non-regression | 8 |
+| ER medium | 134.930 us | 123.191 us | Confirmed non-regression | 8 |
+| Pie medium | 6.136 us | 4.749 us | Confirmed non-regression | 8 |
+| Flowchart medium | 358.655 us | 342.476 us | Confirmed non-regression | 8 |
+
+All mirrored improvement results are `confirmed_non_improvement`; lower means do not establish
+an admitted speedup. This is full-operation timing on the registered source adapters, not
+semantic-only timing or a claim about the pending private cfg patch. Across completed controls,
+52 confirm non-regression, two adjacent E2E rows remain inconclusive and 18 integrated rows have
+no terminal classification. Whole-plan performance remains unproven. Concurrent unrelated host
+activity remains possible; no uncontended-host claim is made.
+
+The final root retains `integrated-discovery-audit.json`, SHA-256
+`ceffb007733154f6b5762c147624cf0d905db3b82a06b6620cc7e3772bcab577`, and
+`integrated-parse-confirmation-audit.json`, SHA-256
+`1f171e2ac772bc3761aab6eed0068b838a3bbe2b8e70cb0570a4fcfab3347a29`. Raw reports/logs,
+registration and copied executables remain under `timing-integrated/`.
