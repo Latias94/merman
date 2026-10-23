@@ -824,6 +824,21 @@ class PlannerTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_manual_full_owner_verification_is_explicit_and_opt_in(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        dispatch = ci.split("  workflow_dispatch:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertIn("all_owners:", dispatch)
+        self.assertIn("type: boolean", dispatch)
+        self.assertIn("default: false", dispatch)
+        planner = workflow_job(ci, "ci-plan")
+        self.assertIn("ALL_OWNERS: ${{ inputs.all_owners || false }}", planner)
+        manual = planner.split("schedule|workflow_dispatch)", 1)[1].split(";;", 1)[0]
+        self.assertIn('if [[ "$EVENT_NAME" == workflow_dispatch && "$ALL_OWNERS" == true ]]; then', manual)
+        self.assertIn('--select-all --reason "manual full owner verification"', manual)
+        self.assertIn('else\n                extra=(--select-owner core --select-svg-parity', manual)
+
     def test_arch_uses_the_installation_contract_shipped_with_its_stable_source(self) -> None:
         root = Path(__file__).resolve().parents[1]
         arch = (root / ".github/workflows/arch-package.yml").read_text(encoding="utf-8")

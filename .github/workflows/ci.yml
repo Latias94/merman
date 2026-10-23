@@ -12,6 +12,11 @@ on:
   schedule:
     - cron: "7 2 * * 0"
   workflow_dispatch:
+    inputs:
+      all_owners:
+        description: "Run every CI owner instead of the core/SVG safety net"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +60,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          ALL_OWNERS: ${{ inputs.all_owners || false }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
@@ -82,7 +88,11 @@ jobs:
             schedule|workflow_dispatch)
               base="$PUSH_HEAD_SHA"
               head="$PUSH_HEAD_SHA"
-              extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
+              if [[ "$EVENT_NAME" == workflow_dispatch && "$ALL_OWNERS" == true ]]; then
+                extra=(--select-all --reason "manual full owner verification")
+              else
+                extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
+              fi
               ;;
             *)
               echo "unsupported CI event: $EVENT_NAME" >&2
