@@ -33,6 +33,13 @@ normalization and lazy binding engines have their own focused checks and rebuilt
 The preceding pure-alias retirement has a separate 1,494-test receipt and independent mechanical
 review. No entire historical command is relabeled as a new command on the final revision.
 
+A read-only retention check on 2026-10-23 verified the 27 corrected integration logs, 13 installed
+Node step logs, Web smoke logs and all 447 retained package files, all 110 Typst files, five
+Dart/native files, and five parser-oracle files against their recorded hashes. The retained size
+probe executables and consumed outputs also match. The final root records this check in
+`retained-product-evidence-audit-20261023T0129Z.json`; it is not another execution or a transfer of
+artifact acceptance to the pending cfg cleanup.
+
 ## Implementation units
 
 | Unit | Implementation and authoritative evidence | Remaining acceptance |
