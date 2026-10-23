@@ -85,6 +85,12 @@ fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
     assert!(flattened.contains("Beta"));
 }
 
+#[cfg(all(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-state",
+    feature = "diagram-xychart"
+))]
 #[test]
 fn renderer_renders_shipped_ascii_reference_diagram_families() {
     let cases = [
@@ -125,6 +131,12 @@ bar [2, 8]
     }
 }
 
+#[cfg(all(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-state",
+    feature = "diagram-xychart"
+))]
 #[test]
 fn model_backend_renders_shipped_typed_models_with_caller_operation_state() {
     let options = AsciiRenderOptions::ascii();

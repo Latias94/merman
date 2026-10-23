@@ -382,6 +382,14 @@ name = "bounded_lifecycle"
 required-features = ["compat-json"]
 
 [[test]]
+name = "pipeline_bench_fixtures"
+required-features = ["compat-json"]
+
+[[test]]
+name = "render_operation"
+required-features = ["svg", "compat-json"]
+
+[[test]]
 name = "theme_composed_effects"
 required-features = ["svg", "png", "pdf", "layout-cytoscape"]
 
@@ -479,6 +487,10 @@ required-features = ["native-fonts", "diagram-flowchart"]
 
 [[example]]
 name = "render_svg"
+required-features = ["svg"]
+
+[[example]]
+name = "redraw_prepared"
 required-features = ["svg"]
 
 [[example]]
