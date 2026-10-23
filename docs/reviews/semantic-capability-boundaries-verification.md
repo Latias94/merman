@@ -119,7 +119,10 @@ and integrated E2E. All 24 rows, including previously passing controls, remain r
 Original source pairs, frozen binaries, generic_v2 thresholds and the 32-pair cap are unchanged.
 Fresh calibration and confirmation are separate from historical observations; no old row is
 reclassified and no samples are pooled. Each cohort retains its original confidence scope;
-this is not a joint 95% assertion across all four cohorts. No new result is admitted yet.
+this is not a joint 95% assertion across all four cohorts. Independent U3 E2E has since finished
+with five confirmed non-regression rows and one inconclusive State row after unstable head A/A.
+State remains unadmitted, so the new experiment cannot satisfy its all-24-controls criterion.
+The remaining 18 rows continue under the fixed schedule; no historical result is replaced.
 
 All authorized local implementation, source cleanup, exact production lint, owning tests,
 candidate artifact refresh and installed-product evidence work is complete within the scopes

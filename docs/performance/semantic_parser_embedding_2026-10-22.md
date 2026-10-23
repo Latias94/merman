@@ -477,3 +477,37 @@ Evidence is retained separately at
 `preregistration-seal.json` also freezes the one-shot scheduling wrapper and existing comparator.
 The original 65 confirmed and seven inconclusive outcomes remain unchanged. The new schedule
 is running; no result, speedup or completion is claimed from its registration or launch.
+
+### Independent U3 E2E result
+
+The first independent cohort completed with five `confirmed_non_regression` rows and one
+inconclusive State row, exit 3 and zero contract failures or confirmed regressions. Both runners
+completed eight A/A pairs for every fixture. State base was stable; head's absolute identity
+interval was -65.959 to +44.020 us and order interval -56.164 to +57.764 us, outside the unchanged
++/-50 us equivalence margin. It has matched exact SVG identity but no fresh confirmation pairs,
+admitted means or effect bounds.
+
+The dispersion-derived suite count was ten, within the unchanged cap of 32. The five stable
+fixtures each completed ten fresh balanced AB/BA pairs; their own requirements were eight.
+The parent checked every calibration observation and fresh pair, order, divisor one, consumed
+SVG/preflight/postflight identity, clean source/input files, discovery and frozen binaries.
+
+| U3 E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 472.715 us | 467.783 us | Confirmed non-regression | 10 |
+| State medium | Not admitted | Not admitted | Inconclusive: head A/A absolute identity/order | 0 |
+| Class medium | 1,070.870 us | 1,077.850 us | Confirmed non-regression | 10 |
+| ER medium | 677.682 us | 669.458 us | Confirmed non-regression | 10 |
+| Pie medium | 37.444 us | 35.675 us | Confirmed non-regression | 10 |
+| Flowchart medium | 1,829.010 us | 1,819.350 us | Confirmed non-regression | 10 |
+
+All five mirrored improvement decisions are `confirmed_non_improvement`. State remains unmet;
+this independent experiment cannot meet its all-24-controls criterion. The fixed queue continued
+to U4 E2E to preserve all registered observations, without retrying State or extending a budget.
+Historical outcomes remain unchanged. Host CPU snapshots during sampling reached 15-18%, so
+the initial low-load observation does not establish a quiet measurement window or explain the
+calibration result. No background tasks were stopped and no speedup is admitted.
+
+The independent root retains `u3-end_to_end-audit.json`, SHA-256
+`a2366c9e22d2c40faddd550f16249c9c6588867cf981055dc27d537f98b71c1a`, and the raw
+`u3-end_to_end.{json,md,log}` files. Eighteen independent rows remain without terminal results.
