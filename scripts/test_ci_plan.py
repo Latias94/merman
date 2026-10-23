@@ -838,6 +838,12 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn('if [[ "$EVENT_NAME" == workflow_dispatch && "$ALL_OWNERS" == true ]]; then', manual)
         self.assertIn('--select-all --reason "manual full owner verification"', manual)
         self.assertIn('else\n                extra=(--select-owner core --select-svg-parity', manual)
+        hygiene = workflow_job(ci, "hygiene")
+        source_check = hygiene.split("- name: Check whitespace (manual or scheduled source)", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'", source_check)
+        self.assertIn("git show --check --format= --no-renames HEAD", source_check)
+        diff_check = hygiene.split("- name: Check whitespace (pull request or merge queue)", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("github.event_name == 'pull_request' || github.event_name == 'merge_group'", diff_check)
 
     def test_arch_uses_the_installation_contract_shipped_with_its_stable_source(self) -> None:
         root = Path(__file__).resolve().parents[1]

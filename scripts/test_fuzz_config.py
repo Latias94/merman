@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -89,6 +94,42 @@ def workflow_dispatch_choice_options(input_name: str) -> list[str]:
 
 
 class FuzzConfigTests(unittest.TestCase):
+    def test_ci_caller_selects_regressions_without_inherited_dispatch_inputs(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        workflow = FUZZ_WORKFLOW.read_text(encoding="utf-8")
+        call = workflow.split("  workflow_call:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertIn("ci_only:", call)
+        self.assertIn("type: boolean", call)
+        self.assertIn("default: false", call)
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("ci_only: true", workflow_job(ci, "fuzz-owner"))
+        step = workflow_named_step("Select bounded target and budget")
+        self.assertIn("FUZZ_EVENT_NAME: ${{ inputs.ci_only && 'workflow_call' || github.event_name }}", step)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "requires a native POSIX shell")
+    def test_plan_shell_preserves_ci_schedule_and_manual_budgets(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        job = workflow_job(FUZZ_WORKFLOW.read_text(encoding="utf-8"), "resolve-fuzz-plan")
+        script = textwrap.dedent(job.split("        run: |\n", 1)[1])
+        cases = (
+            ("workflow_call", "", "", "regression", set(fuzz_bins())),
+            ("schedule", "", "", "scheduled", set(fuzz_bins())),
+            ("workflow_dispatch", "parse_mermaid", "smoke", "smoke", {"parse_mermaid"}),
+        )
+        for event, target, preset, profile, targets in cases:
+            with self.subTest(event=event), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "outputs"
+                env = {**os.environ, "FUZZ_EVENT_NAME": event, "DISPATCH_TARGET": target,
+                       "DISPATCH_PRESET": preset, "GITHUB_OUTPUT": str(output)}
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                self.assertEqual(values["profile"], profile)
+                self.assertEqual({row["target"] for row in json.loads(values["matrix"])["include"]}, targets)
+
     def test_workflow_installs_declared_nightly_with_rustup(self) -> None:
         install_step = workflow_named_step("Install Rust nightly")
 

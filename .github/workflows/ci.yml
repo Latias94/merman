@@ -206,11 +206,15 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check whitespace (pull request or merge queue)
-        if: github.event_name != 'push'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Check whitespace (manual or scheduled source)
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: git show --check --format= --no-renames HEAD
 
       - name: Check whitespace (push)
         if: github.event_name == 'push'
@@ -1333,6 +1337,8 @@ jobs:
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
+    with:
+      ci_only: true
 
   grammar-owner:
     name: grammar-owner
