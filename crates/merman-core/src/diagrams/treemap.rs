@@ -1,5 +1,3 @@
-#[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
@@ -13,7 +11,9 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, Result, SourceSpan};
+use crate::{Error, SourceSpan};
+#[cfg(feature = "presentation")]
+use crate::{PresentationMetadata, Result};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
@@ -206,6 +206,7 @@ impl TreemapParseOutcome {
         }
     }
 
+    #[cfg(feature = "presentation")]
     fn into_strict(self, diagram_type: &str) -> Result<TreemapParsedInput> {
         match self.first_issue {
             Some(issue) => Err(treemap_error(diagram_type, issue.message, issue.span)),
@@ -278,7 +279,7 @@ struct TreemapSemanticSource {
     class_defs: std::collections::HashMap<String, StyleClassDef>,
     arena: Arena,
     roots: Vec<usize>,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     editor_facts: EditorSemanticFacts,
 }
 
@@ -1284,7 +1285,7 @@ fn treemap_semantic_source_from_parsed_controlled(
         class_defs,
         arena,
         roots,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
         editor_facts: parsed.editor_facts,
     })
 }

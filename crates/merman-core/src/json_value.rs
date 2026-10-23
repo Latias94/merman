@@ -4,10 +4,13 @@ mod managed;
 pub use managed::ManagedJson;
 
 use crate::{OperationControl, OperationControlResult};
-use serde_json::{Map, Number, Value};
+#[cfg(any(test, feature = "presentation", feature = "diagram-usecase"))]
+use serde_json::Number;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::mem::size_of;
 
+#[cfg(any(test, feature = "presentation", feature = "diagram-usecase"))]
 pub(crate) fn number_value(value: f64) -> Value {
     if value.is_finite()
         && value.fract() == 0.0

@@ -106,6 +106,7 @@ impl PreprocessedSource {
             .clone_from(&source.global_directive_prefixes);
     }
 
+    #[cfg(any(feature = "presentation", feature = "diagram-agentflow"))]
     pub(crate) fn parser_position_offset(&self) -> (usize, usize) {
         (self.frontmatter_line_offset, self.first_line_column_offset)
     }

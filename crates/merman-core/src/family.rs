@@ -769,6 +769,7 @@ pub(crate) fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFa
         .as_slice()
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
     find_variant(diagram_type).is_some()
 }

@@ -30,6 +30,7 @@ impl ManagedJson {
         &self.value
     }
 
+    #[cfg(any(feature = "presentation", feature = "diagram-zenuml"))]
     pub(crate) fn as_value_mut(&mut self) -> &mut Value {
         &mut self.value
     }

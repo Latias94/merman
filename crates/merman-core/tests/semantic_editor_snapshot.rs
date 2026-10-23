@@ -82,6 +82,66 @@ fn failed_class_capture_preserves_recovery_facts_and_original_source_spans() {
     }
 }
 
+#[cfg(feature = "diagram-treemap")]
+#[test]
+fn treemap_snapshot_keeps_requested_facts_before_semantic_source_conversion() {
+    let parser = SemanticParser::new();
+    for (body, recovered) in [
+        ("\"Root\"\r\n  \"Leaf\": 42\r\n", false),
+        ("\"Root\"\r\n  \"Broken\":\r\n", true),
+    ] {
+        let source = format!("---\r\ntitle: Snapshot\r\n---\r\ntreemap\r\n{body}");
+        let SemanticSnapshotCapture::Snapshot(snapshot) =
+            parser.capture_diagram_snapshot_sync(&source)
+        else {
+            panic!("Treemap parsing must retain its requested snapshot");
+        };
+        assert_eq!(snapshot.outcome().parsed_model().is_none(), recovered);
+        let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Treemap must retain requested editor facts");
+        };
+        let expected = if recovered {
+            merman_core::EditorSemanticCompleteness::Recovered
+        } else {
+            merman_core::EditorSemanticCompleteness::Complete
+        };
+        assert_eq!(facts.completeness, expected);
+        let root_start = source.find("Root").unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Root"
+                && symbol.selection == merman_core::SourceSpan::new(root_start, root_start + 4)
+        }));
+        if recovered {
+            let broken_start = source.find("\"Broken\":").unwrap();
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.message.contains("expected number")
+                    && diagnostic.span
+                        == Some(merman_core::SourceSpan::new(broken_start, broken_start + 9))
+            }));
+        } else {
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Leaf"));
+        }
+        let SemanticSnapshotCapture::Snapshot(recovery) = parser
+            .capture_diagram_recovery_snapshot_controlled_sync(
+                &source,
+                &merman_core::OperationControl::new(),
+            )
+            .unwrap()
+        else {
+            panic!("Treemap recovery must retain its snapshot");
+        };
+        let merman_core::ParsedEditorFacts::Available(recovery_facts) = recovery.editor_facts()
+        else {
+            panic!("Treemap recovery must retain its diagnostics");
+        };
+        assert_eq!(recovery_facts.completeness, facts.completeness);
+        assert_eq!(recovery_facts.diagnostics, facts.diagnostics);
+        assert!(recovery_facts.symbols.is_empty());
+        assert!(recovery_facts.expected_syntax.is_empty());
+        assert!(recovery_facts.directive_prefixes.is_empty());
+    }
+}
+
 #[test]
 fn capture_keeps_source_config_when_preprocessing_fails_without_any_family() {
     let nested = format!(
