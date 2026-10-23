@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web-render",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Browser SVG renderer with Cytoscape and ELK layouts.",
   "type": "module",
   "main": "./dist/package-entries/render.js",

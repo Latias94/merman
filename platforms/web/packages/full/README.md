@@ -11,7 +11,7 @@ original capability set.
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@0.9.1
+npm install @mermanjs/web@0.9.2
 ```
 
 ```ts

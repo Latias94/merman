@@ -33,7 +33,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.9.1"
+merman = "0.9.2"
 ```
 
 Render a source string to SVG:
@@ -149,7 +149,7 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.1", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
+merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
 Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts.
@@ -253,7 +253,8 @@ check its guide for available versions and capabilities.
 
 For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI text measurement remains deterministic by default; explicit font files or directories opt into actual-font layout.
 
-Published Merman `0.9.1` carries selected fixes on the `0.9.0` line and retains Mermaid `12.1.0`.
+Published Merman `0.9.2` carries selected fixes on the `0.9.x` line and retains Mermaid `12.1.0`,
+the Presentation API, and Options JSON schema `2`.
 The development branch targets Mermaid `12.2.0` and includes the unreleased theme APIs described
 here. Use the [release index](docs/release/README.md) and documentation at the matching release tag
 for installed packages. See the [alignment dashboard] for current source-backed checks of semantic

@@ -19,8 +19,18 @@ The cfg cleanup changes private definitions and one intermediate field,
 not runtime function bodies, public API, ABI, feature manifests or capability descriptors.
 Its exact source applicability and final lean refresh are recorded in the
 [continuity record](../knowledge/engineering/verification/2026-10/2026-10-23T030258Z-final-cfg-and-timing-e56e36605058434b9a90d501834db474.md).
-Full artifact receipts are not relabeled as rebuilds on the cleanup revision. No push, PR,
-merge, publication or release is authorized or implied.
+Full artifact receipts are not relabeled as rebuilds on the cleanup revision. The original local
+implementation scope excluded push, PR creation, merge, publication and release.
+
+Following maintainer authorization to push the feature branch and create draft PR #241, the
+feature branch integrated main's `83e3ea74b` version-baseline synchronization on 2026-10-24.
+The conflict resolution keeps the `0.9.2` package metadata, current semantic/presentation APIs and
+explicit-math recipes. Rust license reports and release projections were regenerated from the
+merged manifests and locks. The three native-memory contract lockfile hashes were refreshed;
+their thresholds and semantic output identities are unchanged. Historical size, allocation,
+timing and installed-product receipts retain their original measured sources: this integration
+does not relabel them as `0.9.2` measurements or close performance acceptance.
+The PR remains a draft; no PR merge, publication or release is authorized by this integration.
 
 ## Evidence ownership
 

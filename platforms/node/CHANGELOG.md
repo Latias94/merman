@@ -13,11 +13,13 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 - Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
 - Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
 
-### Fixed
+## [0.9.2] - 2026-10-22
 
-- Host themes preserve filled C4 boundaries and relationships, Wardley anchors, and ZenUML colors and fonts. Diagram-source Mermaid themes retain their derived palettes under host styling. [#234](https://github.com/Latias94/merman/pull/234), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
-- Repeated Flowchart `classDef` styles accumulate in source order, and unsupported Unicode characters retain valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
-- Look selectors and Block/Requirement styles reject unsafe values; SVG CSS cleanup removes unterminated strings, comments, and URLs while retaining safe neighboring declarations. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227)
+- Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
+- Look selectors and Block/Requirement source CSS are validated before SVG emission. SVG CSS cleanup rejects unterminated strings, comments, and URLs while preserving safe neighboring declarations. [#227](https://github.com/Latias94/merman/pull/227), [#235](https://github.com/Latias94/merman/pull/235), [#237](https://github.com/Latias94/merman/pull/237)
+- Repeated Flowchart `classDef` declarations retain earlier styles, and unsupported Unicode characters preserve valid error spans and lexer progress. Malformed Pie/Info headers and empty XYChart sources behave consistently across parser and editor entrypoints. [#178](https://github.com/Latias94/merman/pull/178), [#227](https://github.com/Latias94/merman/pull/227), [#237](https://github.com/Latias94/merman/pull/237)
+
+The existing Presentation and binding options contracts are unchanged. Review regenerated SVG and exported-image snapshots; see the [workspace changelog](../../CHANGELOG.md) for the complete maintenance release.
 
 ## [0.9.1] - 2026-10-18
 
