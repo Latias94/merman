@@ -576,3 +576,68 @@ The independent root retains `integrated-parse_cold_engine-audit.json`, SHA-256
 `7bdc86f525d2e8fb025163801a23272e6cc70e0fad0dd7b22a569c99ab51c05d`, and raw
 `integrated-parse_cold_engine.{json,md,log}` files. The fixed queue continued to integrated E2E,
 without retries, extra samples or changed thresholds/caps.
+
+### Independent integrated E2E result
+
+The final independent cohort completed with five `confirmed_non_regression` rows and one
+inconclusive Class row, exit 3 with zero contract failures or confirmed regressions. Both
+runners completed eight balanced A/A pairs for all six fixtures. Class head A/A passes its
+relative margins and pair-count budget, but its absolute identity interval is -31.213 to
++58.613 us and its absolute order interval is -67.818 to +7.342 us, outside the unchanged
+50 us margins. Base Class A/A passes. Class retains exact 77,419-byte SVG identity, with
+zero fresh confirmation pairs and no admitted means or bounds.
+
+The unchanged calibration rule derives eight fresh balanced AB/BA pairs for each of the five
+stable rows. State, Pie and Flowchart pass this independent E2E observation after remaining
+inconclusive in the original integrated cohort; the historical classifications remain intact.
+
+| Integrated E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 478.669 us | 440.776 us | Confirmed non-regression | 8 |
+| State medium | 760.665 us | 706.015 us | Confirmed non-regression | 8 |
+| Class medium | Not admitted | Not admitted | Inconclusive: head A/A | 0 |
+| ER medium | 672.996 us | 650.950 us | Confirmed non-regression | 8 |
+| Pie medium | 37.408 us | 34.748 us | Confirmed non-regression | 8 |
+| Flowchart medium | 1,824.175 us | 1,809.138 us | Confirmed non-regression | 8 |
+
+The parent checked all 192 A/A observations and 80 fresh confirmation observations for
+balanced order, divisor one, consumed SVG identity and preflight/postflight verification.
+Using the unchanged existing harness, it deterministically recomputed all twelve A/A
+summaries and the five confirmation intervals and both classifications. Clean frozen
+sources, input files, fixtures, discovery, executable copies, sealed registration and exact
+scheduled commands also match. These checks inspect retained samples; they collect no new
+observations. All five mirrored improvement decisions are `confirmed_non_improvement`.
+
+The independent root retains `integrated-end_to_end-audit.json`, SHA-256
+`3facd78941330bd4534fcefdd99af1ccfaf50ea1948656dc87bfec20f62f3a51`, and the raw
+`integrated-end_to_end.{json,md,log}` files.
+
+### Independent experiment terminal classification
+
+All four preregistered cohorts completed at 2026-10-23T06:20:43Z, with every required row
+retained. The final independent classification is 21 confirmed non-regression and three
+inconclusive, with zero contract failures and zero confirmed regressions.
+
+| Independent cohort | Confirmed non-regression | Inconclusive | Unmet control |
+| --- | ---: | ---: | --- |
+| U3 E2E | 5 | 1 | State head A/A |
+| U4 E2E | 5 | 1 | State base and head A/A |
+| Integrated cold-engine parse | 6 | 0 | None |
+| Integrated E2E | 5 | 1 | Class head A/A |
+| Total | 21 | 3 | All-24-controls admission criterion unmet |
+
+The registration requires all 24 controls to confirm. The three inconclusive rows therefore
+leave this experiment unqualified for complete performance acceptance. Its cohorts keep
+their separate confidence scopes; the original 65 confirmed and seven inconclusive rows
+remain a separate historical result. Neither choosing favorable old/new rows nor pooling
+samples establishes acceptance. All 21 mirrored improvement classifications are
+`confirmed_non_improvement`; no speedup is admitted.
+
+The independent root's `terminal-admission-audit.json`, SHA-256
+`f957d2884a74fc404d75b6d656a766f37137a2745fdc8ca3e0e4c8649e831005`,
+retains all four report/audit/log hashes and verifies that later commits change documentation
+only relative to the tested cfg-cleanup source. Source, allocation, artifact and
+installed-product evidence keep their previously recorded applicability.
+No measurement remains running or pending. The one-run registration permits no automatic
+retry or extra samples; further measurement needs a separately agreed experiment or an
+explicit acceptance-contract change.

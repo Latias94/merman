@@ -11,7 +11,10 @@ including actual CLI archive execution, retains its original f036 source identit
 
 The objective remains open: all 72 registered timing rows are terminal, with 65 confirmed
 non-regression and seven inconclusive A/A controls. These unmet controls prevent complete
-performance acceptance. The cfg cleanup changes private definitions and one intermediate field,
+performance acceptance. The separately authorized 24-row follow-up is also terminal, with
+21 confirmed non-regression and three inconclusive A/A controls; it does not meet its
+all-controls admission criterion or replace historical results.
+The cfg cleanup changes private definitions and one intermediate field,
 not runtime function bodies, public API, ABI, feature manifests or capability descriptors.
 Its exact source applicability and final lean refresh are recorded in the
 [continuity record](../knowledge/engineering/verification/2026-10/2026-10-23T030258Z-final-cfg-and-timing-e56e36605058434b9a90d501834db474.md).
@@ -114,7 +117,7 @@ or an explicit change to the acceptance contract. This audit does not make that 
 
 On 2026-10-23 the maintainer authorized an independent follow-up to start immediately. It is
 preregistered at `F:/codex-builds/merman-semantic-capability-boundaries/evidence/followup-independent-20261023T042304Z/`
-and is running four original six-fixture cohorts: U3 E2E, U4 E2E, integrated cold-engine parse
+and completed four original six-fixture cohorts: U3 E2E, U4 E2E, integrated cold-engine parse
 and integrated E2E. All 24 rows, including previously passing controls, remain required.
 Original source pairs, frozen binaries, generic_v2 thresholds and the 32-pair cap are unchanged.
 Fresh calibration and confirmation are separate from historical observations; no old row is
@@ -124,13 +127,39 @@ with five confirmed non-regression rows and one inconclusive State row after uns
 State remains unadmitted, so the new experiment cannot satisfy its all-24-controls criterion.
 Independent U4 E2E also has five confirmed controls and one inconclusive State row; Class passes
 that new observation. Independent integrated cold-engine parse adds six confirmed controls,
-including Flowchart. Independent totals are 16 confirmed, two inconclusive and six integrated
-E2E rows still in the fixed schedule. No historical result is replaced.
+including Flowchart. The final integrated E2E cohort completed with five confirmed controls
+and one inconclusive Class row: head A/A absolute identity and order intervals exceed the
+50 us margins. Class has zero fresh confirmation pairs and no admitted means or bounds.
+The parent deterministically recomputed all twelve final-cohort A/A summaries and the five
+fresh confirmation intervals and classifications, and verified source, input, executable,
+fixture, command and output identities.
+
+| Independent cohort | Confirmed non-regression | Inconclusive | Fresh pairs per stable row | Unmet row |
+| --- | ---: | ---: | ---: | --- |
+| U3 E2E | 5 | 1 | 10 | State: head A/A |
+| U4 E2E | 5 | 1 | 10 | State: both runners' A/A |
+| Integrated cold-engine parse | 6 | 0 | 8 | None |
+| Integrated E2E | 5 | 1 | 8 | Class: head A/A |
+| Total | 21 | 3 | Separate cohort schedules | Three controls remain unadmitted |
+
+The fixed queue completed at 2026-10-23T06:20:43Z. All 24 rows are terminal, with zero contract
+failures or confirmed regressions. All 21 mirrored improvement classifications are
+`confirmed_non_improvement`; no speedup is admitted. The independent root retains
+`integrated-end_to_end-audit.json` (SHA-256
+`3facd78941330bd4534fcefdd99af1ccfaf50ea1948656dc87bfec20f62f3a51`)
+and `terminal-admission-audit.json` (SHA-256
+`f957d2884a74fc404d75b6d656a766f37137a2745fdc8ca3e0e4c8649e831005`).
+The three inconclusive rows leave the registered all-24 criterion unmet.
+No historical result is replaced, no samples are pooled, and no combined
+old/new pass count is an acceptance result.
 
 All authorized local implementation, source cleanup, exact production lint, owning tests,
 candidate artifact refresh and installed-product evidence work is complete within the scopes
 above. Platform aggregate checks remain precisely deferred to existing CI owners, as allowed by
 the plan. The failed historical strict command remains failed, with its scoped Web/VS Code
 recovery stated separately. The overall goal remains incomplete because of the seven unmet
-timing controls. The newly authorized follow-up is the only active verification queue; no
-additional blanket rebuild or new validation framework is required here.
+timing controls and the independent follow-up's unmet all-controls criterion. The authorized
+fixed queue has ended; no performance process or pending cohort remains. Any further
+measurement requires a separately agreed design or an explicit acceptance-contract change;
+this audit does not authorize another run. No additional blanket rebuild or new validation
+framework is required here.
