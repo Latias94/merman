@@ -641,3 +641,34 @@ installed-product evidence keep their previously recorded applicability.
 No measurement remains running or pending. The one-run registration permits no automatic
 retry or extra samples; further measurement needs a separately agreed experiment or an
 explicit acceptance-contract change.
+
+## Authorized quiet-window follow-up (2026-10-23)
+
+After the preceding experiment ended, the maintainer explicitly authorized starting a new
+measurement window and reported no interference. The same Windows 11 host is retained:
+Intel Core i9-13900KF, 24 cores / 32 logical processors, Rust 1.95.0 MSVC. Three read-only
+pre-sampling CPU snapshots were 4%, 4% and 2%. This records the maintainer's arranged window
+and bounded observations, not a claim of physical host isolation. No applications, priority,
+affinity or power settings were changed.
+
+The new preregistration is retained at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/controlled-host-20261023T083654Z/`.
+Its `registration.json` SHA-256 is
+`77e6f3fc243ba33a8632d27648be2cca7fbf09febcfdcb148ad7b7d0b0895687`.
+The original clean U3, U4 and integrated source pairs, frozen executable copies, source/input
+files, fixtures, discovery receipts and unchanged comparison-harness digest were checked
+before sampling. The existing harness repeats live output preflight before fresh A/A.
+
+This is one new fixed schedule for each of the four complete six-fixture cohorts: U3 E2E,
+U4 E2E, integrated cold-engine parse and integrated E2E. It retains `generic_v2`/`long`,
+30 Criterion samples, 2s warmup, 3s measurement, eight A/A pairs per runner, max 32 fresh pairs,
+divisor one, 10% AND 50,000 ns, 95% per-cohort confidence, seed zero and 10,000 bootstrap
+resamples. All 24 controls must confirm with exact consumed output identity. No source/build,
+threshold, budget, confidence-scope or acceptance change is introduced.
+
+The original 72-row result (65 confirmed / seven inconclusive) and the first independent
+24-row result (21 confirmed / three inconclusive) remain separate historical observations.
+No samples are pooled or classifications replaced. The newly authorized queue started with
+U3 E2E and executes serially once; no retries, optional stopping, extra samples or concurrent
+Cargo work are authorized. All results remain pending until their individual terminal
+reports are inspected. No acceptance or speedup is claimed at registration.

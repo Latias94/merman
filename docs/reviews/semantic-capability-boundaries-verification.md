@@ -163,3 +163,21 @@ fixed queue has ended; no performance process or pending cohort remains. Any fur
 measurement requires a separately agreed design or an explicit acceptance-contract change;
 this audit does not authorize another run. No additional blanket rebuild or new validation
 framework is required here.
+
+## Newly authorized measurement window
+
+On 2026-10-23 the maintainer stated that the current window had no interference and explicitly
+authorized starting now. A new 24-row experiment was sealed before sampling at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/controlled-host-20261023T083654Z/`
+with registration SHA-256
+`77e6f3fc243ba33a8632d27648be2cca7fbf09febcfdcb148ad7b7d0b0895687`.
+It retains all four original six-fixture cohorts, clean source pairs, frozen binaries,
+`generic_v2` thresholds, confidence scopes, fixed pair cap and all-controls admission rule.
+This is an explicitly arranged new window, not an automatic repetition or historical
+reclassification. Pre-sampling CPU observations were 4%, 4% and 2%; these do not independently
+prove an isolated host. No other processes or system settings were changed.
+
+The serial queue has started with U3 E2E. All 24 new outcomes remain pending inspection;
+the objective remains incomplete. Prior 72-row and 24-row classifications are unchanged.
+No blanket rebuild, production-code change, publication or acceptance-contract change is
+part of this measurement authorization.
