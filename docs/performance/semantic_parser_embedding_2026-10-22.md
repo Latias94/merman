@@ -214,9 +214,10 @@ Registered U3/U4/integrated timing controls are now running with unchanged thres
 protocol and sample caps. The U3 schedule has since completed with 23 confirmed non-regression
 controls and one inconclusive State E2E row. U4 has also completed with 23 confirmed controls
 and one inconclusive Class E2E row. Integrated warm parse adds six confirmed controls;
-18 integrated rows remain without terminal classifications.
-Both inconclusive rows failed head A/A calibration, so adjacent and whole-plan performance
-acceptance remain unproven. See the
+cold-engine parse adds five confirmed controls and one inconclusive Flowchart row. Twelve
+integrated JSON/E2E rows remain without terminal classifications. The adjacent inconclusive
+rows failed head A/A calibration; integrated cold Flowchart failed base A/A and exceeded the
+pair cap. Adjacent and whole-plan performance acceptance remain unproven. See the
 [adjacent-work report](semantic_boundary_adjacent_work_2026-10-22.md#renewed-u3-warm-parse-confirmation-2026-10-23)
 for its protocol, row classifications and retained receipt. The completed artifact queue does
 not establish latency, and no speedup or whole-plan admission is claimed.
@@ -249,13 +250,57 @@ clean sources, fixtures, discovery and frozen executables were checked after sam
 
 All mirrored improvement results are `confirmed_non_improvement`; lower means do not establish
 an admitted speedup. This is full-operation timing on the registered source adapters, not
-semantic-only timing or a claim about the pending private cfg patch. Across completed controls,
-52 confirm non-regression, two adjacent E2E rows remain inconclusive and 18 integrated rows have
-no terminal classification. Whole-plan performance remains unproven. Concurrent unrelated host
-activity remains possible; no uncontended-host claim is made.
+semantic-only timing or a claim about the pending private cfg patch. At this warm-parse
+checkpoint, 52 controls confirmed non-regression, two adjacent E2E rows remained inconclusive
+and 18 integrated rows had no terminal classification. Whole-plan performance remains unproven.
+Concurrent unrelated host activity remains possible; no uncontended-host claim is made.
 
 The final root retains `integrated-discovery-audit.json`, SHA-256
 `ceffb007733154f6b5762c147624cf0d905db3b82a06b6620cc7e3772bcab577`, and
 `integrated-parse-confirmation-audit.json`, SHA-256
 `1f171e2ac772bc3761aab6eed0068b838a3bbe2b8e70cb0570a4fcfab3347a29`. Raw reports/logs,
 registration and copied executables remain under `timing-integrated/`.
+
+## Integrated cold-engine control remains inconclusive (2026-10-23)
+
+The registered integrated cold-engine group completed with five `confirmed_non_regression`
+rows and one inconclusive Flowchart row, exiting 3 with zero contract failures. This operation
+constructs a fresh full engine per iteration inside a reused process; it is not a cold process.
+Both runners completed all eight A/A pairs for every fixture. Flowchart head was stable, but
+base failed the relative and absolute identity and order margins. Its absolute identity interval
+was -164.249 to +13.188 us and its order interval was -9.034 to +168.075 us, outside the
+registered +/-50 us margin. The dispersion-derived requirement was 36 pairs, above the unchanged
+cap of 32.
+
+Flowchart retains matched consumed typed output but has no fresh confirmation pairs, means or
+effect bounds. The unchanged suite rule selected 32 fresh balanced AB/BA pairs for each of the
+five stable fixtures. Their own calibration required eight pairs; the suite count derives once
+from the maximum across all six selected rows, capped at 32. This was not a budget extension or
+a retry after viewing confirmation outcomes.
+
+| Cold-engine full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 161.623 us | 143.514 us | Confirmed non-regression | 32 |
+| State medium | 171.509 us | 159.535 us | Confirmed non-regression | 32 |
+| Class medium | 231.233 us | 208.601 us | Confirmed non-regression | 32 |
+| ER medium | 147.032 us | 136.109 us | Confirmed non-regression | 32 |
+| Pie medium | 11.648 us | 9.599 us | Confirmed non-regression | 32 |
+| Flowchart medium | Not admitted | Not admitted | Inconclusive: base A/A unstable and required pairs exceed cap | 0 |
+
+The parent checked all A/A observations, fixed fresh pair counts/order, divisor one, output and
+preflight/postflight identities, clean sources, input files, fixtures, discovery and both frozen
+executables. The original generic_v2/long protocol, 30 samples, 2s warmup, 3s measurement,
+10% AND 50,000 ns, 95% confidence, seed 0 and 10,000 bootstrap resamples remain unchanged.
+All five mirrored improvement outcomes are `confirmed_non_improvement`; no speedup is admitted.
+
+Completed controls now total 57 confirmed non-regression and three inconclusive rows: U3 State
+E2E, U4 Class E2E and integrated cold Flowchart. Twelve integrated JSON/E2E rows remain without
+terminal classification. These three unmet controls prevent whole-plan performance acceptance;
+no additional samples or threshold changes follow. The fixed queue continued to known-type JSON.
+Concurrent unrelated host work remains possible; no cause for calibration noise is established.
+
+The final root retains `integrated-cold-parse-confirmation-audit.json`, SHA-256
+`b94bcb6682839a609f6ec1938ca846d5af4c4f57f36e8bd4ad2d41792ab4f61a`, and the raw
+`timing-integrated/parse_cold_engine.{json,md,log}` files, alongside discovery, registration and
+copied executables. This timing remains scoped to the registered adapter pair and measured
+product `f0365e6a4`, without admission of the pending private cfg patch.
