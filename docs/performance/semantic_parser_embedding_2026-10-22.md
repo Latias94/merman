@@ -210,12 +210,12 @@ preflight, not a publication or a claim about another platform.
 | `merman-cli-x86_64-pc-windows-msvc.zip` | `dd1347e1641fc63e831736d43d463ca9d3a81a9f5c620e8e49a20e5ec714a9f7` |
 | `cli-archive-math-receipt.json` | `227d36412a7ed7fc610084285e4b0bde1e8fe2c7171eb9fc984e3526a1db9648` |
 
-Registered U3/U4/integrated timing controls are now running with unchanged thresholds,
+Registered U3/U4/integrated timing controls have completed with unchanged thresholds,
 protocol and sample caps. The U3 schedule has since completed with 23 confirmed non-regression
 controls and one inconclusive State E2E row. U4 has also completed with 23 confirmed controls
 and one inconclusive Class E2E row. Integrated warm parse adds six confirmed controls;
 cold-engine parse adds five confirmed controls and one inconclusive Flowchart row. Known-type
-JSON adds six confirmed controls; six integrated E2E rows remain without terminal classifications.
+JSON adds six confirmed controls; E2E adds two confirmed controls and four inconclusive rows.
 The adjacent inconclusive rows failed head A/A calibration; integrated cold Flowchart failed
 base A/A and exceeded the pair cap. Adjacent and whole-plan performance acceptance remain
 unproven. See the
@@ -332,8 +332,8 @@ thresholds. The other four mirrored outcomes are `confirmed_non_improvement`. No
 admitted. These mirrored decisions are distinct from the three failed A/A non-regression
 controls retained from the earlier groups.
 
-Completed controls now total 63 confirmed non-regression, three inconclusive non-regression
-rows and six integrated E2E rows without terminal classification. U3 State E2E, U4 Class E2E
+At this JSON checkpoint, completed controls totaled 63 confirmed non-regression, three
+inconclusive non-regression rows and six integrated E2E rows without terminal classification. U3 State E2E, U4 Class E2E
 and integrated cold Flowchart remain unmet; whole-plan performance acceptance is unproven.
 The fixed queue continued to E2E without retries, added samples or threshold changes.
 Concurrent unrelated host work remains possible.
@@ -343,3 +343,53 @@ The final root retains `integrated-json-parse-confirmation-audit.json`, SHA-256
 `timing-integrated/compatibility_json_parse.{json,md,log}` files. Timing remains scoped to the
 registered integrated adapter pair and measured product `f0365e6a4`; the pending private cfg
 cleanup has not received runtime or artifact acceptance.
+
+## Integrated E2E and final timing classification (2026-10-23)
+
+The final registered E2E group completed with two `confirmed_non_regression` rows and four
+inconclusive rows, exiting 3 with zero contract failures. Every fixture completed eight A/A
+pairs on each executable and retained matched exact SVG identity. Sequence and ER were stable;
+each completed 32 fresh balanced AB/BA pairs under the unchanged suite rule. State, Class, Pie
+and Flowchart have no fresh confirmation pairs, admitted means or effect bounds.
+
+| E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 484.932 us | 455.538 us | Confirmed non-regression | 32 |
+| State medium | Not admitted | Not admitted | Inconclusive: base A/A absolute order margin | 0 |
+| Class medium | Not admitted | Not admitted | Inconclusive: base A/A absolute identity/order margins | 0 |
+| ER medium | 692.742 us | 676.023 us | Confirmed non-regression | 32 |
+| Pie medium | Not admitted | Not admitted | Inconclusive: both A/A relative identity/order margins | 0 |
+| Flowchart medium | Not admitted | Not admitted | Inconclusive: both A/A unstable; base pair requirement exceeds cap | 0 |
+
+State base's absolute order interval reaches +55.192 us, outside the registered +/-50 us margin.
+Class base's absolute identity interval is -53.077 to +62.236 us and order interval is -72.533
+to +40.496 us. Pie fails relative identity/order on both runners despite absolute intervals
+within the margin. Flowchart base fails relative and absolute identity/order margins; head fails
+absolute identity/order. Flowchart base requires 82 pairs and head 14, while Class base requires
+ten and all remaining calibration requirements are eight. The unchanged maximum-across-rows
+rule caps the suite at 32; it does not qualify the four unstable rows or extend their budgets.
+
+The parent checked every A/A observation, 32 fixed fresh pairs on each stable row, alternating
+order, divisor one, exact SVG/preflight/postflight identity, clean sources, input files, fixtures,
+discovery and frozen executables. Original generic_v2/long, 30 samples, 2s warmup, 3s measurement,
+10% AND 50,000 ns, 95% confidence, seed 0, 10,000 resamples and the 32-pair cap remain unchanged.
+The two mirrored improvement outcomes are `confirmed_non_improvement`. Concurrent unrelated
+host activity remains possible; these observations do not establish its effect on calibration.
+
+| Registered comparison | Confirmed non-regression | Inconclusive | Contract failures | Confirmed regressions |
+| --- | ---: | ---: | ---: | ---: |
+| U3 adjacent | 23 | 1 | 0 | 0 |
+| U4 adjacent | 23 | 1 | 0 | 0 |
+| Integrated | 19 | 5 | 0 | 0 |
+| Total | 65 | 7 | 0 | 0 |
+
+All 72 rows are terminal. The seven unmet controls are U3 State E2E, U4 Class E2E, integrated
+cold Flowchart and integrated E2E State/Class/Pie/Flowchart. The two separately inconclusive
+JSON mirrored improvement decisions remain unchanged. No speedup, retry, additional samples,
+threshold change or whole-plan performance acceptance follows. The scheduler's successful
+wrapper exit means it retained every group, not that every group passed.
+
+The final root retains `integrated-e2e-confirmation-audit.json`, SHA-256
+`3f0714f9d081c6b21ab788277b92151060f5a0510919ede7e8e1feddbeb41711`, and the raw
+`timing-integrated/end_to_end.{json,md,log}` files. Exact production-feature lint and the pending
+cfg cleanup's owner tests follow serially; final source/artifact acceptance remains separate.

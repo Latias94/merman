@@ -4,8 +4,9 @@ This audit follows the complete
 [approved U1-U9 plan](../plans/2026-10-20-1252-refactor-semantic-capability-boundaries-plan.md).
 The product revision is `f0365e6a4948c4baff2f16adb735e0f143ee38c6` on
 `refactor/semantic-capability-boundaries`. Later prose corrections do not change its product
-inputs. The objective remains open: registered timing controls, exact production-feature
-Clippy and the final local evidence commits are still pending. The corrected 27-step integration
+inputs. The objective remains open: all 72 registered timing rows are terminal, but seven A/A
+calibration results remain inconclusive. Exact production-feature Clippy, the final cfg cleanup
+and local evidence commits are still in progress. The corrected 27-step integration
 queue, including actual CLI archive execution, has passed. No push, PR, merge, publication,
 or release is authorized or implied.
 
@@ -48,11 +49,11 @@ artifact acceptance to the pending cfg cleanup.
 | U2 | Percent/comment preprocessing and lexer correction; original UTF-8 spans; selected pinned Mermaid differential: 728 cases, 512 accepted, 216 rejected, zero mismatches. | No complete-language oracle claim. |
 | U3 | Private requested facts demand and actual collector/append counters; renewed seven-lane allocation comparison passes 35 checks and all 168 metric cells do not grow. The registered 24-row timing schedule finished: 23 confirmed non-regression, one inconclusive. | State E2E head A/A calibration is unstable; U3 performance acceptance remains unproven. No retries or extra samples. |
 | U4 | State consuming payload transfer, shared/hidden documents and required graph data; pointer-transfer, JSON/SVG and deep lifecycle checks; renewed allocation comparison passes 178 checks. The registered 24-row timing schedule finished: 23 confirmed non-regression, one inconclusive. | Class E2E head A/A absolute identity interval exceeds the margin; complete U4 performance control acceptance remains unproven. No retries or extra samples. |
-| U5 | Distinct semantic/presentation APIs and gated definitions; one family construction and paired full projection; isolated lean imports/doctests and canonical/full request checks. Integrated warm/cold/JSON groups have 17 confirmed non-regression controls and one inconclusive cold Flowchart row. | Cold Flowchart base A/A is unstable and exceeds the pair cap; six integrated E2E rows remain without terminal classification. |
+| U5 | Distinct semantic/presentation APIs and gated definitions; one family construction and paired full projection; isolated lean imports/doctests and canonical/full request checks. Integrated timing is terminal with 19 confirmed non-regression controls and five inconclusive rows. | Cold Flowchart and E2E State/Class/Pie/Flowchart have unstable A/A; complete integrated performance acceptance remains unproven. |
 | U6 | Facade, ASCII, analysis, editor/LSP and binding routes use requested work; full custom adapters remain explicit; prepared outputs retain fresh operation control. | Corrected host checks pass within their stated platforms; unavailable platform owners remain CI-scoped. |
 | U7 | Explicit math leaf, retired complete aggregates, direct non-math defaults and explicit positive recipes; 661 feature cases, 27 recipes, isolated closure checks, 24 CLI process profiles and actual Windows archive with positive math rendering. | None for the local recipe/installed-capability scope. |
 | U8 | Capability/binding/legal projections, migration guide, ADRs and installed host packages agree; final documentation audit corrected five additional prose/recipe defects. | Local documentation commits. |
-| U9 | Old engine names and 80 pure family aliases retired; final semantic/SVG size and renewed allocation receipts retained; scoped correctness and installed products audited. | Timing classification, final evidence reconciliation and local commits. |
+| U9 | Old engine names and 80 pure family aliases retired; final semantic/SVG size and renewed allocation receipts retained; scoped correctness and installed products audited. All timing rows classified: 65 confirmed non-regression, seven inconclusive. | Seven unmet timing controls, exact production lint/cfg verification, final lean size refresh, evidence reconciliation and local commits. |
 
 ## Requirements and acceptance examples
 
@@ -71,7 +72,7 @@ artifact acceptance to the pending cfg cleanup.
 | R11 / AE8, AE10 | Actual Cargo defaults/edges, retired names, feature matrix, exact profile/closure evidence and CLI profile tests. | Math is absent from defaults and generic aggregates; positive selection remains available. Workspace union does not widen transport-owned catalogs. |
 | R12 / AE8 | Required-math negative probes in final Web/Node/Typst/Dart artifacts; explicit positive math tests/profile; binding owner-feature test; exact Windows archive formula render. | Typed missing capability retained, with family-specific literal behavior; installed positive CLI math passes. |
 | R13 / AE8, AE9 | CLI cargo-dist recipe and source defaults; CLI installation guidance, downstream recipe inspection, exact process matrix and actual archive verifier. | Official recipe explicitly selects math; source defaults omit it. The actual Windows ZIP reports math and renders a required formula. |
-| R14 / AE1, AE2, AE5 | Frozen size comparisons, fresh U3/U4 allocation receipts, complete adjacent U3/U4 timing and integrated warm/cold/JSON parse. | Size/allocation and 63 timing controls pass. U3 State E2E, U4 Class E2E and integrated cold Flowchart are inconclusive; six integrated E2E rows have no terminal classification. No whole-plan performance admission or speedup claim. Final lean cfg cleanup requires its own size refresh. |
+| R14 / AE1, AE2, AE5 | Frozen size comparisons, fresh U3/U4 allocation receipts and all 72 adjacent/integrated timing rows. | Size/allocation and 65 timing controls pass. Seven controls remain inconclusive: U3 State E2E, U4 Class E2E, integrated cold Flowchart and integrated E2E State/Class/Pie/Flowchart. Zero contract failures or confirmed regressions; no whole-plan performance admission or speedup claim. Final lean cfg cleanup requires its own size refresh. |
 | R15 / AE11 | Pinned oracle source/runtime identities, 728-case differential and original UTF-8 span tests. | Selected percent/comment observations match. This is not complete grammar equivalence. |
 | R16 / AE7, AE9, AE10 | Alias inventory, current migration guide, generated/legal gates and read-only final docs review. | Obsolete source APIs removed. Five remaining document defects corrected; final evidence and local commits remain open. No general Rust semantic analyzer was introduced. |
 
@@ -93,7 +94,7 @@ artifact acceptance to the pending cfg cleanup.
 | VS Code | Final root `prior-scoped-logs/semantic-vscode-final.log`. | Separate 255/255 pass after the historical strict command did not reach this gate. |
 | Platform aggregate | `scripts/verify-platform-bindings.py`; `.github/workflows/ci.yml` platform and instrumentation owners. | Not passed locally: installed Flutter bundles Dart 3.9.2, below package >=3.10. Standalone Dart 3.11.6 and native smoke do not prove Flutter UI, Android emulator or Apple runtimes. Existing CI owners remain authoritative for those platforms. |
 | CLI archive | Final root `cli-dist-local.log`, `cli-archive-execute.log`, `cli-archive-math-receipt.json`. | cargo-dist 0.32.0 built the local Windows ZIP; existing archive verifier executed it; exact ZIP math capability and formula render pass. No release was published. |
-| Timing | Final root `run_timing.py`, `timing-source-amendment.json`, `final-runner-freeze.json`; complete U3/U4 and integrated warm/cold/JSON audit receipts. | Each adjacent schedule has 23 confirmed non-regression and one E2E inconclusive after unstable head A/A: U3 State, U4 Class. Integrated warm/JSON each add six confirmed controls; cold adds five and one inconclusive Flowchart after unstable base A/A requiring 36 pairs beyond the cap of 32. Zero contract failures; six integrated E2E rows have no terminal classification. Stable U3 E2E rows completed ten fresh pairs, integrated cold stable rows 32, other completed groups eight. JSON State/Flowchart mirrored improvement decisions are separately inconclusive; no speedup is admitted. Protocol/caps unchanged; no whole-plan admission or retry. |
+| Timing | Final root `run_timing.py`, `timing-source-amendment.json`, `final-runner-freeze.json`; complete U3/U4/integrated audit receipts, including `integrated-e2e-confirmation-audit.json`. | All 72 rows are terminal: 65 confirmed non-regression, seven inconclusive, zero contract failures or confirmed regressions. Integrated E2E adds two confirmed controls and four A/A inconclusive; Flowchart base requires 82 pairs beyond the cap of 32. Stable U3 E2E rows completed ten fresh pairs, integrated cold/E2E stable rows 32, other completed groups eight. JSON State/Flowchart mirrored improvement decisions are separately inconclusive; no speedup is admitted. Protocol/caps unchanged; whole-plan performance remains unmet, with no retries. |
 
 The historical retention loss from `cargo clean` is documented in the two performance reports.
 New samples do not reconstruct old data. The final corrected Web, Node, Typst and Dart receipts
@@ -102,11 +103,10 @@ and JSON manifests. No latency improvement or uncontended-host claim is made.
 
 ## Final open work
 
-1. Complete the registered timing schedule and inspect every row, retaining inconclusive and
-   negative results without changing thresholds, protocol or sample caps.
-   U3/U4 are terminal with inconclusive State/Class E2E controls; integrated cold Flowchart is
-   also inconclusive. Preserve these unmet conditions separately from the six integrated
-   E2E rows without terminal classifications.
+1. Preserve the seven unmet timing controls after the completed registered schedule: U3 State
+   E2E, U4 Class E2E, integrated cold Flowchart and integrated E2E State/Class/Pie/Flowchart.
+   All rows have been inspected; no retry, additional samples or threshold change is authorized
+   by the original protocol. Whole-plan performance acceptance remains unproven.
 2. Complete exact production-feature Clippy without relying on all-feature union, then inspect
    the existing lean/editor/full owner tests for the private cfg cleanup before committing it.
    Include the exact three-family core selection and refresh that committed candidate's
