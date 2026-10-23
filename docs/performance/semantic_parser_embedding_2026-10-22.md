@@ -214,10 +214,11 @@ Registered U3/U4/integrated timing controls are now running with unchanged thres
 protocol and sample caps. The U3 schedule has since completed with 23 confirmed non-regression
 controls and one inconclusive State E2E row. U4 has also completed with 23 confirmed controls
 and one inconclusive Class E2E row. Integrated warm parse adds six confirmed controls;
-cold-engine parse adds five confirmed controls and one inconclusive Flowchart row. Twelve
-integrated JSON/E2E rows remain without terminal classifications. The adjacent inconclusive
-rows failed head A/A calibration; integrated cold Flowchart failed base A/A and exceeded the
-pair cap. Adjacent and whole-plan performance acceptance remain unproven. See the
+cold-engine parse adds five confirmed controls and one inconclusive Flowchart row. Known-type
+JSON adds six confirmed controls; six integrated E2E rows remain without terminal classifications.
+The adjacent inconclusive rows failed head A/A calibration; integrated cold Flowchart failed
+base A/A and exceeded the pair cap. Adjacent and whole-plan performance acceptance remain
+unproven. See the
 [adjacent-work report](semantic_boundary_adjacent_work_2026-10-22.md#renewed-u3-warm-parse-confirmation-2026-10-23)
 for its protocol, row classifications and retained receipt. The completed artifact queue does
 not establish latency, and no speedup or whole-plan admission is claimed.
@@ -293,10 +294,11 @@ executables. The original generic_v2/long protocol, 30 samples, 2s warmup, 3s me
 10% AND 50,000 ns, 95% confidence, seed 0 and 10,000 bootstrap resamples remain unchanged.
 All five mirrored improvement outcomes are `confirmed_non_improvement`; no speedup is admitted.
 
-Completed controls now total 57 confirmed non-regression and three inconclusive rows: U3 State
-E2E, U4 Class E2E and integrated cold Flowchart. Twelve integrated JSON/E2E rows remain without
-terminal classification. These three unmet controls prevent whole-plan performance acceptance;
-no additional samples or threshold changes follow. The fixed queue continued to known-type JSON.
+At this cold-engine checkpoint, completed controls totaled 57 confirmed non-regression and
+three inconclusive rows: U3 State E2E, U4 Class E2E and integrated cold Flowchart. Twelve integrated
+JSON/E2E rows remained without terminal classification. These three unmet controls prevent
+whole-plan performance acceptance; no additional samples or threshold changes follow.
+The fixed queue continued to known-type JSON.
 Concurrent unrelated host work remains possible; no cause for calibration noise is established.
 
 The final root retains `integrated-cold-parse-confirmation-audit.json`, SHA-256
@@ -304,3 +306,40 @@ The final root retains `integrated-cold-parse-confirmation-audit.json`, SHA-256
 `timing-integrated/parse_cold_engine.{json,md,log}` files, alongside discovery, registration and
 copied executables. This timing remains scoped to the registered adapter pair and measured
 product `f0365e6a4`, without admission of the pending private cfg patch.
+
+## Integrated known-type JSON confirmation (2026-10-23)
+
+The registered integrated `compatibility_json_parse` group completed with six
+`confirmed_non_regression` rows, zero contract failures and zero inconclusive non-regression
+rows, exiting 0. This known-type operation excludes detection. Both runners passed all eight
+A/A pairs; each fixture completed eight fresh balanced AB/BA pairs. The parent checked every
+pair/order, divisor one, matched output and preflight/postflight identities, clean sources,
+input files, fixtures, discovery and frozen executable retention. Protocol, thresholds and
+sample cap remain unchanged from the warm/cold groups.
+
+| Known-type JSON fixture | Base mean | Head mean | Non-regression | Mirrored improvement | Fresh pairs |
+| --- | ---: | ---: | --- | --- | ---: |
+| Sequence medium | 175.579 us | 158.414 us | Confirmed | Confirmed non-improvement | 8 |
+| State medium | 375.985 us | 330.462 us | Confirmed | Inconclusive | 8 |
+| Class medium | 292.591 us | 265.391 us | Confirmed | Confirmed non-improvement | 8 |
+| ER medium | 153.776 us | 146.787 us | Confirmed | Confirmed non-improvement | 8 |
+| Pie medium | 7.941 us | 6.479 us | Confirmed | Confirmed non-improvement | 8 |
+| Flowchart medium | 533.551 us | 504.475 us | Confirmed | Inconclusive | 8 |
+
+State and Flowchart have inconclusive mirrored improvement decisions: their bounds establish
+non-regression but neither confirm nor exclude improvement under both registered materiality
+thresholds. The other four mirrored outcomes are `confirmed_non_improvement`. No speedup is
+admitted. These mirrored decisions are distinct from the three failed A/A non-regression
+controls retained from the earlier groups.
+
+Completed controls now total 63 confirmed non-regression, three inconclusive non-regression
+rows and six integrated E2E rows without terminal classification. U3 State E2E, U4 Class E2E
+and integrated cold Flowchart remain unmet; whole-plan performance acceptance is unproven.
+The fixed queue continued to E2E without retries, added samples or threshold changes.
+Concurrent unrelated host work remains possible.
+
+The final root retains `integrated-json-parse-confirmation-audit.json`, SHA-256
+`58bc157c4bb27bc2ccf91b89d1b50d2701fb3cb99c7f70df057581210d4821c3`, and the raw
+`timing-integrated/compatibility_json_parse.{json,md,log}` files. Timing remains scoped to the
+registered integrated adapter pair and measured product `f0365e6a4`; the pending private cfg
+cleanup has not received runtime or artifact acceptance.
