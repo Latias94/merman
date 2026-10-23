@@ -122,7 +122,9 @@ reclassified and no samples are pooled. Each cohort retains its original confide
 this is not a joint 95% assertion across all four cohorts. Independent U3 E2E has since finished
 with five confirmed non-regression rows and one inconclusive State row after unstable head A/A.
 State remains unadmitted, so the new experiment cannot satisfy its all-24-controls criterion.
-The remaining 18 rows continue under the fixed schedule; no historical result is replaced.
+Independent U4 E2E also has five confirmed controls and one inconclusive State row; Class passes
+that new observation. Independent totals are ten confirmed, two inconclusive and twelve
+integrated rows still in the fixed schedule. No historical result is replaced.
 
 All authorized local implementation, source cleanup, exact production lint, owning tests,
 candidate artifact refresh and installed-product evidence work is complete within the scopes

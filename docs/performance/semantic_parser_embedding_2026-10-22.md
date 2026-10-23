@@ -511,3 +511,38 @@ calibration result. No background tasks were stopped and no speedup is admitted.
 The independent root retains `u3-end_to_end-audit.json`, SHA-256
 `a2366c9e22d2c40faddd550f16249c9c6588867cf981055dc27d537f98b71c1a`, and the raw
 `u3-end_to_end.{json,md,log}` files. Eighteen independent rows remain without terminal results.
+
+### Independent U4 E2E result
+
+The second independent cohort completed with five `confirmed_non_regression` rows and one
+inconclusive State row, exit 3 with no contract failures or confirmed regressions. Class,
+previously inconclusive in the original U4 run, passes this independent observation. State
+fails A/A on both runners: base fails relative and absolute identity/order; head fails the
+absolute identity/order margins. Base absolute identity is -91.008 to +18.715 us and order is
+-28.276 to +86.423 us. Head identity is +1.358 to +57.295 us and order -18.979 to +53.699 us.
+State retains exact SVG identity but no fresh confirmation pairs, admitted means or bounds.
+
+Both runners completed eight A/A pairs for all six fixtures. The unchanged suite rule derives
+ten fresh balanced pairs, within the cap of 32, for each of the five stable fixtures. The parent
+checked every observation, pair/order, divisor one, output and preflight/postflight identity,
+clean source/input files, fixtures, discovery and frozen binaries.
+
+| U4 E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 471.771 us | 473.280 us | Confirmed non-regression | 10 |
+| State medium | Not admitted | Not admitted | Inconclusive: both runners' A/A | 0 |
+| Class medium | 1,074.180 us | 1,082.210 us | Confirmed non-regression | 10 |
+| ER medium | 675.872 us | 674.099 us | Confirmed non-regression | 10 |
+| Pie medium | 36.591 us | 36.479 us | Confirmed non-regression | 10 |
+| Flowchart medium | 1,841.800 us | 1,835.900 us | Confirmed non-regression | 10 |
+
+All five mirrored improvement outcomes are `confirmed_non_improvement`. Independent totals
+are ten confirmed non-regression, two inconclusive and twelve integrated rows still without
+terminal results. The original 72-row classifications remain unchanged; the new Class pass
+does not erase the original Class result or compensate for State's failed calibration. The
+fixed queue continued to integrated cold-engine parse. No extra samples, retries, budget or
+threshold changes, or speedup claims follow.
+
+The independent root retains `u4-end_to_end-audit.json`, SHA-256
+`839c22a1d93bec21065a7059754dce21cf4d0938b7f70b39ad6fd6487760705d`, and raw
+`u4-end_to_end.{json,md,log}` files.
