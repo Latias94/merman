@@ -112,9 +112,19 @@ protocol permits no retry, additional samples or threshold change after these ou
 Completing the remaining performance acceptance requires a separately agreed next experiment
 or an explicit change to the acceptance contract. This audit does not make that change.
 
+On 2026-10-23 the maintainer authorized an independent follow-up to start immediately. It is
+preregistered at `F:/codex-builds/merman-semantic-capability-boundaries/evidence/followup-independent-20261023T042304Z/`
+and is running four original six-fixture cohorts: U3 E2E, U4 E2E, integrated cold-engine parse
+and integrated E2E. All 24 rows, including previously passing controls, remain required.
+Original source pairs, frozen binaries, generic_v2 thresholds and the 32-pair cap are unchanged.
+Fresh calibration and confirmation are separate from historical observations; no old row is
+reclassified and no samples are pooled. Each cohort retains its original confidence scope;
+this is not a joint 95% assertion across all four cohorts. No new result is admitted yet.
+
 All authorized local implementation, source cleanup, exact production lint, owning tests,
 candidate artifact refresh and installed-product evidence work is complete within the scopes
 above. Platform aggregate checks remain precisely deferred to existing CI owners, as allowed by
 the plan. The failed historical strict command remains failed, with its scoped Web/VS Code
 recovery stated separately. The overall goal remains incomplete because of the seven unmet
-timing controls; no additional blanket rebuild or new validation framework is required here.
+timing controls. The newly authorized follow-up is the only active verification queue; no
+additional blanket rebuild or new validation framework is required here.

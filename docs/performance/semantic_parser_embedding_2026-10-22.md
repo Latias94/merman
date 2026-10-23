@@ -447,3 +447,33 @@ This closes the final source quality and lean artifact controls. The seven incon
 rows still prevent complete performance acceptance; no retry, budget extension, speedup claim
 or overall completion follows. Platform deferrals and the historical strict failure retain their
 previous scopes. No push, PR, merge, publication or release occurred.
+
+## Authorized independent follow-up (2026-10-23)
+
+The maintainer subsequently authorized an independent experiment to begin immediately. Before
+fresh sampling, the four affected original operation cohorts were registered with all six
+fixtures each: U3 E2E, U4 E2E, integrated cold-engine parse and integrated E2E (24 required rows).
+The experiment reuses the clean original source pairs, frozen binaries, corpus and consumed
+output identities. No product rebuild, new harness or production change is involved.
+
+The generic_v2/long protocol remains 30 Criterion samples, 2s warmup, 3s measurement, eight
+balanced A/A pairs per executable, a maximum of 32 fresh balanced AB/BA pairs, 10% AND 50,000 ns,
+95% per-cohort confidence, seed zero, 10,000 bootstrap resamples and divisor one. Each cohort
+runs once. There is no optional stopping, retry, budget extension, row removal or threshold
+change. All 24 rows must confirm non-regression for the new experiment to qualify; any unstable
+or regressing row leaves full acceptance unproven. The four cohorts do not establish a joint
+95% confidence claim, and samples are not pooled between groups or experiments.
+
+Read-only preflight host observations reported total CPU at 0%, 0% and 2% over three short
+intervals. Background processes remained; these observations do not prove an uncontended host,
+hardware isolation or the cause of historical calibration instability. No processes, power
+settings or CPU affinity were changed. Source, binary, discovery and input identities were
+verified before sampling.
+
+Evidence is retained separately at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/followup-independent-20261023T042304Z/`.
+`registration.json` has SHA-256
+`7283b84c55fba50184922ea362dd52d26a65d3075ff85acba565cb1cf85845ed`;
+`preregistration-seal.json` also freezes the one-shot scheduling wrapper and existing comparator.
+The original 65 confirmed and seven inconclusive outcomes remain unchanged. The new schedule
+is running; no result, speedup or completion is claimed from its registration or launch.
