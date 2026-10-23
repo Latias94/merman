@@ -212,10 +212,10 @@ preflight, not a publication or a claim about another platform.
 
 Registered U3/U4/integrated timing controls are now running with unchanged thresholds,
 protocol and sample caps. The U3 schedule has since completed with 23 confirmed non-regression
-controls and one inconclusive State E2E row. U4 warm/cold full parse and known-type JSON add
-18 confirmed controls; six U4 and 24 integrated rows remain without terminal classifications.
-State head A/A calibration was unstable, so U3 and whole-plan performance acceptance remain
-unproven. See the
+controls and one inconclusive State E2E row. U4 has also completed with 23 confirmed controls
+and one inconclusive Class E2E row; 24 integrated rows remain without terminal classifications.
+Both inconclusive rows failed head A/A calibration, so adjacent and whole-plan performance
+acceptance remain unproven. See the
 [adjacent-work report](semantic_boundary_adjacent_work_2026-10-22.md#renewed-u3-warm-parse-confirmation-2026-10-23)
 for its protocol, row classifications and retained receipt. The completed artifact queue does
 not establish latency, and no speedup or whole-plan admission is claimed.

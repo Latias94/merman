@@ -622,3 +622,39 @@ performance limitation are unchanged. Concurrent unrelated host activity remains
 The final root retains `u4-json-parse-confirmation-audit.json`, SHA-256
 `e8e1e842c0fd975738a250a2a2d2ceb17e140c21e71b81080cf217aaf73368f3`, and the raw
 `timing-u4/compatibility_json_parse.{json,md,log}` files. The fixed queue advanced to U4 E2E.
+
+## Renewed U4 E2E remains inconclusive (2026-10-23)
+
+The U4 E2E group completed with five `confirmed_non_regression` rows and one inconclusive
+Class row, exiting 3 with zero contract failures. Both runners completed all eight A/A pairs
+for all six fixtures. Class base was stable; head failed `identity_absolute_within_margin`:
+its absolute identity interval was -20.005 to +50.026 us, exceeding the registered +50 us
+boundary. Its relative identity, order-effect and required-pair budget checks passed. The
+threshold is unchanged, including this small exceedance.
+
+Class retains matched exact SVG identity but has no fresh confirmation pairs, means or effect
+bounds. It establishes neither a regression nor non-regression. The other five fixtures passed
+stable A/A and eight fresh balanced AB/BA pairs under unchanged generic_v2 protocol and budget.
+The parent checked every pair/order, divisor one, output/preflight/postflight identity, clean
+sources, fixture bytes, frozen executables and discovery retention.
+
+| E2E fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 464.238 us | 465.399 us | Confirmed non-regression | 8 |
+| State medium | 756.175 us | 748.988 us | Confirmed non-regression | 8 |
+| Class medium | Not admitted | Not admitted | Inconclusive: head A/A unstable | 0 |
+| ER medium | 681.231 us | 670.351 us | Confirmed non-regression | 8 |
+| Pie medium | 36.431 us | 36.160 us | Confirmed non-regression | 8 |
+| Flowchart medium | 1,809.587 us | 1,819.313 us | Confirmed non-regression | 8 |
+
+All five mirrored improvement results are `confirmed_non_improvement`; Class has none. U4
+is terminal with 23 confirmed controls and one inconclusive Class E2E control. Together U3/U4
+have 46 confirmed and two inconclusive controls; 24 integrated rows remain without terminal
+classifications. No complete adjacent performance acceptance, speedup, retry or additional
+samples follow. The fixed queue continued to integrated discovery. Concurrent unrelated host
+work remains possible, without a causal explanation for this calibration result.
+
+The final root retains `u4-e2e-confirmation-audit.json`, SHA-256
+`9dda65659d2ee0c3645455eda4014b45d569cfb17d6cf704c55ce62344e3dc45`, and the raw
+`timing-u4/end_to_end.{json,md,log}` files. Both adjacent E2E inconclusive results remain
+unadmitted.
