@@ -393,3 +393,57 @@ The final root retains `integrated-e2e-confirmation-audit.json`, SHA-256
 `3f0714f9d081c6b21ab788277b92151060f5a0510919ede7e8e1feddbeb41711`, and the raw
 `timing-integrated/end_to_end.{json,md,log}` files. Exact production-feature lint and the pending
 cfg cleanup's owner tests follow serially; final source/artifact acceptance remains separate.
+
+## Committed private-definition cleanup and final lean control (2026-10-23)
+
+Commit `599f714d344e94fd15c7f3a3abeb8be8ec51eeee` gates seven private helper/field definitions by
+their actual presentation, Usecase, ZenUML or Agentflow consumers. Treemap's intermediate editor
+field is retained only for combined compatibility/editor requests; canonical snapshot capture
+takes its requested facts before conversion. A public snapshot regression verifies complete and
+recovered facts with CRLF/frontmatter offsets and diagnostics-only recovery. Production runtime
+bodies, public API/ABI, feature manifests and capability descriptors are unchanged.
+
+The first exact lint queue found Treemap's now-unused `Result` import on three lean selections.
+The first owner commands also passed both nextest `-j 2` and `--test-threads 2`; nextest treats
+`-j` as test threads, so these commands exited before running tests. Both original failure sets
+remain retained. The import now follows presentation and corrected commands use
+`--build-jobs 2 --test-threads 2`. All seven exact production selections pass `-D warnings`,
+including the three-family core, language stdio binary, facade, native binding and official CLI
+recipes. Format and 79 semantic, 91 editor and 258 full owner tests pass: 428 tests total.
+
+The existing artifact driver then rebuilt only the candidate from the exact committed cleanup,
+using the frozen f036 semantic consumer and corpus, Rust 1.95.0, original Windows/MSVC profile,
+lock policy and three family selectors. Frozen U1 and prior f036 artifacts were rechecked and
+reused without rebuilding. As already documented, U1's full typed consumer and the migrated
+semantic consumer have distinct frozen source bytes for their respective APIs; their exercised
+meaning is identical. The baseline catalog's repeated variants reduce to the same three logical
+families. No identical baseline probe-byte claim is made.
+
+| Final control | Raw bytes | Stripped bytes | Change from f036 |
+| --- | ---: | ---: | ---: |
+| Committed 599f three-family canonical consumer | 2,126,336 | 2,126,336 | 0 bytes |
+
+All three consumed outputs match both U1 and f036 byte-for-byte. The normal package/feature tree
+and complete resolved metadata package, feature and dependency-edge sets match f036. Core has
+exactly `diagram-flowchart,diagram-sequence,diagram-state`, excluding presentation, editor facts,
+compatibility JSON, terminal text and rendering. The candidate remains 717,312 bytes smaller
+than frozen U1, a 25.2251% reduction. A distinct executable hash is retained; equal size/output
+does not imply binary byte identity or another size improvement from cfg cleanup.
+
+Full installed products, SVG control, oracle, allocation and timing receipts retain their
+original source identities. Their full recipes keep the changed definition predicates; the
+bounded source comparison and passing owner checks establish scoped applicability without
+claiming new full-product executions. The exact three-family candidate received its own refresh.
+`final-cfg-source-applicability.json` records this distinction.
+
+| Final cleanup receipt | SHA-256 |
+| --- | --- |
+| `cfg-cleanup-quality-verification.json` | `ae488c21ebabe5fbc72afd70ae982c6ab2cef6e65096228f8254e45dd5ea9e06` |
+| `semantic-size-cfg-final/receipt.json` | `1b97264c91174ac520ab39529c1f578b4091d29fab5811acf652d61fa77b955a` |
+| `semantic-size-cfg-final-comparison.json` | `77c0d0151c2b2cddcdc00801416fc20017be7a50567427dd97caf23b00749552` |
+| `final-cfg-source-applicability.json` | `85f966133cfb2782509eadc044f3886e4069cf90d440fcf1de61f96c62bfd97f` |
+
+This closes the final source quality and lean artifact controls. The seven inconclusive timing
+rows still prevent complete performance acceptance; no retry, budget extension, speedup claim
+or overall completion follows. Platform deferrals and the historical strict failure retain their
+previous scopes. No push, PR, merge, publication or release occurred.
