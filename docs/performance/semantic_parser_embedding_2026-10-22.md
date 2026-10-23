@@ -546,3 +546,33 @@ threshold changes, or speedup claims follow.
 The independent root retains `u4-end_to_end-audit.json`, SHA-256
 `839c22a1d93bec21065a7059754dce21cf4d0938b7f70b39ad6fd6487760705d`, and raw
 `u4-end_to_end.{json,md,log}` files.
+
+### Independent integrated cold-engine result
+
+The third independent cohort completed with six `confirmed_non_regression` rows, zero
+inconclusive rows, zero contract failures and zero confirmed regressions, exit 0. Both runners
+passed all eight A/A pairs; every fixture completed eight fresh balanced AB/BA pairs. Flowchart,
+inconclusive in the original integrated cold-engine run, passes this independent observation.
+This lane constructs a fresh full engine inside a reused process; it is not a cold process.
+
+| Cold-engine full parse fixture | Base mean | Head mean | Classification | Fresh pairs |
+| --- | ---: | ---: | --- | ---: |
+| Sequence medium | 161.649 us | 143.511 us | Confirmed non-regression | 8 |
+| State medium | 170.882 us | 153.056 us | Confirmed non-regression | 8 |
+| Class medium | 230.836 us | 210.007 us | Confirmed non-regression | 8 |
+| ER medium | 147.905 us | 130.643 us | Confirmed non-regression | 8 |
+| Pie medium | 11.557 us | 9.496 us | Confirmed non-regression | 8 |
+| Flowchart medium | 368.389 us | 347.736 us | Confirmed non-regression | 8 |
+
+The parent checked every A/A and fresh observation, balanced order, divisor one, exact consumed
+output and preflight/postflight identities, clean sources, input files, fixtures, discovery,
+frozen executables and the unchanged registration/harness. All six mirrored improvement
+outcomes are `confirmed_non_improvement`; no speedup is admitted. The independent totals are
+16 confirmed non-regression, two inconclusive and six E2E rows still without terminal results.
+The two State E2E controls remain unmet, so this experiment cannot satisfy its all-24-controls
+criterion. Neither this pass nor any mean replaces an original observation.
+
+The independent root retains `integrated-parse_cold_engine-audit.json`, SHA-256
+`7bdc86f525d2e8fb025163801a23272e6cc70e0fad0dd7b22a569c99ab51c05d`, and raw
+`integrated-parse_cold_engine.{json,md,log}` files. The fixed queue continued to integrated E2E,
+without retries, extra samples or changed thresholds/caps.
