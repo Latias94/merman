@@ -669,6 +669,54 @@ threshold, budget, confidence-scope or acceptance change is introduced.
 The original 72-row result (65 confirmed / seven inconclusive) and the first independent
 24-row result (21 confirmed / three inconclusive) remain separate historical observations.
 No samples are pooled or classifications replaced. The newly authorized queue started with
-U3 E2E and executes serially once; no retries, optional stopping, extra samples or concurrent
-Cargo work are authorized. All results remain pending until their individual terminal
-reports are inspected. No acceptance or speedup is claimed at registration.
+U3 E2E and executed serially once; no retries, optional stopping, extra samples or concurrent
+Cargo work were authorized. Its terminal results and independent retained-sample audit are
+recorded below.
+
+### Quiet-window cohort outcomes
+
+All four preregistered reports reached terminal status by 2026-10-23T10:22:55Z. The fixed
+schedule produced 16 confirmed non-regression rows and eight inconclusive rows, with zero
+contract failures and zero confirmed regressions. The all-24-controls admission rule is not
+met. Each cohort retains its own 95% confidence scope; these counts are not pooled with one
+another or with either historical experiment.
+
+| Cohort | Confirmed non-regression | Inconclusive | Fresh pairs per admitted row | Result |
+| --- | ---: | ---: | ---: | --- |
+| U3 end-to-end | 0 | 6 | 0 | Every fixture is blocked by unstable base A/A; State and Flowchart also exceed the fixed 32-pair cap. |
+| U4 end-to-end | 4 | 2 | 8 | State head A/A identity interval is unstable; Class base/head identity and order intervals are unstable. |
+| Integrated cold-engine parse | 6 | 0 | 8 | All fixtures confirm non-regression. |
+| Integrated end-to-end | 6 | 0 | 8 | All fixtures confirm non-regression. |
+| Total | 16 | 8 | Separate cohort schedules | All-24-controls admission criterion unmet. |
+
+The integrated E2E State row's non-regression result is confirmed, while its mirrored
+improvement result is inconclusive; no speedup is admitted. The remaining U3/U4 rows have no
+admitted AB/BA estimates. All reports retain matched consumed-output identities and identical
+base/head fixture bytes for all six selected inputs in each cohort.
+
+The parent verified the preregistration seal and each recorded log hash, then used the exact
+checked-in `compare_self.py` harness (SHA-256
+`a553540abab962044a3aa5950748c63f47533031d7d76edc13cc6a907e71b46e`) to deterministically
+recompute every A/A calibration and every admitted AB/BA interval and classification. It also
+checked clean runner revisions, frozen/source executable digests, comparable fixture bytes,
+matched output receipts, one-operation divisors, postflight verification and alternating
+AB/BA order. These are read-only checks of retained observations; no samples were collected
+or reused.
+
+The machine-readable terminal audit is retained at
+`F:/codex-builds/merman-semantic-capability-boundaries/evidence/controlled-host-20261023T083654Z/terminal-admission-audit.json`
+with SHA-256 `e067810530c1ba87ca728a84158fa2b4d7e1aa6646c01dae0ef526065bf4079`. It records
+48 A/A recomputations and 128 admitted AB/BA pairs (256 runner samples), and confirms that no
+matching benchmark process remained at the audit time.
+
+| Cohort report | SHA-256 |
+| --- | --- |
+| `u3-end_to_end.json` | `71bf08a1f0700ace3432123f2b6b4512e41077710bf683ca55b264851dae03a0` |
+| `u4-end_to_end.json` | `1f89ffcb5ec7eb41ebedbc0ed81bf584f84e49625b532fb8ce2cd5a70725169d` |
+| `integrated-parse_cold_engine.json` | `cad8bf07da46354c1f7e09d384cd85570fe5539c5b83de5d7e31edbbdd53933f` |
+| `integrated-end_to_end.json` | `9dc6363e1d20ab9f9003a07396eb8764866efc21d0e7d85cdbf08948d41098d0` |
+
+All 24 scheduled rows are terminal; no measurement process remains. The experiment does not
+complete the required timing controls or establish an improvement. Any further measurement
+requires a separately agreed experiment; no automatic retry, extra samples, threshold change,
+or acceptance-contract change is authorized by this receipt.
