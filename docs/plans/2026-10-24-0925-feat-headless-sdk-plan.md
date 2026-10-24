@@ -58,7 +58,7 @@ Existing native packages omit specialist outputs, while the complete CLI and C r
 
 - R8. Standard excludes ELK and math; math adds only mathematical rendering; full additionally admits ELK.
 - R9. Each artifact includes its actual capabilities, target, schema/ABI versions, checksums, font inventory, third-party notices and source-availability information.
-- R10. Native and WASI output comparisons use identical source, fonts, options and deterministic environment; only supported targets and formats are advertised.
+- R10. Packaged native C and WASI output comparisons use identical source, fonts, options and deterministic environment; only supported targets and formats are advertised.
 - R11. SDK delivery on `release/0.9.x` is additive and explicitly documented as the maintainer-authorized exception to the ordinary bug-fix-only maintenance policy.
 
 ### Scope Boundaries
@@ -91,6 +91,7 @@ Do not describe the standard configuration as MIT-only: MPL and font notices rem
 - KTD7. Reuse canonical artifact recipes and legal projections for standard/math/full; publish only combinations whose imports, output and legal closure pass their owner checks.
 - KTD8. Record SVG logical viewport size separately from PNG pixel size through shared output metadata. Preserve parser-provided byte spans rather than inventing universal exact line/column diagnostics.
 - KTD9. Bundled fonts are production resources with pinned provenance and license text; caller-provided fonts precede bundled defaults. Reject unsupported strict-font operations instead of silently claiming exact measurement.
+- KTD10. Add a new C font constructor through an appended ABI 3 function slot and a separately named record; preserve every existing record and minimum-prefix digest. Its owned font context supplies measurement and painting without a host callback.
 
 ### High-Level Technical Design
 
@@ -127,9 +128,13 @@ sequenceDiagram
 
 ### Assumptions and Risks
 
-The initial native SDK target set follows the existing desktop release hosts; cross-platform acceptance belongs to CI, not a macOS-only local build.
+The required native SDK targets are `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, each with a dynamic and static C library.
+The required WASI target is `wasm32-wasip1`.
+Both lines support standard, math and full on those targets; a failed qualification blocks that configuration rather than producing a placeholder download.
+Cross-platform acceptance belongs to CI, not a macOS-only local build.
 The existing default native language SDK remains SVG/analysis/ASCII-oriented.
-Math in WASI needs independent final-import and resource-profile qualification; a native math build is not proof of WASI support.
+WASI math/full use the existing cooperative `interactive` resource profile with host memory/execution limits.
+Their real host smokes must render a formula to SVG and PNG and verify that an explicit `constrained` request receives the existing structured rejection.
 Rust WASI stdlib can import filesystem calls, so target selection alone does not satisfy R5.
 Dependency resolution and platform tools may block local builds; record the exact command and error rather than changing the lockfile speculatively.
 
@@ -184,12 +189,12 @@ Dependency resolution and platform tools may block local builds; record the exac
 
 **Goal:** return useful metadata and prove transport parity.
 **Requirements:** R6, R10; KTD8.
-**Dependencies:** U1, U3.
+**Dependencies:** U1, U3, U7.
 **Files:** `crates/merman/src/render/document.rs`, `crates/merman-bindings-core/src/render/request.rs`, `crates/merman-bindings-core/src/operation.rs`, `crates/merman-bindings-core/tests/native_fonts.rs`, `platforms/wasi/`.
 **Approach:** carry authoritative SVG viewport information through the existing result; reuse PNG sizing metadata and existing structured diagnostic fields.
 **Test scenarios:**
 1. SVG viewport and scaled PNG dimensions reflect the returned artifact.
-2. Native and WASI use the same font bytes and deterministic settings for representative diagrams.
+2. Packaged C and WASI use the same font bytes and deterministic settings for representative diagrams.
 3. PNG comparisons inspect decoded pixels; SVG comparisons preserve semantic structure.
 **Verification:** real host comparisons and metadata regression tests.
 
@@ -198,14 +203,28 @@ Dependency resolution and platform tools may block local builds; record the exac
 **Goal:** deliver AE3 and AE4 as installable archives.
 **Requirements:** R4, R8-R10; KTD7.
 **Dependencies:** U3, U4.
-**Files:** `capabilities/artifact-profiles-v2.json`, `scripts/sdk_archive.py`, `scripts/test_sdk_archive.py`, `scripts/release_surface_contract.py`, `.github/workflows/release-sdk.yml`, `distribution/sdk/`, `docs/release/THIRD_PARTY_COMPONENTS.json`, artifact-specific legal projections.
+**Files:** `capabilities/artifact-profiles-v2.json`, `scripts/sdk_archive.py`, `scripts/test_sdk_archive.py`, `scripts/release_surface_contract.py`, `.github/workflows/release-sdk.yml`, `.github/workflows/release-preflight.yml`, `distribution/sdk/`, `docs/release/THIRD_PARTY_COMPONENTS.json`, artifact-specific legal projections.
 **Approach:** add exact standard/math/full recipes, archive existing built libraries/modules with headers and manifests, and use the current release trust/provenance conventions.
 **Test scenarios:**
 1. Archive contents match the selected artifact and reject missing/mismatched binaries or headers.
 2. Standard excludes ELK/RaTeX; math excludes ELK; full includes its EPL source-availability material.
 3. A C consumer compiles against the staged archive and queries/renders through ABI 3.
-4. WASI presets advertise only verified formats and import surfaces.
+4. Actual WASI math/full archives render formulas to SVG and PNG under the qualified resource policy, and reject explicit constrained math requests.
+5. The preflight SDK job builds, archives and tests every required target/configuration before a release can qualify.
 **Verification:** Python packaging contracts, native consumer smoke, artifact closure/legal checks and workflow analysis.
+
+### U7. Expose memory fonts through an additive C constructor
+
+**Goal:** make the delivered C SDK exercise the same closed font service as WASI.
+**Requirements:** R4, R5, R10; KTD10.
+**Dependencies:** U2.
+**Files:** `contracts/abi/merman-v3.json`, `crates/merman-ffi/src/lib.rs`, `crates/merman-ffi/Cargo.toml`, generated C/Rust ABI projections, `crates/merman-bindings-core/src/artifact_contract.rs`, `crates/merman-bindings-core/src/transport_contract.rs`, `crates/merman-ffi/tests/c_consumer_smoke.c`.
+**Approach:** append an independent memory-font constructor with copied input bytes and optional bundled fallback; retain old constructors and all frozen ABI prefix layouts.
+**Test scenarios:**
+1. The archived C consumer constructs with supplied font bytes, releases input storage, and renders SVG/PNG with the retained context.
+2. An older minimum-prefix consumer still discovers and uses the original table.
+3. Invalid font buffers and absent font capability return ordinary owned error results without publishing an engine.
+**Verification:** generated ABI verification, old/new C consumer smokes and native/WASI output comparison.
 
 ### U6. Adapt the SDK delivery to the maintenance implementation
 
