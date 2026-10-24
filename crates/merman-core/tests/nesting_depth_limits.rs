@@ -1,10 +1,11 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
 use futures::executor::block_on;
-use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
+use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidEngine, ParseOptions};
 
 fn parse_ok(input: &str) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     block_on(engine.parse_diagram(input, ParseOptions::strict()))
         .expect("deeply nested diagram should parse like Mermaid.js");
 }

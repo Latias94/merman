@@ -1,21 +1,39 @@
+use crate::diagrams::langium_common::{LangiumCommonParse, parse_langium_common};
+#[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::{
-    LangiumCommonParse, parse_langium_common, push_langium_common_editor_fact,
-    push_langium_common_recovery,
+    push_langium_common_editor_fact, push_langium_common_recovery,
 };
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
+    EditorSemanticSymbol,
 };
+use crate::{Error, SourceSpan, family};
+#[cfg(feature = "presentation")]
+use crate::{PresentationMetadata, Result};
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
+/// Canonical meaning of an Info diagram, without compatibility-output state.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct InfoDiagramModel {
+    #[serde(rename = "showInfo")]
+    pub show_info: bool,
+}
+
+#[cfg(feature = "presentation")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct InfoDiagramRenderModel {
     #[serde(rename = "showInfo")]
     pub show_info: bool,
+    #[cfg(feature = "compat-json")]
     #[serde(skip)]
     compat_output: InfoCompatOutput,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Default)]
 enum InfoCompatOutput {
     Empty,
@@ -24,27 +42,51 @@ enum InfoCompatOutput {
 }
 
 struct InfoSemanticSource {
-    model: InfoDiagramRenderModel,
-    editor_facts: EditorSemanticFacts,
+    model: InfoDiagramModel,
+    #[cfg(feature = "compat-json")]
+    compat_output: InfoCompatOutput,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
-pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source = parse_info_semantic_source(code, meta)?;
-    render_model_to_compat_json(&source.model, meta)
+#[cfg(feature = "presentation")]
+impl InfoSemanticSource {
+    fn into_render_model(self) -> InfoDiagramRenderModel {
+        InfoDiagramRenderModel {
+            show_info: self.model.show_info,
+            #[cfg(feature = "compat-json")]
+            compat_output: self.compat_output,
+        }
+    }
 }
 
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_info(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    let model = parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
+}
+
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
-    let construction = construct_info_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_info_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
-        |source| {
+        |mut source| {
+            let editor_facts = source.editor_facts.take().unwrap_or_default();
             (
-                render_model_to_compat_json(&source.model, meta),
-                source.editor_facts,
+                render_model_to_compat_json(&source.into_render_model(), meta),
+                editor_facts,
             )
         },
         family::CombinedSemanticFailure::into_parts,
@@ -53,9 +95,10 @@ pub(crate) fn parse_info_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &InfoDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(match &model.compat_output {
         InfoCompatOutput::Empty => json!({}),
@@ -66,41 +109,89 @@ pub(crate) fn render_model_to_compat_json(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<InfoDiagramRenderModel> {
-    Ok(parse_info_semantic_source(code, meta)?.model)
+    parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_info_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<InfoDiagramRenderModel>> {
-    let construction = construct_info_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_info_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     match construction {
-        Ok(source) => Ok(Ok(source.model)),
+        Ok(source) => Ok(Ok(source.into_render_model())),
         Err(failure) => Ok(Err(failure.into_error())),
     }
 }
 
-fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSemanticSource> {
-    construct_info_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
-}
-
-fn construct_info_semantic_source(
+pub(crate) fn parse_info_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure> {
-    construct_info_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<InfoDiagramModel>> {
+    let construction = construct_info_semantic_source_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let editor_facts = source.editor_facts;
+            let model = source.model;
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            }
+        }
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
+                }
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
+    })
 }
 
 fn construct_info_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure>,
@@ -112,24 +203,39 @@ fn construct_info_semantic_source_controlled(
     let body = match info_body_start_controlled(code, control)? {
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
-                model: InfoDiagramRenderModel {
-                    show_info: false,
-                    compat_output: InfoCompatOutput::Empty,
-                },
-                editor_facts: EditorSemanticFacts::new(),
+                model: InfoDiagramModel::default(),
+                #[cfg(feature = "compat-json")]
+                compat_output: InfoCompatOutput::Empty,
+                #[cfg(feature = "editor-facts")]
+                editor_facts: editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
             }));
         }
         InfoHeader::ExpectedInfo(span) => {
             return Ok(Err(family::CombinedSemanticFailure::parser_recovery(
+                #[cfg(feature = "editor-facts")]
                 "info",
-                Error::diagram_parse_exact(meta.diagram_type.clone(), "expected info", span),
-                EditorSemanticFacts::new(),
+                Error::diagram_parse_exact(diagram_type, "expected info", span),
+                #[cfg(feature = "editor-facts")]
+                editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
             )));
         }
         InfoHeader::Body(body) => body,
     };
     let mut offset = body.offset;
-    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
     let mut show_info = false;
     let mut common_seen = false;
     let mut first_error = None;
@@ -139,22 +245,41 @@ fn construct_info_semantic_source_controlled(
         match parse_info_statement(code, offset, !show_info && !common_seen) {
             InfoStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
-                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    #[cfg(feature = "editor-facts")]
+                    if let Some(facts) = &mut editor_facts {
+                        push_langium_common_recovery(facts, diagnostic);
+                    }
                     first_error.get_or_insert_with(|| {
                         Error::diagram_parse_insertion_point(
-                            meta.diagram_type.clone(),
+                            diagram_type.to_string(),
                             diagnostic.message.clone(),
                             diagnostic.span.start,
                         )
                     });
                 }
-                push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "info");
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    push_langium_common_editor_fact(facts, &parsed.fact, "info");
+                }
                 common_seen = true;
                 offset += parsed.consumed;
             }
-            InfoStatement::ShowInfo { span, consumed } => {
+            InfoStatement::ShowInfo {
+                #[cfg(feature = "editor-facts")]
+                span,
+                consumed,
+            } => {
                 show_info = true;
-                push_show_info_editor_fact(&mut editor_facts, span);
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    push_show_info_editor_fact(facts, span);
+                }
                 offset += consumed;
             }
             InfoStatement::Empty { next_offset } => offset = next_offset,
@@ -162,14 +287,17 @@ fn construct_info_semantic_source_controlled(
                 ch,
                 skipped,
                 bad_offset,
+                #[cfg(feature = "editor-facts")]
                 span,
                 next_offset,
             } => {
-                editor_facts
-                    .mark_recovered_from_parse_error("unexpected info statement", Some(span));
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    facts.mark_recovered_from_parse_error("unexpected info statement", Some(span));
+                }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         format!(
                             "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
                         ),
@@ -183,16 +311,17 @@ fn construct_info_semantic_source_controlled(
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         )));
     }
 
     control.checkpoint()?;
     Ok(Ok(InfoSemanticSource {
-        model: InfoDiagramRenderModel {
-            show_info,
-            compat_output: InfoCompatOutput::Model,
-        },
+        model: InfoDiagramModel { show_info },
+        #[cfg(feature = "compat-json")]
+        compat_output: InfoCompatOutput::Model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
@@ -200,6 +329,7 @@ fn construct_info_semantic_source_controlled(
 enum InfoStatement {
     Common(LangiumCommonParse),
     ShowInfo {
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan,
         consumed: usize,
     },
@@ -210,6 +340,7 @@ enum InfoStatement {
         ch: char,
         skipped: usize,
         bad_offset: usize,
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan,
         next_offset: usize,
     },
@@ -230,8 +361,10 @@ fn parse_info_statement(code: &str, offset: usize, allow_show_info: bool) -> Inf
     let leading = visible.len() - visible.trim_start().len();
     if allow_show_info && let Some(token_len) = keyword_token_len(visible.trim_start(), "showInfo")
     {
+        #[cfg(feature = "editor-facts")]
         let start = offset + leading;
         return InfoStatement::ShowInfo {
+            #[cfg(feature = "editor-facts")]
             span: SourceSpan::new(start, start + token_len),
             consumed: leading + token_len,
         };
@@ -242,11 +375,13 @@ fn parse_info_statement(code: &str, offset: usize, allow_show_info: bool) -> Inf
         ch: trimmed.chars().next().unwrap_or('?'),
         skipped: trimmed.chars().count(),
         bad_offset,
+        #[cfg(feature = "editor-facts")]
         span: SourceSpan::new(bad_offset, bad_offset + trimmed.len()),
         next_offset,
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
     facts.push_directive_prefix("showInfo");
     facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -334,16 +469,18 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseOptions,
-    };
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
 
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    #[cfg(feature = "presentation")]
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "info".to_string(),
-            config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            config: crate::MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
@@ -356,16 +493,53 @@ mod tests {
         assert!(matches!(
             construct_info_semantic_source_controlled(
                 "info\nshowInfo\ntitle Version\n",
-                &test_meta(),
+                "info",
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
                 &control,
             ),
             Err(crate::OperationCancelled { .. })
         ));
     }
 
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn typed_info_projection_does_not_collect_editor_facts() {
+        for (source, valid) in [
+            ("", true),
+            ("info\nshowInfo\n", true),
+            ("info\ntitle Version\nshowInfo\n", false),
+            ("infox", false),
+        ] {
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let parsed = parse_info_model_for_render_controlled(
+                source,
+                &test_meta(),
+                &crate::OperationControl::new(),
+            )
+            .expect("typed model parse");
+            assert_eq!(parsed.is_ok(), valid, "{source:?}");
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+
+            #[cfg(feature = "compat-json")]
+            {
+                let compat = parse_info(source, &test_meta());
+                assert_eq!(compat.is_ok(), valid, "{source:?}");
+                #[cfg(feature = "editor-facts")]
+                assert_eq!(crate::editor::test_work::read(), Default::default());
+            }
+        }
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+    }
+
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn parse_info_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        crate::editor::test_work::reset();
+        let engine = MermaidEngine::new();
         let text = "info showInfo\n";
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("info", text)
@@ -381,8 +555,12 @@ mod tests {
                 && expected.span
                     == SourceSpan::new(show_info_start, show_info_start + "showInfo".len())
         }));
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert!(crate::editor::test_work::read().symbols > 0);
+        crate::editor::test_work::reset();
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_accepts_show_info_before_common_fields_like_pinned_grammar() {
         let source = "info\nshowInfo\ntitle Version\naccDescr: Build metadata\n";
@@ -415,6 +593,7 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_rejects_show_info_after_common_fields_like_pinned_grammar() {
         let source = "info\ntitle Version\nshowInfo\n";
@@ -449,6 +628,7 @@ mod tests {
         }));
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_invalid_headers_fail_all_family_parsers_with_exact_recovery_facts() {
         let meta = test_meta();
@@ -508,9 +688,10 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_invalid_headers_fail_strict_and_use_lenient_error_diagrams() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         for source in ["infox", "packet"] {
             assert!(
                 engine
@@ -559,6 +740,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     #[test]
     fn info_typed_projection_preserves_empty_and_model_outputs() {
         let meta = test_meta();
@@ -589,5 +771,44 @@ mod tests {
             render_model_to_compat_json(&InfoDiagramRenderModel::default(), &meta).unwrap(),
             json!({ "type": "info", "showInfo": false })
         );
+    }
+
+    #[test]
+    fn semantic_model_preserves_header_validation_and_statement_order() {
+        for (source, show_info) in [
+            ("", false),
+            ("info", false),
+            ("info\nshowInfo\ntitle Version\n", true),
+        ] {
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let model = parse_info_semantic_model_controlled(
+                source,
+                "info",
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.show_info, show_info);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+        for source in ["infox", "info\ntitle Version\nshowInfo\n"] {
+            assert!(
+                parse_info_semantic_model_controlled(
+                    source,
+                    "info",
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new()
+                )
+                .unwrap()
+                .model
+                .is_err()
+            );
+        }
     }
 }

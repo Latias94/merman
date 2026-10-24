@@ -2,8 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use merman::{
-    MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
-    ResourceLimitCause, SvgEnvironment, SvgRequest,
+    OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, ResourceLimitCause,
+    SvgEnvironment, SvgRequest,
+    presentation::PresentationConfig,
     svg::{RenderCapability, ResourceLimitId, SvgOutputPolicy, SvgPipelinePreset},
 };
 use serde_json::Value;
@@ -83,9 +84,9 @@ fn render_mermaid_svg(
     context: &str,
 ) -> Result<String> {
     let resources = options.resource_policy()?;
-    let mut engine = merman::Engine::new();
+    let mut engine = merman::MermaidEngine::new();
     if let Some(theme) = site_theme {
-        let mut config = MermaidConfig::empty_object();
+        let mut config = PresentationConfig::empty_object();
         config.set_value("theme", Value::String(theme.to_string()));
         engine = engine.with_site_config(config);
     }
@@ -113,7 +114,7 @@ fn render_mermaid_svg(
         ..Default::default()
     };
     let rendered = Renderer::new()
-        .with_engine(engine)
+        .with_presentation_engine(engine)
         .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
             let hint = match &err {
@@ -126,7 +127,7 @@ fn render_mermaid_svg(
                 RenderError::Svg(error)
                     if error.missing_capability() == Some(RenderCapability::Math) =>
                 {
-                    "; enable the `math` or `complete-svg` feature on the `merman-rustdoc` dependency"
+                    "; enable the `math` feature on the `merman-rustdoc` dependency"
                 }
                 _ => "",
             };

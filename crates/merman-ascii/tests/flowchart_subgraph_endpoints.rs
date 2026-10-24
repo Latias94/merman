@@ -2,25 +2,27 @@ mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions};
 use merman_core::diagrams::flowchart::FlowNodeProvenance;
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
-use support::render_parsed;
+use merman_core::{
+    MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+};
+use support::render_full_parsed;
 
 const SUBGRAPH_ENDPOINT_FIXTURE: &str = include_str!(
     "../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_and_edge_labels_063.mmd"
 );
 
 fn render_flowchart(source: &str) -> String {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
-    render_parsed(&parsed, &AsciiRenderOptions::ascii())
+    render_full_parsed(&parsed, &AsciiRenderOptions::ascii())
         .expect("flowchart should render as terminal output")
 }
 
 #[test]
 fn upstream_subgraph_endpoint_edges_route_to_groups_without_visible_placeholder_nodes() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(SUBGRAPH_ENDPOINT_FIXTURE, ParseOptions::strict())
         .expect("upstream subgraph endpoint fixture should parse")
         .expect("upstream subgraph endpoint fixture should be detected");
@@ -45,7 +47,7 @@ fn upstream_subgraph_endpoint_edges_route_to_groups_without_visible_placeholder_
                 .any(|subgraph| subgraph.id == endpoint_id)
         );
     }
-    let rendered = render_parsed(&parsed, &AsciiRenderOptions::ascii())
+    let rendered = render_full_parsed(&parsed, &AsciiRenderOptions::ascii())
         .expect("upstream subgraph endpoint fixture should render");
 
     for title in ["TOP", "B1", "B2"] {
@@ -73,7 +75,7 @@ fn authored_node_colliding_with_a_subgraph_uses_group_first_projection() {
         "end\n",
         "G --> A\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("authored node/subgraph collision should parse")
         .expect("flowchart should be detected");
@@ -87,7 +89,7 @@ fn authored_node_colliding_with_a_subgraph_uses_group_first_projection() {
         .expect("authored G node");
     assert_eq!(authored.provenance, FlowNodeProvenance::Authored);
 
-    let rendered = render_parsed(&parsed, &AsciiRenderOptions::ascii())
+    let rendered = render_full_parsed(&parsed, &AsciiRenderOptions::ascii())
         .expect("authored node/subgraph collision should render through the group");
     assert_eq!(
         rendered.matches('G').count(),
@@ -106,7 +108,7 @@ fn standalone_shape_data_does_not_override_same_id_group_projection() {
         "G --> A\n",
         "G@{ shape: rect, label: \"Authored G\" }\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("standalone shapeData should parse")
         .expect("flowchart should be detected");
@@ -120,7 +122,7 @@ fn standalone_shape_data_does_not_override_same_id_group_projection() {
         .expect("authored G node");
     assert_eq!(authored.provenance, FlowNodeProvenance::Authored);
 
-    let rendered = render_parsed(&parsed, &AsciiRenderOptions::ascii())
+    let rendered = render_full_parsed(&parsed, &AsciiRenderOptions::ascii())
         .expect("standalone shapeData should retain the group-first projection");
     assert!(
         !rendered.contains("Authored G"),
@@ -140,11 +142,11 @@ fn style_statement_on_a_colliding_vertex_remains_on_the_group_owner() {
         "style G fill:#ff0000\n",
         "G --> A\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("styled node/subgraph collision should parse")
         .expect("flowchart should be detected");
-    let rendered = render_parsed(
+    let rendered = render_full_parsed(
         &parsed,
         &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html),
     )
@@ -162,11 +164,11 @@ fn same_id_group_style_preserves_flowdb_class_and_style_statement_order() {
         let source = format!(
             "flowchart TD\nclassDef base stroke:#0000ff\nsubgraph G\n  A\nend\n{statements}\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .expect("same-id group style order should parse")
             .expect("flowchart should be detected");
-        render_parsed(
+        render_full_parsed(
             &parsed,
             &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor),
         )
@@ -192,6 +194,36 @@ fn same_id_group_style_preserves_flowdb_class_and_style_statement_order() {
         style_before_class_rendered.contains("\u{1b}[38;2;0;0;255m"),
         "a class assigned after vertex creation must remain visible:\n{style_before_class_rendered}"
     );
+}
+
+#[test]
+fn canonical_flowchart_css_matches_the_parser_owned_terminal_projection() {
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+    for statements in [
+        "class G base\nstyle G fill:#ff0000",
+        "style G fill:#ff0000\nclass G base",
+        "G\nclass G base\nstyle G fill:#ff0000",
+    ] {
+        let source = format!(
+            "flowchart TD\nclassDef base stroke:#0000ff\nsubgraph G\n  A\nend\n{statements}\nG --> A\n"
+        );
+        let full = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect("full Flowchart should parse")
+            .expect("Flowchart should be detected");
+        let canonical = SemanticParser::new()
+            .parse_diagram_sync(&source)
+            .expect("canonical Flowchart should parse without presentation");
+        let SemanticDiagramModel::Flowchart(model) = canonical.model else {
+            panic!("expected canonical Flowchart model");
+        };
+        let canonical_output =
+            support::render_model(&RenderSemanticModel::Flowchart(model), &options)
+                .expect("canonical authored CSS should render without a render context");
+        let full_output =
+            render_full_parsed(&full, &options).expect("parser-owned authored CSS should render");
+        assert_eq!(canonical_output, full_output, "{statements}");
+    }
 }
 
 #[test]

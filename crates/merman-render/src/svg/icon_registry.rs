@@ -347,7 +347,7 @@ pub(in crate::svg) struct IconRenderRequest<'a> {
     pub(in crate::svg) fallback_prefix: Option<&'a str>,
     pub(in crate::svg) extra_class: Option<&'a str>,
     pub(in crate::svg) id_scope: IconIdScope,
-    pub(in crate::svg) effective_config: &'a merman_core::MermaidConfig,
+    pub(in crate::svg) effective_config: &'a merman_core::presentation::PresentationConfig,
     pub(in crate::svg) work_meter: &'a crate::resources::OperationWorkMeter,
 }
 

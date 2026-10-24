@@ -1,11 +1,11 @@
 use super::super::*;
-use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
+use merman_core::diagrams::eventmodeling::EventModelingDiagramModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 
 pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     layout: &EventModelingDiagramLayout,
-    model: &EventModelingDiagramRenderModel,
+    model: &EventModelingDiagramModel,
     text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {

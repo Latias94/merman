@@ -28,23 +28,73 @@ Keep these lanes separate because they answer different questions:
 The `pipeline` bench can be run directly for local attribution:
 
 ```bash
-cargo bench -p merman --features svg --bench pipeline
+cargo bench -p merman --features all-diagrams,svg,compat-json,editor-facts --bench pipeline
 ```
 
 It measures:
 
-- `parse/*`: parsing with a reused `Engine`, without layout.
-- `parse_cold_engine/*`: request-style parsing with a fresh `Engine` per iteration.
+- `parse/*`: parsing with a reused `MermaidEngine`, without layout.
+- `parse_cold_engine/*`: request-style parsing with a fresh `MermaidEngine` per iteration.
 - `compatibility_json_parse/*`: compatibility JSON parsing when the diagram type is already known.
   Historical reports may use its registered `parse_known_type/*` alias.
+- `editor_snapshot/*`: requested editor snapshot capture, retaining outcome, warnings, source
+  configuration and parser-owned facts.
 - `layout/*`: geometry and route computation from a parsed diagram.
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
+
+The full `pipeline` executable requires `svg,compat-json,editor-facts`, including when only one
+group is selected. Default facade features do not enable `compat-json`. Use the explicit recipe
+above to retain all diagram families; default features still supply the layout backends.
+With defaults disabled, bench-list verification uses
+`all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math`.
+
+The October 22, 2026 U8/U9 API/recipe migration uses `MermaidEngine` and
+`PresentationArtifact` for SVG preparation. It refreshes current lane/probe features and
+`probe.inputs` source hashes only. Metric thresholds, `candidate_admission`, and semantic output
+digests retain their registered values. This refresh is not a new measurement or a performance
+pass. Historical reports and frozen baselines retain their original recipes and hashes.
+The label-artifact and both sequence-message memory contracts also hash
+`crates/merman/Cargo.toml` and `Cargo.lock`; refresh those input hashes after the final manifest or
+lockfile edit, including a manifest-only test-gate change.
+
+JSON identity projection is outside timing. It sorts object keys on a managed copy while
+preserving every array order and value; the measured output is unchanged. This stabilizes
+identities for models such as State whose records use randomized map iteration. SVG identities
+retain exact serialized bytes. Compare only revisions with the same identity harness; older
+unsorted JSON hashes are historical observations, not interchangeable identity receipts.
+Include `crates/merman/benches/support/json_identity.rs` when freezing and comparing pipeline
+harness sources: the driver's primary benchmark-source digest does not include support modules.
 
 Bench fixtures live under `crates/merman/benches/fixtures/`. A direct Criterion invocation is useful
 for exploration, but its internal samples are not independent base/head observations and cannot by
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
+
+### Parser allocation and embedding observations
+
+`parse_memory` reuses the native system-allocator probe protocol and driver. The shared
+`tools/bench/corpus.json` registers typed, known-type JSON and requested snapshot
+routes for generated Flowchart, Sequence and State chains at scales 1, 2, 4, 10, 32 and 100.
+Input/engine setup and warmup precede measurement; each measured result stays alive through the
+allocation, retained and peak checkpoints, then drops before the final live-byte checkpoint.
+Semantic validation and requested recovery characterization run outside those windows. Zero
+mode enters no parser. Seven contracts preregister U3 bounds for Sequence/State typed, JSON and
+snapshot requests plus a Flowchart typed control. The remaining Flowchart JSON/snapshot contracts
+are infrastructure observations. Candidate admission also requires exact removed-work proof,
+semantic parity and the registered latency controls; a memory report alone is insufficient.
+
+```console
+cargo bench --locked -p merman --no-default-features --features all-diagrams,compat-json,editor-facts --bench parse_memory --no-run -j 1
+python tools/bench/run_native_memory.py --corpus tools/bench/corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
+```
+
+Use the same committed probe and generated input policy on adjacent revisions for removed-work
+evidence, retaining raw samples and preregistering bounds before candidate confirmation. These
+lanes do not establish latency. Full parser output identities remain separate from their fixed
+verified semantic projection. The [three-family embedding recipe](../../tools/bench/fixtures/semantic-parser/README.md)
+uses the existing isolated artifact driver to retain raw/stripped executables and consumed
+meaning without a renderer or compatibility projection in its call path.
 
 The `profile_render` example's `--stage render` loop includes artifact preparation in whole-process
 samples and elapsed time. Only its `profile_render::emit_prepared_svg` subtree matches the emission
@@ -234,7 +284,11 @@ Base and head are separate `RunnerRecipe` values. Each recipe records its own:
 
 Do not project the head recipe onto an older revision. Capability names can change across releases.
 For example, `v0.8.0-alpha.3` exposes SVG rendering through `render`, while the current candidate
-uses `svg`.
+uses `all-diagrams,svg,compat-json,editor-facts` for the full pipeline bench.
+`compare_self.py` keeps the historical base default at `svg` and uses that full recipe for head.
+Override `--base-features` and `--head-features` independently according to each checkout's bench
+requirements. A base that predates `compat-json` or `editor-facts` must keep its own feature
+vocabulary; copying the head recipe onto it can fail before measurement.
 
 This historical comparison makes that difference explicit:
 
@@ -249,7 +303,7 @@ python3 tools/bench/compare_self.py \
   --base-bench pipeline \
   --head-bench pipeline \
   --base-features render \
-  --head-features svg \
+  --head-features all-diagrams,svg,compat-json,editor-facts \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \
@@ -468,6 +522,8 @@ baseline for `kanban_medium` is 40,000 ns:
 ```bash
 python3 tools/bench/compare_self.py \
   --base-dir ../merman-base --head-dir . \
+  --base-features all-diagrams,svg,compat-json,editor-facts \
+  --head-features all-diagrams,svg,compat-json,editor-facts \
   --group end_to_end --filter '^end_to_end/kanban_medium$' \
   --evidence-mode confirmation --preset long \
   --low-latency-baseline-ns kanban_medium=40000 \
@@ -625,6 +681,16 @@ The driver builds a dedicated instrumented executable once, freezes its SHA-256 
 launches one fresh process for every operation or matched zero-work sample. The renderer is prepared
 before the allocator snapshot, so `fresh-process` describes sample isolation while `reused-engine`
 describes the measured public operation. This executable is never used for latency evidence.
+
+For lanes with identical Cargo recipes, preflight them together and build once; each still receives
+its own full report and fresh subprocess schedule, and must be frozen separately:
+
+```console
+python tools/bench/run_native_memory.py --lanes parser-sequence-typed-memory parser-state-typed-memory --json-out-dir target/bench/parser-memory
+```
+
+Batch execution retains the actual shared Cargo build receipt and rejects source, build-environment,
+tool-version, recipe, or executable changes before reuse. It cannot use `--contract` or `--executable`.
 
 The registered contract fixes six scales (`1, 2, 4, 10, 32, 100`), one seed across the matrix, at
 least five repeats, and alternating operation/zero order. Strict one-line JSON records executable and
@@ -795,7 +861,7 @@ timing diagnostics disabled in the measured production path. The API is document
 Stress benches batch small operations to amplify fixed costs:
 
 ```bash
-cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features all-diagrams,svg,compat-json --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 cargo bench -p merman --features layout-cytoscape --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 cargo bench -p merman --features layout-cytoscape --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3

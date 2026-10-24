@@ -11,13 +11,14 @@
     "bench": "flowchart_svg_label_memory",
     "features": [
       "all-diagrams",
-      "svg"
+      "svg",
+      "compat-json"
     ],
     "default_features": false,
     "inputs": [
       {
         "path": "crates/merman/benches/flowchart_svg_label_memory.rs",
-        "sha256": "9d989234dd5b09fcd27fc314e1477cdddcca7b0b9fbaec856294076642ba1530"
+        "sha256": "f9a28360aaf19eb2641fff072fd1a02d9d06a2d3ee4097040f54dde561c7e364"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",
@@ -25,11 +26,11 @@
       },
       {
         "path": "crates/merman/Cargo.toml",
-        "sha256": "02d5bff5335ae0c9e9e9e653bd7804ceeda0add12db2268d68da23e7dd83798f"
+        "sha256": "a4fbbf34f3ec1fa54fb77d151e1f2a1b4d63686a982054655afd8064d2dc980b"
       },
       {
         "path": "Cargo.lock",
-        "sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8"
+        "sha256": "458ddf1be6973de583d2c0f694538f7642d39debe973130930de4c74a7b58370"
       }
     ]
   },

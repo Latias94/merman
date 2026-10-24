@@ -521,7 +521,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 mod tests {
     use super::*;
     use crate::environment::RenderEnvironment;
@@ -530,7 +530,7 @@ mod tests {
         FlowchartSvgModelRequest, render_flowchart_svg_model,
     };
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     fn render_measured_shape(
         shape: &str,
@@ -542,7 +542,7 @@ mod tests {
         let source = format!(
             "---\nconfig:\n  look: {look}\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .unwrap();

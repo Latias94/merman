@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::state::StateDiagramRenderNode;
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 
 use crate::diagram_theme::{ThemeTarget, ThemeTypographyProperty};
@@ -153,11 +153,11 @@ impl<T> StateResolvedValue<T> {
 
 struct StateCompatibilityResolver<'a> {
     value: &'a Value,
-    config: Option<&'a MermaidConfig>,
+    config: Option<&'a PresentationConfig>,
 }
 
 impl<'a> StateCompatibilityResolver<'a> {
-    fn new(value: &'a Value, config: Option<&'a MermaidConfig>) -> Self {
+    fn new(value: &'a Value, config: Option<&'a PresentationConfig>) -> Self {
         Self { value, config }
     }
 
@@ -402,7 +402,7 @@ pub(crate) struct StateCompatibilityPlan {
 }
 
 impl StateCompatibilityPlan {
-    pub(crate) fn from_config(config: &MermaidConfig) -> Self {
+    pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self::resolve(StateCompatibilityResolver::new(
             config.as_value(),
             Some(config),
@@ -1395,8 +1395,8 @@ mod tests {
 
     #[test]
     fn gradient_source_ownership_only_reaches_enabled_gradient_terminals() {
-        let mut config = merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
+        let mut config = merman_core::MermaidEngine::new()
+            .with_site_config(PresentationConfig::from_value(json!({
                 "themeVariables": { "gradientStart": "#123456" },
             })))
             .parse_metadata_sync("stateDiagram-v2\nReady --> Done\n")

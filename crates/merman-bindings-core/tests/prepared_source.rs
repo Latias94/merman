@@ -114,3 +114,47 @@ fn retained_result_uses_the_same_metadata_and_theme_owner_as_one_shot() {
         .unwrap();
     assert_eq!(once, repeated);
 }
+
+#[test]
+fn retained_source_outlives_the_lazy_engine_and_keeps_runtime_and_theme_defaults() {
+    let options = br#"{
+        "theme":{"preset":"editor-light"},
+        "site_config":{"flowchart":{"htmlLabels":false}}
+    }"#;
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .with_fixed_unix_millis(1_771_113_600_000)
+        .with_fixed_seed(42);
+    let engine = BindingEngine::with_runtime_policy(options, runtime_policy).unwrap();
+    let source = b"flowchart LR\nA[Retained] --> B[Output]";
+    let prepared = engine
+        .prepare_source(source, OperationControl::new())
+        .unwrap();
+    let expected = engine
+        .execute(merman_bindings_core::BindingOperationRequest::new(
+            "svg", source,
+        ))
+        .unwrap();
+    drop(engine);
+    let services = BindingEngineServices::new();
+    assert_eq!(
+        prepared
+            .render_svg_result(b"", OperationControl::new(), &services)
+            .unwrap(),
+        expected,
+    );
+    let cancelled = OperationControl::new();
+    cancelled.cancel();
+    assert_eq!(
+        prepared
+            .render_svg(b"", cancelled, &services)
+            .unwrap_err()
+            .status(),
+        BindingStatus::Cancelled,
+    );
+    assert_eq!(
+        prepared
+            .render_svg_result(b"", OperationControl::new(), &services)
+            .unwrap(),
+        expected,
+    );
+}

@@ -32,7 +32,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
-    pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
+    pub relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub diagram_marker_class: &'a str,
     pub diagram_id: SvgDiagramId<'a>,
@@ -43,7 +43,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edge_use_html_labels: bool,
     pub text_measurer: &'a dyn TextMeasurer,
     pub terminal_text_style: &'a TextStyle,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -66,7 +66,7 @@ pub(super) struct ClassEdgePathEmission<'edges> {
 
 pub(super) fn class_line_with_marker_offset_points_into(
     input: &[LayoutPoint],
-    relation: Option<&ClassSvgRelation>,
+    relation: Option<ClassSvgRelation<'_>>,
     out: &mut Vec<LayoutPoint>,
 ) {
     fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
@@ -548,7 +548,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
         let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
         let label_text = relation
-            .map(|relation| relation.title.as_str())
+            .map(|relation| relation.source.title.as_str())
             .unwrap_or("");
 
         // The common registered-layout renderer only inserts labels for edges with
@@ -966,7 +966,7 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
 fn render_class_terminal_label(
     out: &mut impl SvgOutput,
     text: &str,
-    mermaid_config: Option<&merman_core::MermaidConfig>,
+    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) {
     if let Some(math_html) = class_math_html_label(text, mermaid_config, math_renderer) {

@@ -485,7 +485,7 @@ mod tests {
         );
         crate::sankey::SankeyNodePalettePlan::resolve(
             None,
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             layout,
             &work_meter,
         )
@@ -591,7 +591,7 @@ mod tests {
         );
         let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
             None,
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &layout,
             &work_meter,
         )
@@ -802,9 +802,10 @@ mod tests {
             ("var(--link)", "var(--link)"),
             ("gradient", "url(#example-linearGradient-3)"),
         ] {
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "sankey": {"nodeColors": {"A": "var(--node)", "B": "currentColor"}}
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "sankey": {"nodeColors": {"A": "var(--node)", "B": "currentColor"}}
+                }));
             let mut palette = crate::sankey::SankeyNodePalettePlan::resolve(
                 None,
                 &config,

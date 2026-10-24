@@ -1,4 +1,8 @@
-use crate::{MermaidConfig, SourceSpan};
+#[cfg(feature = "presentation")]
+use crate::MermaidConfig;
+use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
 
 use super::{
     NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_DEFAULT, NODE_TYPE_HEXAGON,
@@ -49,12 +53,14 @@ pub(super) struct NodeSpec {
     pub descr_raw: String,
     pub ty: i32,
     pub descr_is_markdown: bool,
-    pub trace: NodeSpecTrace,
+    pub selection: SourceSpan,
+    #[cfg(feature = "editor-facts")]
+    pub trace: Option<NodeSpecTrace>,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Default)]
 pub(super) struct NodeSpecTrace {
-    pub id_span: Option<SourceSpan>,
     pub description_span: Option<SourceSpan>,
 }
 
@@ -92,7 +98,10 @@ impl NodeSpecContinuation {
     }
 }
 
-pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
+pub(super) fn parse_node_spec(
+    input: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
     let input = input.trim_end();
     if input.is_empty() {
         return Err(node_spec_error("expected node", None));
@@ -102,10 +111,11 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
         let (inner, tail, _) = extract_delimited(input, start, end)
             .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
         let parsed_text = parse_node_text(inner, start.len());
-        let trace = NodeSpecTrace {
-            id_span: Some(parsed_text.content),
+        let selection = parsed_text.content;
+        #[cfg(feature = "editor-facts")]
+        let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
             description_span: None,
-        };
+        });
         if !tail.trim().is_empty() {
             return Err(node_spec_error("unexpected trailing input", None));
         }
@@ -115,6 +125,8 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
             descr_raw: parsed_text.value,
             ty,
             descr_is_markdown: parsed_text.is_markdown,
+            selection,
+            #[cfg(feature = "editor-facts")]
             trace,
         });
     }
@@ -129,10 +141,11 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
             descr_raw: id_raw,
             ty: NODE_TYPE_DEFAULT,
             descr_is_markdown: false,
-            trace: NodeSpecTrace {
-                id_span: Some(SourceSpan::new(0, id_end)),
+            selection: SourceSpan::new(0, id_end),
+            #[cfg(feature = "editor-facts")]
+            trace: matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
                 ..NodeSpecTrace::default()
-            },
+            }),
         });
     }
 
@@ -144,10 +157,11 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
     let (inner, tail, _) = extract_delimited(rest, start, end)
         .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
     let parsed_text = parse_node_text(inner, rest_start + start.len());
-    let trace = NodeSpecTrace {
-        id_span: Some(SourceSpan::new(0, input[..rest_start].trim_end().len())),
+    let selection = SourceSpan::new(0, input[..rest_start].trim_end().len());
+    #[cfg(feature = "editor-facts")]
+    let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
         description_span: Some(parsed_text.content),
-    };
+    });
     if !tail.trim().is_empty() {
         return Err(node_spec_error("unexpected trailing input", None));
     }
@@ -158,6 +172,8 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
         descr_raw: parsed_text.value,
         ty,
         descr_is_markdown: parsed_text.is_markdown,
+        selection,
+        #[cfg(feature = "editor-facts")]
         trace,
     })
 }
@@ -377,6 +393,7 @@ fn node_type_for(start: &str, end: &str) -> i32 {
     }
 }
 
+#[cfg(feature = "presentation")]
 pub(super) fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     let mut cur = cfg.as_value();
     for segment in dotted_path.split('.') {

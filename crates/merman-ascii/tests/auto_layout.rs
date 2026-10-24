@@ -378,7 +378,13 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
                 .begin_operation()
                 .expect("deterministic test operation context");
             renderer.render_model_report(
-                &model,
+                &support::full_model::view(&model),
+                merman_ascii::AsciiSourceContext {
+                    diagram_type: model.kind(),
+                    config: &merman_core::MermaidConfig::empty_object(),
+                    semantic_config: &merman_core::MermaidConfig::empty_object(),
+                    title: None,
+                },
                 AsciiViewportPolicy::with_max_width(105).overflow(OverflowPolicy::Allow),
                 &OperationControl::new(),
                 &context,

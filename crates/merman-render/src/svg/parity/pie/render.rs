@@ -586,7 +586,7 @@ mod tests {
         let mut model = PieDiagramRenderModel::default();
         model.sections = slices
             .iter()
-            .map(|slice| merman_core::diagrams::pie::PieRenderSection {
+            .map(|slice| merman_core::diagrams::pie::PieSection {
                 label: slice.label.clone(),
                 value: slice.value,
             })

@@ -1,5 +1,6 @@
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 
 const SOURCE: &str = r#"flowchart TD
@@ -9,7 +10,7 @@ const SOURCE: &str = r#"flowchart TD
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Keep application defaults outside user-authored Mermaid source.
-    let site_config = MermaidConfig::from_value(serde_json::json!({
+    let site_config = PresentationConfig::from_value(serde_json::json!({
         "theme": "base",
         "fontFamily": "system-ui",
         "themeVariables": {
@@ -20,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }));
     let renderer = Renderer::new()
-        .with_engine(Engine::new().with_site_config(site_config))
+        .with_presentation_engine(MermaidEngine::new().with_site_config(site_config))
         .with_parse_options(merman::ParseOptions::strict());
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {

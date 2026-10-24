@@ -2495,7 +2495,6 @@ name = "merman-core"
 version = "0.9.2"
 dependencies = [
  "cssparser",
- "euclid",
  "futures",
  "getrandom 0.4.3",
  "granit-parser",
@@ -2638,6 +2637,7 @@ dependencies = [
  "data-encoding",
  "data-url",
  "dugong",
+ "euclid",
  "futures",
  "indexmap",
  "kurbo 0.13.1",
@@ -4826,9 +4826,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.53.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
 dependencies = [
  "bytes",
  "libc",

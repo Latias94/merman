@@ -5,9 +5,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::ishikawa::{
-    IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
-};
+use merman_core::diagrams::ishikawa::{IshikawaDiagramModel, IshikawaNode};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -26,7 +24,7 @@ use config::IshikawaLayoutSettings;
 pub(crate) use theme::{IshikawaCssBinding, IshikawaTextThemePlan};
 
 pub(crate) fn layout_ishikawa_diagram_typed(
-    model: &IshikawaDiagramRenderModel,
+    model: &IshikawaDiagramModel,
     effective_config: &Value,
     font_family_css: &str,
     measurer: &dyn TextMeasurer,
@@ -931,7 +929,7 @@ mod font_style_tests {
             "fontFamily": "Cousine, sans-serif",
             "themeVariables": {"fontFamily": "Different, sans-serif"}
         });
-        let config = merman_core::MermaidConfig::from_value(config);
+        let config = merman_core::presentation::PresentationConfig::from_value(config);
         let font_stack =
             crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
         let family = font_stack.font_family_css();
@@ -964,14 +962,14 @@ mod font_style_tests {
                 self.measure(text, style).width
             }
         }
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "RootFallback",
             "themeVariables": {"fontFamily": "ThemeWinner"}
         }));
         let font_stack =
             crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
         let probe = FontProbe(std::cell::RefCell::new(Vec::new()));
-        let model = IshikawaDiagramRenderModel {
+        let model = IshikawaDiagramModel {
             root: Some(0),
             nodes: vec![IshikawaNode {
                 text: "Result".to_string(),

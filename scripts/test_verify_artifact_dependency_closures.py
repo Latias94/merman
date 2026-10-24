@@ -248,6 +248,24 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
+    def test_generic_svg_profiles_reject_resolved_math_backend_payloads(self) -> None:
+        profiles = {
+            "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
+            "rustdoc-static-svg", "web-full", "web-render",
+        }
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        for profile_id in profiles:
+            current = cases[profile_id]
+            with self.subTest(profile=profile_id):
+                closure = parse_fixture_metadata(
+                    metadata_document(current.recipe.package, {
+                        current.recipe.package: (), "ratex-svg": (), "ratex-katex-fonts": (),
+                    }), root_package=current.recipe.package,
+                )
+                failures, _ = check_case(current, closure)
+                self.assertTrue(any("ratex-katex-fonts" in failure and "ratex-svg" in failure
+                                    for failure in failures), failures)
+
     def test_tree_sitter_packages_are_forbidden_from_non_lsp_profiles(self) -> None:
         loaded_case = case(
             loaded_claim=claim(

@@ -307,7 +307,7 @@ def main(argv: list[str]) -> int:
                     measurement=args.measurement,
                     exact=merman_exact,
                     package="merman",
-                    features="svg",
+                    features="all-diagrams,svg,compat-json,editor-facts",
                     bench="pipeline",
                     locked=repo_locked,
                     toolchain=None,

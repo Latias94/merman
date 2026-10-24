@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -117,7 +117,7 @@ pub(crate) struct TimelineEventTheme {
 impl TimelineEventTheme {
     pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         binding: &super::TimelineCssBinding,
         layout: &TimelineDiagramLayout,
         work_meter: &OperationWorkMeter,
@@ -621,7 +621,7 @@ fn timeline_event_nodes(
 }
 
 fn timeline_event_fill_source_owned(
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     binding: &super::TimelineCssBinding,
     event: &crate::model::TimelineNodeLayout,
 ) -> bool {
@@ -659,7 +659,7 @@ fn timeline_event_fill_source_owned(
 }
 
 fn timeline_classic_line_stroke(
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     binding: &super::TimelineCssBinding,
     slot: usize,
     fill: &str,

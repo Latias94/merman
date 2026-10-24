@@ -242,7 +242,7 @@ because the upstream renderer fails, so no SVG baseline is committed:
 
 Canonical low-level path:
 
-- `Engine::parse_diagram_for_render_model_sync` followed by
+- `MermaidEngine::parse_diagram_for_render_model_sync` followed by
   `merman_render::family::prepare` (diagram type `classDiagram` / `class` → typed Class family
   artifact)
 

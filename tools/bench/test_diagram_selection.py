@@ -33,7 +33,7 @@ class DiagramSelectionTests(unittest.TestCase):
         )
         (self.root / "Cargo.lock").write_bytes(b"version = 4\n# historical lock\n")
         (self.root / "crates/merman").mkdir(parents=True)
-        for path in measure.CORPUS:
+        for path in set(measure.CORPUS + measure.SEMANTIC_CORPUS):
             fixture = self.root / path
             fixture.parent.mkdir(parents=True, exist_ok=True)
             fixture.write_bytes(b"flowchart TD\nA --> B\n")
@@ -44,6 +44,9 @@ class DiagramSelectionTests(unittest.TestCase):
         probe.parent.mkdir(parents=True)
         self.fixture_bytes = b"fn main() { /* committed candidate probe */ }\n"
         probe.write_bytes(self.fixture_bytes)
+        semantic_probe = self.root / measure.SEMANTIC_FIXTURE
+        semantic_probe.parent.mkdir(parents=True)
+        semantic_probe.write_bytes(self.fixture_bytes)
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", "add shared probe")
         self.candidate = self.git("rev-parse", "HEAD").decode().strip()
@@ -53,6 +56,7 @@ class DiagramSelectionTests(unittest.TestCase):
         self.calls: list[tuple[list[str], Path, dict[str, str]]] = []
         self.build_toolchain: str | None = None
         self.full = False
+        self.semantic = False
         self.target = "x86_64-test-host"
         self.suffix = ".exe" if os.name == "nt" else ""
         for name in ("platform", "processor"):
@@ -79,7 +83,13 @@ class DiagramSelectionTests(unittest.TestCase):
         self.calls.append((list(command), cwd, env))
         if command[:2] == ["rustup", "run"]:
             toolchain, program, *args = command[2:]
-            if program == "rustc":
+            if program == "rustc" and args == ["--print", "sysroot"]:
+                sysroot = self.parent / "toolchain"
+                objcopy = sysroot / "lib/rustlib" / self.target / "bin" / ("llvm-objcopy" + self.suffix)
+                objcopy.parent.mkdir(parents=True, exist_ok=True)
+                objcopy.write_bytes(b"fixed stripping tool")
+                output = str(sysroot).encode()
+            elif program == "rustc":
                 output = f"rustc {toolchain}\nhost: {self.target}\n".encode()
             elif args == ["-V"]:
                 output = f"cargo {toolchain}\n".encode()
@@ -96,15 +106,18 @@ class DiagramSelectionTests(unittest.TestCase):
             else:
                 raise AssertionError(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr=b"")
-        if Path(command[0]).name == "diagram-selection-probe" + self.suffix:
+        if Path(command[0]).name == "llvm-objcopy" + self.suffix:
+            Path(command[-1]).write_bytes(b"stripped executable")
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        if Path(command[0]).name in {"diagram-selection-probe" + self.suffix, "diagram-selection-probe.raw" + self.suffix}:
             if command[1] == "--families":
-                output = b"flowchart\ngantt\n" + (b"sequence\n" if self.full else b"")
+                output = b"flowchart\nsequence\nstate\n" if self.semantic else b"flowchart\ngantt\n" + (b"sequence\n" if self.full else b"")
             elif Path(command[1]).name == "sequence.mmd" and not self.full:
                 return subprocess.CompletedProcess(
                     command, 2, stdout=b"", stderr=b"merman.parse.unsupported_diagram\n"
                 )
             else:
-                output = b"<svg>rendered fixture</svg>"
+                output = Path(command[1]).stem.split("_", 1)[0].encode() + b"\ncanonical fields\n" if self.semantic else b"<svg>rendered fixture</svg>"
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr=b"")
         raise AssertionError(f"unexpected or unpinned external command: {command}")
 
@@ -162,6 +175,24 @@ class DiagramSelectionTests(unittest.TestCase):
             self.collect(output, fixture_revision=self.baseline)
         self.assertFalse(output.exists())
         self.assertEqual(self.calls, [])
+
+    def test_semantic_recipe_keeps_raw_and_stripped_runtime_outputs(self) -> None:
+        self.semantic = True
+        self.full = True
+        output = self.parent / "semantic"
+        receipt = self.collect(
+            output, recipe="semantic-parser",
+            features=["diagram-flowchart", "diagram-sequence", "diagram-state"],
+        )
+        manifest = (output / "consumer/Cargo.toml").read_text()
+        self.assertIn('merman-core = { path = ', manifest)
+        self.assertNotIn('\nmerman = {', manifest)
+        self.assertEqual(receipt["profile"]["strip"], "none")
+        self.assertEqual(receipt["diagram_families"], ["flowchart", "sequence", "state"])
+        self.assertGreater(receipt["raw_artifact"]["bytes"], receipt["executable_bytes"])
+        self.assertTrue(all("semantic_sha256" in row for row in receipt["corpus"]))
+        self.assertEqual(len(receipt["corpus"]), 3)
+        self.assertTrue((output / ("diagram-selection-probe.raw" + self.suffix)).is_file())
 
     def test_existing_evidence_is_never_overwritten(self) -> None:
         output = self.parent / "existing"

@@ -6,7 +6,7 @@ type FamilyFixture = (
 
 #[cfg(feature = "system-timing")]
 use merman_core::runtime::RuntimePolicy;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -32,7 +32,7 @@ fn supported_sources() -> &'static [&'static str] {
 }
 
 fn prepare(source: &str, session: RenderSession) -> FamilyFixture {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse source")
         .expect("detect diagram");

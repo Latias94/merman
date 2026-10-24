@@ -4,10 +4,10 @@ use crate::{OperationControl, OperationControlResult};
 
 use super::{
     DetectorConfigChanges, ErPaintInputs, FamilyPaintInputs, GitGraphPaintInputs, MermaidConfig,
-    ThemeCompatibilityState, dotted_paths_overlap,
+    PresentationConfig, ThemeCompatibilityState, dotted_paths_overlap,
 };
 
-impl MermaidConfig {
+impl PresentationConfig {
     /// Freezes surviving raw inputs and source-selected palette authority for final paint.
     pub(crate) fn freeze_family_paint_inputs(
         &mut self,
@@ -52,8 +52,8 @@ impl MermaidConfig {
                         .any(|claimed| claimed.is_empty() || dotted_paths_overlap(claimed, path))
                         || changes.value_changed_at(path)
                 })
-                || owns_path(explicit_site_config, self, path)
-                || owns_path(explicit_source_config, self, path)
+                || owns_path(explicit_site_config, self.as_config(), path)
+                || owns_path(explicit_source_config, self.as_config(), path)
             {
                 owned |= 1 << index;
             }
@@ -157,7 +157,7 @@ mod tests {
         let binding =
             super::super::ThemeParseBinding::try_new([0x5a; 32], MermaidConfig::empty_object())
                 .unwrap();
-        let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
+        let mut config = PresentationConfig::from_theme_parse_binding(binding.clone());
         let empty = MermaidConfig::empty_object();
         let cancelled = OperationControl::new();
         cancelled.cancel();
@@ -176,7 +176,7 @@ mod tests {
         config.freeze_theme_compatibility();
         assert_eq!(config.gitgraph_paint_inputs().map(|inputs| inputs.0), None);
 
-        let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
+        let mut config = PresentationConfig::from_theme_parse_binding(binding.clone());
         config
             .freeze_family_paint_inputs("gitGraph", &empty, &empty, None, &OperationControl::new())
             .unwrap();
@@ -205,7 +205,7 @@ mod tests {
             super::super::ThemeParseBinding::try_new([0x6a; 32], MermaidConfig::empty_object())
                 .unwrap();
         let empty = MermaidConfig::empty_object();
-        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        let mut config = PresentationConfig::from_theme_parse_binding(binding);
         config.set_value_preserving_theme_compatibility(
             "themeVariables.textColor",
             serde_json::json!("#123456"),

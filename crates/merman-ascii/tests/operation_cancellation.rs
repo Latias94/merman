@@ -1,19 +1,19 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy};
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
-use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
+use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask, GanttTask};
+use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
-use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
-use merman_core::{Engine, OperationControl, OperationPhase, RenderSemanticModel};
+use merman_core::diagrams::tree_view::TreeViewDiagramModel;
+use merman_core::{MermaidEngine, OperationControl, OperationPhase, RenderSemanticModel};
 use support::{parse_model, render_controlled_model, render_model};
 
 fn operation_context() -> merman_core::runtime::OperationContext {
-    Engine::new()
+    MermaidEngine::new()
         .begin_operation()
         .expect("deterministic operation context should be available")
 }
@@ -22,16 +22,22 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
     let mut gantt = GanttDiagramRenderModel::default();
     gantt.tasks = vec![
         GanttRenderTask {
-            id: "first".to_string(),
+            semantic: GanttTask {
+                id: "first".to_string(),
+                ..GanttTask::default()
+            },
             ..GanttRenderTask::default()
         },
         GanttRenderTask {
-            id: "second".to_string(),
+            semantic: GanttTask {
+                id: "second".to_string(),
+                ..GanttTask::default()
+            },
             ..GanttRenderTask::default()
         },
     ];
 
-    let git_commit = |seq, id: &str| GitGraphCommitRenderModel {
+    let git_commit = |seq, id: &str| GitGraphCommit {
         id: id.to_string(),
         message: String::new(),
         seq,
@@ -42,7 +48,7 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         custom_type: None,
         custom_id: None,
     };
-    let git_graph = GitGraphRenderModel {
+    let git_graph = GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: vec![git_commit(0, "first"), git_commit(1, "second")],
         branches: Vec::new(),
@@ -119,7 +125,7 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         ("timeline", RenderSemanticModel::Timeline(timeline)),
         (
             "treeView",
-            RenderSemanticModel::TreeView(TreeViewDiagramRenderModel::default()),
+            RenderSemanticModel::TreeView(TreeViewDiagramModel::default()),
         ),
     ]
 }

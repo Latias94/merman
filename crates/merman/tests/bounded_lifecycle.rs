@@ -66,7 +66,7 @@ fn marker(phase: &str, status: &str) {
 fn run_worker(case: &str) {
     let source = source(case);
     println!(
-        "case={case} source_bytes={} worker_stack_bytes={WORKER_STACK_BYTES} path=Renderer.prepare_semantic+SemanticArtifact.render profile=unbounded-for-trusted-input build_mode={}",
+        "case={case} source_bytes={} worker_stack_bytes={WORKER_STACK_BYTES} path=Renderer.prepare_presentation+PresentationArtifact.render profile=unbounded-for-trusted-input build_mode={}",
         source.len(),
         if cfg!(debug_assertions) {
             "debug"
@@ -80,7 +80,7 @@ fn run_worker(case: &str) {
         .with_resource_policy(*policy.input_policy());
     marker("parse", "begin");
     let semantic = renderer
-        .prepare_semantic(&source, OperationControl::new())
+        .prepare_presentation(&source, OperationControl::new())
         .expect("accepted bounded source prepares through the facade")
         .unwrap();
     assert_eq!(semantic.diagram_type(), case);
@@ -116,7 +116,7 @@ fn run_worker(case: &str) {
     marker("drop", "done");
     drop(
         renderer
-            .prepare_semantic(
+            .prepare_presentation(
                 "railroad-beta\nafter = terminal(\"ok\") ;\n",
                 OperationControl::new(),
             )

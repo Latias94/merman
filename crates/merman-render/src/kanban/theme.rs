@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use merman_core::theme_color::{darken, lighten};
 
 use crate::diagram_theme::{
@@ -50,7 +50,7 @@ pub(crate) struct KanbanTypographyPlan {
 impl KanbanTypographyPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -291,7 +291,7 @@ impl KanbanTaskTheme {
     pub(crate) fn resolve_with_typography(
         theme: &ResolvedDiagramTheme,
         occurrences: Vec<KanbanTaskOccurrence>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         typography: KanbanTypographyPlan,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -1123,11 +1123,11 @@ mod tests {
         ThemeStylePatch, ThemeTarget,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
 
     #[test]
     fn baseline_keeps_only_item_count_and_skips_terminal_evidence() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         for item_count in [0, 1, 4096] {
             let theme =
                 KanbanTaskTheme::baseline(item_count, KanbanTypographyPlan::resolve(None, &config));
@@ -1198,7 +1198,7 @@ mod tests {
             effect_id: bound_effect_id.to_string(),
         };
 
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let task_theme = KanbanTaskTheme::resolve_with_typography(
             &theme,
             vec![KanbanTaskOccurrence::new(false, false)],

@@ -4,7 +4,8 @@ type FamilyFixture = (
     merman_render::environment::RenderSession,
 );
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
@@ -43,7 +44,7 @@ fn layout_gantt_from_text_with_environment(
     container_width: f64,
     environment: &RenderEnvironment,
 ) -> GanttDiagramLayout {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -136,13 +137,13 @@ fn gantt_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
 }
 
 fn prepare_gantt_family_with_theme(text: &str, theme: &DiagramTheme) -> FamilyFixture {
-    prepare_gantt_family_with_theme_and_engine(text, theme, Engine::new())
+    prepare_gantt_family_with_theme_and_engine(text, theme, MermaidEngine::new())
 }
 
 fn prepare_gantt_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> FamilyFixture {
     try_prepare_gantt_family_with_theme_and_engine(text, theme, engine)
 }
@@ -150,7 +151,7 @@ fn prepare_gantt_family_with_theme_and_engine(
 fn try_prepare_gantt_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> FamilyFixture {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -237,10 +238,11 @@ Done vertical marker: vert, done, done-vert-task, 2024-01-08, 0d
 
 fn render_gantt_preset(source: &str, preset: merman_render::diagram_theme::ThemePreset) -> String {
     let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
-        .unwrap()
-        .unwrap();
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
         .begin_session_with_theme(&theme)
@@ -691,14 +693,15 @@ fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
     let theme = gantt_task_stroke_theme(
         CanvasPaint::solid("#654321").expect("valid source-precedence Gantt task stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "taskBorderColor": "#111111",
-            "activeTaskBorderColor": "#222222",
-            "doneTaskBorderColor": "#333333",
-            "critBorderColor": "#444444"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "taskBorderColor": "#111111",
+                "activeTaskBorderColor": "#222222",
+                "doneTaskBorderColor": "#333333",
+                "critBorderColor": "#444444"
+            }
+        })));
     let (fixture_parsed_20, fixture_layout_20, fixture_session_20) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
     let artifact = family::prepare(&fixture_parsed_20, &fixture_layout_20, fixture_session_20)
@@ -976,9 +979,10 @@ fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
     let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nVertical marker: vert, vertical-marker, 2024-01-02, 0d\n";
     let theme =
         gantt_warning_stroke_theme(CanvasPaint::solid("#d97706").expect("valid warning stroke"));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {"vertLineColor": "#15803d"}
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {"vertLineColor": "#15803d"}
+        })));
     let (fixture_parsed_21, fixture_layout_21, fixture_session_21) =
         prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
     let rendered = family::prepare(&fixture_parsed_21, &fixture_layout_21, fixture_session_21)
@@ -1078,9 +1082,11 @@ fn gantt_ordinary_stroke_respects_config_owned_vertical_color() {
                 ""
             }
         );
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": {"vertLineColor": "#15803d"}
-        })));
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
+                "themeVariables": {"vertLineColor": "#15803d"}
+            }),
+        ));
         let (fixture_parsed_22, fixture_layout_22, fixture_session_22) =
             prepare_gantt_family_with_theme_and_engine(&source, &theme, engine);
         let rendered = family::prepare(&fixture_parsed_22, &fixture_layout_22, fixture_session_22)
@@ -1136,9 +1142,10 @@ fn gantt_task_stroke_stays_bound_to_semantic_state_after_date_sorting() {
     let theme = gantt_task_stroke_theme(
         CanvasPaint::solid("#654321").expect("valid semantic Gantt task stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "activeTaskBorderColor": "#abcdef" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "activeTaskBorderColor": "#abcdef" }
+        })));
     let (fixture_parsed_23, fixture_layout_23, fixture_session_23) =
         prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
     let artifact = family::prepare(&fixture_parsed_23, &fixture_layout_23, fixture_session_23)
@@ -1371,9 +1378,10 @@ fn gantt_text_fill_preserves_independent_source_ownership() {
         CanvasPaint::solid(typed_fill).expect("valid mixed Gantt text fill"),
         Some(ThemeVariant::Default),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "textColor": "#abcdef" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#abcdef" }
+        })));
     let (fixture_parsed_24, fixture_layout_24, fixture_session_24) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
     let rendered = family::prepare(&fixture_parsed_24, &fixture_layout_24, fixture_session_24)
@@ -1421,9 +1429,10 @@ fn gantt_text_fill_preserves_task_text_source_ownership() {
         CanvasPaint::solid(typed_fill).expect("valid mixed Gantt text fill"),
         Some(ThemeVariant::Default),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "taskTextColor": "#fedcba" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "taskTextColor": "#fedcba" }
+        })));
     let (fixture_parsed_25, fixture_layout_25, fixture_session_25) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
     let rendered = family::prepare(&fixture_parsed_25, &fixture_layout_25, fixture_session_25)
@@ -1469,16 +1478,17 @@ fn gantt_text_fill_is_not_applicable_when_all_source_roles_own_terminals() {
         CanvasPaint::solid("#123456").expect("valid source-owned Gantt text fill"),
         Some(ThemeVariant::Default),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "textColor": "#abcdef",
-            "taskTextColor": "#fedcba",
-            "taskTextDarkColor": "#fedcba",
-            "taskTextOutsideColor": "#fedcba",
-            "taskTextClickableColor": "#fedcba",
-            "vertLineColor": "#fedcba"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "textColor": "#abcdef",
+                "taskTextColor": "#fedcba",
+                "taskTextDarkColor": "#fedcba",
+                "taskTextOutsideColor": "#fedcba",
+                "taskTextClickableColor": "#fedcba",
+                "vertLineColor": "#fedcba"
+            }
+        })));
     let (fixture_parsed_26, fixture_layout_26, fixture_session_26) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
     let rendered = family::prepare(&fixture_parsed_26, &fixture_layout_26, fixture_session_26)
@@ -1506,9 +1516,10 @@ fn gantt_generic_text_keeps_unowned_active_labels_when_grid_and_ordinary_labels_
         CanvasPaint::solid("#123456").unwrap(),
         Some(ThemeVariant::Default),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "textColor": "#abcdef", "taskTextColor": "#fedcba" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#abcdef", "taskTextColor": "#fedcba" }
+        })));
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nOrdinary: ordinary, 2024-01-01, 100d\nActive: active, active-task, 2024-01-01, 100d\n";
     let (parsed, options, session) =
         prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
@@ -1548,9 +1559,10 @@ fn gantt_generic_text_keeps_unowned_active_labels_when_grid_and_ordinary_labels_
 fn gantt_site_font_family_outranks_typed_font_stack() {
     let typed_stack = FontStack::single("Gantt Typed").expect("valid Gantt typed font stack");
     let theme = gantt_font_stack_theme(typed_stack);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "gantt": {"fontFamily": "Site Gantt Font"}
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "gantt": {"fontFamily": "Site Gantt Font"}
+        })));
     let (fixture_parsed_27, fixture_layout_27, fixture_session_27) =
         prepare_gantt_family_with_theme_and_engine(
             "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
@@ -1585,14 +1597,15 @@ fn gantt_final_mermaid_fill_keys_own_their_states_independently() {
     let theme = gantt_task_fill_theme(
         CanvasPaint::solid("#123456").expect("valid source-precedence Gantt task fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "taskBkgColor": "#111111",
-            "activeTaskBkgColor": "#222222",
-            "doneTaskBkgColor": "#333333",
-            "critBkgColor": "#444444"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "taskBkgColor": "#111111",
+                "activeTaskBkgColor": "#222222",
+                "doneTaskBkgColor": "#333333",
+                "critBkgColor": "#444444"
+            }
+        })));
     let (fixture_parsed_28, fixture_layout_28, fixture_session_28) =
         prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
     let artifact = family::prepare(&fixture_parsed_28, &fixture_layout_28, fixture_session_28)
@@ -1686,7 +1699,7 @@ fn gantt_each_final_mermaid_fill_key_suppresses_only_its_terminal_states() {
         ),
         ("critBkgColor", "#444444", &["gantt-config-crit-task"][..]),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({ "themeVariables": { (key): source_fill } }),
         ));
         let (fixture_parsed_29, fixture_layout_29, fixture_session_29) =
@@ -1831,7 +1844,7 @@ fn gantt_task_fill_supports_variant_and_rejects_ordinal_clear_gradient_and_patte
             try_prepare_gantt_family_with_theme_and_engine(
                 GANTT_TASK_FILL_SOURCE,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
         let result = family::prepare(&fixture_parsed_31, &fixture_layout_31, fixture_session_31)
             .and_then(|artifact| {
@@ -1943,7 +1956,7 @@ fn gantt_task_stroke_supports_variant_and_rejects_ordinal_clear_gradient_and_pat
             try_prepare_gantt_family_with_theme_and_engine(
                 GANTT_TASK_FILL_SOURCE,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
         let result = family::prepare(&fixture_parsed_32, &fixture_layout_32, fixture_session_32)
             .and_then(|artifact| {
@@ -2264,10 +2277,10 @@ fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
-    render_gantt_svg_from_text_with_engine(Engine::new(), text)
+    render_gantt_svg_from_text_with_engine(MermaidEngine::new(), text)
 }
 
-fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+fn render_gantt_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     let session = RenderEnvironment::deterministic()
         .with_runtime_policy(
             merman_core::runtime::RuntimePolicy::deterministic()
@@ -2307,7 +2320,7 @@ fn try_render_gantt_svg_with_resource_policy(
         .begin_session()
         .expect("begin Gantt resource-bound session");
     let parsed = futures::executor::block_on(
-        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
+        MermaidEngine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse Gantt resource-bound fixture")
     .expect("detect Gantt resource-bound fixture");
@@ -2406,7 +2419,7 @@ Task: task, 2024-01-01, 1d
 "#;
     let strict = render_gantt_svg_from_text(source);
     let loose = render_gantt_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         source,
@@ -2611,7 +2624,7 @@ fn gantt_compound_critical_strokes_have_independent_config_ownership() {
         } else {
             serde_json::json!({"activeTaskBorderColor":"#222222", "doneTaskBorderColor":"#333333"})
         };
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":variables}),
         ));
         let (fixture_parsed_30, fixture_layout_30, fixture_session_30) =
@@ -2660,9 +2673,11 @@ fn gantt_active_done_labels_preserve_upstream_classes_and_outside_paint_ownershi
             "gantt\ndateFormat YYYY-MM-DD\nsection Work\nAn extremely long outside task label: active, done, {}task, 2024-01-01, 1d\nLong span: span, 2024-01-01, 100d\n",
             if critical { "crit, " } else { "" }
         );
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": {"taskTextOutsideColor": "#123456"}
-        })));
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
+                "themeVariables": {"taskTextOutsideColor": "#123456"}
+            }),
+        ));
         for themed in [false, true] {
             let svg = if themed {
                 let (parsed, options, session) =

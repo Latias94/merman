@@ -3,13 +3,13 @@
 Status: supported subset
 
 This document describes the current `merman-ascii` sequence support boundary. The renderer consumes
-`merman-core` `SequenceDiagramRenderModel` values; it does not parse Mermaid text itself.
+`merman-core` `SequenceDiagramModel` values; it does not parse Mermaid text itself.
 
 ## Supported
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Diagram family | Supported subset | `sequenceDiagram` inputs that parse into `SequenceDiagramRenderModel`. |
+| Diagram family | Supported subset | `sequenceDiagram` inputs that parse into `SequenceDiagramModel`. |
 | Diagram titles | Supported subset | `title`/`title:` render as a centered text row above the participant boxes. |
 | Participants | Supported | Participant order follows `actorOrder`; labels use actor descriptions. `participant`, `actor`, `boundary`, `control`, `entity`, `database`, `collections`, and `queue` declarations render as terminal participant boxes. Mermaid-valid identifiers with spaces, dashes, equals signs, and Unicode are retained; reference-private quoted and spaced-alias extensions are not admitted. |
 | Participant boxes | Supported | ASCII and Unicode box drawing with centered labels, wrapped actor labels, and HTML/Markdown break labels. Mermaid-compatible output renders top participant boxes only by default; `AsciiRenderOptions::with_sequence_mirror_actors(true)` also renders bottom participant boxes. |

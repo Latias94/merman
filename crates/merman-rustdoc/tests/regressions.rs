@@ -877,9 +877,7 @@ pub fn math_diagram() {}
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.contains("lacks capability `math`"), "{stderr}");
         assert!(
-            stderr.contains(
-                "enable the `math` or `complete-svg` feature on the `merman-rustdoc` dependency"
-            ),
+            stderr.contains("enable the `math` feature on the `merman-rustdoc` dependency"),
             "{stderr}"
         );
     }

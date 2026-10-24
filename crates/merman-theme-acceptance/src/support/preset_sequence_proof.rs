@@ -230,20 +230,22 @@ fn check_labels(receipt: &SvgArtifactObservation, palette: Palette) -> C6ProofRe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman::presentation::PresentationConfig;
     use merman::svg::DiagramThemeCompiler;
     use merman::{
-        Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer,
+        MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
         TargetAdmissionReason, TargetAdmissionStatus,
     };
 
     #[test]
     fn neo_sequence_preserves_note_pixels_and_rejects_mixed_filter_evidence() {
-        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-            MermaidConfig::from_value(serde_json::json!({
-                "htmlLabels": false,
-                "sequence": { "look": "neo" },
-            })),
-        ));
+        let renderer =
+            Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+                PresentationConfig::from_value(serde_json::json!({
+                    "htmlLabels": false,
+                    "sequence": { "look": "neo" },
+                })),
+            ));
         for preset in [ThemePreset::Spotless, ThemePreset::Brutalist] {
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
             let RenderOutput::Document(Some(document)) = renderer

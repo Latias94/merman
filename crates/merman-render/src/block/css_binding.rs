@@ -34,10 +34,7 @@ pub(crate) struct BlockCssThemeBinding {
 impl BlockCssThemeBinding {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
+        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
     ) {
         let declarations = |styles: &[String]| {
             styles
@@ -178,7 +175,7 @@ mod tests {
 
     #[test]
     fn class_declarations_preserve_duplicates_order_and_safe_source_spelling() {
-        let mut definition = merman_core::diagrams::block::BlockClassDefRenderModel::default();
+        let mut definition = merman_core::diagrams::block::BlockClassDef::default();
         definition.id = "branded".into();
         definition.styles = vec![
             "fill:red".into(),

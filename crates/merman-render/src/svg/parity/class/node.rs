@@ -126,7 +126,7 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
@@ -145,7 +145,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
     pub use_gradient: bool,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
 }
@@ -180,7 +180,7 @@ fn write_class_color_slot(
 
 pub(super) fn render_class_node_shell_open(
     out: &mut impl SvgOutput,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     position: ClassNodeRenderPosition,
     ctx: &ClassNodeShellContext<'_>,
 ) -> crate::Result<bool> {
@@ -237,7 +237,7 @@ pub(super) fn render_class_node_shell_open(
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     out.push('-');
-    super::super::util::escape_attr_into(out, &node.dom_id);
+    super::super::util::escape_attr_into(out, node.dom_id);
     out.push('"');
     if link.is_none() {
         out.push_str(r#" data-look=""#);
@@ -264,7 +264,7 @@ pub(super) fn render_class_node_shell_open(
 
 pub(super) fn render_class_node_basic_container<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNodeBasicContainerContext<'_>,
@@ -280,7 +280,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
     let rough_seed = class_rough_seed(
         &ctx.hand_drawn_seed,
         ctx.diagram_id.semantic_str(),
-        &node.dom_id,
+        node.dom_id,
     );
     let hand_drawn = ctx.look == "handDrawn";
     out.push_str(r#"<g class="basic label-container outer-path">"#);
@@ -440,7 +440,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
 pub(super) fn render_class_html_node_body<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     geometry: ClassNodeBoxGeometry,
     label_plan: Option<&ClassNodeLabelPlan>,
     ctx: &ClassHtmlNodeBodyContext<'_>,
@@ -747,7 +747,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
 pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
-    node: &ClassSvgNode,
+    node: ClassSvgNode<'_>,
     geometry: ClassNodeBoxGeometry,
     ctx: &ClassSvgNodeBodyContext<'_>,
 ) -> ClassNodeRenderStats {

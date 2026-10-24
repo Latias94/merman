@@ -140,7 +140,7 @@ impl RequirementCssBinding {
 }
 
 pub(crate) fn requirement_color_indices(
-    model: &merman_core::diagrams::requirement::RequirementDiagramRenderModel,
+    model: &merman_core::diagrams::requirement::RequirementDiagramModel,
 ) -> std::collections::HashMap<String, usize> {
     model
         .requirements

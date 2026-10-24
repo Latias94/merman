@@ -1,10 +1,11 @@
+use crate::presentation::PresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
 
 #[test]
 fn parse_diagram_flowchart_basic_graph() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A-->B;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -45,7 +46,7 @@ fn parse_diagram_flowchart_basic_graph() {
 
 #[test]
 fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_with_type_sync(
             "flowchart-v2",
             "flowchart TD\naccDescription: Flow description\nA-->B\n",
@@ -58,7 +59,7 @@ fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
 
 #[test]
 fn parse_diagram_flowchart_tolerates_edge_labels() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A--x|text including URL space|B;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -89,7 +90,7 @@ fn parse_diagram_flowchart_tolerates_edge_labels() {
 
 #[test]
 fn parse_diagram_flowchart_supports_inline_nodes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A[Start]-->B{Is it?};";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -121,7 +122,7 @@ fn parse_diagram_flowchart_supports_inline_nodes() {
 
 #[test]
 fn parse_diagram_flowchart_allows_dashes_in_node_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 flowchart
     wi-fi["a node with dashes in its name"]
@@ -139,7 +140,7 @@ flowchart
 
 #[test]
 fn parse_diagram_flowchart_supports_quoted_edge_labels_and_pipe_labels_with_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 flowchart TD
 A[Node 1] -- "Some text" --> B[Node 2]
@@ -159,7 +160,7 @@ B --> |Other text| C[Node 3]
 
 #[test]
 fn parse_diagram_flowchart_edge_stroke_and_type_normal_thick_dotted() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram("graph TD;A-->B;", ParseOptions::default()))
         .unwrap()
@@ -185,7 +186,7 @@ fn parse_diagram_flowchart_edge_stroke_and_type_normal_thick_dotted() {
 
 #[test]
 fn parse_diagram_flowchart_double_ended_arrows() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram("graph TD;A<-->B;", ParseOptions::default()))
         .unwrap()
@@ -197,7 +198,7 @@ fn parse_diagram_flowchart_double_ended_arrows() {
 
 #[test]
 fn parse_diagram_flowchart_edge_text_new_notation() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A-- text including URL space and send -->B;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -211,7 +212,7 @@ fn parse_diagram_flowchart_edge_text_new_notation() {
 
 #[test]
 fn parse_diagram_flowchart_edge_text_new_notation_double_ended() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A<-- text -->B;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -222,7 +223,7 @@ fn parse_diagram_flowchart_edge_text_new_notation_double_ended() {
 
 #[test]
 fn parse_diagram_flowchart_invisible_edge() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram("graph TD;A~~~B;", ParseOptions::default()))
         .unwrap()
         .unwrap();
@@ -233,7 +234,7 @@ fn parse_diagram_flowchart_invisible_edge() {
 
 #[test]
 fn parse_diagram_flowchart_edges_spec_open_cross_circle() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram("graph TD;A---B;", ParseOptions::default()))
         .unwrap()
@@ -258,11 +259,627 @@ fn parse_diagram_flowchart_edges_spec_open_cross_circle() {
 }
 
 fn parse_typed_flowchart(text: &str) -> crate::diagrams::flowchart::FlowchartModel {
-    let parsed = block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(MermaidEngine::new().parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap();
     crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &parsed.meta)
         .expect("typed flowchart model")
+}
+
+#[test]
+fn flowchart_percent_identifiers_and_preprocessed_comments_match_mermaid() {
+    type Case = (
+        &'static str,
+        &'static [&'static str],
+        &'static [(&'static str, &'static str)],
+    );
+    // Mermaid 12.2.0's pinned grammar/public oracle accepts these sources. A bare marker has no
+    // comment body, and markers following a semicolon remain ordinary node identifiers.
+    let cases: &[Case] = &[
+        (
+            "flowchart TD\nA-->B\n%% comment\nC-->D",
+            &["A", "B", "C", "D"],
+            &[("A", "B"), ("C", "D")],
+        ),
+        (
+            "flowchart TD\nA-->B\n  \t%% comment\nC-->D",
+            &["A", "B", "C", "D"],
+            &[("A", "B"), ("C", "D")],
+        ),
+        (
+            "flowchart TD\nA-->B\n\u{00a0}%% comment\nC-->D",
+            &["A", "B", "C", "D"],
+            &[("A", "B"), ("C", "D")],
+        ),
+        (
+            "flowchart TD\nA-->B\n%% comment",
+            &["A", "B"],
+            &[("A", "B")],
+        ),
+        ("flowchart TD\n%%", &["%%"], &[]),
+        ("flowchart TD\n%%\n", &["%%"], &[]),
+        ("flowchart TD\n%%\nA-->B", &["%%", "A", "B"], &[("A", "B")]),
+        (
+            "flowchart TD\n  %%\nA-->B",
+            &["%%", "A", "B"],
+            &[("A", "B")],
+        ),
+        ("flowchart TD\n%% \nA-->B", &["A", "B"], &[("A", "B")]),
+        ("flowchart TD\n%-->B", &["%", "B"], &[("%", "B")]),
+        ("flowchart TD\n%A-->B", &["%A", "B"], &[("%A", "B")]),
+        ("flowchart TD\nA%-->B", &["A%", "B"], &[("A%", "B")]),
+        ("flowchart TD\nA%%B-->C", &["A%%B", "C"], &[("A%%B", "C")]),
+        (
+            "flowchart TD\nA-->B%%tail",
+            &["A", "B%%tail"],
+            &[("A", "B%%tail")],
+        ),
+        (
+            "flowchart TD\nA-->B; %%tail",
+            &["A", "B", "%%tail"],
+            &[("A", "B")],
+        ),
+        ("flowchart TD\nA-->B; %%", &["A", "B", "%%"], &[("A", "B")]),
+        (
+            "%% leading comment\nflowchart TD\nA-->B",
+            &["A", "B"],
+            &[("A", "B")],
+        ),
+        (
+            "flowchart TD\r\n%% 中文😀 comment\r\n  %% indented\r\n雪%-->B%%tail\r\n%% eof",
+            &["雪%", "B%%tail"],
+            &[("雪%", "B%%tail")],
+        ),
+        (
+            "flowchart TD\r\n%%\r\n雪%-->B\r\n",
+            &["%%", "雪%", "B"],
+            &[("雪%", "B")],
+        ),
+    ];
+    let engine = MermaidEngine::new();
+    for &(source, expected_ids, expected_edges) in cases {
+        let check_model = |model: &serde_json::Value| {
+            let ids = model["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|node| node["id"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            let edges = model["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|edge| (edge["from"].as_str().unwrap(), edge["to"].as_str().unwrap()))
+                .collect::<Vec<_>>();
+            assert_eq!(ids, expected_ids, "{source}");
+            assert_eq!(edges, expected_edges, "{source}");
+        };
+        for known_type in [false, true] {
+            for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+                let parsed = if known_type {
+                    engine.parse_diagram_with_type_sync("flowchart-v2", source, options)
+                } else {
+                    engine.parse_diagram_sync(source, options)
+                }
+                .unwrap()
+                .unwrap();
+                check_model(&parsed.model);
+                let typed = if known_type {
+                    engine.parse_diagram_for_render_model_with_type_sync(
+                        "flowchart-v2",
+                        source,
+                        options,
+                    )
+                } else {
+                    engine.parse_diagram_for_render_model_sync(source, options)
+                }
+                .unwrap()
+                .unwrap();
+                assert!(matches!(typed.model(), RenderSemanticModel::Flowchart(_)));
+                assert_eq!(
+                    typed.model().compatibility_json(typed.metadata()).unwrap(),
+                    parsed.model,
+                    "typed percent/comment semantics: {source}"
+                );
+            }
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+            } else {
+                engine.parse_diagram_snapshot_sync(source)
+            }
+            .unwrap()
+            .unwrap();
+            check_model(snapshot.outcome().parsed_model().expect("accepted source"));
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("accepted percent source must retain editor facts: {source}");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        }
+    }
+}
+
+#[test]
+fn flowchart_percent_directive_prefixes_remain_identifiers() {
+    let engine = MermaidEngine::new();
+    for prefix in [
+        "direction",
+        "click",
+        "default",
+        "call",
+        "href",
+        "accTitle",
+        "accDescr",
+        "LR",
+        "RL",
+        "TB",
+        "TD",
+        "BT",
+        "BR",
+        "v",
+    ] {
+        for suffix in ["%", "%%tail", "-tail"] {
+            let id = format!("{prefix}{suffix}");
+            let source = format!("flowchart TD\n{id}-->B");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model["nodes"][0]["id"], id);
+            assert_eq!(parsed.model["edges"][0]["from"], id);
+        }
+    }
+}
+
+#[test]
+fn flowchart_class_names_preserve_reserved_keyword_prefixes_and_source_spans() {
+    let engine = MermaidEngine::new();
+    let fixture = include_str!(
+        "../../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_65_3_bigger_font_from_classes_026.mmd"
+    );
+    let parsed = engine
+        .parse_diagram_sync(fixture, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 4);
+    assert_eq!(nodes[0]["classes"], json!(["class1", "class1"]));
+    assert_eq!(nodes[1]["classes"], json!(["class2"]));
+    assert_eq!(nodes[2]["classes"], json!(["class2"]));
+    assert_eq!(nodes[3]["classes"], json!(["larger"]));
+    assert_eq!(
+        parsed.model["classDefs"]["larger"],
+        json!(["font-size:30px", "fill:yellow"])
+    );
+    assert_eq!(parsed.model["edges"].as_array().unwrap().len(), 3);
+
+    for class_name in ["class1", "class_1", "classDefinition", "_blank1"] {
+        let source = format!(
+            "%% deleted 中文😀\r\nflowchart TD\r\nclassDef {class_name} fill:red\r\nA:::{class_name} --> {class_name}\r\nclass A {class_name}\r\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["nodes"][0]["id"], "A");
+        assert_eq!(
+            parsed.model["nodes"][0]["classes"],
+            json!([class_name, class_name])
+        );
+        assert_eq!(parsed.model["classDefs"][class_name], json!(["fill:red"]));
+        assert_eq!(parsed.model["edges"][0]["to"], class_name);
+
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("a class name with a non-boundary suffix must parse: {class_name}");
+        };
+        assert_eq!(
+            model["nodes"][0]["classes"],
+            json!([class_name, class_name])
+        );
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("class declarations and assignments must retain source spans");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (start, role) in [
+            (
+                source.find(class_name).unwrap(),
+                EditorSemanticRole::ClassDefinition,
+            ),
+            (
+                source.rfind(class_name).unwrap(),
+                EditorSemanticRole::Payload,
+            ),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == class_name
+                    && symbol.role == role
+                    && symbol.selection == SourceSpan::new(start, start + class_name.len())
+            }));
+        }
+    }
+}
+
+#[test]
+fn flowchart_class_shorthand_keeps_reserved_keyword_boundaries_rejected() {
+    let engine = MermaidEngine::new();
+    for (class_name, keyword) in [
+        ("class%", "class"),
+        ("class-tail", "class"),
+        ("style%", "style"),
+        ("interpolate", "interpolate"),
+        ("_blank", "_blank"),
+    ] {
+        for shorthand in [false, true] {
+            let source = if shorthand {
+                format!("flowchart TD\nA:::{class_name}-->B\n")
+            } else {
+                format!("flowchart TD\n{class_name}-->B\n")
+            };
+            let error = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap_err();
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("a reserved keyword must remain a parse error: {source}");
+            };
+            let start = source.find(keyword).unwrap();
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + keyword.len()))
+            );
+            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+            let snapshot = engine
+                .parse_diagram_snapshot_sync(&source)
+                .unwrap()
+                .unwrap();
+            let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                snapshot.outcome()
+            else {
+                panic!("editor capture must retain the same reserved keyword failure");
+            };
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + keyword.len()))
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_literal_keyword_boundaries_preserve_ids_classes_and_source_spans() {
+    let engine = MermaidEngine::new();
+    for keyword in [
+        "graph",
+        "flowchart",
+        "flowchart-elk",
+        "swimlane-beta",
+        "end",
+        "style",
+        "linkStyle",
+        "classDef",
+        "class",
+        "subgraph",
+        "interpolate",
+        "_self",
+        "_blank",
+        "_parent",
+        "_top",
+    ] {
+        for suffix in ["1", "_1", "word", "%", "-tail", "雪"] {
+            let id = format!("{keyword}{suffix}");
+            let accepted = matches!(suffix, "1" | "_1" | "word") && keyword != "flowchart-elk";
+            for shorthand in [false, true] {
+                let body = if shorthand {
+                    format!("A:::{id}-->B")
+                } else {
+                    format!("{id}-->B")
+                };
+                let source = format!("%% deleted 中文😀\r\nflowchart TD\r\n{body}\r\n");
+                let parsed = engine.parse_diagram_sync(&source, ParseOptions::strict());
+                if accepted {
+                    let parsed = parsed.unwrap().unwrap();
+                    if shorthand {
+                        assert_eq!(parsed.model["nodes"][0]["id"], "A");
+                        assert_eq!(parsed.model["nodes"][0]["classes"], json!([id]));
+                    } else {
+                        assert_eq!(parsed.model["nodes"][0]["id"], id);
+                        assert_eq!(parsed.model["edges"][0]["from"], id);
+                    }
+                    continue;
+                }
+
+                let matched_keyword =
+                    if keyword == "flowchart-elk" && matches!(suffix, "1" | "_1" | "word") {
+                        "flowchart"
+                    } else {
+                        keyword
+                    };
+                let start = source.rfind(&id).unwrap();
+                let expected = SourceSpan::new(start, start + matched_keyword.len());
+                let Error::DiagramParse { diagnostic, .. } = parsed.unwrap_err() else {
+                    panic!("a keyword boundary must remain a parse error: {source}");
+                };
+                assert_eq!(diagnostic.span(), Some(expected), "{source}");
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+                let snapshot = engine
+                    .parse_diagram_snapshot_sync(&source)
+                    .unwrap()
+                    .unwrap();
+                let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) =
+                    snapshot.outcome()
+                else {
+                    panic!("editor capture must retain the keyword boundary failure: {source}");
+                };
+                assert_eq!(diagnostic.span(), Some(expected), "{source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_literal_header_keywords_keep_header_admission() {
+    let engine = MermaidEngine::new();
+    for header in ["graph", "flowchart", "flowchart-elk", "swimlane-beta"] {
+        let source = format!("{header} TD\nA-->B\n");
+        let parsed = engine
+            .parse_diagram_with_type_sync("flowchart-v2", &source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["edges"][0]["from"], "A");
+        for suffix in ["1", "_1", "word", "%", "-tail", "雪"] {
+            let invalid = format!("{header}{suffix} TD\nA-->B\n");
+            assert!(
+                engine
+                    .parse_diagram_sync(&invalid, ParseOptions::strict())
+                    .is_err(),
+                "{invalid}"
+            );
+            assert!(
+                engine
+                    .parse_diagram_with_type_sync("flowchart-v2", &invalid, ParseOptions::strict())
+                    .is_err(),
+                "{invalid}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_percent_identifiers_preserve_reserved_token_rejections() {
+    let engine = MermaidEngine::new();
+    for keyword in [
+        "end",
+        "graph",
+        "flowchart",
+        "flowchart-elk",
+        "swimlane-beta",
+        "subgraph",
+        "style",
+        "class",
+        "classDef",
+        "linkStyle",
+        "interpolate",
+        "_self",
+        "_blank",
+        "_parent",
+        "_top",
+    ] {
+        for suffix in ["%", "%%tail", "-tail"] {
+            let source = format!("flowchart TD\n{keyword}{suffix}-->B");
+            assert!(
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .is_err(),
+                "{source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_percent_after_header_direction_is_not_a_body_node() {
+    let engine = MermaidEngine::new();
+    for direction in ["LR", "RL", "TB", "TD", "BT"] {
+        for suffix in ["%", "%%tail"] {
+            let source = format!("flowchart {direction}{suffix}\nA-->B");
+            assert!(
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .is_err(),
+                "{source}"
+            );
+            let snapshot = engine
+                .parse_diagram_snapshot_sync(&source)
+                .unwrap()
+                .unwrap();
+            assert!(
+                matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)),
+                "{source}"
+            );
+        }
+    }
+    for source in [
+        "flowchart LR A-->B",
+        "flowchart LR ;A-->B",
+        "flowchart;A-->B",
+        "flowchart ;A-->B",
+        "flowchart X-->B",
+        "flowchart direction LR\nA-->B",
+        "flowchart style A fill:red",
+    ] {
+        assert!(
+            engine
+                .parse_diagram_sync(source, ParseOptions::strict())
+                .is_err(),
+            "{source}"
+        );
+    }
+    for (header, direction) in [
+        ("LR", "LR"),
+        ("BR", "BR"),
+        ("<", "RL"),
+        (">", "LR"),
+        ("^", "BT"),
+        ("v", "TB"),
+    ] {
+        for separator in [";", "\n", " \t\n"] {
+            let source = format!("flowchart {header}{separator}A-->B");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model["direction"], direction, "{source}");
+            assert_eq!(parsed.model["nodes"][0]["id"], "A", "{source}");
+            assert_eq!(parsed.model["edges"][0]["to"], "B", "{source}");
+        }
+        let source = format!("flowchart {header}");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["direction"], direction, "{source}");
+    }
+}
+
+#[test]
+fn flowchart_inline_percent_tokens_retain_parse_failures_and_error_suppression() {
+    let engine = MermaidEngine::new();
+    for source in [
+        "flowchart TD\nA-->B %% comment",
+        "flowchart TD\nA-->B %%",
+        "flowchart TD\nA-->B %%tail",
+        "flowchart TD\nA-->B %",
+        "flowchart TD\nA-->B %% comment\nC-->D",
+        "flowchart TD\nA-->B; %% comment",
+        "flowchart TD %% comment\nA-->B",
+    ] {
+        for known_type in [false, true] {
+            let strict_json = if known_type {
+                engine.parse_diagram_with_type_sync("flowchart-v2", source, ParseOptions::strict())
+            } else {
+                engine.parse_diagram_sync(source, ParseOptions::strict())
+            }
+            .expect_err("inline percent tokens must reach the grammar");
+            assert!(matches!(strict_json, Error::DiagramParse { .. }));
+            let strict_typed = if known_type {
+                engine.parse_diagram_for_render_model_with_type_sync(
+                    "flowchart-v2",
+                    source,
+                    ParseOptions::strict(),
+                )
+            } else {
+                engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            }
+            .expect_err("typed parsing must retain the same grammar failure");
+            assert_eq!(strict_typed.to_string(), strict_json.to_string());
+
+            let lenient_json = if known_type {
+                engine.parse_diagram_with_type_sync("flowchart-v2", source, ParseOptions::lenient())
+            } else {
+                engine.parse_diagram_sync(source, ParseOptions::lenient())
+            }
+            .unwrap()
+            .unwrap();
+            let lenient_typed = if known_type {
+                engine.parse_diagram_for_render_model_with_type_sync(
+                    "flowchart-v2",
+                    source,
+                    ParseOptions::lenient(),
+                )
+            } else {
+                engine.parse_diagram_for_render_model_sync(source, ParseOptions::lenient())
+            }
+            .unwrap()
+            .unwrap();
+            assert_eq!(lenient_json.meta.diagram_type, "error");
+            assert_eq!(lenient_json.model["errorMessage"], strict_json.to_string());
+            let RenderSemanticModel::Error(error_model) = lenient_typed.model() else {
+                panic!("lenient typed parsing must use the existing error family");
+            };
+            assert_eq!(
+                error_model.error_message.as_deref(),
+                Some(strict_json.to_string().as_str())
+            );
+
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+            } else {
+                engine.parse_diagram_snapshot_sync(source)
+            }
+            .unwrap()
+            .unwrap();
+            let DiagramParseOutcome::Failed(error) = snapshot.outcome() else {
+                panic!("snapshots must retain the original failure: {source}");
+            };
+            assert_eq!(error.to_string(), strict_json.to_string());
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("failed inline source must retain recovery facts: {source}");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        }
+    }
+}
+
+#[test]
+fn flowchart_percent_labels_match_mermaid_preprocessing() {
+    let engine = MermaidEngine::new();
+    for (source, expected_label, expected_kind) in [
+        ("flowchart TD\nA[100%% done]-->B", "100%% done", "text"),
+        (
+            "flowchart TD\nA[\"100%% done\"]-->B",
+            "100%% done",
+            "string",
+        ),
+        (
+            "flowchart TD\nA[\"`100%% done`\"]-->B",
+            "100%% done",
+            "markdown",
+        ),
+        (
+            "flowchart TD\nA[\"first\n%% comment\nlast\"]-->B",
+            "first\nlast",
+            "string",
+        ),
+        (
+            "flowchart TD\nA[\"`first\n%% comment\nlast`\"]-->B",
+            "first\nlast",
+            "markdown",
+        ),
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            parsed.model["nodes"][0]["label"], expected_label,
+            "{source}"
+        );
+        assert_eq!(
+            parsed.model["nodes"][0]["labelType"], expected_kind,
+            "{source}"
+        );
+        let typed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            typed.model().compatibility_json(typed.metadata()).unwrap(),
+            parsed.model
+        );
+    }
+    for (source, expected_kind) in [
+        ("flowchart TD\nA-->|\"100%% done\"|B", "string"),
+        ("flowchart TD\nA-->|\"`100%% done`\"|B", "markdown"),
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["edges"][0]["label"], "100%% done");
+        assert_eq!(parsed.model["edges"][0]["labelType"], expected_kind);
+    }
 }
 
 #[test]
@@ -552,7 +1169,7 @@ fn flowchart_typed_edge_fields_round_trip_while_legacy_json_keeps_aggregate_sema
         assert_eq!(legacy_edge.visibility, visibility, "diagram: {diagram}");
     }
 
-    let parsed = block_on(Engine::new().parse_diagram(diagram, ParseOptions::default()))
+    let parsed = block_on(MermaidEngine::new().parse_diagram(diagram, ParseOptions::default()))
         .unwrap()
         .unwrap();
     let compatibility_edge = &parsed.model["edges"][0];
@@ -622,7 +1239,7 @@ fn parse_diagram_flowchart_preserves_explicit_edge_id_provenance() {
 
 #[test]
 fn parse_diagram_flowchart_edges_spec_edge_ids_and_node_metadata_do_not_conflict() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart LR\nA id1@-->B\nA@{ shape: 'rect' }\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -633,7 +1250,7 @@ fn parse_diagram_flowchart_edges_spec_edge_ids_and_node_metadata_do_not_conflict
 
 #[test]
 fn parse_diagram_flowchart_edges_spec_edge_length_matrix() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let assert_edge = |diagram: String,
                        expected_type: &str,
                        expected_stroke: &str,
@@ -790,7 +1407,7 @@ fn parse_diagram_flowchart_edges_spec_edge_length_matrix() {
 
 #[test]
 fn parse_diagram_flowchart_edges_spec_keywords_as_edge_labels_in_double_ended_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let keywords = [
         "graph",
@@ -843,7 +1460,7 @@ fn parse_diagram_flowchart_edges_spec_keywords_as_edge_labels_in_double_ended_ed
 
 #[test]
 fn parse_diagram_flowchart_node_data_basic_shape_data_statements() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(
         engine.parse_diagram("flowchart TB\nD@{ shape: rounded}", ParseOptions::default()),
@@ -870,7 +1487,7 @@ fn parse_diagram_flowchart_node_data_basic_shape_data_statements() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_with_amp_and_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "flowchart TB\nD@{ shape: rounded } & E",
@@ -901,7 +1518,7 @@ fn parse_diagram_flowchart_node_data_shape_data_with_amp_and_edges() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_whitespace_variants() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for diagram in [
         "flowchart TB\nD@{shape: rounded}",
@@ -925,7 +1542,7 @@ fn parse_diagram_flowchart_node_data_shape_data_whitespace_variants() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in ["datastore", "data-store"] {
         let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Datastore\" }}");
@@ -947,7 +1564,7 @@ fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_accepts_folder_aliases() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in ["folder", "directory"] {
         let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Source\" }}");
@@ -964,7 +1581,7 @@ fn parse_diagram_flowchart_node_data_accepts_folder_aliases() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_accepts_mermaid_1172_object_shapes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in ["person", "bucket", "console", "browser"] {
         let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Object\" }}");
@@ -981,7 +1598,7 @@ fn parse_diagram_flowchart_node_data_accepts_mermaid_1172_object_shapes() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_accepts_document_variants() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in [
         "doc",
@@ -1009,7 +1626,7 @@ fn parse_diagram_flowchart_node_data_shape_data_accepts_document_variants() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_accepts_process_variants() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in [
         "st-rect",
@@ -1040,7 +1657,7 @@ fn parse_diagram_flowchart_node_data_shape_data_accepts_process_variants() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_amp_and_edge_matrix() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let cases = [
         (
@@ -1092,7 +1709,7 @@ fn parse_diagram_flowchart_node_data_shape_data_amp_and_edge_matrix() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_allows_brace_in_multiline_string() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TB
 A@{
@@ -1110,7 +1727,7 @@ A@{
 
 #[test]
 fn parse_diagram_flowchart_node_data_multiple_properties_same_line() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "flowchart TB\nD@{ shape: rounded , label: \"DD\"}",
@@ -1128,7 +1745,7 @@ fn parse_diagram_flowchart_node_data_multiple_properties_same_line() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_overridden() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "flowchart TB\nA@{ label: \"Default markdown\" }\nB@{ label: \"Plain text\", labelType: text }",
@@ -1144,7 +1761,7 @@ fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_
 
 #[test]
 fn parse_diagram_flowchart_node_data_link_to_node_with_more_data_multiline_yaml() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TB
 A --> D@{
@@ -1168,7 +1785,7 @@ A --> D@{
 
 #[test]
 fn parse_diagram_flowchart_node_data_nodes_after_each_other() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"flowchart TB
 A[hello]
 B@{
@@ -1198,7 +1815,7 @@ C[Hello]@{
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_allows_brace_and_at_in_strings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "flowchart TB\nA@{ label: \"This is }\" }",
@@ -1224,7 +1841,7 @@ fn parse_diagram_flowchart_node_data_shape_data_allows_brace_and_at_in_strings()
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_data_rejects_internal_only_shape_variants() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for shape in [
         "forkJoin",
@@ -1249,7 +1866,7 @@ fn parse_diagram_flowchart_node_data_shape_data_rejects_internal_only_shape_vari
 
 #[test]
 fn parse_diagram_flowchart_node_data_shape_validation_errors() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let err = block_on(engine.parse_diagram(
         "flowchart TB\nA@{ shape: this-shape-does-not-exist }",
@@ -1274,7 +1891,7 @@ fn parse_diagram_flowchart_node_data_shape_validation_errors() {
 
 #[test]
 fn parse_diagram_flowchart_node_data_multiline_strings_match_mermaid() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"flowchart TB
@@ -1312,7 +1929,7 @@ A@{
 
 #[test]
 fn parse_diagram_flowchart_node_data_labels_across_multi_nodes_and_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TB
 n2["label for n2"] & n4@{ label: "label for n4"} & n5@{ label: "label for n5"}
@@ -1344,7 +1961,7 @@ D@{label: "for D"}
 
 #[test]
 fn parse_diagram_flowchart_node_data_allows_at_in_labels_across_shapes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 A["@A@"] --> B["@for@ B@"] & C@{ label: "@for@ c@"} & E{"`@for@ E@`"} & D(("@for@ D@"))
@@ -1382,7 +1999,7 @@ AS2>"`@for@ AS@`"]
 
 #[test]
 fn parse_diagram_flowchart_rejects_constructs_mermaid_rejects() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for invalid in [
         "flowchart TD\nA[@page Rule] --> B[Size]\n",
@@ -1413,7 +2030,7 @@ M["myapp"] --> R["root (\"\")"]
 
 #[test]
 fn parse_diagram_flowchart_node_data_unique_edge_ids_with_groups() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 A & B e1@--> C & D
@@ -1435,7 +2052,7 @@ A1 e2@--> C1 & D1
 
 #[test]
 fn parse_diagram_flowchart_node_data_redefined_edge_id_becomes_auto_id() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 A & B e1@--> C & D
@@ -1456,7 +2073,7 @@ A1 e1@--> C1 & D1
 
 #[test]
 fn parse_diagram_flowchart_auto_edge_id_preserves_mermaid_pair_count_collision() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 A L_A_B_2@--> B
@@ -1479,7 +2096,7 @@ A --> B
 
 #[test]
 fn parse_diagram_flowchart_auto_edge_id_ignores_explicit_collision_from_another_pair() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 X L_A_B_0@--> Y
@@ -1499,7 +2116,7 @@ A --> B
 
 #[test]
 fn parse_diagram_flowchart_node_data_overrides_edge_animate() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let text = r#"flowchart TD
 A e1@--> B
@@ -1525,7 +2142,7 @@ e3@{ animate: false }
 
 #[test]
 fn parse_diagram_flowchart_markdown_strings_in_nodes_and_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart\nA[\"`The cat in **the** hat`\"]-- \"`The *bat* in the chat`\" -->B[\"The dog in the hog\"] -- \"The rat in the mat\" -->C;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1557,7 +2174,7 @@ fn parse_diagram_flowchart_markdown_strings_in_nodes_and_edges() {
 
 #[test]
 fn parse_diagram_flowchart_edge_text_matches_pinned_jison_states() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = concat!(
         "flowchart TD\n",
         "A -- \"foo --> bar\" --> B\n",
@@ -1615,7 +2232,7 @@ fn parse_diagram_flowchart_edge_text_matches_pinned_jison_states() {
 
 #[test]
 fn parse_diagram_flowchart_edge_text_skips_long_internal_whitespace_runs() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let whitespace = "\u{00a0}".repeat(4096);
     let source = format!("flowchart TD\nA -- prefix{whitespace}suffix --> B\n");
     let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
@@ -1629,7 +2246,7 @@ fn parse_diagram_flowchart_edge_text_skips_long_internal_whitespace_runs() {
 
 #[test]
 fn parse_diagram_flowchart_plain_node_labels_can_span_indented_lines() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "     flowchart TB
      foo[**Bold Foo**] --> bar
      bar[Multiline
@@ -1657,7 +2274,7 @@ fn parse_diagram_flowchart_plain_node_labels_can_span_indented_lines() {
 
 #[test]
 fn parse_diagram_flowchart_apostrophes_are_plain_text() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA[Reviews the supplier's response]\nB[[Owner's task]]\nC['Literal quotes']\nD[bare `tick` text]\nA -->|'Known issue'| B --> C --> D\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .expect("apostrophes are ordinary characters in the Jison text state")
@@ -1684,7 +2301,7 @@ fn parse_diagram_flowchart_apostrophes_are_plain_text() {
 
 #[test]
 fn parse_diagram_flowchart_markdown_strings_in_subgraphs() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"flowchart LR
 subgraph "One"
   a("`The **cat**
@@ -1710,7 +2327,7 @@ end"#;
 
 #[test]
 fn parse_diagram_flowchart_header_direction_shorthand() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram("graph >;A-->B;", ParseOptions::default()))
         .unwrap()
@@ -1735,7 +2352,7 @@ fn parse_diagram_flowchart_header_direction_shorthand() {
 
 #[test]
 fn parse_diagram_flowchart_v_is_node_id_not_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram("graph TD;A--xv(my text);", ParseOptions::default()))
         .unwrap()
         .unwrap();
@@ -1753,7 +2370,7 @@ fn parse_diagram_flowchart_v_is_node_id_not_direction() {
 
 #[test]
 fn parse_diagram_flowchart_v_in_node_ids_variants_from_flow_text_spec() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A--xv(my text);A--xcsv(my text);A--xava(my text);A--xva(my text);";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1775,7 +2392,7 @@ fn parse_diagram_flowchart_v_in_node_ids_variants_from_flow_text_spec() {
 
 #[test]
 fn parse_diagram_flowchart_edge_label_supports_quoted_strings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         "graph TD;V-- \"test string()\" -->a[v]",
         ParseOptions::default(),
@@ -1788,7 +2405,7 @@ fn parse_diagram_flowchart_edge_label_supports_quoted_strings() {
 
 #[test]
 fn parse_diagram_flowchart_edge_label_old_notation_without_spaces() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         "graph TD;A--text including URL space and send-->B;",
         ParseOptions::default(),
@@ -1804,7 +2421,7 @@ fn parse_diagram_flowchart_edge_label_old_notation_without_spaces() {
 
 #[test]
 fn parse_diagram_flowchart_edge_labels_can_span_multiple_lines() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A--o|text space|B;\n B-->|more text with space|C;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1820,7 +2437,7 @@ fn parse_diagram_flowchart_edge_labels_can_span_multiple_lines() {
 
 #[test]
 fn parse_diagram_flowchart_vertex_shapes_from_flow_text_spec() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"graph TD;
 A_node-->B[This is square];
 A_node-->C(Chimpansen hoppar);
@@ -1864,7 +2481,7 @@ A_node-->P[\Inv trapezoid/];
 
 #[test]
 fn parse_diagram_flowchart_rect_border_syntax_sets_rect_shape() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A_node-->B[|borders:lt|This node has a graph as text];";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1881,7 +2498,7 @@ fn parse_diagram_flowchart_rect_border_syntax_sets_rect_shape() {
 
 #[test]
 fn parse_diagram_flowchart_odd_vertex_allows_id_ending_with_minus() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A_node-->odd->Vertex Text];";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1899,7 +2516,7 @@ fn parse_diagram_flowchart_odd_vertex_allows_id_ending_with_minus() {
 
 #[test]
 fn parse_diagram_flowchart_allows_brackets_inside_quoted_square_labels() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;A[\"chimpansen hoppar ()[]\"] --> C;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -1917,7 +2534,7 @@ fn parse_diagram_flowchart_allows_brackets_inside_quoted_square_labels() {
 
 #[test]
 fn parse_diagram_flowchart_classifies_labels_before_flowdb_trim() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let nel = '\u{0085}';
     let source = format!(
         "flowchart TD\nA[\"{nel}A{nel}\"]\nB[|borders:t|{nel}B{nel}]\nC[\"&nbsp;C&nbsp;\"]\nD[\"#nbsp;D#nbsp;\"]\n"
@@ -1967,7 +2584,7 @@ fn parse_diagram_flowchart_classifies_labels_before_flowdb_trim() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_quotes_do_not_support_backslash_escapes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "flowchart TD\nsubgraph SG[\"A\\\"]B\"]\nA\nend\n";
 
     assert!(
@@ -1978,7 +2595,7 @@ fn parse_diagram_flowchart_subgraph_quotes_do_not_support_backslash_escapes() {
 
 #[test]
 fn parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let err = block_on(engine.parse_diagram(
         "graph TD; A[This is a () in text];",
@@ -2040,7 +2657,7 @@ fn parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec() {
 
 #[test]
 fn parse_diagram_flowchart_keywords_in_vertex_text_across_shapes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let keywords = [
         "graph",
@@ -2128,7 +2745,7 @@ fn parse_diagram_flowchart_keywords_in_vertex_text_across_shapes() {
 
 #[test]
 fn parse_diagram_flowchart_allows_slashes_in_lean_vertices() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "graph TD;A_node-->B[/This node has a / as text/];",
@@ -2163,7 +2780,7 @@ fn parse_diagram_flowchart_allows_slashes_in_lean_vertices() {
 
 #[test]
 fn parse_diagram_flowchart_misc_vertex_text_cases_from_flow_text_spec() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         "graph TD;A-->C{Chimpansen hoppar ???-???};",
@@ -2222,7 +2839,7 @@ fn parse_diagram_flowchart_misc_vertex_text_cases_from_flow_text_spec() {
 
 #[test]
 fn parse_diagram_flowchart_ellipse_vertex_text_and_unterminated_ellipse_errors() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let ok = block_on(engine.parse_diagram(
         "graph TD\nA(-this is an ellipse-)-->B",
@@ -2245,7 +2862,7 @@ fn parse_diagram_flowchart_ellipse_vertex_text_and_unterminated_ellipse_errors()
 
 #[test]
 fn parse_diagram_flowchart_question_and_unicode_in_node_and_edge_text() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram("graph TD;A(?)-->|?|C;", ParseOptions::default()))
         .unwrap()
@@ -2291,7 +2908,7 @@ fn parse_diagram_flowchart_question_and_unicode_in_node_and_edge_text() {
 
 #[test]
 fn parse_diagram_flowchart_node_label_invalid_mixed_text_and_quotes_errors() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let bad = block_on(engine.parse_diagram(
         "graph TD; A[This is a () in text];",
@@ -2326,7 +2943,7 @@ fn parse_diagram_flowchart_node_label_invalid_mixed_text_and_quotes_errors() {
 
 #[test]
 fn parse_diagram_flowchart_supports_subgraph_block() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph S;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2348,7 +2965,7 @@ fn parse_diagram_flowchart_supports_subgraph_block() {
 
 #[test]
 fn parse_diagram_flowchart_supports_nested_subgraphs() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph Outer;subgraph Inner;A-->B;end;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2377,7 +2994,7 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_id_ignores_repeated_separator_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph  Outer;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2398,7 +3015,7 @@ fn parse_diagram_flowchart_subgraph_id_ignores_repeated_separator_whitespace() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_trailing_spaces_before_newline_stays_empty() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph   \nA-->B\nend;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2419,7 +3036,7 @@ fn parse_diagram_flowchart_subgraph_trailing_spaces_before_newline_stays_empty()
 
 #[test]
 fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph ide1[one];A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2440,7 +3057,7 @@ fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_title_with_spaces_uses_auto_id() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph number as labels;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2461,7 +3078,7 @@ fn parse_diagram_flowchart_subgraph_title_with_spaces_uses_auto_id() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph LR;subgraph TOP;direction TD;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2484,9 +3101,9 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
-    let mut site = MermaidConfig::empty_object();
+    let mut site = PresentationConfig::empty_object();
     site.set_value("flowchart.inheritDir", json!(true));
-    let engine = Engine::new().with_site_config(site);
+    let engine = MermaidEngine::new().with_site_config(site);
     let text = "graph LR;subgraph TOP;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2500,7 +3117,7 @@ fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_tab_indentation_matches_mermaid_membership_order() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TB\nsubgraph One\n\ta1-->a2\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2521,7 +3138,7 @@ fn parse_diagram_flowchart_subgraph_tab_indentation_matches_mermaid_membership_o
 
 #[test]
 fn parse_diagram_flowchart_subgraph_chain_membership_order_matches_mermaid() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TB\nsubgraph One\n\ta1-->a2-->a3\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2534,7 +3151,7 @@ fn parse_diagram_flowchart_subgraph_chain_membership_order_matches_mermaid() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_title_with_spaces_in_quotes_uses_auto_id() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TB\nsubgraph \"Some Title\"\n\ta1-->a2\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2545,7 +3162,7 @@ fn parse_diagram_flowchart_subgraph_title_with_spaces_in_quotes_uses_auto_id() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_id_and_title_notation() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TB\nsubgraph some-id[Some Title]\n\ta1-->a2\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2557,7 +3174,7 @@ fn parse_diagram_flowchart_subgraph_id_and_title_notation() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_bracket_quoted_title_sets_label_type_string() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;subgraph uid2[\"text of doom\"];c-->d;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2569,7 +3186,7 @@ fn parse_diagram_flowchart_subgraph_bracket_quoted_title_sets_label_type_string(
 
 #[test]
 fn parse_diagram_flowchart_subgraph_space_and_multiline_quotes_match_pinned_jison() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for separator in ['\u{00a0}', '\u{feff}', '\u{202f}'] {
         let source = format!("flowchart TD\nsubgraph{separator}Name\nA\nend\n");
         let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
@@ -2595,7 +3212,7 @@ fn parse_diagram_flowchart_subgraph_space_and_multiline_quotes_match_pinned_jiso
 
 #[test]
 fn parse_diagram_flowchart_subgraph_markdown_title_sets_label_type_markdown() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nsubgraph \"`**Two**`\"\nA-->B\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2606,7 +3223,7 @@ fn parse_diagram_flowchart_subgraph_markdown_title_sets_label_type_markdown() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_single_quotes_and_bare_backticks_stay_text() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nsubgraph quoted['Literal quotes']\nA\nend\nsubgraph ticks[bare `tick` title]\nB\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .expect("single quotes and bare backticks are ordinary text")
@@ -2627,7 +3244,7 @@ fn parse_diagram_flowchart_subgraph_single_quotes_and_bare_backticks_stay_text()
 
 #[test]
 fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuniq() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nsubgraph A\nB\nend\nsubgraph X\nB\nend\nB-->C\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2657,7 +3274,7 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
 
 #[test]
 fn parse_diagram_flowchart_subgraph_supports_amp_group_syntax_minimally() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nsubgraph myTitle\na & b --> c & e\nend";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2675,7 +3292,7 @@ fn parse_diagram_flowchart_subgraph_supports_amp_group_syntax_minimally() {
 
 #[test]
 fn parse_diagram_flowchart_style_statement_applies_vertex_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;style Q background:#fff;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2707,7 +3324,7 @@ fn parse_diagram_flowchart_style_statement_applies_vertex_styles() {
 
 #[test]
 fn parse_diagram_flowchart_classdef_and_class_assign_work() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "graph TD;classDef exClass background:#bbb,border:1px solid red;a-->b;class a,b exClass;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -2735,7 +3352,7 @@ fn parse_diagram_flowchart_classdef_and_class_assign_work() {
 
 #[test]
 fn parse_diagram_flowchart_inline_vertex_class_via_style_separator() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     // Mermaid `encodeEntities(...)` treats `#bbb;` as an entity placeholder when semicolons
     // are used as statement separators. Use newlines to match upstream parsing behavior.
     let text = "graph TD\nclassDef exClass background:#bbb\nA-->B[test]:::exClass\n";
@@ -2753,7 +3370,7 @@ fn parse_diagram_flowchart_inline_vertex_class_via_style_separator() {
 
 #[test]
 fn parse_diagram_flowchart_linkstyle_applies_edge_style_and_validates_bounds() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let ok = "graph TD\nA-->B\nlinkStyle 0 stroke-width:1px;";
     let res = block_on(engine.parse_diagram(ok, ParseOptions::default()))
         .unwrap()
@@ -2770,7 +3387,7 @@ fn parse_diagram_flowchart_linkstyle_applies_edge_style_and_validates_bounds() {
 
 #[test]
 fn parse_diagram_flowchart_linkstyle_default_interpolate_sets_edge_defaults() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nA-->B\nlinkStyle default interpolate basis";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2780,7 +3397,7 @@ fn parse_diagram_flowchart_linkstyle_default_interpolate_sets_edge_defaults() {
 
 #[test]
 fn parse_diagram_flowchart_linkstyle_numbered_interpolate_sets_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "graph TD\nA-->B\nA-->C\nlinkStyle 0 interpolate basis\nlinkStyle 1 interpolate cardinal";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -2792,7 +3409,7 @@ fn parse_diagram_flowchart_linkstyle_numbered_interpolate_sets_edges() {
 
 #[test]
 fn parse_diagram_flowchart_linkstyle_multi_numbered_interpolate_sets_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nA-->B\nA-->C\nlinkStyle 0,1 interpolate basis";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2803,7 +3420,7 @@ fn parse_diagram_flowchart_linkstyle_multi_numbered_interpolate_sets_edges() {
 
 #[test]
 fn parse_diagram_flowchart_edge_curve_properties_using_edge_id() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "graph TD\nA e1@-->B\nA uniqueName@-->C\ne1@{curve: basis}\nuniqueName@{curve: cardinal}";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -2817,7 +3434,7 @@ fn parse_diagram_flowchart_edge_curve_properties_using_edge_id() {
 
 #[test]
 fn parse_diagram_flowchart_edge_curve_properties_does_not_override_default() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "graph TD\nA e1@-->B\nA-->C\nlinkStyle default interpolate linear\ne1@{curve: stepAfter}";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -2829,7 +3446,7 @@ fn parse_diagram_flowchart_edge_curve_properties_does_not_override_default() {
 
 #[test]
 fn parse_diagram_flowchart_edge_curve_properties_mixed_with_line_interpolation() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nA e1@-->B-->D\nA-->C e4@-->D-->E\nlinkStyle default interpolate linear\nlinkStyle 1 interpolate basis\ne1@{curve: monotoneX}\ne4@{curve: stepBefore}";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2842,7 +3459,7 @@ fn parse_diagram_flowchart_edge_curve_properties_mixed_with_line_interpolation()
 
 #[test]
 fn parse_diagram_flowchart_click_link_sets_link_and_tooltip_and_clickable_class() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nA-->B\nclick A href \"click.html\" \"tooltip\" _blank";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2861,7 +3478,7 @@ fn parse_diagram_flowchart_click_link_sets_link_and_tooltip_and_clickable_class(
 
 #[test]
 fn parse_diagram_flowchart_click_link_sanitizes_javascript_urls_when_not_loose() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nA-->B\nclick A href \"javascript:alert(1)\" \"tooltip\" _blank";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2878,7 +3495,7 @@ fn parse_diagram_flowchart_click_link_sanitizes_javascript_urls_when_not_loose()
 
 #[test]
 fn parse_diagram_flowchart_style_statement_supports_multiple_styles() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;style R background:#fff,border:1px solid red;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2897,7 +3514,7 @@ fn parse_diagram_flowchart_style_statement_supports_multiple_styles() {
 
 #[test]
 fn parse_diagram_flowchart_classdef_supports_multiple_classes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD;classDef firstClass,secondClass background:#bbb,border:1px solid red;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2914,7 +3531,7 @@ fn parse_diagram_flowchart_classdef_supports_multiple_classes() {
 
 #[test]
 fn parse_diagram_flowchart_classdef_repeated_declarations_preserve_duplicates() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nclassDef c fill:red\nclassDef c fill:red\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2927,7 +3544,7 @@ fn parse_diagram_flowchart_classdef_repeated_declarations_preserve_duplicates() 
 
 #[test]
 fn parse_diagram_flowchart_classdef_declarations_accumulate_distinct_properties() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nclassDef c fill:red\nclassDef c stroke:blue,color:black\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2940,7 +3557,7 @@ fn parse_diagram_flowchart_classdef_declarations_accumulate_distinct_properties(
 
 #[test]
 fn parse_diagram_flowchart_classdef_declarations_preserve_property_order() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nclassDef c fill:red,stroke:black\nclassDef c fill:blue\nclassDef c fill:red,stroke:green\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2959,7 +3576,7 @@ fn parse_diagram_flowchart_classdef_declarations_preserve_property_order() {
 
 #[test]
 fn parse_diagram_flowchart_classdef_partial_redefinitions_preserve_class_order() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nclassDef zebra,alpha fill:red\nclassDef beta stroke:gray\nclassDef alpha,delta stroke:blue\nclassDef zebra color:green\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -2987,7 +3604,7 @@ fn parse_diagram_flowchart_classdef_partial_redefinitions_preserve_class_order()
 
 #[test]
 fn parse_diagram_flowchart_classdef_repeated_class_names_preserve_style_items() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "graph TD\nclassDef c,c fill:red,stroke:blue\nclassDef c stroke:green\n";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -3006,7 +3623,7 @@ fn parse_diagram_flowchart_classdef_repeated_class_names_preserve_style_items() 
 
 #[test]
 fn parse_diagram_flowchart_inline_vertex_class_in_groups_matches_mermaid_style_spec() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"
 graph TD
   classDef C1 stroke-dasharray:4
@@ -3033,7 +3650,7 @@ graph TD
 
 #[test]
 fn parse_diagram_flowchart_keyword_flowchart() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram("flowchart TD\nA-->B", ParseOptions::default()))
         .unwrap()
         .unwrap();
@@ -3047,7 +3664,7 @@ fn parse_diagram_flowchart_keyword_flowchart() {
 
 #[test]
 fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram("flowchart\nA-->B", ParseOptions::default()))
         .unwrap()
         .unwrap();
@@ -3075,7 +3692,7 @@ fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
 
 #[test]
 fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync("flowchart\nA-->B", ParseOptions::strict())
         .unwrap()
@@ -3098,7 +3715,7 @@ fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
 
 #[test]
 fn parse_flowchart_render_model_remaps_missing_direction_warning_fact_after_frontmatter() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "---\ntitle: Demo\n---\nflowchart\nA-->B";
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
@@ -3129,7 +3746,7 @@ fn parse_flowchart_render_model_remaps_missing_direction_warning_fact_after_fron
 
 #[test]
 fn parse_flowchart_warning_fact_span_survives_entity_preprocess() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart\n  classDef cat fill:#f9d5e5\n  A:::cat\n";
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .unwrap()
@@ -3147,7 +3764,7 @@ fn parse_flowchart_warning_fact_span_survives_entity_preprocess() {
 
 #[test]
 fn parse_flowchart_warning_fact_span_uses_context_after_frontmatter_and_entity_preprocess() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "---\nconfig:\n  flowchart:\n    htmlLabels: true\n---\n\nflowchart\n  classDef cat fill:#f9d5e5\n  A:::cat\n";
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
         .unwrap()
@@ -3169,7 +3786,7 @@ fn parse_flowchart_warning_fact_span_uses_context_after_frontmatter_and_entity_p
 
 #[test]
 fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA-->B\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3195,7 +3812,7 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_match_flowdb_subgraph_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nsubgraph Explicit\u{feff}[Title]\nA\nend\nsubgraph Auto\u{00a0}Name\nB\nend\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3221,7 +3838,7 @@ fn parse_flowchart_editor_facts_match_flowdb_subgraph_ids() {
 
 #[test]
 fn parse_flowchart_editor_facts_accept_legacy_flowchart_type() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA-->B\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart", text)
@@ -3240,7 +3857,7 @@ fn parse_flowchart_editor_facts_accept_legacy_flowchart_type() {
 
 #[test]
 fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3259,7 +3876,7 @@ fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_label_payload_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA[\"Start node\"] & C -->|go| B{\"Decision\"} & D\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3333,7 +3950,7 @@ fn parse_flowchart_editor_facts_emit_label_payload_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_recover_label_payload_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA[\"Start node\"] -->|go| B{\"Decision\"}\nC-->";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3386,7 +4003,7 @@ fn parse_flowchart_editor_facts_recover_label_payload_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nclassDef hot fill:#f00,stroke:#333;\nA-->B\nstyle A fill:#fff\nclass A,B hot\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3456,7 +4073,7 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "flowchart TD\nclassDef hot fill:#f00,stroke:#333\nstyle A fill:#fff\nclass A,B hot\nC-->";
     let facts = engine
@@ -3522,7 +4139,7 @@ fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA@{\n  shape: rounded\n}\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3543,7 +4160,7 @@ fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
 
 #[test]
 fn parse_flowchart_editor_facts_publish_typed_directive_slots() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let style = "flowchart TD\nA\nstyle A \nstyle A fill:red\n";
     let style_facts = engine
@@ -3613,7 +4230,7 @@ fn parse_flowchart_editor_facts_publish_typed_directive_slots() {
 
 #[test]
 fn parse_flowchart_editor_facts_partition_click_actions_from_payloads() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "flowchart TD\n",
         "A\n",
@@ -3659,7 +4276,7 @@ fn parse_flowchart_editor_facts_partition_click_actions_from_payloads() {
 
 #[test]
 fn flowchart_directive_targets_remain_references_before_later_definitions() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "flowchart TD\n",
         "style Future fill:#fff\n",
@@ -3691,7 +4308,7 @@ fn flowchart_directive_targets_remain_references_before_later_definitions() {
 
 #[test]
 fn flowchart_node_occurrences_only_define_the_first_implicit_node() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA --> B\nA --> C\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3736,7 +4353,7 @@ fn flowchart_node_occurrences_only_define_the_first_implicit_node() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nD@{ shape: rounded }\nD --> E\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3773,7 +4390,7 @@ fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
 
 #[test]
 fn parse_flowchart_editor_facts_do_not_emit_edge_shape_data_as_node_symbol() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA e1@--> B\ne1@{ curve: basis }\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3794,7 +4411,7 @@ fn parse_flowchart_editor_facts_do_not_emit_edge_shape_data_as_node_symbol() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3815,7 +4432,7 @@ fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
 
 #[test]
 fn parse_flowchart_editor_facts_emit_shape_trigger_expected_syntax() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA((\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3836,7 +4453,7 @@ fn parse_flowchart_editor_facts_emit_shape_trigger_expected_syntax() {
 
 #[test]
 fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA@{\n  shape: rounded\n}\nC-->";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3857,7 +4474,7 @@ fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
 
 #[test]
 fn parse_flowchart_editor_facts_recover_unterminated_shape_data_value() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA@{ shape: rou";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3883,7 +4500,7 @@ fn parse_flowchart_editor_facts_recover_unterminated_shape_data_value() {
 
 #[test]
 fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "%%{init: {\"theme\": \"dark\"}}%%\n",
         "flowchart TD\n",
@@ -3940,7 +4557,7 @@ fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
 
 #[test]
 fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nsubgraph group\nA-->B\nC-->";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -3974,7 +4591,7 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
 #[test]
 fn parse_flowchart_eof_diagnostic_precedes_a_trailing_line_ending() {
     let source = "flowchart TD\nA-->\n";
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
         .unwrap()
         .expect("flowchart snapshot");
@@ -3991,7 +4608,7 @@ fn parse_flowchart_eof_diagnostic_precedes_a_trailing_line_ending() {
 
 #[test]
 fn parse_flowchart_editor_facts_recovers_from_malformed_label_without_hanging() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA[bad (label)]\nB-->C\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -4006,7 +4623,7 @@ fn parse_flowchart_editor_facts_recovers_from_malformed_label_without_hanging() 
 
 #[test]
 fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nA-->B\nA -->|go|";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
@@ -4021,7 +4638,7 @@ fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
 
 #[test]
 fn flowchart_unicode_node_ids_preserve_labels_and_edge_references() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\n開始([スタート]) --> 注文[コーヒーを注文]\n注文 --> サイズ{サイズを選択}\nサイズ -->|S| 小\nサイズ -->|M| 中\nサイズ -->|L| 大\n小 --> 支払い[支払い]\n中 --> 支払い\n大 --> 支払い\n支払い --> 完了([完了])\n";
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -4046,7 +4663,7 @@ fn flowchart_unicode_node_ids_preserve_labels_and_edge_references() {
 
 #[test]
 fn flowchart_unicode_ids_keep_adjacent_edge_operators_separate() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart LR\nAé中_1-.->Ω-β\nΩ-β.->한글.2\n한글.2==>終了\n";
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -4066,7 +4683,7 @@ fn flowchart_unicode_ids_keep_adjacent_edge_operators_separate() {
 #[test]
 fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
     // Mermaid's flowchart lexer accepts UNICODE_TEXT in ids (mermaid@11.17.2 parses all of these).
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD
   開始 --> 在庫確認{在庫はあるか}
   在庫確認 -->|はい| 出荷ー
@@ -4106,7 +4723,7 @@ fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
 
 #[test]
 fn parse_diagram_flowchart_accepts_ecmascript_unicode_whitespace_in_header() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
         for newline in ["\n", "\r\n"] {
             let text = format!(
@@ -4125,7 +4742,7 @@ fn parse_diagram_flowchart_accepts_ecmascript_unicode_whitespace_in_header() {
 
 #[test]
 fn flowchart_unicode_id_rejects_characters_outside_pinned_mermaid_ranges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for id in ["😀", "e\u{0301}", "\u{9fcd}", "\u{10400}"] {
         let text = format!("flowchart TD\n{id} --> A\n");
         assert!(
@@ -4137,7 +4754,7 @@ fn flowchart_unicode_id_rejects_characters_outside_pinned_mermaid_ranges() {
 
 #[test]
 fn parse_diagram_flowchart_accepts_unicode_whitespace_in_subgraph_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "flowchart TD\nsubgraph S\ndirection\u{3000}LR\u{3000}\nA --> B\nend\n";
     let res = engine
         .parse_diagram_sync(text, ParseOptions::default())
@@ -4150,7 +4767,7 @@ fn parse_diagram_flowchart_accepts_unicode_whitespace_in_subgraph_direction() {
 #[test]
 fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
     // mermaid@11.17.2 rejects both of these with "Lexical error ... Unrecognized text".
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for text in [
         "flowchart TD
   開始、 --> 終了
@@ -4176,15 +4793,20 @@ fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
 
 #[test]
 fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     assert!(
         engine
             .parse_diagram_sync("flowchart TD\nend開始 --> B", ParseOptions::default())
             .is_err()
     );
+    assert!(
+        engine
+            .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+            .is_err()
+    );
 
     let parsed = engine
-        .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+        .parse_diagram_sync("flowchart TD\n開始 --> B", ParseOptions::default())
         .unwrap()
         .unwrap();
     assert_eq!(parsed.model["direction"], "TB");
@@ -4193,7 +4815,7 @@ fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
 
 #[test]
 fn flowchart_unicode_click_separators_preserve_links_and_editor_ranges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for separator in ["\u{00a0}", "\u{1680}", "\u{202f}", "\u{3000}", "\u{feff}"] {
         for href in ["", "href "] {
             let source = format!(
@@ -4230,7 +4852,7 @@ fn flowchart_unicode_click_separators_preserve_links_and_editor_ranges() {
 fn parse_diagram_flowchart_completed_membership_filters_self_before_claiming() {
     let source =
         "flowchart TB\nsubgraph X\nX\nend\nsubgraph owner\nX\nend\nsubgraph sibling\nX & Y\nend\n";
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -4256,7 +4878,7 @@ fn parse_diagram_flowchart_repeated_nested_id_keeps_first_completed_owner() {
         "subgraph X[Later]\ndirection RL\nA & C\nend\n",
         "subgraph sibling\nX & A & B & C & D\nend\nX-->D\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -4279,7 +4901,7 @@ fn parse_diagram_flowchart_empty_and_anonymous_groups_number_in_completion_order
         "subgraph Outer Title\nsubgraph Inner Title\nA\nend\nB\nend\n",
         "subgraph Last Title\nA & C\nend\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -4303,8 +4925,8 @@ fn parse_diagram_flowchart_wide_flat_statements_preserve_node_and_edge_order() {
     for index in 0..512 {
         source.push_str(&format!("a{index}-->b{index}\n"));
     }
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({"maxEdges": 512})))
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(json!({"maxEdges": 512})))
         .parse_diagram_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();

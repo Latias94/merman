@@ -21,9 +21,7 @@ use crate::safe_text::{
 use crate::text::StyledLine;
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
-use merman_core::diagrams::er::{
-    ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
-};
+use merman_core::diagrams::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelationship};
 use std::collections::{HashMap, hash_map::Entry};
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
@@ -103,7 +101,7 @@ struct ErRelationLayout<'a> {
     transform: relation_graph::DirectionTransform,
     // Canonical semantic endpoints and authored identity/cardinality. Direction changes only
     // their physical projection; these fields are never swapped for BT or RL.
-    relationship: &'a ErRelationshipRenderModel,
+    relationship: &'a ErRelationship,
     top_id: &'a str,
     bottom_id: &'a str,
     top_identity: &'a str,
@@ -126,7 +124,7 @@ impl<'a> ErRelationLayout<'a> {
 }
 
 pub(crate) fn render_er_diagram_with_execution(
-    model: &ErDiagramRenderModel,
+    model: &ErDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -147,7 +145,7 @@ pub(crate) fn render_er_diagram_with_execution(
 }
 
 fn render_er_diagram_impl(
-    model: &ErDiagramRenderModel,
+    model: &ErDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -252,7 +250,7 @@ fn render_er_diagram_impl(
 }
 
 fn index_unique_er_entity_identities<'model>(
-    model: &'model ErDiagramRenderModel,
+    model: &'model ErDiagramModel,
     resources: &ResourceContext,
 ) -> Result<HashMap<&'model str, &'model str>> {
     resources.charge_layout_work(model.entities.len())?;
@@ -291,7 +289,7 @@ fn authored_er_entity_identity<'model>(
 
 fn render_er_components<'model>(
     boxes: &[RenderedEntityBox],
-    relationships: &'model [ErRelationshipRenderModel],
+    relationships: &'model [ErRelationship],
     authored_entity_identities: &HashMap<&'model str, &'model str>,
     context: &ErRenderContext<'_>,
     resources: &mut ResourceContext,
@@ -360,7 +358,7 @@ fn render_er_components<'model>(
 }
 
 fn prepare_er_relation_labels<'model>(
-    relationships: &'model [ErRelationshipRenderModel],
+    relationships: &'model [ErRelationship],
     options: &AsciiRenderOptions,
     deferred_text: &mut DeferredTextRegistry<'model>,
     resources: &ResourceContext,
@@ -388,7 +386,7 @@ fn prepare_er_relation_labels<'model>(
 
 fn render_entity_box<'a>(
     authored_identity: &'a str,
-    entity: &'a ErEntityRenderModel,
+    entity: &'a ErEntity,
     options: &AsciiRenderOptions,
     charset: ErCharset,
     deferred_text: &mut DeferredTextRegistry<'a>,
@@ -435,7 +433,7 @@ fn render_box_sections(
 
 fn entity_sections<'a>(
     authored_identity: &'a str,
-    entity: &'a ErEntityRenderModel,
+    entity: &'a ErEntity,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -490,7 +488,7 @@ fn entity_sections<'a>(
     Ok(sections)
 }
 
-fn entity_display(entity: &ErEntityRenderModel) -> (&'static str, &str) {
+fn entity_display(entity: &ErEntity) -> (&'static str, &str) {
     if entity.alias.is_empty() {
         ("label(bytes=", &entity.label)
     } else {
@@ -498,13 +496,13 @@ fn entity_display(entity: &ErEntityRenderModel) -> (&'static str, &str) {
     }
 }
 
-fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
+fn entity_display_label(entity: &ErEntity) -> &str {
     entity_display(entity).1
 }
 
 #[cfg(test)]
 fn attribute_text_with_probe(
-    attribute: &ErAttributeRenderModel,
+    attribute: &ErAttribute,
     resources: &mut ResourceContext,
     before_materialize: impl FnOnce(),
 ) -> Result<String> {
@@ -532,7 +530,7 @@ fn attribute_text_with_probe(
 }
 
 fn register_er_attribute_line<'a>(
-    attribute: &'a ErAttributeRenderModel,
+    attribute: &'a ErAttribute,
     width_profile: TerminalWidthProfile,
     deferred: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -1420,10 +1418,7 @@ fn relation_line_chars(charset: ErCharset) -> RelationLineChars {
     )
 }
 
-fn charge_er_model_work(
-    model: &ErDiagramRenderModel,
-    resources: &mut ResourceContext,
-) -> Result<()> {
+fn charge_er_model_work(model: &ErDiagramModel, resources: &mut ResourceContext) -> Result<()> {
     let attribute_count = model.entities.values().try_fold(0usize, |total, entity| {
         total.checked_add(entity.attributes.len())
     });
@@ -1436,7 +1431,7 @@ fn charge_er_model_work(
     resources.charge_layout_work(item_count.max(1))
 }
 
-fn preflight_er_text(model: &ErDiagramRenderModel, resources: &mut ResourceContext) -> Result<()> {
+fn preflight_er_text(model: &ErDiagramModel, resources: &mut ResourceContext) -> Result<()> {
     for entity in model.entities.values() {
         charge_text_layout(resources, &entity.id)?;
         charge_text_layout(resources, entity_display_label(entity))?;
@@ -1490,8 +1485,8 @@ mod tests {
         ResourceContext::new(policy)
     }
 
-    fn composite_attribute() -> ErAttributeRenderModel {
-        ErAttributeRenderModel {
+    fn composite_attribute() -> ErAttribute {
+        ErAttribute {
             ty: "string".to_string(),
             name: "owner_id".to_string(),
             keys: vec!["PK".to_string(), "FK".to_string()],
@@ -1503,26 +1498,26 @@ mod tests {
         AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
     }
 
-    fn horizontal_control_model() -> ErDiagramRenderModel {
-        let mut model = ErDiagramRenderModel {
+    fn horizontal_control_model() -> ErDiagramModel {
+        let mut model = ErDiagramModel {
             direction: "LR".to_string(),
-            ..ErDiagramRenderModel::default()
+            ..ErDiagramModel::default()
         };
         for id in ["A", "B"] {
             model.entities.insert(
                 id.to_string(),
-                ErEntityRenderModel {
+                ErEntity {
                     id: id.to_string(),
                     label: id.to_string(),
-                    ..ErEntityRenderModel::default()
+                    ..ErEntity::default()
                 },
             );
         }
-        model.relationships.push(ErRelationshipRenderModel {
+        model.relationships.push(ErRelationship {
             entity_a: "A".to_string(),
             role_a: "owns".to_string(),
             entity_b: "B".to_string(),
-            rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+            rel_spec: merman_core::diagrams::er::ErRelSpec {
                 card_a: "ONLY_ONE".to_string(),
                 card_b: "ZERO_OR_MORE".to_string(),
                 rel_type: "IDENTIFYING".to_string(),
@@ -1531,7 +1526,7 @@ mod tests {
         model
     }
 
-    fn render_er_identity_fixture(model: &ErDiagramRenderModel) -> String {
+    fn render_er_identity_fixture(model: &ErDiagramModel) -> String {
         let policy = unbounded_policy();
         render_er_diagram_with_execution(
             model,
@@ -1542,7 +1537,7 @@ mod tests {
     }
 
     fn render_er_section_fixture(
-        entity: &ErEntityRenderModel,
+        entity: &ErEntity,
         options: &AsciiRenderOptions,
         policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
@@ -1582,43 +1577,43 @@ mod tests {
         (result, before, after)
     }
 
-    fn er_summary_model() -> ErDiagramRenderModel {
-        let mut model = ErDiagramRenderModel {
+    fn er_summary_model() -> ErDiagramModel {
+        let mut model = ErDiagramModel {
             direction: "TB".to_string(),
-            ..ErDiagramRenderModel::default()
+            ..ErDiagramModel::default()
         };
         model.entities.insert(
             "A".to_string(),
-            ErEntityRenderModel {
+            ErEntity {
                 id: "A".to_string(),
                 label: "Source<&中".to_string(),
-                ..ErEntityRenderModel::default()
+                ..ErEntity::default()
             },
         );
         model.entities.insert(
             "B".to_string(),
-            ErEntityRenderModel {
+            ErEntity {
                 id: "B".to_string(),
                 label: "Target<&中".to_string(),
-                ..ErEntityRenderModel::default()
+                ..ErEntity::default()
             },
         );
         model.relationships = vec![
-            ErRelationshipRenderModel {
+            ErRelationship {
                 entity_a: "A".to_string(),
                 role_a: "self<&中".to_string(),
                 entity_b: "A".to_string(),
-                rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+                rel_spec: merman_core::diagrams::er::ErRelSpec {
                     card_a: "ONLY_ONE".to_string(),
                     card_b: "ZERO_OR_MORE".to_string(),
                     rel_type: "IDENTIFYING".to_string(),
                 },
             },
-            ErRelationshipRenderModel {
+            ErRelationship {
                 entity_a: "A".to_string(),
                 role_a: "linked<&中".to_string(),
                 entity_b: "B".to_string(),
-                rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+                rel_spec: merman_core::diagrams::er::ErRelSpec {
                     card_a: "ZERO_OR_ONE".to_string(),
                     card_b: "ONE_OR_MORE".to_string(),
                     rel_type: "NON_IDENTIFYING".to_string(),
@@ -1629,7 +1624,7 @@ mod tests {
     }
 
     fn render_er_summary_fixture(
-        model: &ErDiagramRenderModel,
+        model: &ErDiagramModel,
         options: &AsciiRenderOptions,
         policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
@@ -2113,16 +2108,16 @@ mod tests {
 
     #[test]
     fn er_sections_admit_exact_encoded_output_before_deferred_materialization() {
-        let entity = ErEntityRenderModel {
+        let entity = ErEntity {
             id: "OWNER".to_string(),
             label: "Owner<&中".to_string(),
-            attributes: vec![ErAttributeRenderModel {
+            attributes: vec![ErAttribute {
                 ty: "string".to_string(),
                 name: "owner<&中".to_string(),
                 keys: vec!["PK".to_string(), "FK".to_string()],
                 comment: "record<&中".to_string(),
             }],
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         };
 
         for mode in [
@@ -2308,7 +2303,7 @@ mod tests {
 
     #[test]
     fn er_attribute_frames_a_leading_combining_grapheme_at_exact_limit() {
-        let attribute = ErAttributeRenderModel {
+        let attribute = ErAttribute {
             ty: "string".to_string(),
             name: "\u{301}".to_string(),
             keys: Vec::new(),

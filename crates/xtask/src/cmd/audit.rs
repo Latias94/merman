@@ -78,7 +78,7 @@ fn normalize_error_key(message: &str) -> String {
     ws.replace_all(first.trim(), " ").to_string()
 }
 
-fn detect_out_of_scope(meta: &merman::ParseMetadata) -> Vec<String> {
+fn detect_out_of_scope(meta: &merman::PresentationMetadata) -> Vec<String> {
     let mut out = Vec::new();
 
     if let Some(layout) = meta.config.get_str("layout") {
@@ -144,7 +144,7 @@ fn absorbed_deferred_duplicate(
     deferred_root: &Path,
     path: &Path,
     expected_group: &str,
-    meta: &merman::ParseMetadata,
+    meta: &merman::PresentationMetadata,
 ) -> Option<AbsorbedDeferredDuplicate> {
     let rel = path.strip_prefix(deferred_root).ok()?;
     let active_path = fixtures_root.join(rel);
@@ -420,7 +420,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         .with_fixed_today(Some(
             merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
-    let engine = merman::Engine::new().with_runtime_policy(runtime_policy);
+    let engine = merman::MermaidEngine::new().with_runtime_policy(runtime_policy);
 
     // 1) Parser-only fixtures (not part of parity gates).
     let mut parser_only_by_diagram: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
@@ -1018,9 +1018,9 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn parse_meta(text: &str) -> merman::ParseMetadata {
+    fn parse_meta(text: &str) -> merman::PresentationMetadata {
         let parsed = futures::executor::block_on(
-            merman::Engine::new().parse_diagram(text, merman::ParseOptions::default()),
+            merman::MermaidEngine::new().parse_diagram(text, merman::ParseOptions::default()),
         )
         .expect("parse should succeed")
         .expect("diagram should be detected");

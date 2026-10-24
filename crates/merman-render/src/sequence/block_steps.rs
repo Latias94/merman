@@ -14,10 +14,10 @@ use super::{
 };
 use crate::Result;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
-    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
 };
+use merman_core::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
@@ -33,7 +33,7 @@ pub(crate) struct SequenceBlockLabelBoxMetrics {
 
 impl SequenceBlockLabelBoxMetrics {
     pub(crate) fn resolve(
-        model: &SequenceDiagramRenderModel,
+        model: &SequenceDiagramModel,
         configured_width: f64,
         configured_height: f64,
         text_margin: f64,
@@ -121,7 +121,7 @@ impl SequenceBlockLabelBoxMetrics {
 
 #[derive(Clone, Copy)]
 pub(super) struct BlockStepPlanContext<'a> {
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_widths: &'a [f64],
@@ -139,7 +139,7 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) loop_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) note_math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
@@ -279,7 +279,7 @@ struct BlockFrameWidthContext<'a> {
     msg_text_style: &'a TextStyle,
     note_text_style: &'a TextStyle,
     loop_text_style: &'a TextStyle,
-    math_config: &'a MermaidConfig,
+    math_config: &'a PresentationConfig,
     math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     note_math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     math_sidecar: &'a dyn super::SequenceMathArtifactStore,
@@ -583,8 +583,8 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::sequence::SequenceMathSidecar;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
+    use merman_core::presentation::PresentationConfig;
     use std::collections::HashMap;
 
     struct ExpectedBlockLabelMeasurer;
@@ -627,7 +627,7 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let msg_style = TextStyle::default();
         let note_style = TextStyle::default();
-        let math_config = MermaidConfig::default();
+        let math_config = PresentationConfig::default();
         let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -655,13 +655,13 @@ mod tests {
                     text_style: &msg_style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
@@ -809,7 +809,7 @@ mod tests {
         let actor_widths = [];
         let measurer = ExpectedBlockLabelMeasurer;
         let text_style = TextStyle::default();
-        let math_config = MermaidConfig::default();
+        let math_config = PresentationConfig::default();
         let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -839,13 +839,13 @@ mod tests {
                     text_style: &text_style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),

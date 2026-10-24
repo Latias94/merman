@@ -108,7 +108,7 @@ impl FlowchartEdgeStrokeWidthResolution {
 impl FlowchartEdgeStylePlan {
     pub(crate) fn prepare_for_model(
         model: &crate::flowchart::FlowchartModel,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         swimlane: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -313,7 +313,7 @@ impl FlowchartEdgeStylePlan {
         mut self,
         model: &crate::flowchart::FlowchartModel,
         edge_theme: &crate::flowchart::FlowchartEdgeThemeStyle,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {

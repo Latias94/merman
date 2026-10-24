@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::{MermaidConfig, OperationPhase};
+use merman_core::OperationPhase;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -188,7 +189,7 @@ impl TreemapTypographyThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &TreemapDiagramLayout,
         work_meter: std::sync::Arc<OperationWorkMeter>,
     ) -> crate::Result<Self> {
@@ -197,7 +198,7 @@ impl TreemapTypographyThemePlan {
 
     pub(crate) fn resolve_with_title_fill(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &TreemapDiagramLayout,
         work_meter: std::sync::Arc<OperationWorkMeter>,
         title_fill: Option<&str>,
@@ -1136,7 +1137,7 @@ pub(crate) struct TreemapTitleThemePlan {
 impl TreemapTitleThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -1251,7 +1252,7 @@ mod tests {
     };
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]
@@ -1291,7 +1292,7 @@ mod tests {
             }],
         };
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
         let plan = TreemapTypographyThemePlan::resolve(None, &config, &layout, meter.into())
             .expect("resolve unthemed Treemap typography plan");
 
@@ -1365,7 +1366,7 @@ mod tests {
             .expect("compile Treemap title fill and palette theme")
             .resolve(DiagramFamilyId::TREEMAP);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
         let plan = TreemapTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
             .expect("resolve Treemap title theme");
         let mut receipt = plan.begin_terminal_receipt().expect("typed title receipt");

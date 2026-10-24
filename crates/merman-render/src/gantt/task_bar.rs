@@ -18,19 +18,19 @@ pub(super) enum GanttTaskBarState {
 
 impl GanttTaskBarState {
     pub(super) const fn from_task(task: &GanttRenderTask) -> Self {
-        if task.active {
-            if task.crit {
+        if task.semantic.active {
+            if task.semantic.crit {
                 Self::ActiveCrit
             } else {
                 Self::Active
             }
-        } else if task.done {
-            if task.crit {
+        } else if task.semantic.done {
+            if task.semantic.crit {
                 Self::DoneCrit
             } else {
                 Self::Done
             }
-        } else if task.crit {
+        } else if task.semantic.crit {
             Self::Crit
         } else {
             Self::Default

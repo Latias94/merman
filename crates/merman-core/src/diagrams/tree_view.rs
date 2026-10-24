@@ -1,19 +1,27 @@
-use crate::diagrams::langium_common::{
-    LangiumCommonField, parse_langium_common, push_langium_common_editor_fact,
-};
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::push_langium_common_editor_fact;
+use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
 use crate::diagrams::scan::{physical_line_at, split_ascii_indent};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol,
 };
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, Result, SourceSpan};
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
+#[cfg(feature = "compat-json")]
 use std::collections::HashMap;
 
 const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewNodeRenderModel {
+pub struct TreeViewNode {
     pub id: i64,
     pub level: i64,
     pub name: String,
@@ -26,10 +34,10 @@ pub struct TreeViewNodeRenderModel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default)]
-    pub children: Vec<TreeViewNodeRenderModel>,
+    pub children: Vec<TreeViewNode>,
 }
 
-impl Default for TreeViewNodeRenderModel {
+impl Default for TreeViewNode {
     fn default() -> Self {
         Self {
             id: 0,
@@ -45,17 +53,17 @@ impl Default for TreeViewNodeRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewDiagramRenderModel {
+pub struct TreeViewDiagramModel {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
-    pub root: TreeViewNodeRenderModel,
+    pub root: TreeViewNode,
 }
 
-impl TreeViewDiagramRenderModel {
+impl TreeViewDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -69,7 +77,8 @@ struct ParsedTreeViewInput {
     acc_title: Option<String>,
     acc_descr: Option<String>,
     nodes: Vec<TreeViewNodeLineDetails>,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,22 +93,21 @@ struct TreeViewParseOutcome {
 }
 
 impl TreeViewParseOutcome {
-    fn into_strict(self, meta: &ParseMetadata) -> Result<ParsedTreeViewInput> {
-        match self.first_issue {
-            Some(issue) => Err(issue.into_error(meta)),
-            None => Ok(self.snapshot),
-        }
-    }
-
-    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
         let Self {
             snapshot,
             first_issue,
         } = self;
         let construction = match first_issue {
             Some(issue) => Err(crate::family::CombinedSemanticFailure::new(
-                issue.into_error(meta),
-                snapshot.editor_facts,
+                issue.into_error(&meta.diagram_type),
+                Some(
+                    snapshot
+                        .editor_facts
+                        .expect("combined parsing requests editor facts"),
+                ),
             )),
             None => Ok(snapshot),
         };
@@ -111,14 +119,16 @@ impl TreeViewParseOutcome {
                     acc_title,
                     acc_descr,
                     nodes,
-                    mut editor_facts,
+                    editor_facts,
                 } = snapshot;
-                let model = tree_view_input_to_render_model(
+                let mut editor_facts =
+                    editor_facts.expect("combined parsing requests editor facts");
+                let model = tree_view_input_to_model(
                     title,
                     acc_title,
                     acc_descr,
                     nodes,
-                    &meta.effective_config,
+                    meta.effective_config.as_config(),
                 )
                 .map_err(|message| {
                     editor_facts.mark_recovered_from_parse_error(message.clone(), None);
@@ -140,18 +150,12 @@ impl TreeViewParseIssue {
         }
     }
 
-    fn into_error(self, meta: &ParseMetadata) -> Error {
+    fn into_error(self, diagram_type: &str) -> Error {
         match self.span {
-            Some(span) => {
-                Error::diagram_parse_exact(meta.diagram_type.clone(), &self.message, span)
-            }
-            None => Error::diagram_parse_fallback(meta.diagram_type.clone(), &self.message),
+            Some(span) => Error::diagram_parse_exact(diagram_type.to_string(), &self.message, span),
+            None => Error::diagram_parse_fallback(diagram_type.to_string(), &self.message),
         }
     }
-}
-
-struct TreeViewSemanticSource {
-    render_model: TreeViewDiagramRenderModel,
 }
 
 #[derive(Debug, Clone)]
@@ -172,13 +176,16 @@ struct TreeViewNodeLineDetails {
     css_class: Option<TreeViewSpannedValue>,
     icon: Option<TreeViewSpannedValue>,
     description: Option<TreeViewSpannedValue>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     selection: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct TreeViewSpannedValue {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -215,58 +222,130 @@ struct ArenaNode {
     children: Vec<usize>,
 }
 
-pub(crate) fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source = parse_tree_view_semantic_source(code, meta)?;
-    render_model_to_compat_json(&source.render_model, meta)
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_tree_view(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    let model =
+        parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_tree_view_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
-    #[cfg(test)]
-    crate::diagrams::langium_common::record_family_syntax_construction("treeView");
-    let parsed = parse_tree_view_input_controlled(code, meta, control)?.into_combined(meta);
+    let parsed = parse_tree_view_input_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?
+    .into_combined(meta);
     control.checkpoint()?;
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_tree_view_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
-) -> Result<TreeViewDiagramRenderModel> {
-    Ok(parse_tree_view_semantic_source(code, meta)?.render_model)
+    meta: &PresentationMetadata,
+) -> Result<TreeViewDiagramModel> {
+    parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_tree_view_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<TreeViewDiagramRenderModel>> {
-    let parsed = parse_tree_view_input_controlled(code, meta, control)?;
-    let parsed = match parsed.into_strict(meta) {
-        Ok(parsed) => parsed,
-        Err(error) => return Ok(Err(error)),
-    };
+) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
+    Ok(construct_tree_view_model_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .model)
+}
+
+pub(crate) fn parse_tree_view_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
+    Ok(construct_tree_view_model_controlled(
+        code,
+        &meta.diagram_type,
+        &meta.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?
+    .map_model(|mut model| {
+        model.sanitize_common_db_fields(&meta.semantic_config);
+        model
+    }))
+}
+
+fn construct_tree_view_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
+    let TreeViewParseOutcome {
+        snapshot,
+        first_issue,
+    } = parse_tree_view_input_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     let ParsedTreeViewInput {
         title,
         acc_title,
         acc_descr,
         nodes,
-        editor_facts: _,
-    } = parsed;
+        #[cfg(feature = "editor-facts")]
+        mut editor_facts,
+    } = snapshot;
+    if let Some(issue) = first_issue {
+        return Ok(crate::family::SemanticConstruction {
+            model: Err(issue.into_error(diagram_type)),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        });
+    }
     let model =
-        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
-            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message));
+        tree_view_input_to_model(title, acc_title, acc_descr, nodes, config).map_err(|message| {
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = &mut editor_facts {
+                facts.mark_recovered_from_parse_error(message.clone(), None);
+            }
+            Error::diagram_parse_fallback(diagram_type.to_string(), message)
+        });
     control.checkpoint()?;
-    Ok(model)
+    Ok(crate::family::SemanticConstruction {
+        model,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    })
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &TreeViewDiagramRenderModel,
-    meta: &ParseMetadata,
+    model: &TreeViewDiagramModel,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut nodes = Vec::new();
     flatten_nodes(&model.root, &mut nodes);
@@ -280,57 +359,34 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-fn parse_tree_view_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<TreeViewSemanticSource> {
-    construct_tree_view_semantic_source(code, meta)
-}
-
-fn construct_tree_view_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<TreeViewSemanticSource> {
-    #[cfg(test)]
-    crate::diagrams::langium_common::record_family_syntax_construction("treeView");
-
-    let parsed = parse_tree_view_input(code, meta).into_strict(meta)?;
-    let ParsedTreeViewInput {
-        title,
-        acc_title,
-        acc_descr,
-        nodes,
-        editor_facts: _,
-    } = parsed;
-    let render_model =
-        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
-            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
-    Ok(TreeViewSemanticSource { render_model })
-}
-
-fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutcome {
-    parse_tree_view_input_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-}
-
 fn parse_tree_view_input_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<TreeViewParseOutcome> {
     control.checkpoint()?;
-    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("treeView");
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = demand.needs_recovery().then(EditorSemanticFacts::new);
     let mut first_issue = None;
     let body = match tree_view_body_start_controlled(code, control)? {
         Ok(body) => body,
         Err(issue) => {
-            mark_tree_view_recovery(&mut editor_facts, &mut first_issue, issue);
+            mark_tree_view_recovery(
+                #[cfg(feature = "editor-facts")]
+                &mut editor_facts,
+                &mut first_issue,
+                issue,
+            );
             return Ok(TreeViewParseOutcome {
                 snapshot: ParsedTreeViewInput {
                     title: None,
                     acc_title: None,
                     acc_descr: None,
                     nodes: Vec::new(),
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                 },
                 first_issue,
@@ -350,6 +406,7 @@ fn parse_tree_view_input_controlled(
             if saw_node {
                 let span = parsed.fact.raw_span;
                 mark_tree_view_recovery(
+                    #[cfg(feature = "editor-facts")]
                     &mut editor_facts,
                     &mut first_issue,
                     TreeViewParseIssue::new(
@@ -362,7 +419,10 @@ fn parse_tree_view_input_controlled(
             }
             let field = parsed.fact.field;
             let value = parsed.fact.value.clone();
-            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "tree view");
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
+                push_langium_common_editor_fact(facts, &parsed.fact, "tree view");
+            }
             match field {
                 LangiumCommonField::Title => title = Some(value),
                 LangiumCommonField::AccTitle => acc_title = Some(value),
@@ -370,6 +430,7 @@ fn parse_tree_view_input_controlled(
             }
             if let Some(diagnostic) = parsed.diagnostic {
                 mark_tree_view_recovery(
+                    #[cfg(feature = "editor-facts")]
                     &mut editor_facts,
                     &mut first_issue,
                     TreeViewParseIssue::new(diagnostic.message, Some(diagnostic.span)),
@@ -403,9 +464,17 @@ fn parse_tree_view_input_controlled(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match parse_node_line_details(&statement.line, statement.line_start, line_format, meta) {
+        match parse_node_line_details(
+            &statement.line,
+            statement.line_start,
+            line_format,
+            diagram_type,
+        ) {
             Ok(Some(node)) => {
-                push_tree_view_node_editor_facts(&mut editor_facts, &node);
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
+                    push_tree_view_node_editor_facts(facts, &node);
+                }
                 nodes.push(node);
             }
             Ok(None) => {}
@@ -420,6 +489,7 @@ fn parse_tree_view_input_controlled(
                     statement.line_start + leading + trimmed.len(),
                 );
                 mark_tree_view_recovery(
+                    #[cfg(feature = "editor-facts")]
                     &mut editor_facts,
                     &mut first_issue,
                     TreeViewParseIssue::new(tree_view_error_message(&failure.error), Some(span)),
@@ -435,6 +505,7 @@ fn parse_tree_view_input_controlled(
             acc_title,
             acc_descr,
             nodes,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         },
         first_issue,
@@ -484,20 +555,23 @@ fn tree_view_body_start_controlled(
 }
 
 fn mark_tree_view_recovery(
-    editor_facts: &mut EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] editor_facts: &mut Option<EditorSemanticFacts>,
     first_issue: &mut Option<TreeViewParseIssue>,
     issue: TreeViewParseIssue,
 ) {
     if first_issue.is_none() {
         *first_issue = Some(issue.clone());
     }
-    editor_facts.mark_recovered_from_parse_error(
-        format!(
-            "treeView parser recovered after parse error: {}",
-            issue.message
-        ),
-        issue.span,
-    );
+    #[cfg(feature = "editor-facts")]
+    if let Some(editor_facts) = editor_facts {
+        editor_facts.mark_recovered_from_parse_error(
+            format!(
+                "treeView parser recovered after parse error: {}",
+                issue.message
+            ),
+            issue.span,
+        );
+    }
 }
 
 fn tree_view_error_message(error: &Error) -> String {
@@ -507,13 +581,13 @@ fn tree_view_error_message(error: &Error) -> String {
     }
 }
 
-fn tree_view_input_to_render_model(
+fn tree_view_input_to_model(
     title: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     nodes: Vec<TreeViewNodeLineDetails>,
     config: &crate::MermaidConfig,
-) -> std::result::Result<TreeViewDiagramRenderModel, String> {
+) -> std::result::Result<TreeViewDiagramModel, String> {
     let mut arena = vec![ArenaNode {
         id: 0,
         level: -1,
@@ -558,16 +632,16 @@ fn tree_view_input_to_render_model(
         }
     }
 
-    Ok(TreeViewDiagramRenderModel {
+    Ok(TreeViewDiagramModel {
         title,
         acc_title,
         acc_descr,
-        root: arena_node_to_render_model(&arena, 0),
+        root: arena_node_to_model(&arena, 0),
     })
 }
 
-fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> TreeViewNodeRenderModel {
-    let mut models: Vec<Option<TreeViewNodeRenderModel>> = vec![None; arena.len()];
+fn arena_node_to_model(arena: &[ArenaNode], idx: usize) -> TreeViewNode {
+    let mut models: Vec<Option<TreeViewNode>> = vec![None; arena.len()];
     let mut stack = vec![(idx, false)];
 
     while let Some((node_idx, visited)) = stack.pop() {
@@ -581,7 +655,7 @@ fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> TreeViewNodeRe
                 .iter()
                 .filter_map(|&child_idx| models.get_mut(child_idx).and_then(Option::take))
                 .collect();
-            models[node_idx] = Some(TreeViewNodeRenderModel {
+            models[node_idx] = Some(TreeViewNode {
                 id: node.id,
                 level: node.level,
                 name: node.name.clone(),
@@ -605,7 +679,8 @@ fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> TreeViewNodeRe
         .unwrap_or_default()
 }
 
-fn flatten_nodes(node: &TreeViewNodeRenderModel, out: &mut Vec<Value>) {
+#[cfg(feature = "compat-json")]
+fn flatten_nodes(node: &TreeViewNode, out: &mut Vec<Value>) {
     let mut stack = vec![node];
     while let Some(current) = stack.pop() {
         out.push(tree_view_flat_node_to_value(current));
@@ -615,8 +690,9 @@ fn flatten_nodes(node: &TreeViewNodeRenderModel, out: &mut Vec<Value>) {
     }
 }
 
-fn tree_view_node_to_value(root: &TreeViewNodeRenderModel) -> Value {
-    let mut values: HashMap<*const TreeViewNodeRenderModel, Value> = HashMap::new();
+#[cfg(feature = "compat-json")]
+fn tree_view_node_to_value(root: &TreeViewNode) -> Value {
+    let mut values: HashMap<*const TreeViewNode, Value> = HashMap::new();
     let mut stack = vec![(root, false)];
 
     while let Some((node, visited)) = stack.pop() {
@@ -650,7 +726,8 @@ fn tree_view_node_to_value(root: &TreeViewNodeRenderModel) -> Value {
     })
 }
 
-fn tree_view_flat_node_to_value(node: &TreeViewNodeRenderModel) -> Value {
+#[cfg(feature = "compat-json")]
+fn tree_view_flat_node_to_value(node: &TreeViewNode) -> Value {
     let mut value = serde_json::Map::new();
     value.insert("id".to_string(), json!(node.id));
     value.insert("level".to_string(), json!(node.level));
@@ -668,10 +745,8 @@ fn tree_view_flat_node_to_value(node: &TreeViewNodeRenderModel) -> Value {
     Value::Object(value)
 }
 
-fn tree_view_node_with_children_to_value(
-    node: &TreeViewNodeRenderModel,
-    children: Vec<Value>,
-) -> Value {
+#[cfg(feature = "compat-json")]
+fn tree_view_node_with_children_to_value(node: &TreeViewNode, children: Vec<Value>) -> Value {
     let mut value = match tree_view_flat_node_to_value(node) {
         Value::Object(value) => value,
         _ => serde_json::Map::new(),
@@ -684,16 +759,17 @@ fn parse_node_line_details(
     line: &str,
     line_start: usize,
     line_format: TreeViewLineFormat,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> std::result::Result<Option<TreeViewNodeLineDetails>, TreeViewNodeParseFailure> {
-    let line_view =
-        tree_view_line_view(line, line_format, meta).map_err(|error| TreeViewNodeParseFailure {
+    let line_view = tree_view_line_view(line, line_format, diagram_type).map_err(|error| {
+        TreeViewNodeParseFailure {
             error: Box::new(error),
-        })?;
+        }
+    })?;
     let Some(line_view) = line_view else {
         return Ok(None);
     };
-    parse_node_content(line_view, line_start, meta).map(Some)
+    parse_node_content(line_view, line_start, diagram_type).map(Some)
 }
 
 impl TreeViewLineFormat {
@@ -723,7 +799,7 @@ impl TreeViewLineFormat {
 fn tree_view_line_view<'a>(
     line: &'a str,
     line_format: TreeViewLineFormat,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> Result<Option<TreeViewLineView<'a>>> {
     if !line_format.box_drawing {
         let (indent, rest) = split_ascii_indent(line);
@@ -764,7 +840,7 @@ fn tree_view_line_view<'a>(
         let content = line[content_offset..].trim_end();
         if content.is_empty() {
             return Err(parse_error(
-                meta,
+                diagram_type,
                 "empty tree node after box-drawing prefix",
             ));
         }
@@ -792,7 +868,7 @@ fn tree_view_line_view<'a>(
 
     if line.chars().next().is_some_and(char::is_whitespace) {
         return Err(parse_error(
-            meta,
+            diagram_type,
             "unexpected indentation without box-drawing prefix in treeView box-drawing input",
         ));
     }
@@ -809,13 +885,14 @@ fn tree_view_line_view<'a>(
 fn parse_node_content(
     line_view: TreeViewLineView<'_>,
     line_start: usize,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> std::result::Result<TreeViewNodeLineDetails, TreeViewNodeParseFailure> {
     let content = line_view.content;
     let content_abs = line_start + line_view.content_offset;
+    #[cfg(feature = "editor-facts")]
     let span = SourceSpan::new(content_abs, content_abs + content.len());
 
-    let (mut raw_name, name_start, name_end, suffix_start) =
+    let (mut raw_name, _name_start, name_end, suffix_start) =
         if let Some((_, quote @ ('"' | '\''))) = content.char_indices().next() {
             let mut end = None;
             for (idx, ch) in content[quote.len_utf8()..].char_indices() {
@@ -826,7 +903,10 @@ fn parse_node_content(
             }
             let Some(end_idx) = end else {
                 return Err(TreeViewNodeParseFailure {
-                    error: Box::new(parse_error(meta, "unterminated quoted tree node name")),
+                    error: Box::new(parse_error(
+                        diagram_type,
+                        "unterminated quoted tree node name",
+                    )),
                 });
             };
             (
@@ -841,7 +921,7 @@ fn parse_node_content(
             let name_end = trim_end_byte_index(&content[..annotation_start]);
             if name_end == 0 {
                 return Err(TreeViewNodeParseFailure {
-                    error: Box::new(parse_error(meta, "expected tree node name")),
+                    error: Box::new(parse_error(diagram_type, "expected tree node name")),
                 });
             }
             (content[..name_end].to_string(), 0, name_end, name_end)
@@ -850,12 +930,13 @@ fn parse_node_content(
         raw_name = raw_name.replace('\t', "    ");
     }
 
-    let (name, node_type, selection_end) = normalize_tree_view_node_name(raw_name, name_end);
-    let selection = SourceSpan::new(content_abs + name_start, content_abs + selection_end);
+    let (name, node_type, _selection_end) = normalize_tree_view_node_name(raw_name, name_end);
+    #[cfg(feature = "editor-facts")]
+    let selection = SourceSpan::new(content_abs + _name_start, content_abs + _selection_end);
 
     let suffix = &content[suffix_start..];
     let suffix_abs = content_abs + suffix_start;
-    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, meta) {
+    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, diagram_type) {
         Ok(annotations) => annotations,
         Err(error) => {
             return Err(TreeViewNodeParseFailure {
@@ -876,7 +957,9 @@ fn parse_node_content(
         css_class: annotations.css_class,
         icon: annotations.icon,
         description: annotations.description,
+        #[cfg(feature = "editor-facts")]
         span,
+        #[cfg(feature = "editor-facts")]
         selection,
     })
 }
@@ -904,9 +987,11 @@ fn normalize_tree_view_node_name(
 
 fn parse_tree_view_annotations(
     suffix: &str,
-    abs_base: usize,
-    meta: &ParseMetadata,
+    _abs_base: usize,
+    diagram_type: &str,
 ) -> Result<TreeViewAnnotations> {
+    #[cfg(feature = "editor-facts")]
+    let abs_base = _abs_base;
     let mut annotations = TreeViewAnnotations::default();
     let mut pos = 0usize;
     while pos < suffix.len() {
@@ -918,10 +1003,14 @@ fn parse_tree_view_annotations(
         if suffix[pos..].starts_with(":::") && is_annotation_token_boundary(suffix, pos) {
             let value_start = skip_ascii_whitespace(suffix, pos + 3);
             let Some(value_end) = tree_view_class_name_end(suffix, value_start) else {
-                return Err(parse_error(meta, "expected tree node class after :::"));
+                return Err(parse_error(
+                    diagram_type,
+                    "expected tree node class after :::",
+                ));
             };
             annotations.css_class = Some(TreeViewSpannedValue {
                 value: suffix[value_start..value_end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             pos = value_end;
@@ -931,12 +1020,18 @@ fn parse_tree_view_annotations(
         if suffix[pos..].starts_with("icon(") && is_annotation_token_boundary(suffix, pos) {
             let value_start = pos + "icon(".len();
             let Some(close_rel) = suffix[value_start..].find(')') else {
-                return Err(parse_error(meta, "unterminated tree node icon annotation"));
+                return Err(parse_error(
+                    diagram_type,
+                    "unterminated tree node icon annotation",
+                ));
             };
             let value_end = value_start + close_rel;
             let payload = &suffix[value_start..value_end];
             if !is_tree_view_icon_name(payload) {
-                return Err(parse_error(meta, "invalid tree node icon annotation"));
+                return Err(parse_error(
+                    diagram_type,
+                    "invalid tree node icon annotation",
+                ));
             }
             let value = if payload.is_empty() {
                 "none".to_string()
@@ -945,6 +1040,7 @@ fn parse_tree_view_annotations(
             };
             annotations.icon = Some(TreeViewSpannedValue {
                 value,
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             pos = value_end + ')'.len_utf8();
@@ -957,17 +1053,22 @@ fn parse_tree_view_annotations(
             if trimmed_start != trimmed_end {
                 annotations.description = Some(TreeViewSpannedValue {
                     value: suffix[trimmed_start..trimmed_end].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
                 });
             }
             break;
         }
 
-        return Err(parse_error(meta, "unexpected tokens after tree node name"));
+        return Err(parse_error(
+            diagram_type,
+            "unexpected tokens after tree node name",
+        ));
     }
     Ok(annotations)
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_tree_view_spanned_payload_fact(
     facts: &mut EditorSemanticFacts,
     value: &TreeViewSpannedValue,
@@ -989,6 +1090,7 @@ fn push_tree_view_spanned_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_tree_view_node_editor_facts(
     facts: &mut EditorSemanticFacts,
     node: &TreeViewNodeLineDetails,
@@ -1203,20 +1305,153 @@ fn strip_inline_comment_aware(line: &str) -> &str {
     line
 }
 
-fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
+fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
+    Error::diagram_parse_fallback(diagram_type.to_string(), message.into())
 }
 
 #[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_capture_preserves_spanless_model_build_recovery() {
+        let mut source = String::from("treeView-beta\n");
+        for depth in 0..=MAX_DIAGRAM_NESTING_DEPTH {
+            source.push_str(&" ".repeat(depth));
+            source.push_str(&format!("\"n{depth}\"\n"));
+        }
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "treeView".into(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("treeView");
+        let parsed = parse_tree_view_semantic_model_controlled(
+            &source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(
+            parsed
+                .model
+                .unwrap_err()
+                .to_string()
+                .contains("nesting depth exceeds")
+        );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("treeView"),
+            1
+        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = parsed.editor_facts.expect("requested facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(facts.diagnostics[0].span, None);
+            assert!(
+                facts.diagnostics[0]
+                    .message
+                    .contains("nesting depth exceeds")
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_tree_keeps_authored_attributes_without_editor_work() {
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("treeView");
+        let source = "treeView-beta\ntitle Files\nsrc/ :::important icon(folder) ## source directory\n    main.rs\n";
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        assert_eq!(parsed.metadata.diagram_type, "treeView");
+        let model = match parsed.model {
+            crate::SemanticDiagramModel::TreeView(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected TreeView semantics"),
+        };
+        assert_eq!(model.title.as_deref(), Some("Files"));
+        let directory = &model.root.children[0];
+        assert_eq!(directory.name, "src");
+        assert_eq!(directory.node_type, "directory");
+        assert_eq!(directory.css_class.as_deref(), Some("important"));
+        assert_eq!(directory.icon.as_deref(), Some("folder"));
+        assert_eq!(directory.description.as_deref(), Some("source directory"));
+        assert_eq!(directory.children[0].name, "main.rs");
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("treeView"),
+            1
+        );
+
+        #[cfg(feature = "presentation")]
+        {
+            let full = crate::MermaidEngine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "treeView",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::TreeView(full) = full.model() else {
+                panic!("expected full TreeView model");
+            };
+            assert_eq!(
+                serde_json::to_value(&model).unwrap(),
+                serde_json::to_value(full).unwrap()
+            );
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+    }
+
+    #[test]
+    fn canonical_tree_preserves_strict_diagnostics_and_cancellation() {
+        let source = "treeView-beta\nroot\nfile icon(invalid icon)\n";
+        let error = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected TreeView parse diagnostic");
+        };
+        let start = source.find("file icon").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, source.len() - 1))
+        );
+        let control = crate::OperationControl::new();
+        control.cancel();
+        let error = crate::SemanticParser::new()
+            .parse_diagram_controlled_sync(source, &control)
+            .unwrap_err();
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+}
+
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{EditorExpectedSyntaxKind, Engine, MermaidConfig, ParseMetadata, SourceSpan};
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorExpectedSyntaxKind;
+    #[cfg(feature = "editor-facts")]
+    use crate::MermaidEngine;
+    use crate::{MermaidConfig, PresentationMetadata, SourceSpan};
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "treeView".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -1298,7 +1533,7 @@ plain file.ts ## entry point
     #[test]
     fn sanitizes_descriptions_before_projecting_tree_view_semantics() {
         let mut meta = meta();
-        meta.effective_config = MermaidConfig::from_value(json!({
+        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
             "securityLevel": "strict"
         }));
         let source = "treeView-beta\nfile.txt ## <style>.bad{display:none}</style><b>safe</b>\n";
@@ -1421,27 +1656,30 @@ file##notes
                 "{late_metadata:?}: {error}"
             );
 
-            let facts = crate::family::test_support::editor_facts(
-                parse_tree_view_json_and_editor_facts,
-                &source,
-                &meta(),
-            );
-            assert!(
-                facts
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.message.contains("must precede every node")),
-                "{late_metadata:?}: {:?}",
-                facts.diagnostics
-            );
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
-            assert!(
-                !facts
-                    .symbols
-                    .iter()
-                    .any(|symbol| symbol.name.contains("Late"))
-            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = crate::family::test_support::editor_facts(
+                    parse_tree_view_json_and_editor_facts,
+                    &source,
+                    &meta(),
+                );
+                assert!(
+                    facts
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.message.contains("must precede every node")),
+                    "{late_metadata:?}: {:?}",
+                    facts.diagnostics
+                );
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+                assert!(
+                    !facts
+                        .symbols
+                        .iter()
+                        .any(|symbol| symbol.name.contains("Late"))
+                );
+            }
         }
     }
 
@@ -1564,8 +1802,9 @@ root/
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_tree_view_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"
 treeView-beta
 title My Tree
@@ -1593,8 +1832,9 @@ accDescr: Accessible Description
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_tree_view_editor_facts_preserve_box_drawing_annotation_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = r#"
 treeView-beta
 ├── App.tsx :::highlight icon(react) ## main component
@@ -1623,6 +1863,7 @@ treeView-beta
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn tree_view_combined_parse_constructs_source_once_and_preserves_projections() {
         let text = concat!(
             "treeView-beta\n",
@@ -1676,41 +1917,44 @@ treeView-beta
         let meta = meta();
 
         let error = parse_tree_view(text, &meta).expect_err("strict parse must reject the node");
-        let facts = crate::family::test_support::editor_facts(
-            parse_tree_view_json_and_editor_facts,
-            text,
-            &meta,
-        );
-
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
-        let diagnostic = facts
-            .diagnostics
-            .iter()
-            .find(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains("unterminated quoted tree node name")
-            })
-            .expect("recovery diagnostic");
         assert!(
             error
                 .to_string()
                 .contains("unterminated quoted tree node name")
         );
-        assert!(
-            diagnostic
-                .message
-                .contains("unterminated quoted tree node name")
-        );
-        let start = text.find("\"unfinished").unwrap();
-        assert_eq!(
-            diagnostic.span,
-            Some(SourceSpan::new(start, start + "\"unfinished".len()))
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_tree_view_json_and_editor_facts,
+                text,
+                &meta,
+            );
+
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+            let diagnostic = facts
+                .diagnostics
+                .iter()
+                .find(|diagnostic| {
+                    diagnostic
+                        .message
+                        .contains("unterminated quoted tree node name")
+                })
+                .expect("recovery diagnostic");
+            assert!(
+                diagnostic
+                    .message
+                    .contains("unterminated quoted tree node name")
+            );
+            let start = text.find("\"unfinished").unwrap();
+            assert_eq!(
+                diagnostic.span,
+                Some(SourceSpan::new(start, start + "\"unfinished".len()))
+            );
+        }
     }
 
     #[test]
@@ -1732,41 +1976,44 @@ treeView-beta
             "{error}"
         );
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_tree_view_json_and_editor_facts,
-            text,
-            &meta,
-        );
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
-        assert!(
-            facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "later.txt")
-        );
-        assert!(
-            !facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "broken.txt")
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_tree_view_json_and_editor_facts,
+                text,
+                &meta,
+            );
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == "later.txt")
+            );
+            assert!(
+                !facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == "broken.txt")
+            );
 
-        let malformed_line = "broken.txt icon(unclosed";
-        let malformed_start = text.find(malformed_line).unwrap();
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic
-                .message
-                .contains("unterminated tree node icon annotation")
-                && diagnostic.span
-                    == Some(SourceSpan::new(
-                        malformed_start,
-                        malformed_start + malformed_line.len(),
-                    ))
-        }));
+            let malformed_line = "broken.txt icon(unclosed";
+            let malformed_start = text.find(malformed_line).unwrap();
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("unterminated tree node icon annotation")
+                    && diagnostic.span
+                        == Some(SourceSpan::new(
+                            malformed_start,
+                            malformed_start + malformed_line.len(),
+                        ))
+            }));
+        }
     }
 
     #[test]
@@ -1781,12 +2028,15 @@ treeView-beta
 
         let errors = [
             parse_tree_view(text, &meta).unwrap_err(),
-            crate::family::test_support::into_result(parse_tree_view_json_and_editor_facts(
-                text,
-                &meta,
-                &crate::OperationControl::new(),
-            ))
-            .unwrap_err(),
+            #[cfg(feature = "editor-facts")]
+            {
+                crate::family::test_support::into_result(parse_tree_view_json_and_editor_facts(
+                    text,
+                    &meta,
+                    &crate::OperationControl::new(),
+                ))
+                .unwrap_err()
+            },
             parse_tree_view_model_for_render(text, &meta).unwrap_err(),
         ];
         for error in errors {
@@ -1798,22 +2048,25 @@ treeView-beta
             assert!(!message.contains("unterminated quoted tree node name"));
         }
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_tree_view_json_and_editor_facts,
-            text,
-            &meta,
-        );
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic
-                .message
-                .contains("unterminated quoted tree node name")
-        }));
-        assert!(
-            facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "after.txt")
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_tree_view_json_and_editor_facts,
+                text,
+                &meta,
+            );
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("unterminated quoted tree node name")
+            }));
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == "after.txt")
+            );
+        }
     }
 
     #[test]
@@ -1830,36 +2083,44 @@ treeView-beta
     fn tree_view_multiline_acc_descr_uses_common_syntax_and_recovers_when_unterminated() {
         let complete = "treeView-beta\naccDescr {\nline one\nline two\n}\nroot/\n";
         let meta = meta();
+        #[cfg(feature = "editor-facts")]
         let (json, facts) = crate::family::test_support::into_result(
             parse_tree_view_json_and_editor_facts(complete, &meta, &crate::OperationControl::new()),
         )
         .unwrap();
+        #[cfg(not(feature = "editor-facts"))]
+        let json = parse_tree_view(complete, &meta).unwrap();
         assert_eq!(json["accDescr"], json!("line one\nline two"));
-        let payload_start = complete.find("line one").unwrap();
-        let payload = facts
-            .symbols
-            .iter()
-            .find(|symbol| symbol.name == "line one\nline two")
-            .expect("multiline accessibility payload");
-        assert_eq!(
-            payload.selection,
-            SourceSpan::new(payload_start, payload_start + "line one\nline two".len())
-        );
-
+        #[cfg(feature = "editor-facts")]
+        {
+            let payload_start = complete.find("line one").unwrap();
+            let payload = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "line one\nline two")
+                .expect("multiline accessibility payload");
+            assert_eq!(
+                payload.selection,
+                SourceSpan::new(payload_start, payload_start + "line one\nline two".len())
+            );
+        }
         let incomplete = "treeView-beta\naccDescr {\nline one\n";
         assert!(parse_tree_view(incomplete, &meta).is_err());
-        let recovered = crate::family::test_support::editor_facts(
-            parse_tree_view_json_and_editor_facts,
-            incomplete,
-            &meta,
-        );
-        assert_eq!(
-            recovered.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(recovered.diagnostics.iter().any(|diagnostic| {
-            diagnostic.message.contains("unterminated accDescr block")
-                && diagnostic.span == Some(SourceSpan::new(incomplete.len(), incomplete.len()))
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let recovered = crate::family::test_support::editor_facts(
+                parse_tree_view_json_and_editor_facts,
+                incomplete,
+                &meta,
+            );
+            assert_eq!(
+                recovered.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(recovered.diagnostics.iter().any(|diagnostic| {
+                diagnostic.message.contains("unterminated accDescr block")
+                    && diagnostic.span == Some(SourceSpan::new(incomplete.len(), incomplete.len()))
+            }));
+        }
     }
 }

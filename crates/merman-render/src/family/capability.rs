@@ -86,7 +86,7 @@ fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel)
 }
 
 #[cfg(feature = "diagram-sequence")]
-fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramRenderModel) -> bool {
+fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramModel) -> bool {
     model
         .actors
         .values()

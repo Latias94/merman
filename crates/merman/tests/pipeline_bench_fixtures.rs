@@ -1,8 +1,89 @@
-#![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
-
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 use std::fs;
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 use std::path::PathBuf;
 
+#[path = "../benches/support/json_identity.rs"]
+mod json_identity;
+
+#[test]
+fn pipeline_json_identity_ignores_only_object_member_order() {
+    use merman_core::ManagedSemanticJson;
+
+    let first = ManagedSemanticJson::from_value(
+        serde_json::from_str(r#"{"z":[{"b":2,"a":1},3],"a":"value"}"#).unwrap(),
+    );
+    let reordered = ManagedSemanticJson::from_value(
+        serde_json::from_str(r#"{"a":"value","z":[{"a":1,"b":2},3]}"#).unwrap(),
+    );
+    assert_eq!(first, reordered);
+    let mut original_bytes = Vec::new();
+    first.write_json(&mut original_bytes).unwrap();
+    let mut reordered_bytes = Vec::new();
+    reordered.write_json(&mut reordered_bytes).unwrap();
+    assert_ne!(original_bytes, reordered_bytes);
+
+    let identity = json_identity::json_identity_bytes(&first);
+    assert_eq!(identity, json_identity::json_identity_bytes(&reordered));
+    for changed in [
+        r#"{"z":[3,{"b":2,"a":1}],"a":"value"}"#,
+        r#"{"z":[{"b":2,"a":1},3],"a":"other"}"#,
+        r#"{"z":[{"b":2,"a":1},3]}"#,
+    ] {
+        let changed = ManagedSemanticJson::from_value(serde_json::from_str(changed).unwrap());
+        assert_ne!(identity, json_identity::json_identity_bytes(&changed));
+    }
+    let mut unchanged_bytes = Vec::new();
+    first.write_json(&mut unchanged_bytes).unwrap();
+    assert_eq!(original_bytes, unchanged_bytes);
+}
+
+#[cfg(feature = "diagram-state")]
+#[test]
+fn pipeline_state_identity_preserves_repeated_parse_values() {
+    let engine = merman_core::MermaidEngine::new();
+    let projections = (0..8)
+        .map(|_| {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(
+                    include_str!("../benches/fixtures/state_medium.mmd"),
+                    merman_core::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            parsed
+                .model()
+                .compatibility_json(parsed.metadata())
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    for projection in &projections[1..] {
+        assert_eq!(projections[0], *projection);
+    }
+    let identity = json_identity::json_identity_bytes(&projections[0]);
+    for projection in &projections[1..] {
+        assert!(
+            identity == json_identity::json_identity_bytes(projection),
+            "equal State projection values must have the same benchmark identity"
+        );
+    }
+}
+
+#[test]
+fn pipeline_json_identity_preserves_deep_managed_export() {
+    let mut value = serde_json::from_str(r#"{"z":1,"a":2}"#).unwrap();
+    let depth = 2048;
+    for _ in 0..depth {
+        value = serde_json::Value::Array(vec![value]);
+    }
+    let value = merman_core::ManagedSemanticJson::from_value(value);
+    let mut expected = vec![b'['; depth];
+    expected.extend_from_slice(br#"{"a":2,"z":1}"#);
+    expected.extend(std::iter::repeat_n(b']', depth));
+    assert!(json_identity::json_identity_bytes(&value) == expected);
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 fn assert_no_empty_style_elements(name: &str, svg: &str) {
     let mut cursor = 0;
     while let Some(rel_start) = svg[cursor..].find("<style") {
@@ -24,6 +105,7 @@ fn assert_no_empty_style_elements(name: &str, svg: &str) {
 }
 
 #[test]
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 fn pipeline_bench_fixtures_are_benchmarkable() {
     let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("benches")
@@ -40,7 +122,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
     fixtures.sort();
     assert!(!fixtures.is_empty(), "no pipeline bench fixtures found");
 
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     let parse_options = merman_core::ParseOptions::strict();
     let layout = merman::svg::LayoutOptions::headless_svg_defaults();
     let environment = merman::SvgEnvironment::deterministic()
@@ -79,7 +161,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             ..Default::default()
         };
         let renderer = merman::Renderer::new()
-            .with_engine(engine.clone())
+            .with_presentation_engine(engine.clone())
             .with_resource_policy(merman_core::resources::InputResourcePolicy::for_profile(
                 merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
             ));

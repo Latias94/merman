@@ -5,7 +5,7 @@ pub(crate) use css_binding::BlockCssThemeBinding;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
-use merman_core::diagrams::block::BlockClassDefRenderModel;
+use merman_core::diagrams::block::BlockClassDef;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -29,7 +29,7 @@ pub(crate) struct BlockLabelBackgroundPlan(crate::family::EdgeLabelBackgroundPla
 impl BlockLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         configured: &str,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -74,7 +74,7 @@ pub(crate) struct BlockNodeLabelPaintPlan {
 impl BlockNodeLabelPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -322,10 +322,7 @@ pub(crate) struct BlockTypographyThemePlan {
 impl BlockTypographyThemePlan {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
+        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
     ) {
         self.css_binding.prepare_class_definitions(definitions);
     }
@@ -335,7 +332,7 @@ impl BlockTypographyThemePlan {
     }
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
     ) -> crate::Result<Self> {
         let settings =
             super::config::BlockConfigView::new(effective_config.as_value()).layout_settings();
@@ -531,7 +528,7 @@ pub(crate) struct BlockNodePaintThemePlan {
 impl BlockNodePaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
@@ -892,14 +889,14 @@ fn observe_shell_style(
     }
 }
 
-fn mermaid_owns_node_stroke(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_node_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_paint_overrides_typed_default(
         config,
         "themeVariables.nodeBorder",
     )
 }
 
-fn mermaid_owns_node_fill(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_node_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
@@ -918,7 +915,7 @@ struct BlockNodePaintSourceOwnership {
 }
 
 impl BlockNodePaintSourceOwnership {
-    pub(crate) fn new(class_defs: &IndexMap<String, BlockClassDefRenderModel>) -> Self {
+    pub(crate) fn new(class_defs: &IndexMap<String, BlockClassDef>) -> Self {
         let (fill_classes, stroke_classes) = classes_owning_node_paint(class_defs);
         Self {
             fill_classes,
@@ -940,7 +937,7 @@ impl BlockNodePaintSourceOwnership {
 }
 
 fn classes_owning_node_paint(
-    class_defs: &IndexMap<String, BlockClassDefRenderModel>,
+    class_defs: &IndexMap<String, BlockClassDef>,
 ) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut fill_classes = BTreeSet::new();
     let mut stroke_classes = BTreeSet::new();
@@ -994,7 +991,7 @@ mod tests {
 
     fn resolve_node_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -1021,7 +1018,7 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
         let plan = BlockTypographyThemePlan::resolve(
             Some(&resolved),
-            &merman_core::MermaidConfig::empty_object(),
+            &merman_core::presentation::PresentationConfig::empty_object(),
         )
         .unwrap();
         assert!(plan.typed_font_size_requested);
@@ -1030,7 +1027,7 @@ mod tests {
 
     #[test]
     fn unthemed_typography_keeps_config_style_without_terminal_evidence() {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"},
             "block": {"padding": 12}
@@ -1061,7 +1058,7 @@ mod tests {
         for (label, not_applicable) in [(" \n", true), ("Visible", false)] {
             let plan = BlockTypographyThemePlan::resolve(
                 Some(&resolved),
-                &merman_core::MermaidConfig::empty_object(),
+                &merman_core::presentation::PresentationConfig::empty_object(),
             )
             .unwrap();
             assert!(plan.observes_visible_labels());
@@ -1089,7 +1086,7 @@ mod tests {
             ))
             .unwrap();
         let theme = theme.resolve(crate::DiagramFamilyId::BLOCK);
-        let config = merman_core::MermaidConfig::empty_object();
+        let config = merman_core::presentation::PresentationConfig::empty_object();
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1102,7 +1099,7 @@ mod tests {
             } else {
                 "block\nA[\"Alpha\"]\nstyle A fill:#bb0000\n"
             };
-            let parsed = merman_core::Engine::new()
+            let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .expect("parse Block source ownership fixture")
                 .expect("detect Block source ownership fixture");
@@ -1124,9 +1121,11 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // Empty fragments preserve the earlier source, just as the terminal writer does.
-            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
-            fragment.id = "A".to_string();
-            fragment.block_type = "na".to_string();
+            let fragment = merman_core::diagrams::block::BlockNode {
+                id: "A".to_string(),
+                block_type: "na".to_string(),
+                ..Default::default()
+            };
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
@@ -1135,11 +1134,13 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
-            fragment.id = "A".to_string();
-            fragment.block_type = "na".to_string();
-            fragment.styles = vec!["stroke:#00bb00".to_string()];
-            fragment.classes = vec!["unowned".to_string()];
+            let fragment = merman_core::diagrams::block::BlockNode {
+                id: "A".to_string(),
+                block_type: "na".to_string(),
+                styles: vec!["stroke:#00bb00".to_string()],
+                classes: vec!["unowned".to_string()],
+                ..Default::default()
+            };
             model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
@@ -1153,7 +1154,7 @@ mod tests {
     fn source_all_reset_owns_each_node_class_paint_channel() {
         for id in ["default", "node", "flowchart-label"] {
             let mut classes = IndexMap::new();
-            let mut class = BlockClassDefRenderModel::default();
+            let mut class = BlockClassDef::default();
             class.id = id.into();
             class.styles = vec!["all:unset".into()];
             classes.insert(id.into(), class);
@@ -1166,7 +1167,7 @@ mod tests {
     #[test]
     fn source_ownership_tracks_fill_and_stroke_independently() {
         let mut class_defs = IndexMap::new();
-        let mut accent = BlockClassDefRenderModel::default();
+        let mut accent = BlockClassDef::default();
         accent.id = "accent".to_string();
         accent.styles = vec!["fill:#abcdef".to_string()];
         class_defs.insert("accent".to_string(), accent);
@@ -1178,7 +1179,7 @@ mod tests {
         assert!(!ownership.owns_stroke(false, &["accent".to_string()]));
         assert!(!ownership.owns_fill(false, &["other".to_string()]));
 
-        let mut default_class = BlockClassDefRenderModel::default();
+        let mut default_class = BlockClassDef::default();
         default_class.id = "default".to_string();
         default_class.styles = vec!["FILL:#fedcba".to_string(), "STROKE:#abcdef".to_string()];
         class_defs.insert("default".to_string(), default_class);

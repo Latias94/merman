@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -50,14 +50,14 @@ impl JourneyTypographyThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         Self::resolve_with_text_paint(theme, effective_config, None)
     }
 
     pub(crate) fn resolve_with_text_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         text_fill: Option<&str>,
     ) -> Self {
         let inherited_font_stack =
@@ -334,7 +334,7 @@ mod tests {
             .expect("compile empty theme")
             .resolve(crate::DiagramFamilyId::JOURNEY);
         let plan =
-            JourneyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::empty_object());
+            JourneyTypographyThemePlan::resolve(Some(&theme), &PresentationConfig::empty_object());
         let mut receipt = plan.begin_terminal_receipt(&layout).expect("theme receipt");
         receipt.record_css_emission("\"Open Sans\"", "16px", true, true);
         assert!(plan.record_terminal(receipt));
@@ -355,7 +355,7 @@ mod tests {
             .expect("compile Journey theme")
             .resolve(crate::DiagramFamilyId::JOURNEY);
         let plan =
-            JourneyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::empty_object());
+            JourneyTypographyThemePlan::resolve(Some(&theme), &PresentationConfig::empty_object());
         assert_eq!(plan.font_family_css(), "Inter");
         assert_eq!(plan.font_size_css(), "18px");
         assert_eq!(plan.font_size_px(), 18.0);

@@ -1225,26 +1225,63 @@ mod tests {
     }
 
     #[test]
-    fn available_layout_and_math_capabilities_render_in_rustdoc_mode() {
+    fn available_layout_capabilities_render_in_rustdoc_mode() {
         let root = tempfile::tempdir().unwrap();
         let source = concat!(
             "```mermaid\n",
             "architecture-beta\n  group api(cloud)[API]\n  service server(server)[Server] in api\n",
             "```\n",
             "```mermaid\nflowchart TD\n  A --> B\n```\n",
-            "```mermaid\nflowchart TD\n  A[\"$$x^2$$\"] --> B\n```\n",
         );
         let config = write_config(root.path(), source, "hide");
 
         let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
-        assert_eq!(bundle.diagrams(), 3);
-        assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 3);
+        assert_eq!(bundle.diagrams(), 2);
+        assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 2);
+        assert!(!output.contains("<template"), "{output}");
+        assert!(!output.contains("<foreignObject"), "{output}");
+    }
+
+    #[test]
+    #[cfg(feature = "math")]
+    fn explicit_math_capability_renders_in_rustdoc_mode() {
+        let root = tempfile::tempdir().unwrap();
+        let config = write_config(
+            root.path(),
+            "```mermaid\nflowchart TD\n  A[\"$$x^2$$\"] --> B\n```\n",
+            "hide",
+        );
+
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
+        let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
+
+        assert_eq!(bundle.diagrams(), 1);
+        assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 1);
         assert!(!output.contains("$$x^2$$"));
         assert!(!output.contains("<template"), "{output}");
         assert!(!output.contains("<foreignObject"), "{output}");
         assert!(output.contains("merman-prepared-math-native"), "{output}");
+    }
+
+    #[test]
+    #[cfg(not(feature = "math"))]
+    fn math_without_explicit_capability_reports_the_rustdoc_source_error() {
+        let root = tempfile::tempdir().unwrap();
+        let config = write_config(
+            root.path(),
+            "```mermaid\nflowchart TD\n  A[\"$$x^2$$\"] --> B\n```\n",
+            "hide",
+        );
+
+        let error = generate_test(&config, &resources(), &stderr()).unwrap_err();
+
+        assert!(matches!(&error, CliError::RustdocContent { .. }), "{error}");
+        assert!(
+            error.to_string().contains("lacks capability `math`"),
+            "{error}"
+        );
     }
 
     #[test]

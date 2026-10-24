@@ -7,6 +7,7 @@ import argparse
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,20 @@ def parse_llvm_nm_posix(output: str) -> set[str]:
     return symbols
 
 
+def parse_coff_exports(output: str) -> set[str]:
+    """Read named PE exports, excluding import-library bookkeeping symbols."""
+    exports = re.findall(r"^Export \{\r?\n(.*?)^\}", output, re.MULTILINE | re.DOTALL)
+    if not exports or len(exports) != output.count("Export {"):
+        raise RuntimeError("llvm-readobj emitted no complete COFF exports")
+    symbols: set[str] = set()
+    for export in exports:
+        names = re.findall(r"^\s+Name: (\S+)\s*$", export, re.MULTILINE)
+        if len(names) != 1:
+            raise RuntimeError("llvm-readobj emitted a malformed COFF export name")
+        symbols.add(canonicalize_owned_symbol(names[0]))
+    return symbols
+
+
 def read_defined_dynamic_symbols(
     library: Path,
     llvm_nm: Path,
@@ -94,6 +109,22 @@ def read_defined_dynamic_symbols(
         raise RuntimeError(f"native library does not exist: {library}")
     if not llvm_nm.is_file():
         raise RuntimeError(f"llvm-nm does not exist: {llvm_nm}")
+    if library.suffix.lower() == ".dll":
+        tool = llvm_nm.with_name(f"llvm-readobj{llvm_nm.suffix}")
+        if not tool.is_file():
+            raise RuntimeError(f"llvm-readobj does not exist: {tool}")
+        completed = runner(
+            [str(tool), "--coff-exports", str(library)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip() or "no diagnostic"
+            raise RuntimeError(
+                f"llvm-readobj failed for {library} with exit {completed.returncode}: {detail}"
+            )
+        return parse_coff_exports(completed.stdout)
     command = [str(llvm_nm)]
     if architecture is not None:
         command.append(f"--arch={architecture}")

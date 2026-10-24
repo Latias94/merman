@@ -61,10 +61,12 @@ impl TerminalDiagnostic {
         match &self.error {
             merman_core::Error::OperationCancelled(_) => TerminalDiagnosticClass::Cancelled,
             merman_core::Error::Internal(_) => TerminalDiagnosticClass::Internal,
+            #[cfg(feature = "presentation")]
             merman_core::Error::ThemeEvaluationLimit(_) => TerminalDiagnosticClass::ResourceLimit,
             merman_core::Error::RuntimePolicy(_) => TerminalDiagnosticClass::RuntimePolicy,
-            merman_core::Error::ThemeColor(_)
-            | merman_core::Error::DetectType(_)
+            #[cfg(feature = "presentation")]
+            merman_core::Error::ThemeColor(_) => TerminalDiagnosticClass::Parse,
+            merman_core::Error::DetectType(_)
             | merman_core::Error::UnsupportedDiagram { .. }
             | merman_core::Error::DiagramParse { .. }
             | merman_core::Error::MalformedFrontMatter
@@ -99,7 +101,9 @@ impl TerminalDiagnostic {
         match &self.error {
             merman_core::Error::OperationCancelled(_) => "cancelled",
             merman_core::Error::Internal(_) => "internal_failure",
+            #[cfg(feature = "presentation")]
             merman_core::Error::ThemeColor(_) => "theme_color",
+            #[cfg(feature = "presentation")]
             merman_core::Error::ThemeEvaluationLimit(_) => "theme_evaluation_limit",
             merman_core::Error::RuntimePolicy(_) => "runtime_policy",
             merman_core::Error::DetectType(_) => "detect_type",
@@ -189,6 +193,7 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
     match error {
         merman_core::Error::OperationCancelled(_) => "parse operation cancelled".to_string(),
         merman_core::Error::Internal(error) => normalize_terminal_diagnostic(error.message()),
+        #[cfg(feature = "presentation")]
         merman_core::Error::ThemeColor(error) => match error {
             merman_core::theme_color::ColorError::UnsupportedFormat { input } => {
                 bounded_message("Unsupported color format: \"", input, "\"")
@@ -197,6 +202,7 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
                 "Cannot change both RGB and HSL channels at the same time".to_string()
             }
         },
+        #[cfg(feature = "presentation")]
         merman_core::Error::ThemeEvaluationLimit(error) => bounded_message(
             "Mermaid theme evaluation limit exceeded: ",
             error.limit,
@@ -268,10 +274,12 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
         merman_core::Error::Internal(_) => {
             details.code = "merman.internal.failure".to_string();
         }
+        #[cfg(feature = "presentation")]
         merman_core::Error::ThemeColor(_) => {
             details.code = "merman.parse.theme_color".to_string();
             details.field = Some("theme_color".to_string());
         }
+        #[cfg(feature = "presentation")]
         merman_core::Error::ThemeEvaluationLimit(error) => {
             details.code = "merman.parse.theme_evaluation_limit".to_string();
             details.field = Some(normalize_terminal_diagnostic(error.limit));

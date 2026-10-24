@@ -10,7 +10,7 @@ mod label;
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::paths as roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 mod rough_geometry_tests;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {

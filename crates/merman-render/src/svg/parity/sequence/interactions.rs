@@ -26,7 +26,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
     pub(super) settings: &'a SequenceRenderSettings,
     pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,

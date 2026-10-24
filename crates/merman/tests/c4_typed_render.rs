@@ -31,7 +31,7 @@ Rel(customer, system, "Uses", "HTTPS")
     assert!(svg.svg().contains("c4"));
 }
 
-#[cfg(feature = "diagram-c4")]
+#[cfg(all(feature = "diagram-c4", feature = "compat-json"))]
 #[test]
 fn c4_semantic_facade_preserves_nested_and_sibling_contexts() {
     let source = r#"C4Context
@@ -49,7 +49,7 @@ System(root, "Root")
 "#;
     let artifact = merman::Renderer::new()
         .with_parse_options(merman::ParseOptions::strict())
-        .prepare_semantic(source, merman::OperationControl::new())
+        .prepare_presentation(source, merman::OperationControl::new())
         .expect("prepare typed C4 semantics")
         .expect("C4 diagram detected");
     assert_eq!(artifact.semantic_kind(), "c4");
@@ -67,7 +67,7 @@ System(root, "Root")
     }
 }
 
-#[cfg(feature = "diagram-c4")]
+#[cfg(all(feature = "diagram-c4", feature = "compat-json"))]
 #[test]
 fn c4_semantic_facade_rejects_partial_boundary_then_remains_usable() {
     let renderer = merman::Renderer::new().with_parse_options(merman::ParseOptions::strict());
@@ -78,12 +78,12 @@ Boundary(open, "Open") {
   }
 "#;
     let error = renderer
-        .prepare_semantic(source, merman::OperationControl::new())
+        .prepare_presentation(source, merman::OperationControl::new())
         .expect_err("completed inner boundary cannot commit an unclosed outer boundary");
     assert!(error.to_string().contains("expected '}' before end"));
 
     let artifact = renderer
-        .prepare_semantic(
+        .prepare_presentation(
             "C4Context\nSystem(after, \"After\")\n",
             merman::OperationControl::new(),
         )

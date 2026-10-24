@@ -25,7 +25,7 @@ pub(crate) struct FlowchartTypographyConfigOwnership {
 }
 
 pub(crate) fn flowchart_typography_config_ownership(
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
 ) -> FlowchartTypographyConfigOwnership {
     let raw_weight = merman_core::__private::explicit_config_owns_path(config, "fontWeight")
         .then(|| config.get_str("fontWeight"))

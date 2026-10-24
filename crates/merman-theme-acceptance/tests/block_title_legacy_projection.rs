@@ -5,12 +5,13 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
+    DiagramFamilyId, MermaidEngine, OperationControl, RenderOutput, RenderRequest,
     RenderedDocument, Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
@@ -67,11 +68,11 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
 fn assert_no_native_consumer(target: ThemeTarget) {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
         for look in ["classic", "neo", "handDrawn"] {
-            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-                MermaidConfig::from_value(
+            let renderer = Renderer::new().with_presentation_engine(
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"theme": scheme, "htmlLabels": false, "look": look}),
-                ),
-            ));
+                )),
+            );
             let baseline = render(
                 &renderer,
                 DiagramThemeCompiler::new()
@@ -153,7 +154,7 @@ fn retired_block_text_bridges_are_absent() {
         ),
     ] {
         for look in ["classic", "neo", "handDrawn"] {
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"htmlLabels": false, "look": look}),
             ));
             let baseline = engine.parse_metadata_sync(SOURCE).unwrap();

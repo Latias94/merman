@@ -7,12 +7,13 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
+    DiagramFamilyId, MermaidEngine, OperationControl, RenderOutput, RenderRequest,
     RenderedDocument, Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
@@ -40,8 +41,8 @@ fn source(family: DiagramFamilyId, animated: bool) -> String {
     format!("{prefix}{body}")
 }
 
-fn engine(look: &str) -> Engine {
-    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+fn engine(look: &str) -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "htmlLabels": false,
         "flowchart": { "htmlLabels": false },
         "look": look,
@@ -173,7 +174,7 @@ fn marker_requests_do_not_recolor_flowchart_or_swimlane_native_output() {
     for family in FAMILIES {
         for (look, animated) in PROFILES {
             let source = source(family, animated);
-            let renderer = Renderer::new().with_engine(engine(look));
+            let renderer = Renderer::new().with_presentation_engine(engine(look));
             let baseline = render(&renderer, &source, baseline_theme.clone());
             assert_eq!(baseline.evidence().family_id(), family);
             let baseline_view = SvgArtifactObservation::observe(baseline.svg()).unwrap();

@@ -6,7 +6,7 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLa
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -68,7 +68,7 @@ pub(crate) fn layout_backend(config: &Value) -> MindmapLayoutBackend {
 }
 
 pub(crate) fn required_layout_capability(
-    config: &MermaidConfig,
+    config: &PresentationConfig,
 ) -> Option<crate::RenderCapability> {
     match layout_backend(config.as_value()) {
         MindmapLayoutBackend::Cose => Some(crate::RenderCapability::LayoutCytoscape),
@@ -146,7 +146,7 @@ impl MindmapPreparedLabel {
     fn prepare(
         node_id: &str,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work_meter: &Arc<crate::resources::OperationWorkMeter>,
     ) -> Result<Self> {
         // Match the conservative owner-slot allowance used by the Flowchart sidecar.
@@ -170,22 +170,24 @@ impl MindmapPreparedLabel {
         let html = crate::text::replace_fontawesome_icons(
             &crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true),
         );
-        let xhtml = match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink) {
-            Ok(xhtml) => xhtml,
-            Err(merman_core::sanitize::SanitizeFailure::Output(
-                crate::html::HtmlOutputError::Operation(error),
-            )) => return Err(error.into()),
-            Err(merman_core::sanitize::SanitizeFailure::Output(
-                crate::html::HtmlOutputError::Limit { attempted },
-            )) => {
-                work_meter.preflight_prepared_text_retained_bytes(
-                    owner_bytes.saturating_add(attempted),
-                )?;
-                String::new()
-            }
-            // Preserve the existing sanitizer's fail-closed behavior for malformed input.
-            Err(_) => String::new(),
-        };
+        let xhtml =
+            match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
+            {
+                Ok(xhtml) => xhtml,
+                Err(merman_core::sanitize::SanitizeFailure::Output(
+                    crate::html::HtmlOutputError::Operation(error),
+                )) => return Err(error.into()),
+                Err(merman_core::sanitize::SanitizeFailure::Output(
+                    crate::html::HtmlOutputError::Limit { attempted },
+                )) => {
+                    work_meter.preflight_prepared_text_retained_bytes(
+                        owner_bytes.saturating_add(attempted),
+                    )?;
+                    String::new()
+                }
+                // Preserve the existing sanitizer's fail-closed behavior for malformed input.
+                Err(_) => String::new(),
+            };
         // Preserve the terminal's normalization order and whitespace. Indented code may own a
         // trailing line box once its container switches to `white-space: break-spaces`.
         let xhtml = single_image_paragraph_inner(&xhtml)
@@ -291,7 +293,7 @@ fn mindmap_label_bbox_px(
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let config = MermaidConfig::from_value(serde_json::json!({
+    let config = PresentationConfig::from_value(serde_json::json!({
         "securityLevel": "strict",
         "htmlLabels": true
     }));
@@ -321,7 +323,7 @@ fn mindmap_label_bbox_px_with_math(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     prepared_xhtml: Option<&str>,
 ) -> Result<(f64, f64)> {
@@ -531,7 +533,7 @@ fn mindmap_layout_adapter_work(
 
 pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -561,7 +563,7 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
 )]
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -795,7 +797,7 @@ mod tests {
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose",
             "dompurifyConfig": {"FORBID_TAGS": ["strong"], "KEEP_CONTENT": false}
         }));
@@ -818,7 +820,7 @@ mod tests {
     #[test]
     fn mindmap_prepared_html_preserves_retained_and_work_rejections() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }));
         for (limit, value, expected) in [
@@ -858,7 +860,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         ));
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }));
         let error = super::MindmapPreparedLabel::prepare("root", "<b>label</b>", &config, &meter)
@@ -872,7 +874,7 @@ mod tests {
 
     #[test]
     fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();

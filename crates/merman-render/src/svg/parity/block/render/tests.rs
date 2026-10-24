@@ -4,7 +4,7 @@ use crate::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use crate::text::DeterministicTextMeasurer;
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::cell::Cell;
 use std::fmt;
 use std::ops::Range;
@@ -75,7 +75,7 @@ fn render_block_direct_with_edge_theme(
     change_layout: impl FnOnce(&mut crate::model::BlockDiagramLayout),
 ) -> crate::Result<root_svg::RootedSvg> {
     let resolved = theme.map(|theme| theme.resolve(crate::DiagramFamilyId::BLOCK));
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
         .expect("parse Block resource-bound fixture")
         .expect("detect Block resource-bound fixture");
@@ -100,7 +100,7 @@ fn render_block_direct_with_edge_theme(
             .expect("SVG execution");
     let mut typography_theme = BlockTypographyThemePlan::resolve(
         None,
-        &merman_core::MermaidConfig::from_value(effective_config.clone()),
+        &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
     )
     .unwrap();
     typography_theme.prepare_class_definitions(&model.class_defs);
@@ -136,7 +136,7 @@ fn render_block_direct_with_edge_theme(
         &labels,
         &crate::block::BlockEdgePaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             model,
             &layout,
             execution.work_meter(),
@@ -144,7 +144,7 @@ fn render_block_direct_with_edge_theme(
         .expect("edge paint theme"),
         &crate::block::BlockMarkerPaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             model,
             &layout,
             execution.work_meter(),
@@ -152,7 +152,7 @@ fn render_block_direct_with_edge_theme(
         .expect("marker paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
             &typography_theme.css_binding().edge_label_background,
             execution.work_meter(),
         )
@@ -352,7 +352,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         shape_geometries: Vec::new(),
         bounds: None,
     };
-    let parsed = merman_core::Engine::new()
+    let parsed = merman_core::MermaidEngine::new()
         .parse_diagram_for_render_model_sync("block\nnode\n", merman_core::ParseOptions::strict())
         .expect("parse Block render model")
         .expect("Block input is detected");

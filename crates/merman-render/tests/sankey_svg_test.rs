@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -55,7 +56,7 @@ fn sankey_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
 fn render_sankey_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -78,7 +79,7 @@ fn render_sankey_with_theme_requirement(
 fn render_sankey_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     render_sankey_with_theme_requirement(
         source,
@@ -115,7 +116,7 @@ fn sankey_style_text(svg: &str) -> String {
 }
 
 fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -133,7 +134,7 @@ fn try_render_sankey_with_resource_policy(
     options: &SvgRenderOptions,
     resource_policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Sankey resource-bound fixture")
         .expect("detect Sankey resource-bound fixture");
@@ -245,7 +246,7 @@ fn sankey_typed_text_fill_reaches_root_and_outlined_label_foreground() {
         "sankey-beta\n",
         "A,B,10\n",
     );
-    let rendered = render_sankey_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_sankey_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let style = sankey_style_text(rendered.svg());
     let root_rule = style
         .split_once('}')
@@ -330,7 +331,7 @@ fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
 fn sankey_node_palette_reaches_terminal_rects_and_gradient_stops() {
     let theme = sankey_node_palette_theme(&["#123456", "#abcdef"]);
     let rendered =
-        render_sankey_with_theme_and_engine("sankey-beta\nA,B,10\n", &theme, Engine::new());
+        render_sankey_with_theme_and_engine("sankey-beta\nA,B,10\n", &theme, MermaidEngine::new());
 
     assert_eq!(
         sankey_node_fills(rendered.svg()),
@@ -375,7 +376,7 @@ fn sankey_palette_and_typography_evidence_compose_without_shadowing() {
     let rendered = render_sankey_with_theme_requirement(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("render combined strict portable Sankey theme");
@@ -401,7 +402,7 @@ fn sankey_typed_font_stack_reaches_every_inherited_css_surface_and_terminal_labe
     let rendered = render_sankey_with_theme_requirement(
         "sankey-beta\nInput,Transform,10\nTransform,Output,8\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("render strict portable Sankey font stack");
@@ -457,7 +458,7 @@ fn sankey_typed_font_stack_covers_both_outlined_label_passes() {
     let rendered = render_sankey_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("render strict portable outlined Sankey font stack");
@@ -519,8 +520,10 @@ fn sankey_explicit_font_family_owners_outrank_the_typed_stack() {
         ),
     ] {
         let engine = match site_config {
-            Some(config) => Engine::new().with_site_config(MermaidConfig::from_value(config)),
-            None => Engine::new(),
+            Some(config) => {
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config))
+            }
+            None => MermaidEngine::new(),
         };
         let rendered = render_sankey_with_theme_requirement(
             source,
@@ -559,7 +562,7 @@ fn sankey_direct_font_stack_is_not_bounded_by_the_retired_bridge_limit() {
     let rendered = render_sankey_with_theme_requirement(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("render oversized direct Sankey font stack");
@@ -581,7 +584,7 @@ fn sankey_font_size_is_unsupported_without_recreating_the_legacy_projection() {
     let rendered = render_sankey_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders the structured Sankey font-size residual");
@@ -600,7 +603,7 @@ fn sankey_font_size_is_unsupported_without_recreating_the_legacy_projection() {
     let error = render_sankey_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .err()
@@ -627,7 +630,7 @@ fn sankey_mixed_font_stack_and_size_fails_closed() {
     let rendered = render_sankey_with_theme_requirement(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders mixed Sankey typography as a residual");
@@ -648,9 +651,11 @@ fn sankey_explicit_node_colors_outrank_typed_palette_per_node() {
         (
             "site",
             "sankey-beta\nA,B,10\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "sankey": { "nodeColors": { "A": "#fedcba" } }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "sankey": { "nodeColors": { "A": "#fedcba" } }
+                }),
+            )),
         ),
         (
             "source",
@@ -664,7 +669,7 @@ fn sankey_explicit_node_colors_outrank_typed_palette_per_node() {
                 "sankey-beta\n",
                 "A,B,10\n",
             ),
-            Engine::new(),
+            MermaidEngine::new(),
         ),
     ];
 
@@ -691,7 +696,7 @@ fn sankey_node_palette_is_not_applicable_when_every_visible_node_is_owned() {
     let rendered = render_sankey_with_theme_and_engine(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "sankey": {
                 "nodeColors": {
                     "A": "#fedcba",
@@ -720,7 +725,7 @@ fn sankey_link_source_and_target_colors_are_derived_without_edge_evidence() {
         let source = format!(
             "---\nconfig:\n  sankey:\n    linkColor: {link_color}\n---\nsankey-beta\nA,B,10\n"
         );
-        let rendered = render_sankey_with_theme_and_engine(&source, &theme, Engine::new());
+        let rendered = render_sankey_with_theme_and_engine(&source, &theme, MermaidEngine::new());
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid derived-link Sankey SVG");
         let link_path = document
@@ -775,7 +780,8 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
                     if config_owner {
                         config["themeVariables"] = serde_json::json!({"textColor":"#445566"});
                     }
-                    let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+                    let engine = MermaidEngine::new()
+                        .with_site_config(PresentationConfig::from_value(config));
                     let rendered = render_sankey_with_theme_requirement(
                         "sankey-beta\nA,B,10\n",
                         &theme,
@@ -846,7 +852,7 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
     let rendered = render_sankey_with_theme_requirement(
         "sankey-beta\nA,B,10\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();

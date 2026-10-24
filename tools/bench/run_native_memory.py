@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -832,6 +833,14 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
 
 
 def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
+    return _execute(args, build_executable=discover_executable)
+
+
+def _execute(
+    args: argparse.Namespace,
+    *,
+    build_executable: Callable[..., tuple[Path, dict[str, object]]],
+) -> tuple[dict[str, object], int]:
     root = requested_repo_root(args)
     output = Path(args.json_out)
     if not output.is_absolute():
@@ -984,7 +993,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             executable = Path(args.executable).resolve()
             build_provenance: dict[str, object] = {"skipped": "explicit executable"}
         else:
-            executable, build_provenance = discover_executable(
+            executable, build_provenance = build_executable(
                 recipe, timeout_seconds=args.build_timeout_seconds
             )
         if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -1082,12 +1091,134 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
         return report, 2
 
 
+def _execute_batch(args: argparse.Namespace) -> int:
+    try:
+        if not args.json_out_dir or args.contract or args.executable:
+            raise DriverContractError(
+                "--lanes requires --json-out-dir and cannot use --contract or --executable"
+            )
+        root = requested_repo_root(args)
+        output_dir = Path(args.json_out_dir)
+        if not output_dir.is_absolute():
+            output_dir = root / output_dir
+        planned: list[argparse.Namespace] = []
+        outputs: set[Path] = set()
+        expected_recipe = None
+        expected_source = None
+        expected_environment = None
+        for selector in args.lanes:
+            lane_args = argparse.Namespace(**{**vars(args), "lane": selector, "dry_run": True})
+            report, exit_code = execute(lane_args)
+            if exit_code:
+                raise DriverContractError("; ".join(report["contract_errors"]))
+            lane_id = report["lane"]["id"]
+            if lane_id in (".", "..") or "/" in lane_id or "\\" in lane_id:
+                raise DriverContractError("batch lane id must be a filename component")
+            output = (output_dir / f"{lane_id}.json").resolve()
+            if output.parent != output_dir.resolve():
+                raise DriverContractError("batch lane output must stay in --json-out-dir")
+            if output in outputs:
+                raise DriverContractError(f"duplicate batch lane output: {lane_id}")
+            outputs.add(output)
+            lane_args.json_out = str(output)
+            lane_args.dry_run = args.dry_run
+            if args.run_id:
+                lane_args.run_id = f"{args.run_id}:{lane_id}"
+            _validate_driver_parameters(lane_args)
+            corpus_path = Path(args.corpus)
+            if not corpus_path.is_absolute():
+                corpus_path = root / corpus_path
+            recipe = memory_recipe(
+                root, target_dir=Path(report["recipe"]["target_dir"]),
+                toolchain=args.toolchain, corpus=corpus_path,
+                contract=report["inputs"]["owner_contract"]["value"],
+            )
+            environment = report["recipe"]["build_environment"]
+            if expected_recipe is None:
+                expected_recipe = recipe
+                expected_source = copy.deepcopy(report["source"])
+                expected_environment = copy.deepcopy(environment)
+            elif recipe != expected_recipe or environment != expected_environment:
+                raise DriverContractError("batch lanes must use the same native-memory build recipe and environment")
+            _verify_source_unchanged(expected_source, report["source"])
+            planned.append(lane_args)
+
+        if args.dry_run:
+            print("$ " + " ".join(cargo_clean_bench_profile_command(expected_recipe)))
+            print("$ " + " ".join(cargo_prebuild_command(expected_recipe)))
+            print(f"planned fresh subprocesses: {len(planned) * len(MEMORY_SCALES) * args.repeats * 2}")
+            return 0
+
+        built = None
+        executable_digest = None
+        expected_tool_versions = None
+
+        def tool_versions():
+            return tuple(
+                _tool_output(_toolchain_command(args.toolchain, tool, flag), root=root)
+                for tool, flag in (("rustc", "-Vv"), ("cargo", "-V"))
+            )
+
+        def build_once(recipe, *, timeout_seconds):
+            nonlocal built, executable_digest, expected_tool_versions
+            if recipe != expected_recipe or _build_environment() != expected_environment:
+                raise DriverContractError("native-memory batch build recipe or environment changed")
+            _verify_source_unchanged(expected_source, _git_provenance(root))
+            versions = tool_versions()
+            if built is None:
+                expected_tool_versions = versions
+            elif versions != expected_tool_versions:
+                raise DriverContractError("native-memory batch tool versions changed before reuse")
+            if built is None:
+                built = discover_executable(recipe, timeout_seconds=timeout_seconds)
+                executable_digest = _sha256_path(built[0])
+                _verify_source_unchanged(expected_source, _git_provenance(root))
+                if _build_environment() != expected_environment:
+                    raise DriverContractError("native-memory batch build environment changed")
+                if tool_versions() != expected_tool_versions:
+                    raise DriverContractError("native-memory batch tool versions changed during build")
+            elif _sha256_path(built[0]) != executable_digest:
+                raise DriverContractError("native-memory batch executable changed before reuse")
+            return built[0], copy.deepcopy(built[1])
+
+        outcomes = []
+        for lane_args in planned:
+            report, exit_code = _execute(lane_args, build_executable=build_once)
+            written_exit = _write_report(lane_args, report, exit_code)
+            if written_exit == 2:
+                return 2
+            outcomes.append(report["outcome"] if not args.smoke else "pass")
+        return suite_exit_code(outcomes)
+    except (DriverContractError, OSError, TypeError, ValueError) as error:
+        print(f"contract failure: {error}", file=sys.stderr)
+        return 2
+
+
+def _write_report(args: argparse.Namespace, report: dict[str, object], exit_code: int) -> int:
+    output = Path(args.json_out)
+    if not output.is_absolute():
+        output = requested_repo_root(args) / output
+    try:
+        _atomic_json(output, report)
+    except (OSError, TypeError, ValueError) as error:
+        print(f"failed to write native-memory evidence: {error}", file=sys.stderr)
+        return 2
+    print(f"Wrote: {output}")
+    print(f"Outcome: {report['outcome']} (exit {exit_code})")
+    if exit_code == 2:
+        for error in report.get("contract_errors", []):
+            print(f"contract failure: {error}", file=sys.stderr)
+    return exit_code
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="Run isolated native System allocator evidence for one registered lane."
+        description="Run isolated native System allocator evidence for registered lanes."
     )
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS))
-    parser.add_argument("--lane", default=DEFAULT_LANE)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--lane", default=DEFAULT_LANE)
+    selection.add_argument("--lanes", nargs="+", help="Build once for lanes with identical Cargo recipes.")
     parser.add_argument("--contract", default="")
     parser.add_argument("--executable", default="")
     parser.add_argument(
@@ -1107,7 +1238,9 @@ def main(argv: list[str]) -> int:
         "--build-timeout-seconds", type=int, default=DEFAULT_BUILD_TIMEOUT_SECONDS
     )
     parser.add_argument("--run-id", default="")
-    parser.add_argument("--json-out", default=str(DEFAULT_REPORT))
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json-out", default=str(DEFAULT_REPORT))
+    output.add_argument("--json-out-dir", help="Write one unchanged report per batch lane.")
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
@@ -1122,6 +1255,11 @@ def main(argv: list[str]) -> int:
     mode.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
+    if args.lanes:
+        return _execute_batch(args)
+    if args.json_out_dir:
+        print("contract failure: --json-out-dir requires --lanes", file=sys.stderr)
+        return 2
     report, exit_code = execute(args)
     if args.dry_run:
         recipe = report.get("recipe", {})
@@ -1139,20 +1277,7 @@ def main(argv: list[str]) -> int:
                 print(f"contract failure: {error}", file=sys.stderr)
         return exit_code
 
-    output = Path(args.json_out)
-    if not output.is_absolute():
-        output = requested_repo_root(args) / output
-    try:
-        _atomic_json(output, report)
-    except (OSError, TypeError, ValueError) as error:
-        print(f"failed to write native-memory evidence: {error}", file=sys.stderr)
-        return 2
-    print(f"Wrote: {output}")
-    print(f"Outcome: {report['outcome']} (exit {exit_code})")
-    if exit_code == 2:
-        for error in report.get("contract_errors", []):
-            print(f"contract failure: {error}", file=sys.stderr)
-    return exit_code
+    return _write_report(args, report, exit_code)
 
 
 if __name__ == "__main__":

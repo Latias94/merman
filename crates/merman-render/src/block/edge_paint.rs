@@ -34,7 +34,7 @@ struct RuleObservation {
 impl BlockEdgePaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -44,7 +44,7 @@ impl BlockEdgePaintPlan {
 
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn unthemed_edges_have_prepared_historical_declarations() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "block-beta\nA --> B\n",
                 merman_core::ParseOptions::strict(),

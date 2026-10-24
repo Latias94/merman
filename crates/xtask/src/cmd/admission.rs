@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(cross_family, canonical);
         assert_eq!(cross_family_fixtures.len(), canonical.len());
 
-        let engine = merman_core::Engine::new();
+        let engine = merman_core::MermaidEngine::new();
         for fixture in cross_family_fixtures {
             let declared = fixture["family"]
                 .as_str()

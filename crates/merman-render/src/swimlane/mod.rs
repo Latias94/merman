@@ -26,9 +26,9 @@ use crate::resources::OperationWorkMeter;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::text::TextMeasurer;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::MermaidConfig;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_core::presentation::PresentationConfig;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,

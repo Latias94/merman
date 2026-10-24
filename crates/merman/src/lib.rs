@@ -19,7 +19,8 @@
 //!
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
-//! | Parse Mermaid or produce semantic JSON | `diagram-*` selectors, without defaults | [`Engine`] and [`ParseOptions`] |
+//! | Inspect canonical Mermaid meaning | `diagram-*` selectors, without defaults | [`SemanticParser`] or [`Renderer::parse_semantic`] |
+//! | Produce Mermaid compatibility JSON | `compat-json` and family selectors | `MermaidEngine` and [`ParseOptions`] |
 //! | Analyze diagnostics or Markdown fences | `analysis` | `analysis::Analyzer` |
 //! | Build parser-backed editor snapshots | `editor` | `editor::analyze_document_snapshot_with_shared_text` |
 //! | Render Mermaid-like SVG | `svg` | [`Renderer`] and `RenderRequest::svg` |
@@ -29,7 +30,7 @@
 //! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and `RenderRequest::pdf` |
 //!
 //! If you already know the diagram type, use the `*_with_type_sync` methods on
-//! [`Engine`] to skip detection. If you need lower-level layout or SVG pipeline
+//! [`SemanticParser`] to skip detection. If you need lower-level layout or SVG pipeline
 //! control, use the re-exported types under `merman::svg` or depend on
 //! `merman-render` directly.
 //!
@@ -40,26 +41,29 @@
 //!
 //! - `analysis`: render-free diagnostics, source mapping, and Markdown analysis through
 //!   `merman::analysis`.
+//! - `presentation`: full Mermaid configuration and paired presentation artifacts.
+//! - `compat-json`: Mermaid-compatible JSON projections; implies `presentation`.
+//! - `editor-facts`: optional parser-backed source facts without presentation.
 //! - `editor`: parser-backed editor snapshots and queries through `merman::editor`; this implies
 //!   `analysis`.
 //! - `svg`: layout plus SVG rendering through `merman::svg`.
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
 //! - `png`, `jpeg`, and `pdf`: bounded binary export through `merman::svg::export`; each
 //!   implies `svg` but does not imply either of the other binary formats.
-//! - `math`: pure-Rust math label rendering for the SVG path; this implies
-//!   `svg`.
+//! - `math`: opt-in pure-Rust math label rendering for the SVG path; this implies
+//!   `svg` and is not included in defaults.
 //!
-//! The default feature set combines `all-diagrams` with [`complete-svg-elk`](#features): it supports
-//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, the Cytoscape
-//! layout engine, and math labels without ambient system adapters. Distributed artifacts must
-//! retain the ELK implementation's EPL-2.0 notices and source provenance. Use `default-features = false`
-//! with explicit family selectors and [`complete-svg`](#features) to omit ELK, or choose individual
-//! capability leaves when you need a measured artifact closure. Neither SVG aggregate selects families.
+//! The default feature set is `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`: it supports
+//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, and the Cytoscape
+//! layout engine without ambient system adapters. Enable `math` explicitly to render math labels.
+//! Distributed artifacts must retain the ELK implementation's EPL-2.0 notices and source provenance.
+//! Use `default-features = false` with explicit family selectors, `svg`, and `layout-cytoscape` to omit
+//! ELK, or choose individual capability leaves when you need a measured artifact closure.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's
 //! re-exports instead, set `default-features = false` and select the required `diagram-*` features
 //! (or `all-diagrams` to retain the previous parser surface). An ordinary `merman` dependency
-//! intentionally compiles the complete SVG workflow.
+//! intentionally compiles SVG rendering with both layout engines.
 //!
 //! # Quick start
 //!
@@ -83,7 +87,7 @@
 //! # fn main() {}
 //! ```
 //!
-//! For semantic inspection, use [`Renderer::prepare_semantic`] or a
+//! For semantic inspection, use [`Renderer::parse_semantic`] or a
 //! [`RenderTarget::Semantic`] request. For terminal output, use `RenderTarget::Ascii`. The
 //! target adapters never create a replacement operation or silently replace the caller's
 //! cancellation handle.
@@ -122,9 +126,11 @@ pub use render::{JpegRequest, PreparedJpegExport};
 pub use render::{PdfOutput, PdfRequest, PreparedPdfExport};
 #[cfg(feature = "png")]
 pub use render::{PngRequest, PreparedPngExport};
+#[cfg(feature = "presentation")]
+pub use render::{PrepareSourceRequest, PreparedSource, PresentationArtifact};
 pub use render::{
-    PrepareSourceRequest, PreparedSource, RenderError, RenderOutput, RenderRequest, RenderTarget,
-    Renderer, ResourceLimitCause, ResourceLimitExceeded, SemanticArtifact,
+    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
+    ResourceLimitExceeded, SemanticArtifact,
 };
 
 /// Diagnostics and source-mapping APIs for lint and analysis workflows.

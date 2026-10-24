@@ -232,19 +232,23 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
     profile_features = _require_string_list(
         cargo_profile.get("features"), "cli-release features"
     )
+    release_features = set(profile_features)
+    if "math" not in release_features:
+        raise InstallationContractError(
+            "cli-release must explicitly enable opt-in math"
+        )
     if set(dist_features) != set(profile_features):
         raise InstallationContractError(
-            "cargo-dist and cli-release must select the same complete feature set"
+            "cargo-dist and cli-release must select the same feature set"
         )
-    release_features = set(profile_features)
     default_feature_set = set(default_features)
     if "layout-elk" not in release_features:
         raise InstallationContractError(
-            "cli-release must retain explicit layout-elk for the complete release artifact"
+            "cli-release must retain explicit layout-elk for the release artifact"
         )
-    if default_feature_set != release_features:
+    if default_feature_set != release_features - {"math"}:
         raise InstallationContractError(
-            "CLI defaults must equal cli-release features including layout-elk"
+            "CLI defaults must equal cli-release features excluding opt-in math"
         )
 
     dist_table = dist_config.get("dist", {})

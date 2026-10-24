@@ -4,11 +4,11 @@ use super::constants::{
 };
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessage};
 use rustc_hash::FxHashMap;
 
 pub(crate) fn frame_x_from_actors(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     checkpoints: SequenceOperationCheckpoints<'_>,
 ) -> Result<Option<(f64, f64)>> {

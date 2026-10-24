@@ -4,7 +4,7 @@ use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
-    SequenceActorLifecycle as CoreSequenceActorLifecycle, SequenceDiagramRenderModel,
+    SequenceActorLifecycle as CoreSequenceActorLifecycle, SequenceDiagramModel,
     SequenceMessageKind as CoreSequenceMessageKind,
 };
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ struct SequenceLifecycleRequest<'a> {
 }
 
 pub(super) fn resolve_actor_lifecycles(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -51,7 +51,7 @@ pub(super) fn resolve_actor_lifecycles(
 }
 
 fn project_resolved_actor_lifecycles(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     resolved: &[CoreSequenceActorLifecycle],
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
@@ -116,7 +116,7 @@ fn project_resolved_actor_lifecycles(
 }
 
 fn resolve_compatibility_actor_lifecycles(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -248,7 +248,7 @@ fn resolve_compatibility_actor_lifecycles(
 }
 
 fn resolved_lifecycle_signal(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     model_index: usize,
 ) -> Result<&merman_core::diagrams::sequence::SequenceMessage> {
     let message = model
@@ -397,10 +397,10 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
-    fn shared_anchor_model() -> SequenceDiagramRenderModel {
-        let parsed = Engine::new()
+    fn shared_anchor_model() -> SequenceDiagramModel {
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 concat!(
                     "sequenceDiagram\n",
@@ -421,7 +421,7 @@ mod tests {
         }
     }
 
-    fn participant_index(model: &SequenceDiagramRenderModel) -> HashMap<&str, usize> {
+    fn participant_index(model: &SequenceDiagramModel) -> HashMap<&str, usize> {
         model
             .actor_order
             .iter()

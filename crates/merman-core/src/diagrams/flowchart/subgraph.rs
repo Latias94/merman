@@ -267,14 +267,14 @@ fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, Titl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, ParseMetadata};
+    use crate::{MermaidConfig, SemanticMetadata};
 
     #[test]
     fn flowchart_claimed_members_equal_completed_canonical_membership() {
-        let meta = ParseMetadata {
+        let meta = SemanticMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
             title: None,
         };
         let control = OperationControl::new();
@@ -304,10 +304,10 @@ mod tests {
 
     #[test]
     fn flowchart_interrupted_membership_completion_keeps_only_retained_claims() {
-        let meta = ParseMetadata {
+        let meta = SemanticMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
             title: None,
         };
         let nodes = (0..256)

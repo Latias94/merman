@@ -1,6 +1,6 @@
 use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::*;
-use merman_core::diagrams::venn::VennDiagramRenderModel;
+use merman_core::diagrams::venn::VennDiagramModel;
 use merman_core::theme_color::transparentize;
 use std::collections::HashMap;
 use std::str::FromStr as _;
@@ -177,7 +177,7 @@ fn root_open(
 
 pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     layout: &VennDiagramLayout,
-    model: &VennDiagramRenderModel,
+    model: &VennDiagramModel,
     title_theme: &crate::venn::VennTitleThemePlan,
     typography_theme: &crate::venn::VennTypographyThemePlan,
     diagram_title: Option<&str>,

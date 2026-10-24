@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget, ThemeVariant,
@@ -67,7 +67,7 @@ pub(super) struct PacketTextColorOwnership {
 }
 
 impl PacketTextColorOwnership {
-    pub(super) fn from_config(config: &MermaidConfig) -> Self {
+    pub(super) fn from_config(config: &PresentationConfig) -> Self {
         Self {
             byte_start: packet_config_path_owns(config, "packet.startByteColor"),
             byte_end: packet_config_path_owns(config, "packet.endByteColor"),
@@ -300,8 +300,8 @@ mod tests {
             let work_meter = OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
-            let metadata = merman_core::Engine::new()
-                .with_site_config(MermaidConfig::from_value(config))
+            let metadata = merman_core::MermaidEngine::new()
+                .with_site_config(PresentationConfig::from_value(config))
                 .parse_metadata_sync("packet\n0-7: Header")
                 .expect("parse Packet terminal ownership");
             let plan = super::super::PacketTypographyThemePlan::resolve(

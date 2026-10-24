@@ -103,5 +103,5 @@ system-timing = ["merman-analysis/system-timing", "merman-core/system-timing"]
 
 [dependencies]
 merman-analysis.workspace = true
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["editor-facts"] }
 serde.workspace = true

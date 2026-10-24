@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
     ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
@@ -41,7 +42,8 @@ fn render_cluster_with_spec(
     );
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+        MermaidEngine::new()
+            .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
     )
     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
     .expect("parse ER cluster")
@@ -100,10 +102,11 @@ end
 class Shared last
 style Shared stroke-width:7px
 "##;
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse duplicate ER clusters")
-        .expect("detect ER diagram");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse duplicate ER clusters")
+            .expect("detect ER diagram");
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin ER session");

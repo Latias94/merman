@@ -12,6 +12,11 @@ on:
   schedule:
     - cron: "7 2 * * 0"
   workflow_dispatch:
+    inputs:
+      all_owners:
+        description: "Run every CI owner instead of the core/SVG safety net"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +60,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          ALL_OWNERS: ${{ inputs.all_owners || false }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
@@ -82,7 +88,11 @@ jobs:
             schedule|workflow_dispatch)
               base="$PUSH_HEAD_SHA"
               head="$PUSH_HEAD_SHA"
-              extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
+              if [[ "$EVENT_NAME" == workflow_dispatch && "$ALL_OWNERS" == true ]]; then
+                extra=(--select-all --reason "manual full owner verification")
+              else
+                extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
+              fi
               ;;
             *)
               echo "unsupported CI event: $EVENT_NAME" >&2
@@ -196,11 +206,15 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check whitespace (pull request or merge queue)
-        if: github.event_name != 'push'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Check whitespace (manual or scheduled source)
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: git show --check --format= --no-renames HEAD
 
       - name: Check whitespace (push)
         if: github.event_name == 'push'
@@ -464,7 +478,7 @@ jobs:
 
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --no-fail-fast --cargo-quiet
+        run: cargo nextest run --locked --features merman/compat-json,merman/editor-facts --no-fail-fast --cargo-quiet
 
       - name: Compile workspace on ordinary host runners
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
@@ -582,6 +596,18 @@ jobs:
             --features svg,diagram-flowchart --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --features math --test regressions \
+            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --features math --test complete_svg_e2e --cargo-quiet
+          cargo nextest run --locked -p merman-cli --features math --test ratex_math --cargo-quiet
+          cargo nextest run --locked -p merman-cli --features math --bin merman-cli \
+            -E 'test(rustdoc::document::tests::explicit_math_capability_renders_in_rustdoc_mode)' --cargo-quiet
+          cargo nextest run --locked -p merman --features math --test layout_work_calibration_contract --cargo-quiet
+          cargo nextest run --locked -p merman-render \
+            --features all-diagrams,layout-cytoscape,layout-elk,math \
+            --test flowchart_svg_test --test sequence_svg_test --test usecase_svg_test \
+            -E 'test(flowchart_svg_renders_ratex_math_labels_end_to_end) | test(sequence_svg_renders_ratex_math_message_and_note_end_to_end) | test(usecase_math_labels_render_real_math_for_every_label_owner)' \
+            --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
           cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
@@ -594,6 +620,11 @@ jobs:
             --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
             --lib --cargo-quiet \
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
+          cargo nextest run --locked -p merman-bindings-core -p merman-cli \
+            --no-default-features \
+            --features "$ambient_render_features,merman-cli/all-diagrams,merman-cli/svg" \
+            --test svg_smoke --cargo-quiet \
+            -E 'test(math_labels_require_the_cli_owned_capability)'
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
@@ -702,6 +733,8 @@ jobs:
           sparse-checkout: |
             packages/mermaid/src/Diagram.ts
             packages/mermaid/src/mermaidAPI.ts
+            packages/mermaid/src/preprocess.ts
+            packages/mermaid/src/diagram-api/comments.ts
             packages/mermaid/src/diagrams/flowchart/parser/flow.jison
             packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
             packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison
@@ -1304,6 +1337,8 @@ jobs:
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
+    with:
+      ci_only: true
 
   grammar-owner:
     name: grammar-owner

@@ -1,23 +1,35 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize, Serializer};
-use serde_json::{Map, Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+#[cfg(feature = "compat-json")]
+use serde_json::{Map, json};
 use std::collections::HashMap;
 
-use super::{StateDocument, StateDocumentId, StateStatement};
+use super::CSS_EDGE_NOTE_EDGE;
+use super::StateDocument;
+use super::complexity::StateRecords;
+use super::model::{
+    StateDiagramModel, StateLinks, StateModelConstruction, StateNode, StateRecord, StateRelation,
+    StateStyleClass,
+};
+#[cfg(feature = "compat-json")]
+use super::{StateDocumentId, StateStatement};
 use crate::resources::ModelComplexity;
-use crate::{ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result};
+#[cfg(feature = "compat-json")]
+use crate::{ManagedSemanticJson, PresentationMetadata, Result};
+use crate::{OperationControl, OperationControlResult};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 thread_local! {
     static STATE_PROJECTED_DOCUMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(super) fn reset_projected_document_count() {
     STATE_PROJECTED_DOCUMENT_COUNT.set(0);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(super) fn projected_document_count() -> usize {
     STATE_PROJECTED_DOCUMENT_COUNT.get()
 }
@@ -31,10 +43,83 @@ pub struct StateDiagramRenderModel {
     pub acc_descr: Option<String>,
     pub nodes: Vec<StateDiagramRenderNode>,
     pub edges: Vec<StateDiagramRenderEdge>,
-    pub relations: Vec<StateDiagramRenderRelation>,
-    pub links: HashMap<String, StateDiagramRenderLinks>,
-    pub states: HashMap<String, StateDiagramRenderState>,
-    pub style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
+    pub relations: Vec<StateRelation>,
+    pub links: HashMap<String, StateLinks>,
+    pub states: HashMap<String, StateRecord>,
+    pub style_classes: IndexMap<String, StateStyleClass>,
+}
+
+pub(super) struct StateNodePresentation {
+    pub dom_id: String,
+    pub padding: Option<f64>,
+    pub rx: Option<f64>,
+    pub ry: Option<f64>,
+    pub color_index: Option<usize>,
+    pub wrapping_width: Option<f64>,
+    pub min_width: Option<f64>,
+}
+
+impl StateModelConstruction {
+    pub(super) fn into_render_model(
+        self,
+        config: &crate::MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<StateDiagramRenderModel> {
+        let StateDiagramModel {
+            document,
+            direction,
+            acc_title,
+            acc_descr,
+            nodes,
+            edges,
+            relations,
+            links,
+            states,
+            style_classes,
+        } = self.model;
+        debug_assert_eq!(nodes.len(), self.presentation.len());
+        let mut render_nodes = Vec::with_capacity(nodes.len());
+        for (index, (node, presentation)) in nodes.into_iter().zip(self.presentation).enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            render_nodes.push(StateDiagramRenderNode::from_semantic(node, presentation));
+        }
+        let mut render_edges = Vec::with_capacity(edges.len());
+        for (index, edge) in edges.into_iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let arrow_type_end = if edge.classes == CSS_EDGE_NOTE_EDGE {
+                ""
+            } else if config.get_str("look") == Some("neo") {
+                "arrow_barb_neo"
+            } else {
+                "arrow_barb"
+            };
+            render_edges.push(StateDiagramRenderEdge {
+                id: edge.id,
+                start: edge.start,
+                end: edge.end,
+                classes: edge.classes,
+                label: edge.label,
+                arrow_type_end: arrow_type_end.to_string(),
+            });
+        }
+        control.checkpoint()?;
+        Ok(StateDiagramRenderModel {
+            document,
+            direction,
+            acc_title,
+            acc_descr,
+            nodes: render_nodes,
+            edges: render_edges,
+            relations,
+            links,
+            states,
+            style_classes,
+        })
+    }
 }
 
 impl StateDiagramRenderModel {
@@ -54,11 +139,11 @@ struct StateModelFields<'a> {
     acc_descr: &'a Option<String>,
     nodes: &'a [StateDiagramRenderNode],
     edges: &'a [StateDiagramRenderEdge],
-    relations: &'a [StateDiagramRenderRelation],
-    links: &'a HashMap<String, StateDiagramRenderLinks>,
+    relations: &'a [StateRelation],
+    links: &'a HashMap<String, StateLinks>,
     states: StateRecords<'a>,
     #[serde(rename = "styleClasses")]
-    style_classes: &'a IndexMap<String, StateDiagramRenderStyleClass>,
+    style_classes: &'a IndexMap<String, StateStyleClass>,
 }
 
 impl StateDiagramRenderModel {
@@ -71,7 +156,10 @@ impl StateDiagramRenderModel {
             edges: &self.edges,
             relations: &self.relations,
             links: &self.links,
-            states: StateRecords(&self.states),
+            states: StateRecords {
+                states: &self.states,
+                include_documents: false,
+            },
             style_classes: &self.style_classes,
         }
     }
@@ -91,87 +179,7 @@ impl StateDiagramRenderModel {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StateRecordFields<'a> {
-    id: &'a str,
-    #[serde(rename = "type")]
-    state_type: &'a str,
-    descriptions: &'a [String],
-    doc: Option<()>,
-    note: &'a Option<StateDiagramRenderNote>,
-    classes: &'a [String],
-    styles: &'a [String],
-    text_styles: &'a [String],
-    start: Option<bool>,
-}
-
-impl StateDiagramRenderState {
-    fn fields(&self) -> StateRecordFields<'_> {
-        StateRecordFields {
-            id: &self.id,
-            state_type: &self.state_type,
-            descriptions: &self.descriptions,
-            doc: None,
-            note: &self.note,
-            classes: &self.classes,
-            styles: &self.styles,
-            text_styles: &self.text_styles,
-            start: self.start,
-        }
-    }
-}
-
-struct StateRecords<'a>(&'a HashMap<String, StateDiagramRenderState>);
-
-impl Serialize for StateRecords<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let states = self.0;
-        let mut map = serializer.serialize_map(Some(states.len()))?;
-        for (id, state) in states {
-            map.serialize_entry(id, &state.fields())?;
-        }
-        map.end()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct DocumentComplexity {
-    items: usize,
-    text_bytes: usize,
-    depth: usize,
-}
-
-fn json_complexity(value: &Value) -> DocumentComplexity {
-    let mut result = DocumentComplexity::default();
-    let mut stack = vec![(value, 0usize)];
-    while let Some((value, parent_depth)) = stack.pop() {
-        match value {
-            Value::Array(values) => {
-                let depth = parent_depth.saturating_add(1);
-                result.depth = result.depth.max(depth);
-                result.items = result.items.saturating_add(values.len());
-                stack.extend(values.iter().map(|value| (value, depth)));
-            }
-            Value::Object(values) => {
-                let depth = parent_depth.saturating_add(1);
-                result.depth = result.depth.max(depth);
-                result.items = result.items.saturating_add(values.len());
-                for (key, value) in values {
-                    result.text_bytes = result.text_bytes.saturating_add(key.len());
-                    stack.push((value, depth));
-                }
-            }
-            Value::String(value) => {
-                result.text_bytes = result.text_bytes.saturating_add(value.len())
-            }
-            _ => {}
-        }
-    }
-    result
-}
-
+#[cfg(feature = "compat-json")]
 impl StateDocument {
     fn project(
         &self,
@@ -242,119 +250,6 @@ impl StateDocument {
             }
         }
     }
-
-    fn complexities(&self) -> Vec<DocumentComplexity> {
-        let mut completed = vec![None; self.documents.len()];
-        for root in 0..self.documents.len() {
-            if completed[root].is_some() {
-                continue;
-            }
-            let mut stack = vec![(StateDocumentId(root), false)];
-            while let Some((id, visited)) = stack.pop() {
-                if completed[id.0].is_some() {
-                    continue;
-                }
-                if !visited {
-                    stack.push((id, true));
-                    for stmt in &self.documents[id.0] {
-                        if let StateStatement::State(state) = stmt
-                            && let Some(child) = state.doc
-                        {
-                            stack.push((child, false));
-                        }
-                    }
-                    continue;
-                }
-                let mut result = DocumentComplexity {
-                    items: self.documents[id.0].len(),
-                    text_bytes: 0,
-                    depth: 1,
-                };
-                for stmt in &self.documents[id.0] {
-                    let shallow = super::db::stmt_to_json_shallow(stmt, None);
-                    let own = json_complexity(shallow.as_value());
-                    result.items = result.items.saturating_add(own.items);
-                    result.text_bytes = result.text_bytes.saturating_add(own.text_bytes);
-                    result.depth = result.depth.max(1usize.saturating_add(own.depth));
-                    if let StateStatement::State(state) = stmt
-                        && let Some(child) = state.doc
-                    {
-                        let child: DocumentComplexity =
-                            completed[child.0].expect("child document completed first");
-                        result.items = result.items.saturating_add(child.items);
-                        result.text_bytes = result.text_bytes.saturating_add(child.text_bytes);
-                        result.depth = result.depth.max(2usize.saturating_add(child.depth));
-                    }
-                }
-                completed[id.0] = Some(result);
-            }
-        }
-        completed
-            .into_iter()
-            .map(|value| value.expect("all documents completed"))
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderStyleClass {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct StateDiagramRenderState {
-    pub id: String,
-    pub state_type: String,
-    pub descriptions: Vec<String>,
-    /// References this state's statements in the owning model's `document`.
-    /// Use the semantic compatibility projector when nested document arrays are needed.
-    pub doc: Option<StateDocumentId>,
-    pub note: Option<StateDiagramRenderNote>,
-    pub classes: Vec<String>,
-    pub styles: Vec<String>,
-    pub text_styles: Vec<String>,
-    pub start: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderRelation {
-    pub id1: String,
-    pub id2: String,
-    #[serde(default, rename = "relationTitle")]
-    pub relation_title: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderNote {
-    #[serde(default)]
-    pub position: Option<String>,
-    #[serde(default)]
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderLink {
-    #[serde(default)]
-    pub url: String,
-    #[serde(default)]
-    pub tooltip: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StateDiagramRenderLinks {
-    /// Preserve the historical compatibility shape for a single declaration.
-    One(StateDiagramRenderLink),
-    /// Preserve every repeated declaration in source order.
-    Many(Vec<StateDiagramRenderLink>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +302,34 @@ pub struct StateDiagramRenderNode {
     pub min_width: Option<f64>,
 }
 
+impl StateDiagramRenderNode {
+    fn from_semantic(node: StateNode, presentation: StateNodePresentation) -> Self {
+        Self {
+            id: node.id,
+            label_style: String::new(),
+            label: node.label,
+            description: node.description,
+            dom_id: presentation.dom_id,
+            is_group: node.is_group,
+            node_type: node.node_type,
+            parent_id: node.parent_id,
+            css_classes: node.css_classes,
+            css_compiled_styles: node.css_compiled_styles,
+            css_styles: node.css_styles,
+            dir: node.dir,
+            explicit_dir: node.explicit_dir,
+            padding: presentation.padding,
+            rx: presentation.rx,
+            ry: presentation.ry,
+            shape: node.shape,
+            position: node.position,
+            color_index: presentation.color_index,
+            wrapping_width: presentation.wrapping_width,
+            min_width: presentation.min_width,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct StateDiagramRenderEdge {
@@ -421,9 +344,10 @@ pub struct StateDiagramRenderEdge {
     pub label: String,
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &StateDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(
         render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
@@ -432,9 +356,10 @@ pub(crate) fn render_model_to_compat_json(
     )
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &StateDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ManagedSemanticJson>> {
     let states = match state_records_to_compat_json(model, control)? {
@@ -470,7 +395,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     root.insert("other".to_string(), Value::Object(Map::new()));
     root.insert(
         "config".to_string(),
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     root.insert(
         "direction".to_string(),
@@ -485,6 +410,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(root).into()))
 }
 
+#[cfg(feature = "compat-json")]
 fn state_records_to_compat_json(
     model: &StateDiagramRenderModel,
     control: &OperationControl,
@@ -527,6 +453,7 @@ fn state_records_to_compat_json(
     .into()))
 }
 
+#[cfg(feature = "compat-json")]
 fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Value {
     if node.shape == "noteGroup" {
         return json!({
@@ -610,8 +537,9 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
     Value::Object(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Value {
-    let note_edge = edge.classes == "transition note-edge";
+    let note_edge = edge.classes == CSS_EDGE_NOTE_EDGE;
     let mut out = Map::with_capacity(13);
     out.insert("id".to_string(), Value::String(edge.id.clone()));
     out.insert("start".to_string(), Value::String(edge.start.clone()));
@@ -641,8 +569,9 @@ fn state_edge_to_compat_json(edge: &StateDiagramRenderEdge, look: &Value) -> Val
     Value::Object(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn option_number_value(value: Option<f64>) -> Value {
     value
-        .map(crate::compatibility_json::number_value)
+        .map(crate::json_value::number_value)
         .unwrap_or(Value::Null)
 }

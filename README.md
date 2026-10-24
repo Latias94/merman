@@ -87,7 +87,8 @@ A `Renderer` stores defaults. Each `RenderRequest` describes one independent ope
 | `Renderer` | Holds the engine and shared defaults | One call or many calls |
 | `RenderRequest` | Borrows the source and selects a target, overrides, and control | One operation |
 | `OperationControl` | Carries cooperative cancellation and an optional deadline | One operation; clone it for the cancelling task or thread |
-| `SemanticArtifact` | Pairs the parsed render model with its operation context | Inspect it, then consume it into one output target |
+| `SemanticArtifact` | Pairs canonical meaning with its operation context, without presentation | Inspect it or consume it into terminal output |
+| `PresentationArtifact` | Pairs the full render model, configuration, and theme with its operation | Consume it into an output or hand it to a reusable source |
 | `PreparedSource` (current source) | Shares frozen parse facts across independently controlled outputs | Retain while the same source/configuration needs new layout or measurement |
 
 The quick start is the one-shot form: create a renderer, issue one request, and drop it. Reusing
@@ -120,8 +121,10 @@ Choose one typed target for each request:
 
 | Need | Start with | Cargo feature |
 | --- | --- | --- |
-| Parse a typed Mermaid model | `Engine` and `ParseOptions` | Required `diagram-*` selectors, or `all-diagrams` |
-| Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Required `diagram-*` selectors, or `all-diagrams` |
+| Parse canonical Mermaid meaning | `SemanticParser` | Required `diagram-*` selectors, or `all-diagrams` |
+| Inspect a controlled semantic artifact | `Renderer::parse_semantic()` or `RenderTarget::Semantic` | Required family selectors; no presentation needed |
+| Prepare full presentation for later output | `Renderer::prepare_presentation()` or `RenderTarget::Presentation` | `presentation` and required family selectors |
+| Export Mermaid compatibility JSON | `PresentationArtifact::compatibility_json()` or `MermaidEngine` | `compat-json` and required family selectors |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
 | Complete one document for several graphical targets | `RenderRequest::document()` | `svg` plus each output feature used |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
@@ -136,8 +139,9 @@ silently choosing a different result.
 
 ## Cargo features
 
-The current-source `merman` dependency defaults to `all-diagrams` and `complete-svg-elk`: all
-built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Distributed artifacts
+The current-source `merman` dependency defaults to `all-diagrams`, `svg`, `layout-cytoscape` and
+`layout-elk`: all built-in families and SVG rendering with both layouts. Math labels require the
+explicit `math` feature. The former `complete-svg` and `complete-svg-elk` features are retired. Distributed artifacts
 include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
 terminal output, binary export, and ambient system adapters remain opt-in.
 
@@ -145,11 +149,11 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
-Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts,
-and math labels. Other outputs and analysis/editor APIs are opt-in. See the [capability guide]
+Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts.
+Math labels require `math`. Other outputs and analysis/editor APIs are opt-in. See the [capability guide]
 for smaller builds, including how to omit ELK, and the [Rust examples] for renderer reuse,
 cancellation, and host integration.
 
@@ -168,8 +172,8 @@ feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
-| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
+| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]` |
+| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"]` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |

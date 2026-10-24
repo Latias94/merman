@@ -29,10 +29,9 @@ WEB_PROFILE_FEATURES = {
         "editor",
         "layout-cytoscape",
         "layout-elk",
-        "math",
         "svg",
     ],
-    "web-render": ["layout-cytoscape", "layout-elk", "math", "svg"],
+    "web-render": ["layout-cytoscape", "layout-elk", "svg"],
 }
 
 
@@ -112,6 +111,9 @@ class RustLicenseReportTests(unittest.TestCase):
 
             self.assertEqual(set(recipes), set(WEB_PROFILE_FEATURES))
             self.assertEqual(recipes["web-analysis"]["cargo"]["features"], ["analysis"])
+            for profile_id in ("web-full", "web-render"):
+                with self.subTest(profile_id=profile_id):
+                    self.assertNotIn("math", recipes[profile_id]["cargo"]["features"])
             command = report.cargo_about_command(
                 root / "report.json",
                 recipes["web-analysis"],

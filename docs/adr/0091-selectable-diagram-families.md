@@ -2,6 +2,11 @@
 
 ## Status
 
+The later [explicit math decision](0097-explicit-math-capability.md) supersedes the facade
+default and complete-aggregate clauses below. Current facade defaults use
+`all-diagrams,svg,layout-cytoscape,layout-elk` without math; `complete-svg` and
+`complete-svg-elk` are retired. Family selection and catalog ownership remain in force.
+
 Accepted for the current development source and the next release after `0.8.0-alpha.6`.
 
 ## Date

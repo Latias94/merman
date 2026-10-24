@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -69,7 +69,7 @@ pub(crate) struct FlowchartTextSurfacePaintPlan {
 impl FlowchartTextSurfacePaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         node_config_owned: bool,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -421,7 +421,7 @@ mod tests {
             );
             let plan = FlowchartTextSurfacePaintPlan::resolve(
                 Some(&theme),
-                &MermaidConfig::default(),
+                &PresentationConfig::default(),
                 false,
                 &work,
             )
@@ -475,7 +475,7 @@ mod tests {
         );
         let plan = FlowchartTextSurfacePaintPlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             false,
             &work,
         )

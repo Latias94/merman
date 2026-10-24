@@ -45,7 +45,7 @@ fn architecture_cached_service_child_bounds<'a>(
 struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
-    sanitize_config: &'a merman_core::MermaidConfig,
+    sanitize_config: &'a merman_core::presentation::PresentationConfig,
     group_theme: &'a crate::architecture::ArchitectureGroupThemePlan,
     options: &'a SvgExecution<'a>,
 }
@@ -58,8 +58,8 @@ struct ArchitectureTimingState<'a> {
 
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-    effective_config: &merman_core::MermaidConfig,
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramModel,
+    effective_config: &merman_core::presentation::PresentationConfig,
     group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<(

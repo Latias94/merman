@@ -92,7 +92,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erRenderer.spec.ts`
 
 Canonical low-level path:
 
-- `Engine::parse_diagram_for_render_model_sync` followed by
+- `MermaidEngine::parse_diagram_for_render_model_sync` followed by
   `merman_render::family::prepare` (diagram type `er` / `erDiagram` → typed ER family artifact)
 
 Covered by Rust tests:

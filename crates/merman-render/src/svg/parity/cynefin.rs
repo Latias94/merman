@@ -1,9 +1,9 @@
 use super::*;
-use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
+use merman_core::diagrams::cynefin::CynefinDiagramModel;
 
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     diagram_title: Option<&str>,
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     options: &SvgExecution<'_>,

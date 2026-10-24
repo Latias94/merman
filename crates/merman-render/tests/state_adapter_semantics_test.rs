@@ -1,12 +1,13 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render(source: &str, config: serde_json::Value) -> String {
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(config))
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse State")
         .expect("State diagram");

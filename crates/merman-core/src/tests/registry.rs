@@ -1,5 +1,5 @@
 use crate::{
-    DetectorRegistry, DiagramRegistry, Engine, RenderDiagramRegistry,
+    DetectorRegistry, DiagramRegistry, MermaidEngine, RenderDiagramRegistry,
     built_in_typed_render_families, diagram_family_capabilities, diagram_header_facts,
     supported_diagrams,
 };
@@ -95,7 +95,7 @@ fn canonical_catalog_has_no_undeclared_semantic_or_editor_capability_gaps() {
 
 #[test]
 fn canonical_characterization_matrix_executes_representative_and_malformed_contracts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let mut malformed_contract_mismatches = Vec::new();
     let mut recovery_contract_mismatches = Vec::new();
 
@@ -593,7 +593,7 @@ fn empty_registries_are_explicit_overlay_starting_points() {
 
 #[test]
 fn engine_uses_the_canonical_catalog_regardless_of_host_features() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (source, expected) in [
         ("mindmap\n  root", "mindmap"),
         (
@@ -622,7 +622,7 @@ fn engine_uses_the_canonical_catalog_regardless_of_host_features() {
 }
 
 fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_snapshot_sync(source)
         .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
         .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
@@ -630,6 +630,83 @@ fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
         parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
+}
+
+#[test]
+fn class_er_pie_semantic_entrypoints_construct_once_without_editor_projection() {
+    let engine = MermaidEngine::new();
+    let mut unexpected_editor_work = Vec::new();
+    for (diagram_type, source) in [
+        (
+            "classDiagram",
+            "classDiagram\nclass Customer\nCustomer --> Order : places\n",
+        ),
+        ("er", "erDiagram\nCUSTOMER ||--o{ ORDER : places\n"),
+        ("pie", "pie showData\ntitle Shares\n\"A\": 1\n"),
+    ] {
+        let reset_syntax: fn() = match diagram_type {
+            "classDiagram" => crate::diagrams::class::reset_class_syntax_construction_count,
+            "er" => crate::diagrams::er::reset_er_syntax_construction_count,
+            "pie" => {
+                || crate::diagrams::langium_common::reset_family_syntax_construction_count("pie")
+            }
+            _ => unreachable!(),
+        };
+        let syntax_count: fn() -> usize = match diagram_type {
+            "classDiagram" => crate::diagrams::class::class_syntax_construction_count,
+            "er" => crate::diagrams::er::er_syntax_construction_count,
+            "pie" => || crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            _ => unreachable!(),
+        };
+
+        for known_type in [false, true] {
+            for typed in [false, true] {
+                reset_syntax();
+                crate::editor::test_work::reset();
+                let options = crate::ParseOptions::strict();
+                match (known_type, typed) {
+                    (false, false) => {
+                        engine.parse_diagram_sync(source, options).unwrap().unwrap();
+                    }
+                    (true, false) => {
+                        engine
+                            .parse_diagram_with_type_sync(diagram_type, source, options)
+                            .unwrap()
+                            .unwrap();
+                    }
+                    (false, true) => {
+                        engine
+                            .parse_diagram_for_render_model_sync(source, options)
+                            .unwrap()
+                            .unwrap();
+                    }
+                    (true, true) => {
+                        engine
+                            .parse_diagram_for_render_model_with_type_sync(
+                                diagram_type,
+                                source,
+                                options,
+                            )
+                            .unwrap()
+                            .unwrap();
+                    }
+                }
+                assert_eq!(
+                    syntax_count(),
+                    1,
+                    "{diagram_type}: known={known_type}, typed={typed}"
+                );
+                let work = crate::editor::test_work::read();
+                if work != crate::editor::test_work::Counts::default() {
+                    unexpected_editor_work.push((diagram_type, known_type, typed, work));
+                }
+            }
+        }
+    }
+    assert!(
+        unexpected_editor_work.is_empty(),
+        "semantic entrypoints discarded editor facts: {unexpected_editor_work:#?}"
+    );
 }
 
 #[test]
@@ -643,12 +720,19 @@ fn langium_family_combined_parse_constructs_syntax_once() {
         ("wardley", "wardley-beta\ncomponent API [0.6, 0.7]\n"),
     ] {
         crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
+        crate::editor::test_work::reset();
         assert_snapshot_has_editor_facts(source, family);
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count(family),
             1,
             "one combined request must construct {family} syntax once"
         );
+        if family == "pie" {
+            let work = crate::editor::test_work::read();
+            assert_eq!(work.collections, 1);
+            assert!(work.symbols > 0);
+            assert!(work.expected_syntax > 0);
+        }
     }
 }
 
@@ -667,12 +751,16 @@ fn git_graph_combined_parse_constructs_syntax_once() {
 #[test]
 fn er_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::er::reset_er_syntax_construction_count();
+    crate::editor::test_work::reset();
     assert_snapshot_has_editor_facts("erDiagram\nCUSTOMER ||--o{ ORDER : places\n", "er");
     assert_eq!(
         crate::diagrams::er::er_syntax_construction_count(),
         1,
         "one combined request must construct ER syntax once"
     );
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
 }
 
 #[test]
@@ -689,6 +777,7 @@ fn sequence_combined_parse_constructs_family_syntax_once() {
 #[test]
 fn class_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::class::reset_class_syntax_construction_count();
+    crate::editor::test_work::reset();
     assert_snapshot_has_editor_facts(
         "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
         "class",
@@ -698,6 +787,10 @@ fn class_combined_parse_constructs_family_syntax_once() {
         1,
         "one combined request must construct Class syntax once"
     );
+    let work = crate::editor::test_work::read();
+    assert_eq!(work.collections, 1);
+    assert!(work.symbols > 0);
+    assert!(work.expected_syntax > 0);
 }
 
 #[test]
@@ -741,7 +834,7 @@ fn sankey_combined_parse_constructs_family_syntax_once() {
 }
 
 fn assert_combined_projections_match_standalone(
-    engine: &Engine,
+    engine: &MermaidEngine,
     family: &str,
     source: &str,
     volatile_top_level_json_field: Option<&str>,
@@ -801,7 +894,7 @@ fn assert_combined_projections_match_standalone(
 
 #[test]
 fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_projections() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for row in FAMILY_CHARACTERIZATION_MATRIX
         .iter()
@@ -886,7 +979,7 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
         "  child2\n",
     );
     let model = assert_combined_projections_match_standalone(
-        &Engine::new(),
+        &MermaidEngine::new(),
         "mindmap",
         source,
         Some("diagramId"),
@@ -897,7 +990,7 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
 
 #[test]
 fn railroad_combined_projections_match_standalone_public_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (family, source) in [
         (
             "railroad",
@@ -929,7 +1022,7 @@ fn sankey_combined_projections_match_standalone_public_entrypoints() {
         "Target,Done,2\n",
     );
     let model =
-        assert_combined_projections_match_standalone(&Engine::new(), "sankey", source, None);
+        assert_combined_projections_match_standalone(&MermaidEngine::new(), "sankey", source, None);
     assert_eq!(model["graph"]["links"][0]["source"], "Source, Inc.");
     assert_eq!(model["graph"]["links"][0]["target"], "Target \"quoted\"");
 }
@@ -946,7 +1039,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
     crate::preprocess::reset_public_parse_preprocess_count();
     crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
 
-    let snapshot = Engine::new()
+    let snapshot = MermaidEngine::new()
         .parse_diagram_snapshot_sync(source)
         .expect("snapshot operation")
         .expect("detected mindmap");
@@ -978,7 +1071,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
 
 #[test]
 fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unknown() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     *engine.diagram_registry_mut() = DiagramRegistry::new();
     *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
     let source = "flowchart-elk TD\nA-->B\n";
@@ -1023,7 +1116,7 @@ fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unk
 
 #[test]
 fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     *engine.diagram_registry_mut() = DiagramRegistry::new();
     *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
     engine

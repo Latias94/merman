@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use crate::config::config_string;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -155,7 +155,7 @@ struct WardleyDirectTextFillRoute {
 impl WardleyTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut plan = Self {
@@ -286,7 +286,7 @@ impl WardleyTypographyThemePlan {
     pub(crate) fn prepare_root_background(
         &mut self,
         root_theme: Option<&crate::diagram_theme::RootThemePlan>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) {
         if root_theme.is_some_and(|plan| {
             plan.replaces_default_family_background(
@@ -405,7 +405,7 @@ impl WardleyTypographyThemePlan {
 fn bind_text_fill(
     color: &mut String,
     typed_text_fills: &mut BTreeMap<WardleyTextRole, DirectStaticPaint>,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     source_paths: &[&str],
     roles: &[WardleyTextRole],
     paint: Option<&DirectStaticPaint>,
@@ -500,9 +500,12 @@ mod tests {
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let defaults =
-            WardleyTypographyThemePlan::resolve(None, &MermaidConfig::empty_object(), &work_meter)
-                .unwrap();
+        let defaults = WardleyTypographyThemePlan::resolve(
+            None,
+            &PresentationConfig::empty_object(),
+            &work_meter,
+        )
+        .unwrap();
         let paint = defaults.paint_binding();
         assert_eq!(paint.background_color, "#fff");
         assert_eq!(paint.axis_color, "#000");
@@ -514,7 +517,7 @@ mod tests {
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "background": "var(--background)",
                 "primaryTextColor": "currentColor",

@@ -292,7 +292,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 }
             }
 
-            let mut cfg = merman::MermaidConfig::default();
+            let mut cfg = merman::presentation::PresentationConfig::default();
             let detected = match reg.detect_type(body.as_str(), &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {

@@ -1,9 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{
-    Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
-};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidEngine, ParseOptions, ParsedDiagramRender};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
     OrdinalSelector, Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -100,7 +99,7 @@ fn try_render_tree_view_svg_with_theme_requirement(
     try_render_tree_view_svg_with_theme_requirement_and_engine(
         source,
         theme,
-        Engine::new(),
+        MermaidEngine::new(),
         portability,
     )
 }
@@ -108,7 +107,7 @@ fn try_render_tree_view_svg_with_theme_requirement(
 fn try_render_tree_view_svg_with_theme_requirement_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
     let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
@@ -125,7 +124,7 @@ fn try_render_tree_view_svg_with_theme_requirement_and_engine(
 fn try_render_tree_view_with_theme_and_environment(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
     environment: &RenderEnvironment,
     diagram_id: &str,
@@ -209,13 +208,18 @@ fn render_tree_view_svg_with_environment(
     options: SvgRenderOptions,
     environment: &RenderEnvironment,
 ) -> String {
-    render_tree_view_svg_with_engine_and_environment(input, options, &Engine::new(), environment)
+    render_tree_view_svg_with_engine_and_environment(
+        input,
+        options,
+        &MermaidEngine::new(),
+        environment,
+    )
 }
 
 fn render_tree_view_svg_with_engine_and_environment(
     input: &str,
     options: SvgRenderOptions,
-    engine: &Engine,
+    engine: &MermaidEngine,
     environment: &RenderEnvironment,
 ) -> String {
     let session = environment.begin_session().unwrap();
@@ -248,7 +252,7 @@ fn try_render_tree_view_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin TreeView resource-bound session");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse TreeView resource-bound fixture")
         .expect("detect TreeView resource-bound fixture");
@@ -311,7 +315,7 @@ Root/ :::highlight icon(folder) ## bounded root
 
 fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDiagramLayout {
     let session = environment.begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .expect("TreeView diagram");
@@ -419,7 +423,7 @@ fn tree_view_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
     let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nRoot/\n    Child.txt ## typed description\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &environment,
         "tree-view-typed-font",
@@ -468,7 +472,7 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
     let (_, generic_rendered) = try_render_tree_view_with_theme_and_environment(
         source,
         &generic_theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &RenderEnvironment::deterministic(),
         "tree-view-generic-text",
@@ -501,7 +505,7 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
     let (_, rendered) = try_render_tree_view_with_theme_and_environment(
         source,
         &cascade_theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &RenderEnvironment::deterministic(),
         "tree-view-node-label-override",
@@ -561,7 +565,7 @@ fn tree_view_explicit_default_scalar_paints_reach_typed_css_and_portable_evidenc
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &RenderEnvironment::deterministic(),
             "tree-view-explicit-default-paint",
@@ -806,9 +810,10 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
             ThemeStylePatch::default().with_stroke(marker),
         ),
     ]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "securityLevel": "loose"
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        })));
     let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
         "treeView-beta\nRoot icon(folder)\n",
         &theme,
@@ -864,7 +869,7 @@ fn tree_view_typed_marker_paint_reaches_icon_terminal_and_portable_evidence() {
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             source,
             &tree_view_rules_theme([rule]),
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &RenderEnvironment::deterministic(),
             "tree-view-typed-marker-paint",
@@ -924,7 +929,7 @@ fn tree_view_typed_marker_paint_is_not_applicable_without_icon_terminals() {
     let (_, rendered) = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nRoot\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &RenderEnvironment::deterministic(),
         "tree-view-typed-marker-no-icon",
@@ -964,7 +969,7 @@ fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies(
     let (_, rendered) = try_render_tree_view_with_theme_and_environment(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &environment,
         "tree-view-marker-icon-facts",
@@ -1000,7 +1005,7 @@ fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies(
     let (_, fixed_only_rendered) = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nFixed icon(test:fixed)\nMissing icon(test:missing)\nEmpty icon(test:empty)\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &environment,
         "tree-view-marker-fixed-icons",
@@ -1015,7 +1020,7 @@ fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies(
     let mixed_result = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nMixed icon(test:mixed)\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &environment,
         "tree-view-marker-mixed-icon",
@@ -1159,7 +1164,7 @@ src/ :::highlight icon(folder) ## source directory
     package.json icon(none)
 "##;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1203,7 +1208,7 @@ fn tree_view_security_levels_keep_inline_icon_dom() {
         ..Default::default()
     };
     let strict_svg = render_tree_view_svg_with_options(input, options.clone());
-    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let loose_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
     let loose_svg = render_tree_view_svg_with_engine_and_environment(
@@ -1267,7 +1272,7 @@ App.tsx icon(logos:react)
     }"#;
     let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
     let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
-    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+    let loose_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
     let svg = render_tree_view_svg_with_engine_and_environment(
@@ -1418,7 +1423,7 @@ fn tree_view_root_highlight_visual_bounds_fit_inside_viewbox() {
 root/ :::highlight
 "##;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1451,7 +1456,7 @@ root/ :::highlight
         leaf.txt
 "##;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1543,7 +1548,7 @@ src/ :::directory-probe
     main.rs :::file-probe
 "##;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1653,7 +1658,7 @@ treeView-beta
     "Child"
 "##;
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1686,7 +1691,7 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
         input.push_str("\"\n");
     }
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1738,7 +1743,7 @@ fn tree_view_label_paint_preserves_winning_unsupported_sibling_facets() {
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             "treeView-beta\nRoot\n",
             &shadowed,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
             &RenderEnvironment::deterministic(),
             "tree-view-shadowed-label-padding",
@@ -1770,7 +1775,7 @@ fn tree_view_label_paint_preserves_winning_unsupported_sibling_facets() {
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             "treeView-beta\nRoot\n",
             &shadowed_fill,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &RenderEnvironment::deterministic(),
             "tree-view-shadowed-label-selector",
@@ -1823,7 +1828,7 @@ fn tree_view_mixed_icons_do_not_block_label_or_font_evidence() {
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             "treeView-beta\nMixed icon(test:mixed)\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &environment,
             "tree-view-independent-icon-channel",
@@ -1861,7 +1866,7 @@ fn tree_view_mixed_marker_icons_retain_independent_font_evidence() {
     let (_, rendered) = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nMixed icon(test:mixed)\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::BestEffort,
         &environment,
         "tree-view-independent-font-marker",
@@ -1875,7 +1880,7 @@ fn tree_view_mixed_marker_icons_retain_independent_font_evidence() {
     let strict = try_render_tree_view_with_theme_and_environment(
         "treeView-beta\nMixed icon(test:mixed)\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
         &environment,
         "tree-view-incomplete-marker",
@@ -1910,7 +1915,7 @@ fn tree_view_icon_paint_tracks_inheritance_and_non_painting_channels() {
         let (_, rendered) = try_render_tree_view_with_theme_and_environment(
             &format!("treeView-beta\nIcon icon(test:{name})\n"),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &environment,
             "tree-view-icon-effective-paint",
@@ -1940,7 +1945,7 @@ fn tree_view_icon_paint_tracks_inheritance_and_non_painting_channels() {
         let result = try_render_tree_view_with_theme_and_environment(
             &format!("treeView-beta\nIcon icon(test:{name})\n"),
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
             &environment,
             "tree-view-icon-mixed-effective-paint",

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn tree_view_render_model_renders_outline_summary() {
-    let model = TreeViewDiagramRenderModel {
+    let model = TreeViewDiagramModel {
         acc_title: Some("Tree title".to_string()),
         acc_descr: Some("Tree description".to_string()),
         title: Some("Project".to_string()),
@@ -44,7 +44,7 @@ fn tree_view_render_model_renders_outline_summary() {
 
 #[test]
 fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
-    let file = TreeViewNodeRenderModel {
+    let file = TreeViewNode {
         id: 2,
         level: 1,
         name: "App.tsx".to_string(),
@@ -53,7 +53,7 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
         description: Some("main component".to_string()),
         ..Default::default()
     };
-    let directory = TreeViewNodeRenderModel {
+    let directory = TreeViewNode {
         id: 1,
         level: 0,
         name: "src".to_string(),
@@ -63,8 +63,8 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
         description: Some("source directory".to_string()),
         children: vec![file],
     };
-    let model = TreeViewDiagramRenderModel {
-        root: TreeViewNodeRenderModel {
+    let model = TreeViewDiagramModel {
+        root: TreeViewNode {
             children: vec![directory],
             ..Default::default()
         },
@@ -104,23 +104,23 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
 
 #[test]
 fn tree_view_distinguishes_trailing_slash_files_from_directories() {
-    let file = TreeViewNodeRenderModel {
+    let file = TreeViewNode {
         id: 1,
         level: 0,
         name: "src/".to_string(),
         node_type: "file".to_string(),
         ..Default::default()
     };
-    let directory = TreeViewNodeRenderModel {
+    let directory = TreeViewNode {
         node_type: "directory".to_string(),
         ..file.clone()
     };
 
-    let file_model = TreeViewDiagramRenderModel {
+    let file_model = TreeViewDiagramModel {
         root: file,
         ..Default::default()
     };
-    let directory_model = TreeViewDiagramRenderModel {
+    let directory_model = TreeViewDiagramModel {
         root: directory,
         ..Default::default()
     };
@@ -135,10 +135,10 @@ fn tree_view_distinguishes_trailing_slash_files_from_directories() {
 
 #[test]
 fn tree_view_structured_text_framing_distinguishes_icon_from_class() {
-    let mut embedded_class = TreeViewDiagramRenderModel::default();
+    let mut embedded_class = TreeViewDiagramModel::default();
     embedded_class.root.icon = Some("folder, class=highlight".to_string());
 
-    let mut explicit_class = TreeViewDiagramRenderModel::default();
+    let mut explicit_class = TreeViewDiagramModel::default();
     explicit_class.root.icon = Some("folder".to_string());
     explicit_class.root.css_class = Some("highlight".to_string());
 
@@ -151,7 +151,7 @@ fn tree_view_structured_text_framing_distinguishes_icon_from_class() {
 
 #[test]
 fn tree_view_rejects_unknown_direct_model_node_types() {
-    let mut model = TreeViewDiagramRenderModel::default();
+    let mut model = TreeViewDiagramModel::default();
     model.root.node_type = "mystery".to_string();
 
     let error = render_model(
@@ -170,7 +170,7 @@ fn tree_view_rejects_unknown_direct_model_node_types() {
 
 #[test]
 fn tree_view_rejects_duplicate_public_node_ids() {
-    let model = TreeViewDiagramRenderModel {
+    let model = TreeViewDiagramModel {
         root: tree_node(
             0,
             -1,
@@ -204,7 +204,7 @@ fn tree_view_recursive_emit_observes_operation_cancellation() {
     for depth in (0..32).rev() {
         node = tree_node(depth, depth - 1, &format!("node-{depth}"), vec![node]);
     }
-    let model = TreeViewDiagramRenderModel {
+    let model = TreeViewDiagramModel {
         acc_title: None,
         acc_descr: None,
         title: None,

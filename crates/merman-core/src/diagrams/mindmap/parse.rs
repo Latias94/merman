@@ -1,57 +1,116 @@
-use serde_json::Value;
-#[cfg(test)]
-use std::cell::Cell;
-
-use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    family::CombinedSemanticFailure,
-};
-
-use super::db::{MindmapDb, MindmapParseConfig};
+use super::db::{MindmapDb, MindmapDiagramModel};
+#[cfg(feature = "presentation")]
 use super::render_model::MindmapDiagramRenderModel;
 use super::utils::{
     NodeSpec, NodeSpecContinuation, NodeSpecError, parse_node_spec, starts_node_spec,
     strip_inline_comment,
 };
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol,
+};
+use crate::{Error, Result, SourceSpan, family::CombinedSemanticFailure};
+#[cfg(feature = "compat-json")]
+use serde_json::Value;
+#[cfg(test)]
+use std::cell::Cell;
 
 #[cfg(test)]
-thread_local! {
-    static MINDMAP_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
-}
-
+thread_local! { static MINDMAP_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) }; }
 #[cfg(test)]
 pub(crate) fn reset_mindmap_syntax_construction_count() {
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(0);
 }
-
 #[cfg(test)]
 pub(crate) fn mindmap_syntax_construction_count() -> usize {
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)?;
+struct MindmapSemanticSource {
+    model: MindmapDiagramModel,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
+pub(crate) fn parse_mindmap_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<MindmapDiagramModel>> {
+    let construction = construct_mindmap_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(source) => crate::family::SemanticConstruction {
+            model: Ok(source.model),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: source.editor_facts,
+        },
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            if editor_demand.needs_recovery() {
+                let (error, facts) = failure.into_parts();
+                return Ok(crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                });
+            }
+            crate::family::SemanticConstruction {
+                model: Err(failure.into_error()),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: None,
+            }
+        }
+    })
+}
+
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_mindmap(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    let model =
+        parse_mindmap_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled")?;
     super::render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
-    let construction = match construct_mindmap_semantic_source_controlled(code, meta, control)? {
+    let construction = match construct_mindmap_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Capture,
+        control,
+    )? {
         Ok(source) => {
-            let editor_facts = source.editor_facts.clone();
-            let model = match source.into_render_model_controlled(meta, control)? {
+            let model = match super::render_model::model_into_render_model_controlled(
+                source.model,
+                meta,
+                control,
+            )? {
                 Ok(model) => super::render_model::render_model_to_compat_json_controlled(
                     &model, meta, control,
                 )?,
                 Err(error) => Err(error),
             };
-            Ok((model, editor_facts))
+            Ok((model, source.editor_facts.unwrap_or_default()))
         }
         Err(error) => Err(error),
     };
@@ -64,78 +123,54 @@ pub(crate) fn parse_mindmap_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_mindmap_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<MindmapDiagramRenderModel> {
-    parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)
+    parse_mindmap_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_mindmap_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<MindmapDiagramRenderModel>> {
-    let construction = construct_mindmap_semantic_source_controlled(code, meta, control)?;
-    match construction {
-        Ok(source) => source.into_render_model_controlled(meta, control),
+    match construct_mindmap_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )? {
+        Ok(source) => {
+            super::render_model::model_into_render_model_controlled(source.model, meta, control)
+        }
         Err(error) => Ok(Err(error.into_error())),
     }
 }
 
-struct MindmapSemanticSource {
-    db: MindmapDb,
-    editor_facts: EditorSemanticFacts,
-}
-
-impl MindmapSemanticSource {
-    fn into_render_model(self, meta: &ParseMetadata) -> Result<MindmapDiagramRenderModel> {
-        let control = crate::OperationControl::new();
-        self.into_render_model_controlled(meta, &control)
-            .expect("a private parse control cannot be cancelled")
-    }
-
-    fn into_render_model_controlled(
-        self,
-        meta: &ParseMetadata,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<Result<MindmapDiagramRenderModel>> {
-        control.checkpoint()?;
-        let mut db = self.db;
-        let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-            return Ok(Ok(MindmapDiagramRenderModel::default()));
-        };
-
-        let color_by_depth = meta.effective_config.get_str("mindmap.colorBy") == Some("depth");
-        db.assign_sections_controlled(root_id, None, color_by_depth, control)?;
-
-        let nodes =
-            db.to_layout_nodes_for_render_controlled(root_id, &meta.effective_config, control)?;
-        let edges = db.to_edges_for_render_controlled(root_id, &meta.effective_config, control)?;
-        control.checkpoint()?;
-        Ok(Ok(MindmapDiagramRenderModel { nodes, edges }))
-    }
-}
-
-fn parse_mindmap_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<MindmapSemanticSource> {
-    construct_mindmap_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
-}
-
-fn construct_mindmap_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<MindmapSemanticSource, CombinedSemanticFailure> {
-    construct_mindmap_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+fn mindmap_failure(
+    error: Error,
+    #[cfg(feature = "editor-facts")] facts: Option<EditorSemanticFacts>,
+) -> CombinedSemanticFailure {
+    CombinedSemanticFailure::parser_recovery(
+        #[cfg(feature = "editor-facts")]
+        "mindmap",
+        error,
+        #[cfg(feature = "editor-facts")]
+        facts,
+    )
 }
 
 fn construct_mindmap_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<MindmapSemanticSource, CombinedSemanticFailure>,
@@ -143,44 +178,56 @@ fn construct_mindmap_semantic_source_controlled(
     control.checkpoint()?;
     #[cfg(test)]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
-
     let MindmapParseOutcome {
         parsed,
         first_error,
-    } = parse_mindmap_lines(code, meta, control)?;
+    } = parse_mindmap_lines(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     control.checkpoint()?;
-    let editor_facts = mindmap_editor_facts_from_parsed(&parsed, control)?;
-
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+        EditorFactsDemand::Capture => Some(mindmap_editor_facts_from_parsed(&parsed, control)?),
+    };
     if let Some(error) = first_error {
-        return Ok(Err(CombinedSemanticFailure::parser_recovery(
-            "mindmap",
+        return Ok(Err(mindmap_failure(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         )));
     }
-
-    let db = match mindmap_db_from_events(parsed.events, meta, control)? {
+    let db = match mindmap_db_from_events(parsed.events, diagram_type, config, control)? {
         Ok(db) => db,
         Err(error) => {
-            return Ok(Err(CombinedSemanticFailure::parser_recovery(
-                "mindmap",
+            return Ok(Err(mindmap_failure(
                 error,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             )));
         }
     };
     control.checkpoint()?;
-    Ok(Ok(MindmapSemanticSource { db, editor_facts }))
+    Ok(Ok(MindmapSemanticSource {
+        model: db.into_semantic_model(),
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
 fn mindmap_db_from_events(
     events: Vec<MindmapParsedEvent>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<MindmapDb>> {
     let mut db = MindmapDb::default();
     db.clear();
-    let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
 
     for (index, event) in events.into_iter().enumerate() {
         if index % 128 == 0 {
@@ -196,20 +243,19 @@ fn mindmap_db_from_events(
                         descr_raw: &node.descr_raw,
                         descr_is_markdown: node.descr_is_markdown,
                         ty: node.ty,
-                        diagram_type: &meta.diagram_type,
+                        diagram_type,
                     },
-                    &meta.effective_config,
-                    parse_config,
+                    config,
                     control,
                 )? {
                     return Ok(Err(error.with_exact_span_if_missing(selection)));
                 }
             }
             MindmapParsedEvent::Class(class) => {
-                db.decorate_last(Some(class.value), None, &meta.effective_config);
+                db.decorate_last(Some(class.value), None, config);
             }
             MindmapParsedEvent::Icon(icon) => {
-                db.decorate_last(None, Some(icon.value), &meta.effective_config);
+                db.decorate_last(None, Some(icon.value), config);
             }
         }
     }
@@ -225,18 +271,23 @@ struct MindmapParsedNodeLine {
     descr_raw: String,
     descr_is_markdown: bool,
     ty: i32,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
     selection: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     payload_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone)]
 struct MindmapParsedPayloadLine {
     value: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
+    #[cfg(feature = "editor-facts")]
     tokens: Vec<MindmapParsedPayloadToken>,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone)]
 struct MindmapParsedPayloadToken {
     value: String,
@@ -253,7 +304,10 @@ enum MindmapParsedEvent {
 #[derive(Debug, Default)]
 struct MindmapParsedLines {
     events: Vec<MindmapParsedEvent>,
+    #[cfg(feature = "editor-facts")]
     directive_prefixes: Vec<String>,
+    #[cfg(feature = "editor-facts")]
+    capture_editor: bool,
 }
 
 struct MindmapParseOutcome {
@@ -261,10 +315,13 @@ struct MindmapParseOutcome {
     first_error: Option<Error>,
 }
 
+#[cfg(feature = "editor-facts")]
 fn mindmap_editor_facts_from_parsed(
     parsed: &MindmapParsedLines,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut facts = EditorSemanticFacts::new();
     for (index, prefix) in parsed.directive_prefixes.iter().enumerate() {
         if index % 128 == 0 {
@@ -285,13 +342,16 @@ fn mindmap_editor_facts_from_parsed(
                 if let Some(payload_span) = node.payload_span {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::Payload,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
                     ));
                     facts.push_symbol(EditorSemanticSymbol::payload(
                         node.descr_raw.clone(),
                         Some("mindmap node label".to_string()),
                         EditorSemanticKind::String,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
+                        #[cfg(feature = "editor-facts")]
                         payload_span,
                     ));
                 }
@@ -341,6 +401,7 @@ fn absolute_mindmap_span(base: usize, span: SourceSpan) -> SourceSpan {
     SourceSpan::new(base + span.start, base + span.end)
 }
 
+#[cfg(feature = "editor-facts")]
 fn mindmap_payload_tokens(raw: &str, raw_start: usize) -> Vec<MindmapParsedPayloadToken> {
     let mut tokens = Vec::new();
     let mut cursor = 0usize;
@@ -373,12 +434,12 @@ fn mindmap_payload_tokens(raw: &str, raw_start: usize) -> Vec<MindmapParsedPaylo
 
 fn record_mindmap_error(
     first_error: &mut Option<Error>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
     message: impl Into<String>,
     span: SourceSpan,
 ) {
     first_error.get_or_insert_with(|| {
-        Error::diagram_parse_exact(meta.diagram_type.clone(), message.into(), span)
+        Error::diagram_parse_exact(diagram_type.to_string(), message.into(), span)
     });
 }
 
@@ -410,7 +471,7 @@ fn handle_mindmap_line(
     line_start: usize,
     parsed: &mut MindmapParsedLines,
     first_error: &mut Option<Error>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) -> MindmapLineOutcome {
     if line.trim().is_empty() {
         return MindmapLineOutcome::Done;
@@ -430,7 +491,7 @@ fn handle_mindmap_line(
         let Some(end) = after.find(')') else {
             record_mindmap_error(
                 first_error,
-                meta,
+                diagram_type,
                 "unterminated mindmap icon directive",
                 statement_span,
             );
@@ -439,22 +500,36 @@ fn handle_mindmap_line(
         let icon_raw = &after[..end];
         let icon = icon_raw.trim();
         if icon.is_empty() {
-            record_mindmap_error(first_error, meta, "mindmap icon is empty", statement_span);
+            record_mindmap_error(
+                first_error,
+                diagram_type,
+                "mindmap icon is empty",
+                statement_span,
+            );
             return MindmapLineOutcome::Done;
         }
+        #[cfg(feature = "editor-facts")]
         let icon_leading = icon_raw.len() - icon_raw.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let selection_start = statement_start + "::icon(".len() + icon_leading;
-        let token = MindmapParsedPayloadToken {
-            value: icon.to_string(),
-            selection: SourceSpan::new(selection_start, selection_start + icon.len()),
+        #[cfg(feature = "editor-facts")]
+        let tokens = if parsed.capture_editor {
+            parsed.directive_prefixes.push("::icon".to_string());
+            vec![MindmapParsedPayloadToken {
+                value: icon.to_string(),
+                selection: SourceSpan::new(selection_start, selection_start + icon.len()),
+            }]
+        } else {
+            Vec::new()
         };
-        parsed.directive_prefixes.push("::icon".to_string());
         parsed
             .events
             .push(MindmapParsedEvent::Icon(MindmapParsedPayloadLine {
                 value: icon.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: statement_span,
-                tokens: vec![token],
+                #[cfg(feature = "editor-facts")]
+                tokens,
             }));
         return MindmapLineOutcome::Done;
     }
@@ -462,18 +537,32 @@ fn handle_mindmap_line(
     if let Some(after) = rest.strip_prefix(":::") {
         let class = after.trim();
         if class.is_empty() {
-            record_mindmap_error(first_error, meta, "mindmap class is empty", statement_span);
+            record_mindmap_error(
+                first_error,
+                diagram_type,
+                "mindmap class is empty",
+                statement_span,
+            );
             return MindmapLineOutcome::Done;
         }
+        #[cfg(feature = "editor-facts")]
         let class_leading = after.len() - after.trim_start().len();
+        #[cfg(feature = "editor-facts")]
         let class_start = statement_start + ":::".len() + class_leading;
-        let tokens = mindmap_payload_tokens(class, class_start);
-        parsed.directive_prefixes.push(":::".to_string());
+        #[cfg(feature = "editor-facts")]
+        let tokens = if parsed.capture_editor {
+            parsed.directive_prefixes.push(":::".to_string());
+            mindmap_payload_tokens(class, class_start)
+        } else {
+            Vec::new()
+        };
         parsed
             .events
             .push(MindmapParsedEvent::Class(MindmapParsedPayloadLine {
                 value: class.to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: statement_span,
+                #[cfg(feature = "editor-facts")]
                 tokens,
             }));
         return MindmapLineOutcome::Done;
@@ -484,20 +573,30 @@ fn handle_mindmap_line(
         return MindmapLineOutcome::Done;
     }
     let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
-    match parse_node_spec(rest) {
+    #[cfg(feature = "editor-facts")]
+    let editor_demand = if parsed.capture_editor {
+        EditorFactsDemand::Capture
+    } else {
+        EditorFactsDemand::Omit
+    };
+    match parse_node_spec(
+        rest,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+    ) {
         Ok(NodeSpec {
             id_raw,
             descr_raw,
             ty,
             descr_is_markdown,
+            selection,
+            #[cfg(feature = "editor-facts")]
             trace,
         }) => {
-            let selection = trace
-                .id_span
-                .map(|span| absolute_mindmap_span(statement_start, span))
-                .unwrap_or(statement_span);
+            let selection = absolute_mindmap_span(statement_start, selection);
+            #[cfg(feature = "editor-facts")]
             let payload_span = trace
-                .description_span
+                .and_then(|trace| trace.description_span)
                 .map(|span| absolute_mindmap_span(statement_start, span));
             parsed
                 .events
@@ -507,8 +606,10 @@ fn handle_mindmap_line(
                     descr_raw,
                     descr_is_markdown,
                     ty,
+                    #[cfg(feature = "editor-facts")]
                     span: statement_span,
                     selection,
+                    #[cfg(feature = "editor-facts")]
                     payload_span,
                 }));
             MindmapLineOutcome::Done
@@ -527,7 +628,7 @@ fn handle_mindmap_line(
             })
         }
         Err(error) => {
-            record_mindmap_error(first_error, meta, error.message, statement_span);
+            record_mindmap_error(first_error, diagram_type, error.message, statement_span);
             MindmapLineOutcome::Done
         }
     }
@@ -536,7 +637,7 @@ fn handle_mindmap_line(
 fn finish_pending_mindmap_line(
     pending: PendingMindmapLine,
     first_error: &mut Option<Error>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) {
     let MindmapPendingSyntax {
         statement_span,
@@ -544,7 +645,7 @@ fn finish_pending_mindmap_line(
         ..
     } = pending.syntax;
     let NodeSpecError { message, .. } = *error;
-    record_mindmap_error(first_error, meta, message, statement_span);
+    record_mindmap_error(first_error, diagram_type, message, statement_span);
 }
 
 fn is_safe_mindmap_statement(line: &str) -> bool {
@@ -586,20 +687,26 @@ fn process_mindmap_physical_line(
     pending: &mut Option<PendingMindmapLine>,
     parsed: &mut MindmapParsedLines,
     first_error: &mut Option<Error>,
-    meta: &ParseMetadata,
+    diagram_type: &str,
 ) {
     if pending
         .as_ref()
         .is_some_and(|current| pending_mindmap_line_should_synchronize(current, physical_line))
     {
         let current = pending.take().expect("checked pending mindmap line");
-        finish_pending_mindmap_line(current, first_error, meta);
+        finish_pending_mindmap_line(current, first_error, diagram_type);
     }
 
     if let Some(mut current) = pending.take() {
         current.text.push('\n');
         current.text.push_str(physical_line);
-        match handle_mindmap_line(&current.text, current.start, parsed, first_error, meta) {
+        match handle_mindmap_line(
+            &current.text,
+            current.start,
+            parsed,
+            first_error,
+            diagram_type,
+        ) {
             MindmapLineOutcome::Done => {}
             MindmapLineOutcome::NeedMoreInput(syntax) => {
                 current.syntax = syntax;
@@ -610,7 +717,7 @@ fn process_mindmap_physical_line(
     }
 
     if let MindmapLineOutcome::NeedMoreInput(syntax) =
-        handle_mindmap_line(physical_line, line_start, parsed, first_error, meta)
+        handle_mindmap_line(physical_line, line_start, parsed, first_error, diagram_type)
     {
         *pending = Some(PendingMindmapLine {
             text: physical_line.to_string(),
@@ -622,13 +729,18 @@ fn process_mindmap_physical_line(
 
 fn parse_mindmap_lines(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<MindmapParseOutcome> {
     control.checkpoint()?;
     let mut lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
-    let mut parsed = MindmapParsedLines::default();
+    let mut parsed = MindmapParsedLines {
+        #[cfg(feature = "editor-facts")]
+        capture_editor: matches!(editor_demand, EditorFactsDemand::Capture),
+        ..Default::default()
+    };
     let mut first_error = None;
     let mut header_tail: Option<(&str, usize)> = None;
     let mut found_header = false;
@@ -662,7 +774,7 @@ fn parse_mindmap_lines(
         }
         record_mindmap_error(
             &mut first_error,
-            meta,
+            diagram_type,
             "expected mindmap header",
             SourceSpan::new(keyword_start, keyword_start + trimmed.len()),
         );
@@ -672,7 +784,7 @@ fn parse_mindmap_lines(
     if !found_header {
         if first_error.is_none() {
             first_error = Some(Error::diagram_parse_insertion_point(
-                meta.diagram_type.clone(),
+                diagram_type.to_string(),
                 "expected mindmap header",
                 code.len(),
             ));
@@ -691,7 +803,7 @@ fn parse_mindmap_lines(
             &mut pending,
             &mut parsed,
             &mut first_error,
-            meta,
+            diagram_type,
         );
     }
     for segment in lines {
@@ -705,11 +817,11 @@ fn parse_mindmap_lines(
             &mut pending,
             &mut parsed,
             &mut first_error,
-            meta,
+            diagram_type,
         );
     }
     if let Some(pending) = pending {
-        finish_pending_mindmap_line(pending, &mut first_error, meta);
+        finish_pending_mindmap_line(pending, &mut first_error, diagram_type);
     }
 
     control.checkpoint()?;
@@ -717,4 +829,160 @@ fn parse_mindmap_lines(
         parsed,
         first_error,
     })
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "mindmap".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_tree_constructs_once_without_render_fields_or_editor_work() {
+        reset_mindmap_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_mindmap_semantic_model_controlled(
+            "mindmap\n  root[Root]\n    child((Child))\n      leaf[\"`Markdown`\"]\n      ::icon(star)\n      :::highlight\n",
+            &metadata(), #[cfg(feature = "editor-facts")] EditorFactsDemand::Omit, &crate::OperationControl::new(),
+        ).unwrap().model.unwrap();
+        assert_eq!(model.nodes.len(), 3);
+        assert_eq!(model.nodes[0].node_id, "root");
+        assert_eq!(model.nodes[0].children, vec![1]);
+        assert_eq!(model.nodes[1].children, vec![2]);
+        assert_eq!(model.nodes[1].node_type, super::super::NODE_TYPE_CIRCLE);
+        assert_eq!(model.nodes[2].descr, "Markdown");
+        assert!(model.nodes[2].descr_is_markdown);
+        assert_eq!(model.nodes[2].icon.as_deref(), Some("star"));
+        assert_eq!(model.nodes[2].class.as_deref(), Some("highlight"));
+        assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let value = serde_json::to_value(model).unwrap();
+        for key in ["width", "height", "padding", "section", "shape", "look"] {
+            assert!(
+                value["nodes"][0].get(key).is_none(),
+                "unexpected visual field {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_config_sanitizes_plain_descriptions_and_preserves_markdown_source() {
+        let mut metadata = metadata();
+        metadata.semantic_config = crate::MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict", "themeVariables": {"primaryColor": "not-a-color"},
+            "mindmap": {"padding": 40, "colorBy": "depth"}
+        }));
+        let model = parse_mindmap_semantic_model_controlled(
+            "mindmap\n  root[<script>bad()</script>Safe]\n    leaf[\"`**Markdown**`\"]",
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert_eq!(model.nodes[0].descr, "Safe");
+        assert_eq!(model.nodes[1].descr, "**Markdown**");
+    }
+
+    #[test]
+    fn semantic_database_error_preserves_exact_selection_without_editor_work() {
+        let input = "mindmap\n  root\n  second[Other]\n";
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_mindmap_semantic_model_controlled(
+            input,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected parser diagnostic")
+        };
+        let offset = input.find("second").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "second".len()))
+        );
+        assert!(diagnostic.message().contains("There can be only one root"));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "presentation")]
+        {
+            let full = PresentationMetadata {
+                diagram_type: "mindmap".to_string(),
+                config: crate::MermaidConfig::empty_object(),
+                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                title: None,
+            };
+            let full_error = parse_mindmap_model_for_render_controlled(
+                input,
+                &full,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap_err();
+            assert_eq!(error.to_string(), full_error.to_string());
+        }
+    }
+
+    #[test]
+    fn semantic_cancellation_stops_before_construction() {
+        reset_mindmap_syntax_construction_count();
+        let control = crate::OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_mindmap_semantic_model_controlled(
+                "mindmap\n  root",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
+        assert_eq!(mindmap_syntax_construction_count(), 0);
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn typed_and_json_paths_skip_editor_projection() {
+        let full = PresentationMetadata {
+            diagram_type: "mindmap".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        reset_mindmap_syntax_construction_count();
+        parse_mindmap_model_for_render_controlled(
+            "mindmap\n  root\n    child",
+            &full,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_mindmap_syntax_construction_count();
+        parse_mindmap("mindmap\n  root\n    child", &full).unwrap();
+        assert_eq!(mindmap_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 }

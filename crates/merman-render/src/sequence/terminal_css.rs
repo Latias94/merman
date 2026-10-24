@@ -47,7 +47,7 @@ impl SequencePreparedCss {
             let terminal = typography.terminal_text_style(surface);
             match terminal.foreground_provenance {
                 SequenceTerminalForegroundProvenance::TypedTheme => String::new(),
-                SequenceTerminalForegroundProvenance::MermaidConfig => {
+                SequenceTerminalForegroundProvenance::PresentationConfig => {
                     format!("fill:{};", terminal.foreground)
                 }
             }

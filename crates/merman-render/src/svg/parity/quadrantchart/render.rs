@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
+use merman_core::diagrams::quadrant_chart::QuadrantChartDiagramModel;
 
 // QuadrantChart diagram SVG renderer implementation (split from parity.rs).
 
@@ -86,7 +86,7 @@ fn parse_quadrantchart_stroke_width_px(raw: &str) -> Option<f64> {
 
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
-    model: &QuadrantChartRenderModel,
+    model: &QuadrantChartDiagramModel,
     point_theme: &crate::quadrantchart::QuadrantChartPointThemePlan,
     text_paint: &crate::quadrantchart::QuadrantChartPaintPlan,
     effective_config: &serde_json::Value,

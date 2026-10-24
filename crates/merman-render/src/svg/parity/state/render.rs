@@ -1295,7 +1295,7 @@ mod tests {
 
     #[test]
     fn state_elk_neo_note_crossing_rewrites_the_complete_original_mask() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\nA --> B: move\nC --> D\nnote right of A: annotation\n",
                 merman_core::ParseOptions::strict(),

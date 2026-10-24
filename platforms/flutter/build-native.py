@@ -73,7 +73,8 @@ def llvm_nm() -> Path:
             check=True,
         ).stdout.strip()
     )
-    candidates.append(sysroot / "lib" / "rustlib" / host / "bin" / "llvm-nm")
+    filename = "llvm-nm.exe" if sys.platform == "win32" else "llvm-nm"
+    candidates.append(sysroot / "lib" / "rustlib" / host / "bin" / filename)
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -88,18 +89,10 @@ def build(recipe, target: str, *, zig: bool = False) -> Path:
     artifact = REPO_ROOT / "target" / target / recipe.cargo_profile / filename
     if not artifact.is_file():
         raise RuntimeError(f"native artifact was not produced: {artifact}")
-    symbol_artifact = artifact
-    external_only = None
-    if "windows" in target:
-        symbol_artifact = artifact.with_name(f"lib{LIBRARY_STEM}.dll.a")
-        if not symbol_artifact.is_file():
-            raise RuntimeError(f"Windows import library was not produced: {symbol_artifact}")
-        external_only = True
     assert_symbol_contract(
         read_defined_dynamic_symbols(
-            symbol_artifact,
+            artifact,
             llvm_nm(),
-            external_only=external_only,
         ),
         C_ABI_SYMBOL_CONTRACT,
         label=f"{recipe.profile_id} {target}",

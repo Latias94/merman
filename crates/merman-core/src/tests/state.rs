@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn parse_diagram_state_v2_alias_and_colon_description() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -46,7 +46,7 @@ namedState1:Small State 1"#,
 
 #[test]
 fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -64,7 +64,7 @@ fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_ecmascript_unicode_whitespace() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
         for newline in ["\n", "\r\n"] {
             let text = format!(
@@ -87,7 +87,7 @@ fn parse_diagram_state_v2_accepts_ecmascript_unicode_whitespace() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_unicode_whitespace_in_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\ndirection\u{3000}LR\nA --> B\n";
 
     let res = engine
@@ -99,7 +99,7 @@ fn parse_diagram_state_v2_accepts_unicode_whitespace_in_direction() {
 
 #[test]
 fn parse_diagram_state_v2_accepts_unicode_whitespace_before_composite_block() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text =
         "stateDiagram-v2\nstate\u{3000}外部\u{3000}\n\u{3000}{\n用户\u{3000}-->\u{3000}完成\n}\n";
     let res = engine
@@ -118,7 +118,7 @@ fn parse_diagram_state_v2_accepts_unicode_whitespace_before_composite_block() {
 
 #[test]
 fn parse_diagram_state_v2_preserves_colons_in_transition_labels() {
-    let res = block_on(Engine::new().parse_diagram(
+    let res = block_on(MermaidEngine::new().parse_diagram(
         r#"stateDiagram-v2
 Active --> Deleted: DELETE /users/:id"#,
         ParseOptions::default(),
@@ -131,7 +131,7 @@ Active --> Deleted: DELETE /users/:id"#,
 
 #[test]
 fn parse_diagram_state_v2_groups_and_unsafe_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -179,7 +179,7 @@ __proto__ --> [*]"#,
 
 #[test]
 fn parse_diagram_state_v2_tracks_explicit_composite_direction() {
-    let res = block_on(Engine::new().parse_diagram(
+    let res = block_on(MermaidEngine::new().parse_diagram(
         r#"stateDiagram-v2
 state Implicit {
   A
@@ -215,7 +215,7 @@ fn parse_state_render_model_preserves_alias_trailing_description() {
     let input = r#"stateDiagram-v2
 state "Display label" as S1: Trailing description
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -235,7 +235,7 @@ state "Display label" as S1: Trailing description
     );
     assert_eq!(node.shape, "rectWithTitle");
 
-    let parsed = block_on(Engine::new().parse_diagram(input, ParseOptions::strict()))
+    let parsed = block_on(MermaidEngine::new().parse_diagram(input, ParseOptions::strict()))
         .unwrap()
         .unwrap();
     let json_node = parsed.model["nodes"]
@@ -255,7 +255,7 @@ state "Display label" as S1: Trailing description
 
 #[test]
 fn parse_state_render_model_tracks_explicit_composite_direction() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"stateDiagram-v2
 state Implicit {
@@ -291,7 +291,7 @@ state Explicit {
 
 #[test]
 fn parse_diagram_state_rejects_same_line_multi_word_composite_state_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 state Invalid Name {
   Idle
@@ -340,7 +340,7 @@ state Invalid Name {
 
 #[test]
 fn parse_diagram_state_keeps_newline_composite_block_compatibility() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 state Valid
@@ -358,7 +358,7 @@ state Valid
 
 #[test]
 fn parse_diagram_state_v2_classdef_class_and_shorthand() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -419,7 +419,7 @@ class a,b,c, d, e exampleStyleClass"#,
 
 #[test]
 fn parse_diagram_state_v2_style_statement_sets_node_styles_and_ignores_comments() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -465,7 +465,7 @@ slow  --> fast
 
 #[test]
 fn parse_diagram_state_v2_click_and_href_store_links() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -521,7 +521,7 @@ click S3 href "jav&#x61;script:alert(1)""#,
 
 #[test]
 fn parse_diagram_state_v2_repeated_clicks_preserve_declaration_order() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -550,7 +550,7 @@ click S1 "https://example.com/last" "Last""#,
 
 #[test]
 fn typed_state_links_preserve_declaration_order_and_empty_tooltips() {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             r#"stateDiagram-v2
 S1
@@ -567,7 +567,7 @@ click S2 href "https://example.com/omitted"
         panic!("expected typed state render model");
     };
 
-    let crate::diagrams::state::StateDiagramRenderLinks::Many(repeated) =
+    let crate::diagrams::state::StateLinks::Many(repeated) =
         model.links.get("S1").expect("S1 links")
     else {
         panic!("expected repeated S1 links");
@@ -578,8 +578,7 @@ click S2 href "https://example.com/omitted"
     assert_eq!(repeated[1].url, "https://example.com/last");
     assert_eq!(repeated[1].tooltip, "");
 
-    let crate::diagrams::state::StateDiagramRenderLinks::One(omitted) =
-        model.links.get("S2").expect("S2 link")
+    let crate::diagrams::state::StateLinks::One(omitted) = model.links.get("S2").expect("S2 link")
     else {
         panic!("expected one S2 link");
     };
@@ -589,7 +588,7 @@ click S2 href "https://example.com/omitted"
 
 #[test]
 fn parse_diagram_state_v2_note_right_of_and_block_note() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -637,7 +636,7 @@ note "This is a floating note" as N1"#,
 
 #[test]
 fn parse_diagram_state_note_closes_only_on_a_dedicated_end_note_line() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 State1
 note right of State1
@@ -667,7 +666,7 @@ State1 --> State2"#;
 
 #[test]
 fn parse_diagram_state_v2_getdata_edges_and_note_edges() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -702,7 +701,7 @@ note left of A : note text"#,
 
 #[test]
 fn parse_diagram_state_v2_uses_neo_arrow_type_when_look_is_neo() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"%%{init: {"look": "neo"}}%%
@@ -721,7 +720,7 @@ A --> B: hello"#,
 
 #[test]
 fn parse_diagram_state_v2_sanitizes_edge_labels_like_mermaid_common() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 A --> B: hello<script>alert(1)</script>world"#,
@@ -734,7 +733,7 @@ A --> B: hello<script>alert(1)</script>world"#,
 
 #[test]
 fn parse_diagram_state_v2_getdata_dom_id_counter_and_note_padding_match_mermaid() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
@@ -768,7 +767,7 @@ note right of A : note text"#,
 
 #[test]
 fn parse_diagram_state_v2_keeps_multiple_note_groups_distinct() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
 A
@@ -820,7 +819,7 @@ fn deep_state_composite_chain(depth: usize) -> String {
 fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
     const DEPTH: usize = 1200;
     let input = deep_state_composite_chain(DEPTH);
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let parsed = block_on(engine.parse_diagram(&input, ParseOptions::strict()))
         .expect("parse ok")
@@ -844,39 +843,67 @@ fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
 
 #[test]
 fn state_family_entrypoints_construct_one_lexical_event_tape() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
-        "state Idle\n",
+        "state \"Waiting\" as Idle\n",
         "Idle --> Running: starts\n",
         "classDef active fill:#0f0\n",
         "class Running active\n",
     );
 
-    crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
-        .parse_diagram_sync(input, ParseOptions::strict())
+    for known_type in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_with_type_sync("stateDiagram", input, ParseOptions::strict())
+        } else {
+            engine.parse_diagram_sync(input, ParseOptions::strict())
+        }
         .expect("State JSON parse succeeds")
         .expect("State JSON parse returns a diagram");
-    assert_eq!(
-        crate::diagrams::state::state_syntax_construction_count(),
-        1,
-        "the State JSON entrypoint must construct one lexical event tape"
-    );
+        assert_eq!(parsed.model["states"]["Idle"]["id"], "Idle");
+        assert_eq!(parsed.model["states"]["Idle"]["descriptions"][0], "Waiting");
+        assert_eq!(parsed.model["relations"][0]["id2"], "Running");
+        assert_eq!(parsed.model["edges"][0]["label"], "starts");
+        assert_eq!(
+            crate::diagrams::state::state_syntax_construction_count(),
+            1,
+            "the State JSON entrypoint must construct one lexical event tape"
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
 
-    crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
-        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_for_render_model_with_type_sync(
+                "stateDiagram",
+                input,
+                ParseOptions::strict(),
+            )
+        } else {
+            engine.parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        }
         .expect("State typed parse succeeds")
         .expect("State typed parse returns a diagram");
-    assert_eq!(
-        crate::diagrams::state::state_syntax_construction_count(),
-        1,
-        "the State typed entrypoint must construct one lexical event tape"
-    );
+        let RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("State typed parse returned another family");
+        };
+        assert_eq!(model.states["Idle"].id, "Idle");
+        assert_eq!(model.states["Idle"].descriptions, ["Waiting"]);
+        assert_eq!(model.relations[0].id2, "Running");
+        assert_eq!(model.edges[0].label, "starts");
+        assert_eq!(
+            crate::diagrams::state::state_syntax_construction_count(),
+            1,
+            "the State typed entrypoint must construct one lexical event tape"
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
-    engine
+    let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", input)
         .expect("State editor parse succeeds")
         .expect("State editor parse returns facts");
@@ -885,11 +912,47 @@ fn state_family_entrypoints_construct_one_lexical_event_tape() {
         1,
         "the State editor entrypoint must construct one lexical event tape"
     );
+    let idle_start = input.find("Idle").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Idle"
+            && symbol.selection == SourceSpan::new(idle_start, idle_start + "Idle".len())
+    }));
+    let label_start = input.find("starts").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "starts"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.selection == SourceSpan::new(label_start, label_start + "starts".len())
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span.start <= label_start
+            && expected.span.end >= label_start + "starts".len()
+    }));
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(input).unwrap().unwrap();
+    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+        panic!("State snapshot must retain its canonical model");
+    };
+    assert_eq!(model["states"]["Idle"]["descriptions"][0], "Waiting");
+    assert_eq!(model["edges"][0]["label"], "starts");
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("State snapshot must retain editor facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 }
 
 #[test]
 fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
         "accTitle: Lifecycle\n",
@@ -940,7 +1003,7 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
 
 #[test]
 fn state_typed_render_model_projects_exact_compatibility_json() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let input = concat!(
         "stateDiagram-v2\n",
         "direction LR\n",
@@ -979,7 +1042,7 @@ fn state_typed_render_model_projects_exact_compatibility_json() {
 
 #[test]
 fn parse_state_editor_facts_preserve_parser_state_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"stateDiagram-v2
 [*] --> Idle
 Idle --> Running
@@ -1182,7 +1245,7 @@ click Running "https://example.com/run" "Run details""#;
 
 #[test]
 fn parse_state_editor_facts_record_expected_syntax_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "stateDiagram-v2\n",
         "state \"Small State\" as namedState\n",
@@ -1308,7 +1371,7 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
 
 #[test]
 fn state_relations_create_only_the_first_implicit_entity_occurrence() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "stateDiagram-v2\n",
         "Future --> Known\n",
@@ -1354,7 +1417,7 @@ fn state_relations_create_only_the_first_implicit_entity_occurrence() {
 
 #[test]
 fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for line_ending in ["\n", "\r", "\r\n"] {
         let text = ["stateDiagram-v2", "classDef", "Active --> Idle", ""].join(line_ending);
@@ -1374,8 +1437,9 @@ fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() 
 
 #[test]
 fn parse_state_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
@@ -1397,7 +1461,11 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
         1,
         "incomplete State editor recovery must reuse one lexical event tape"
     );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 1);
 
+    crate::editor::test_work::reset();
     crate::diagrams::state::reset_state_syntax_construction_count();
     let Error::DiagramParse { diagnostic, .. } = engine
         .parse_diagram_sync(text, ParseOptions::strict())
@@ -1418,11 +1486,100 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
         diagnostic.span_kind(),
         ParseDiagnosticSpanKind::InsertionPoint
     );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let error = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap_err();
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("incomplete typed State parsing must return its original parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert_eq!(
+        diagnostic.span_kind(),
+        ParseDiagnosticSpanKind::InsertionPoint
+    );
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("State grammar failure must retain requested recovery facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 1);
+}
+
+#[test]
+fn state_group_description_failure_retains_requested_facts_without_discarded_editor_work() {
+    let engine = MermaidEngine::new();
+    let text = concat!(
+        "stateDiagram-v2\nstate Group {\nChild\n}\n",
+        "Group: first\nGroup: second\n",
+    );
+    crate::editor::test_work::reset();
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Failed(error) = snapshot.outcome() else {
+        panic!("multiple group descriptions must fail semantic validation");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Group nodes can only have label")
+    );
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("State semantic failure must retain requested facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let child_start = text.find("Child").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Child"
+            && symbol.selection == SourceSpan::new(child_start, child_start + "Child".len())
+    }));
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "second" && symbol.role == EditorSemanticRole::Payload
+        })
+    );
+    assert!(facts.diagnostics.is_empty());
+    assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert_eq!(crate::editor::test_work::read().diagnostics, 0);
+
+    for typed in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::state::reset_state_syntax_construction_count();
+        let omitted_error = if typed {
+            engine
+                .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+                .unwrap_err()
+        } else {
+            engine
+                .parse_diagram_sync(text, ParseOptions::strict())
+                .unwrap_err()
+        };
+        assert_eq!(omitted_error.to_string(), error.to_string());
+        assert_eq!(crate::diagrams::state::state_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 }
 
 #[test]
 fn parse_state_editor_facts_stop_after_non_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "stateDiagram-v2\nstate {\nIdle --> Running\n";
     crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
@@ -1470,7 +1627,7 @@ fn assert_expected_syntax_covers(
 
 #[test]
 fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for source in [
         "stateDiagram-v2\ndirection\n",
         "stateDiagram-v2\ndirection --> Done\n",
@@ -1500,7 +1657,7 @@ fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
 
 #[test]
 fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for statement in [
         r#"click A href "https://example.test/direction LR""#,
         r#"click A "https://example.test" "direction LR""#,
@@ -1528,7 +1685,7 @@ fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
 
 #[test]
 fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (statement, kind, id, field, value) in [
         (
             r#"state "direction LR" as Inner"#,
@@ -1583,7 +1740,7 @@ fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
 
 #[test]
 fn parse_state_editor_struct_state_label_preserves_entity_selection() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "stateDiagram-v2\nstate Outer {\nstate \"direction LR\" as Inner\n}\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
@@ -1603,7 +1760,7 @@ fn parse_state_editor_struct_state_label_preserves_entity_selection() {
 
 #[test]
 fn parse_diagram_state_initial_direction_uses_raw_cursor() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for prefix in ["  ", "\t", "\u{00a0}", "\u{feff}"] {
         for statement in [
             r#"click A href "direction LR""#,
@@ -1655,7 +1812,7 @@ fn parse_diagram_state_initial_direction_uses_raw_cursor() {
 
 #[test]
 fn parse_diagram_state_struct_whitespace_and_comments_precede_direction() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source =
         "stateDiagram-v2\nstate Outer {\n  # direction LR\n  state \"direction LR\" as Inner\n}\n";
     let parsed = engine
@@ -1668,7 +1825,7 @@ fn parse_diagram_state_struct_whitespace_and_comments_precede_direction() {
 
 #[test]
 fn parse_diagram_state_accessibility_requires_complete_prefix() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for name in ["accTitle", "accDescr"] {
         let source = format!("stateDiagram-v2\n{name}\n");
         let parsed = engine
@@ -1714,7 +1871,7 @@ fn parse_diagram_state_accessibility_requires_complete_prefix() {
 
 #[test]
 fn parse_diagram_state_accessibility_multiline_uses_ecmascript_trim() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (body, expected) in [
         ("\u{feff}Heading\u{feff}", "Heading"),
         ("\u{0085}Heading\u{0085}", "\u{0085}Heading\u{0085}"),
@@ -1730,7 +1887,7 @@ fn parse_diagram_state_accessibility_multiline_uses_ecmascript_trim() {
 
 #[test]
 fn parse_diagram_state_unterminated_accessibility_block_keeps_eof_assignment() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "stateDiagram-v2\naccDescr: previous\naccDescr { unclosed\n";
     let parsed = engine
         .parse_diagram_sync(source, ParseOptions::default())

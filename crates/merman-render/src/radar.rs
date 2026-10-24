@@ -366,7 +366,7 @@ mod tests {
     use crate::text::DeterministicTextMeasurer;
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_core::diagrams::radar::{
-        RadarDiagramRenderModel, RadarRenderAxis, RadarRenderCurve, RadarRenderOptions,
+        RadarAxis, RadarCurve, RadarDiagramRenderModel, RadarOptions,
     };
     use serde_json::json;
 
@@ -375,32 +375,32 @@ mod tests {
         let mut model = RadarDiagramRenderModel::default();
         model.title = Some("Radar".to_string());
         model.axes = vec![
-            RadarRenderAxis {
+            RadarAxis {
                 name: "a".to_string(),
                 label: "A".to_string(),
             },
-            RadarRenderAxis {
+            RadarAxis {
                 name: "b".to_string(),
                 label: "B".to_string(),
             },
-            RadarRenderAxis {
+            RadarAxis {
                 name: "c".to_string(),
                 label: "C".to_string(),
             },
         ];
         model.curves = vec![
-            RadarRenderCurve {
+            RadarCurve {
                 name: "one".to_string(),
                 label: "One".to_string(),
                 entries: vec![json!(1.0), json!(2.0), json!(3.0)],
             },
-            RadarRenderCurve {
+            RadarCurve {
                 name: "two".to_string(),
                 label: "Two".to_string(),
                 entries: vec![json!(3.0), json!(2.0), json!(1.0)],
             },
         ];
-        model.options = RadarRenderOptions {
+        model.options = RadarOptions {
             show_legend: true,
             ticks: json!(3),
             min: json!(0.0),
@@ -445,11 +445,11 @@ mod tests {
     fn radar_polygon_work_is_aggregated_before_allocating_points() {
         let mut model = RadarDiagramRenderModel::default();
         model.axes = vec![
-            RadarRenderAxis {
+            RadarAxis {
                 name: "a".to_string(),
                 label: "A".to_string(),
             },
-            RadarRenderAxis {
+            RadarAxis {
                 name: "b".to_string(),
                 label: "B".to_string(),
             },

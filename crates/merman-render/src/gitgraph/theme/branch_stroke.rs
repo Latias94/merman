@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -54,7 +54,7 @@ impl GitGraphBranchStrokePlan {
 
     pub(super) fn resolve(
         theme: &ResolvedDiagramTheme,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         expected_branch_line_count: usize,
         work_meter: &OperationWorkMeter,
         evidence: &mut FamilyThemeOutcomes,
@@ -401,7 +401,7 @@ fn typed_static_branch_paint(
     }
 }
 
-fn mermaid_owns_branch_stroke(config: &MermaidConfig) -> bool {
+fn mermaid_owns_branch_stroke(config: &PresentationConfig) -> bool {
     if config.get_str(COMMIT_LINE_COLOR_PATH).is_some() {
         merman_core::__private::config_paint_overrides_typed_default(config, COMMIT_LINE_COLOR_PATH)
     } else {

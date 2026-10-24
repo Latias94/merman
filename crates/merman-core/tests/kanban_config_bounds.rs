@@ -1,6 +1,7 @@
 #![cfg(feature = "diagram-kanban")]
+#![cfg(feature = "compat-json")]
 
-use merman_core::{Engine, Error, ParseOptions};
+use merman_core::{Error, MermaidEngine, ParseOptions};
 
 fn source(padding: &str) -> String {
     format!("---\nconfig:\n  mindmap:\n    padding: {padding}\n---\nkanban\n  one[One]\n")
@@ -8,7 +9,7 @@ fn source(padding: &str) -> String {
 
 #[test]
 fn unrepresentable_kanban_padding_returns_a_parse_error_in_both_public_paths() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for padding in ["1.7976931348623157e308", "-1.7976931348623157e308"] {
         let source = source(padding);
         let semantic = engine.parse_diagram_sync(&source, ParseOptions::strict());
@@ -34,7 +35,7 @@ fn unrepresentable_kanban_padding_returns_a_parse_error_in_both_public_paths() {
 
 #[test]
 fn representable_kanban_padding_keeps_its_compatibility_value() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (padding, expected) in [
         ("10", 20),
         ("4611686018427387903", 9223372036854775806),

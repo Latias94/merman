@@ -179,7 +179,8 @@ pub(crate) fn render_radar_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let effective_config =
+        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
     let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
     let series_paint =
         crate::radar::RadarSeriesPaintPlan::baseline(effective_config.as_value(), model);
@@ -519,7 +520,8 @@ mod tests {
     use std::ops::Range;
 
     fn radar_css_for_test(config: &serde_json::Value) -> String {
-        let effective_config = merman_core::MermaidConfig::from_value(config.clone());
+        let effective_config =
+            merman_core::presentation::PresentationConfig::from_value(config.clone());
         let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
         let theme = typography.css_binding();
         let mut css = String::new();

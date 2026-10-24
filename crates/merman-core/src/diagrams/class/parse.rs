@@ -1,24 +1,42 @@
+#[cfg(any(feature = "editor-facts", test))]
+use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
 use crate::models::class_diagram as class_typed;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    editor::{
-        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
-        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
+    EditorSemanticSymbol,
+};
+use crate::{
+    Error, MermaidConfig, OperationControl, OperationControlResult,
+    parse_diagnostic::lalrpop_parse_diagnostic,
+};
+#[cfg(feature = "presentation")]
+use crate::{PresentationMetadata, Result};
+#[cfg(feature = "editor-facts")]
+use crate::{
+    parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    source_span::{
+        has_ascii_separator, keyword_value_span, line_content_end, source_value_span,
         trailing_ascii_whitespace_slot,
     },
 };
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
+#[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
+#[cfg(feature = "editor-facts")]
+use super::MERMAID_DOM_ID_PREFIX;
+use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::class_grammar;
 use super::db::ClassDb;
 use super::lexer::Lexer;
-use super::{MERMAID_DOM_ID_PREFIX, Tok};
 
 #[cfg(test)]
 thread_local! {
@@ -38,6 +56,12 @@ pub(crate) fn class_syntax_construction_count() -> usize {
 type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
 type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
+struct ClassSyntaxOutcome {
+    actions: std::result::Result<Actions, ClassGrammarError>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
 struct ClassSyntax {
     events: Vec<ClassLexicalEvent>,
 }
@@ -51,16 +75,21 @@ impl ClassSyntax {
         Ok(Self { events })
     }
 
-    fn into_editor_facts_and_actions(
+    fn into_actions(
         self,
-        code: &str,
+        #[cfg(feature = "editor-facts")] code: &str,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<(
-        EditorSemanticFacts,
-        std::result::Result<Actions, ClassGrammarError>,
-    )> {
+    ) -> OperationControlResult<ClassSyntaxOutcome> {
         let Self { events } = self;
-        let editor_facts = collect_class_editor_facts_from_events(&events, code, control)?;
+        #[cfg(feature = "editor-facts")]
+        let editor_facts = match editor_demand {
+            EditorFactsDemand::Omit => None,
+            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+            EditorFactsDemand::Capture => Some(collect_class_editor_facts_from_events(
+                &events, code, control,
+            )?),
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -73,57 +102,78 @@ impl ClassSyntax {
             .parse(&mut arena, control, controlled_events)
             .map(|list| arena.into_actions(list));
         control.checkpoint()?;
-        Ok((editor_facts, actions))
+        Ok(ClassSyntaxOutcome {
+            actions,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
     }
 }
 
 struct ClassSemanticSource<'a> {
     db: ClassDb<'a>,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 enum ClassSemanticFailure {
     Grammar {
         error: ClassGrammarError,
-        editor_facts: EditorSemanticFacts,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: Option<EditorSemanticFacts>,
     },
     Db {
         message: String,
-        editor_facts: EditorSemanticFacts,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: Option<EditorSemanticFacts>,
     },
 }
 
 impl ClassSemanticFailure {
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+    fn into_parse_error(self, diagram_type: &str, fallback_offset: usize) -> Error {
+        self.parse_error(diagram_type, fallback_offset)
     }
 
+    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
+        match self {
+            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
+                diagram_type.to_string(),
+                lalrpop_parse_diagnostic(error, fallback_offset),
+            ),
+            Self::Db { message, .. } => {
+                Error::diagram_parse_fallback(diagram_type.to_string(), message.clone())
+            }
+        }
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
+        let parse_error = self.parse_error(diagram_type, fallback_offset);
         match self {
             Self::Grammar {
                 error,
-                mut editor_facts,
+                editor_facts,
             } => {
-                let parse_error = Error::diagram_parse_diagnostic(
-                    diagram_type.to_string(),
-                    lalrpop_parse_diagnostic(&error, fallback_offset),
-                );
                 let span = match &error {
                     lalrpop_util::ParseError::User { error } => error.span,
                     _ => lalrpop_recovery_span(&error, fallback_offset),
                 };
+                let mut editor_facts =
+                    editor_facts.expect("Class capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!(
                         "class parser recovered after parse error: {}",
@@ -135,10 +185,10 @@ impl ClassSemanticFailure {
             }
             Self::Db {
                 message,
-                mut editor_facts,
+                editor_facts,
             } => {
-                let parse_error =
-                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
+                let mut editor_facts =
+                    editor_facts.expect("Class capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!("class semantic construction failed: {message}"),
                     None,
@@ -151,23 +201,35 @@ impl ClassSemanticFailure {
 
 fn construct_class_semantic_source<'a>(
     code: &str,
-    meta: &'a ParseMetadata,
+    config: &'a MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>>
 {
     let syntax = ClassSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let ClassSyntaxOutcome {
+        actions,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = syntax.into_actions(
+        #[cfg(feature = "editor-facts")]
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
                 error,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
     };
 
-    let mut db = ClassDb::new(&meta.effective_config);
+    let mut db = ClassDb::new(config);
     for (index, action) in actions.into_iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
@@ -175,44 +237,108 @@ fn construct_class_semantic_source<'a>(
         if let Err(message) = db.apply(action) {
             return Ok(Err(Box::new(ClassSemanticFailure::Db {
                 message,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
     }
 
     control.checkpoint()?;
-    Ok(Ok(ClassSemanticSource { db, editor_facts }))
+    Ok(Ok(ClassSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
+pub(crate) fn parse_class_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<class_typed::ClassDiagramModel>> {
+    let construction = construct_class_semantic_source(
+        code,
+        &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(ClassSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
+            let mut model = db.into_semantic_model(&metadata.diagram_type);
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            }
+        }
+        #[cfg(feature = "editor-facts")]
+        Err(failure) if editor_demand.needs_recovery() => {
+            let (error, editor_facts) =
+                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
+            SemanticConstruction {
+                model: Err(error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err((*failure).into_parse_error(&metadata.diagram_type, code.len())),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: None,
+        },
+    })
+}
+
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_class_semantic_source<'a>(
     code: &str,
-    meta: &'a ParseMetadata,
+    meta: &'a PresentationMetadata,
 ) -> Result<ClassSemanticSource<'a>> {
-    construct_class_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+    construct_class_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
 }
 
-pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_class(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_class_typed_with_render_context(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<(
     class_typed::ClassDiagram,
     class_typed::ClassStylePrecedenceFacts,
 )> {
-    Ok(parse_class_semantic_source(code, meta)?
+    let model = parse_class_semantic_source(code, meta)?
         .db
-        .into_typed_model_with_style_facts(meta))
+        .into_semantic_model(&meta.diagram_type);
+    let style_facts = model.style_precedence_facts.clone();
+    Ok((
+        class_typed::ClassDiagram::new(model, meta.effective_config.as_config()),
+        style_facts,
+    ))
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_class_typed_with_render_context_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<
     Result<(
@@ -220,33 +346,71 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
         class_typed::ClassStylePrecedenceFacts,
     )>,
 > {
-    let construction = construct_class_semantic_source(code, meta, control)?;
+    let construction = construct_class_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     match construction {
-        Ok(source) => Ok(Ok(source.db.into_typed_model_with_style_facts(meta))),
-        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
+        Ok(source) => {
+            let model = source.db.into_semantic_model(&meta.diagram_type);
+            let style_facts = model.style_precedence_facts.clone();
+            Ok(Ok((
+                class_typed::ClassDiagram::new_controlled(
+                    model,
+                    meta.effective_config.as_config(),
+                    control,
+                )?,
+                style_facts,
+            )))
+        }
+        Err(failure) => Ok(Err(
+            (*failure).into_parse_error(&meta.diagram_type, code.len())
+        )),
     }
 }
 
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_class_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_class_semantic_source(code, meta, control)?;
+    let construction = construct_class_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        control,
+    )?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |ClassSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
+        |ClassSemanticSource {
+             db,
+             #[cfg(feature = "editor-facts")]
+             editor_facts,
+         }| {
+            (
+                Ok(db.into_model(meta)),
+                editor_facts.expect("Class combined parse requests editor facts"),
+            )
+        },
         |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
     );
     control.checkpoint()?;
     Ok(parsed)
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut facts = EditorSemanticFacts::new();
     let mut collector = ClassEditorFactCollector::new(code);
 
@@ -271,6 +435,7 @@ fn collect_class_editor_facts_from_events(
 }
 
 #[derive(Debug)]
+#[cfg(feature = "editor-facts")]
 struct ClassEditorFactCollector<'a> {
     code: &'a str,
     expected_name: Option<PendingClassExpectation>,
@@ -291,12 +456,14 @@ struct ClassEditorFactCollector<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct ClassTokenSymbol {
     name: String,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedClassName {
     Class,
     Namespace,
@@ -312,12 +479,14 @@ enum ExpectedClassName {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 struct PendingClassExpectation {
     kind: ExpectedClassName,
     anchor_end: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum ClassInteractionKind {
     Click,
     Link,
@@ -325,11 +494,13 @@ enum ClassInteractionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum ClassLinePayloadKind {
     Style,
     ClassDef,
 }
 
+#[cfg(feature = "editor-facts")]
 impl<'a> ClassEditorFactCollector<'a> {
     fn new(code: &'a str) -> Self {
         Self {
@@ -690,7 +861,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 );
             }
             Tok::Direction(_) => {
-                if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
+                if let Some(span) = keyword_value_span(self.code, start, end, "direction") {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,
@@ -1117,6 +1288,7 @@ impl<'a> ClassEditorFactCollector<'a> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn class_expected_syntax_kind(expected: ExpectedClassName) -> EditorExpectedSyntaxKind {
     match expected {
         ExpectedClassName::ClassDef
@@ -1133,6 +1305,7 @@ fn class_expected_syntax_kind(expected: ExpectedClassName) -> EditorExpectedSynt
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_class_interaction_action_prefix(value: &str) -> bool {
     !value.is_empty()
         && ["href", "call"]
@@ -1140,6 +1313,7 @@ fn is_class_interaction_action_prefix(value: &str) -> bool {
             .any(|action| action.starts_with(value))
 }
 
+#[cfg(feature = "editor-facts")]
 fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> SourceSpan {
     if let Some(raw) = name.strip_prefix(MERMAID_DOM_ID_PREFIX) {
         if let Some(source) = code.get(span.start..span.end)
@@ -1159,6 +1333,7 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
     span
 }
 
+#[cfg(feature = "editor-facts")]
 fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
     let trimmed_start = member.len().saturating_sub(member.trim_start().len());
     let text = &member[trimmed_start..];
@@ -1177,6 +1352,7 @@ fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, Sou
     ))
 }
 
+#[cfg(feature = "editor-facts")]
 fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
     let after_colon = label.strip_prefix(':').unwrap_or(label);
     let colon_offset = usize::from(label.starts_with(':'));
@@ -1268,11 +1444,518 @@ mod tests {
         let source = format!("classDiagram\n{}", "class C\n".repeat(256));
         let control = OperationControl::new();
         let syntax = ClassSyntax::lex(&source, &control).unwrap();
-        control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
+        #[cfg(feature = "editor-facts")]
+        let fact_checkpoints = syntax.events.len().div_ceil(128);
+        #[cfg(not(feature = "editor-facts"))]
+        let fact_checkpoints = 0;
+        control.cancel_after_checkpoints(fact_checkpoints + 2);
         let error = syntax
-            .into_editor_facts_and_actions(&source, &control)
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &control,
+            )
             .err()
             .expect("cancelled delivery returns the outer terminal");
         assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn canonical_class_captures_success_and_failure_from_one_construction() {
+        for (source, valid) in [
+            ("classDiagram\nclass Service\n", true),
+            ("classDiagram\nclass Service {\n+field\n", false),
+        ] {
+            reset_class_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let parsed = parse_class_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Class facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "Service"));
+            assert_eq!(class_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    fn canonical_class_keeps_namespace_meaning_and_style_precedence_without_editor_work() {
+        let source = r#"classDiagram
+namespace A.B {
+  class Service
+  note "namespace note"
+}
+class Client
+cssClass "Client" accent
+classDef accent fill:red
+Client --> Service
+"#;
+        let mut metadata = metadata();
+        metadata
+            .semantic_config
+            .set_value("class.hierarchicalNamespaces", false.into());
+        reset_class_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_class_semantic_model_controlled(
+            source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+
+        assert_eq!(
+            model
+                .namespaces
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["A", "A.B"]
+        );
+        assert!(!model.namespaces["A"].explicit);
+        assert_eq!(model.namespaces["A.B"].label, "B");
+        assert_eq!(model.namespaces["A.B"].parent.as_deref(), Some("A"));
+        assert_eq!(model.classes["Service"].parent.as_deref(), Some("A.B"));
+        assert_eq!(model.notes[0].parent.as_deref(), Some("A.B"));
+        assert_eq!(model.namespaces["A.B"].class_ids, ["Service"]);
+        assert_eq!(model.namespaces["A.B"].note_ids, ["note0"]);
+        assert!(
+            model
+                .style_precedence_facts
+                .assignment_before_definition_copy()
+        );
+        assert_eq!(model.classes["Client"].styles, ["fill:red"]);
+        assert_eq!(class_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        let json = serde_json::to_value(&model).unwrap();
+        assert!(json["classes"]["Service"].get("domId").is_none());
+        assert!(json["namespaces"]["A.B"].get("domId").is_none());
+        let round_trip: class_typed::ClassDiagramModel = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, model);
+    }
+
+    #[test]
+    fn canonical_class_uses_admitted_security_config() {
+        let source = "classDiagram\nclass Service\ncallback Service \"run\"\n";
+        let mut metadata = metadata();
+        metadata
+            .semantic_config
+            .set_value("securityLevel", "strict".into());
+        let strict = parse_class_semantic_model_controlled(
+            source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert!(strict.classes["Service"].have_callback);
+        assert!(!strict.classes["Service"].callback_effective);
+        metadata
+            .semantic_config
+            .set_value("securityLevel", "loose".into());
+        let loose = parse_class_semantic_model_controlled(
+            source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert!(loose.classes["Service"].callback_effective);
+        assert_eq!(
+            loose.classes["Service"].callback.as_ref().unwrap()["function"],
+            "run"
+        );
+    }
+
+    #[test]
+    fn canonical_class_errors_preserve_exact_spans_without_editor_collection() {
+        let source = "classDiagram\nclass Service {\n+field\n";
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_class_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected Class parse diagnostic")
+        };
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(source.len(), source.len()))
+        );
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "compat-json")]
+        {
+            let Error::DiagramParse {
+                diagnostic: full, ..
+            } = parse_class(source, &full_metadata()).unwrap_err()
+            else {
+                panic!("expected full Class parse diagnostic")
+            };
+            assert_eq!(full, diagnostic);
+        }
+    }
+
+    #[test]
+    fn canonical_class_construction_observes_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_class_semantic_model_controlled(
+                "classDiagram\nclass Service\n",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(feature = "presentation")]
+    fn full_metadata() -> PresentationMetadata {
+        PresentationMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn requested_class_topology_keeps_canonical_namespaces_and_synthetic_ids() {
+        let source = r#"classDiagram
+namespace A.B {
+  class Service
+  note "namespace note"
+}
+class note0
+class interface0
+IService ()-- Service
+"#;
+        let model = parse_class_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("class.hierarchicalNamespaces", false.into());
+        let topology = model.topology(&config, &OperationControl::new()).unwrap();
+        assert!(std::ptr::eq(topology.model(), &model));
+        assert_eq!(
+            topology.classes().map(|(id, _)| id).collect::<Vec<_>>(),
+            model.classes.keys().map(String::as_str).collect::<Vec<_>>()
+        );
+        let service = topology.class("Service").unwrap();
+        assert!(std::ptr::eq(service.node, &model.classes["Service"]));
+        assert_eq!(service.parent, Some("A.B"));
+        assert!(topology.namespace("A").is_none());
+        assert_eq!(topology.namespaces().len(), 1);
+        let namespace = topology.namespace("A.B").unwrap();
+        assert_eq!(namespace.label, "A.B");
+        assert_eq!(namespace.parent, None);
+        assert_eq!(namespace.route_id, "classId-A.B-1");
+        assert_eq!(namespace.note_ids, ["note0$1"]);
+        assert_eq!(namespace.class_ids, ["Service"]);
+        let note = topology.notes().next().unwrap();
+        assert!(std::ptr::eq(note.note, &model.notes[0]));
+        assert_eq!(note.id, "note0$1");
+        let interface = topology.interfaces().next().unwrap();
+        assert!(std::ptr::eq(interface.interface, &model.interfaces[0]));
+        assert_eq!(interface.id, "interface0$1");
+        let relation = topology.relations().next().unwrap();
+        assert!(std::ptr::eq(relation.source, &model.relations[0]));
+        assert_eq!((relation.id1, relation.id2), ("interface0$1", "Service"));
+        #[cfg(feature = "presentation")]
+        {
+            let projection = class_typed::ClassPresentation::new(&model, &config);
+            assert!(!projection.namespaces.contains_key("A"));
+            assert_eq!(projection.namespaces["A.B"].label, "A.B");
+            assert_eq!(projection.namespaces["A.B"].parent, None);
+            assert_eq!(projection.namespace_dom_id("A.B"), Some("classId-A.B-1"));
+            assert_eq!(
+                projection.class_dom_id("Service"),
+                Some("classId-Service-0")
+            );
+            assert_eq!(projection.note_ids, ["note0$1"]);
+            assert_eq!(projection.namespaces["A.B"].note_ids, ["note0$1"]);
+            assert_eq!(projection.interface_ids, ["interface0$1"]);
+            assert_eq!(
+                projection.relation_endpoints(&model.relations[0]),
+                ("interface0$1", "Service")
+            );
+            let full = class_typed::ClassDiagram::new(model.clone(), &config);
+            let full_view = full.topology_view();
+            assert!(std::ptr::eq(full_view.model(), full.model()));
+            assert_eq!(
+                full_view.retained_bytes(),
+                full.presentation().retained_bytes()
+                    - full
+                        .presentation()
+                        .class_dom_ids
+                        .iter()
+                        .map(|(id, dom_id)| id.len() + dom_id.len())
+                        .sum::<usize>()
+            );
+            assert_eq!(
+                full_view.namespace("A.B").unwrap().route_id,
+                namespace.route_id
+            );
+        }
+        assert_eq!(model.notes[0].id, "note0");
+        assert_eq!(model.interfaces[0].id, "interface0");
+        assert_eq!(model.relations[0].id1, "interface0");
+        assert!(model.namespaces.contains_key("A"));
+        assert_eq!(model.namespaces["A.B"].parent.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn requested_class_topology_observes_cancellation_without_changing_its_model() {
+        let model = parse_class_semantic_model_controlled(
+            "classDiagram\nnamespace A.B {\nclass Service\n}\nclass note0\nnote \"text\"\n",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("class.hierarchicalNamespaces", false.into());
+        for successful_checkpoints in [0, 4, 9] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(successful_checkpoints);
+            assert!(model.topology(&config, &control).is_err());
+            assert!(model.namespaces.contains_key("A"));
+            assert_eq!(model.namespaces["A.B"].parent.as_deref(), Some("A"));
+            assert_eq!(model.notes[0].id, "note0");
+        }
+        let topology = model.topology(&config, &OperationControl::new()).unwrap();
+        assert!(topology.namespace("A").is_none());
+        assert_eq!(topology.notes().next().unwrap().id, "note0$1");
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn flat_class_presentation_finishes_for_implicit_namespace_cycles() {
+        let mut model = parse_class_semantic_model_controlled(
+            "classDiagram\nnamespace A.B {\nclass Service\n}\n",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        for namespace in model.namespaces.values_mut() {
+            namespace.explicit = false;
+        }
+        model.namespaces.get_mut("A").unwrap().parent = Some("A.B".into());
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("class.hierarchicalNamespaces", false.into());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            sender
+                .send(class_typed::ClassDiagram::new(model, &config))
+                .unwrap();
+        });
+        let projected = receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("flattening an implicit namespace cycle must finish");
+        worker.join().unwrap();
+        assert!(projected.namespaces().next().is_none());
+        assert_eq!(projected.class("Service").unwrap().parent, None);
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn full_class_typed_projection_constructs_once_without_editor_work() {
+        reset_class_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let (model, _) = parse_class_typed_with_render_context_controlled(
+            "classDiagram\nclass Service\n",
+            &full_metadata(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(model.class("Service").is_some());
+        assert_eq!(class_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn full_class_serde_preserves_projected_fields_without_claiming_authored_recovery() {
+        let source = r#"classDiagram
+namespace A.B {
+  class Service
+  note "namespace note"
+}
+class note0
+class interface0
+cssClass "Service" accent
+classDef accent fill:red
+IService ()-- Service
+"#;
+        let mut metadata = full_metadata();
+        metadata
+            .effective_config
+            .set_value("class.hierarchicalNamespaces", false.into());
+        let (model, _) = parse_class_typed_with_render_context_controlled(
+            source,
+            &metadata,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let wire = serde_json::to_value(&model).unwrap();
+        assert_eq!(wire["classes"]["Service"]["domId"], "classId-Service-0");
+        assert!(wire["namespaces"].get("A").is_none());
+        assert_eq!(wire["namespaces"]["A.B"]["domId"], "classId-A.B-1");
+        assert_eq!(wire["namespaces"]["A.B"]["label"], "A.B");
+        assert_eq!(wire["notes"][0]["id"], "note0$1");
+        assert_eq!(wire["namespaces"]["A.B"]["noteIds"][0], "note0$1");
+        assert_eq!(wire["interfaces"][0]["id"], "interface0$1");
+        assert_eq!(wire["relations"][0]["id1"], "interface0$1");
+        assert!(wire["relations"][0]["relationTitle1"].is_null());
+        assert!(wire.get("stylePrecedenceFacts").is_none());
+        let decoded: class_typed::ClassDiagram = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&decoded).unwrap(), wire);
+        assert_eq!(decoded, model);
+        assert!(model.model().namespaces.contains_key("A"));
+        assert!(!decoded.model().namespaces.contains_key("A"));
+        assert!(
+            model
+                .model()
+                .style_precedence_facts
+                .assignment_before_definition_copy()
+        );
+        assert_eq!(decoded.model().style_precedence_facts, Default::default());
+
+        let mut detached_wire = wire;
+        detached_wire["namespaces"]["A.B"]["domId"] = "host-owned-namespace-route".into();
+        let detached: class_typed::ClassDiagram =
+            serde_json::from_value(detached_wire.clone()).unwrap();
+        let topology = detached.topology_view();
+        assert!(std::ptr::eq(topology.model(), detached.model()));
+        assert_eq!(
+            topology.namespace("A.B").unwrap().route_id,
+            "host-owned-namespace-route"
+        );
+        assert_eq!(topology.notes().next().unwrap().id, "note0$1");
+        assert_eq!(topology.interfaces().next().unwrap().id, "interface0$1");
+        assert_eq!(topology.relations().next().unwrap().id1, "interface0$1");
+        assert_eq!(serde_json::to_value(&detached).unwrap(), detached_wire);
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn class_compatibility_projection_keeps_full_shape_and_omits_editor_work() {
+        let source = r#"classDiagram
+namespace A.B {
+  class Service
+}
+class Client
+Client --> Service
+"#;
+        let mut metadata = full_metadata();
+        metadata
+            .effective_config
+            .set_value("class.hierarchicalNamespaces", false.into());
+        reset_class_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let json = parse_class(source, &metadata).unwrap();
+        assert_eq!(json["classes"]["Service"]["domId"], "classId-Service-0");
+        assert!(json["namespaces"].get("A").is_none());
+        assert_eq!(json["namespaces"]["A.B"]["label"], "A.B");
+        assert_eq!(json["namespaces"]["A.B"]["domId"], "classId-A.B-1");
+        assert!(json["namespaces"]["A.B"]["parent"].is_null());
+        assert_eq!(json["relations"][0]["relationTitle1"], "none");
+        assert!(json.get("stylePrecedenceFacts").is_none());
+        assert!(json.get("namespaceFacadeAliases").is_none());
+        assert_eq!(class_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn combined_class_parse_keeps_editor_capture_and_one_construction() {
+        reset_class_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let _ = parse_class_json_and_editor_facts(
+            "classDiagram\nclass Service\n",
+            &full_metadata(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(class_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_ne!(crate::editor::test_work::read(), Default::default());
     }
 }

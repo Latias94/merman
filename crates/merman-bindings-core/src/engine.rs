@@ -13,6 +13,11 @@ use merman::{OperationControl, OperationPhase};
 use merman_analysis::Analyzer;
 use std::sync::{Arc, OnceLock};
 
+#[cfg(test)]
+thread_local! {
+    static SEMANTIC_ENGINE_MATERIALIZATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Clone)]
 pub struct BindingEngine {
     artifact_contract: Arc<ValidatedArtifactContract>,
@@ -20,11 +25,15 @@ pub struct BindingEngine {
     runtime_policy: merman::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
     unchanged_request_validation: OnceLock<Result<(), BindingError>>,
-    semantic: SemanticOperationEngine,
+    // Keep option validation eager; full engines are needed only by their output consumers.
+    semantic_config: SemanticOperationConfig,
+    semantic: OnceLock<SemanticOperationEngine>,
     #[cfg(feature = "analysis")]
     analyzer: Analyzer,
     #[cfg(feature = "svg")]
-    render: crate::render::CachedRenderEngine,
+    render_config: crate::render::RenderOperationConfig,
+    #[cfg(feature = "svg")]
+    render: OnceLock<crate::render::CachedRenderEngine>,
     #[cfg(feature = "svg")]
     theme_compiler: merman::svg::DiagramThemeCompiler,
     #[cfg(feature = "svg")]
@@ -195,19 +204,20 @@ impl BindingEngine {
         #[cfg(not(feature = "svg"))]
         let configs =
             BindingOperationConfigs::compile(options, runtime_policy.clone(), &artifact_contract)?;
-        #[cfg(feature = "svg")]
-        let render = configs.render.materialize(&services);
         Ok(Self {
             artifact_contract,
             runtime_policy_id,
             runtime_policy,
             base_options,
             unchanged_request_validation: OnceLock::new(),
-            semantic: configs.semantic.materialize(),
+            semantic_config: configs.semantic,
+            semantic: OnceLock::new(),
             #[cfg(feature = "analysis")]
             analyzer: Analyzer::with_options(configs.analysis),
             #[cfg(feature = "svg")]
-            render,
+            render_config: configs.render,
+            #[cfg(feature = "svg")]
+            render: OnceLock::new(),
             #[cfg(feature = "svg")]
             theme_compiler,
             #[cfg(feature = "svg")]
@@ -216,6 +226,12 @@ impl BindingEngine {
             ascii: configs.ascii.materialize(),
             services,
         })
+    }
+
+    #[cfg(feature = "svg")]
+    fn render_engine(&self) -> &crate::render::CachedRenderEngine {
+        self.render
+            .get_or_init(|| self.render_config.clone().materialize(&self.services))
     }
 
     pub(crate) fn prepare_request_overlay(
@@ -578,7 +594,7 @@ impl BindingEngine {
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render
+            self.render_engine()
                 .render_svg_output(source, control, include_metadata)
         }
 
@@ -608,7 +624,7 @@ impl BindingEngine {
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "png")]
         {
-            self.render
+            self.render_engine()
                 .render_png_output(source, control, include_metadata)
         }
 
@@ -638,7 +654,7 @@ impl BindingEngine {
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "jpeg")]
         {
-            self.render
+            self.render_engine()
                 .render_jpeg_output(source, control, include_metadata)
         }
 
@@ -668,7 +684,7 @@ impl BindingEngine {
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "pdf")]
         {
-            self.render
+            self.render_engine()
                 .render_pdf_output(source, control, include_metadata)
         }
 
@@ -727,7 +743,9 @@ impl BindingEngine {
         source: &[u8],
         control: &OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        self.semantic.parse_json_controlled(source, control)
+        self.semantic
+            .get_or_init(|| self.semantic_config.clone().materialize())
+            .parse_json_controlled(source, control)
     }
 
     pub fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -748,7 +766,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.layout_json(source, control)
+            self.render_engine().layout_json(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
@@ -765,7 +783,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.edge_geometry_json(source, control)
+            self.render_engine().edge_geometry_json(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
@@ -786,7 +804,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.svg_plan_json(source, control)
+            self.render_engine().svg_plan_json(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
@@ -1139,6 +1157,7 @@ pub(crate) fn execute_theme_authoring_with_compiler(
     }
 }
 
+#[derive(Clone)]
 struct SemanticOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     site_config: Option<merman::MermaidConfig>,
@@ -1172,9 +1191,13 @@ impl SemanticOperationConfig {
     }
 
     fn materialize(self) -> SemanticOperationEngine {
-        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
+        #[cfg(test)]
+        SEMANTIC_ENGINE_MATERIALIZATIONS.with(|count| count.set(count.get() + 1));
+        let mut engine = merman::MermaidEngine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(site_config);
+            engine = engine.with_site_config(
+                merman::presentation::PresentationConfig::from_config(site_config),
+            );
         }
         SemanticOperationEngine {
             engine,
@@ -1186,7 +1209,7 @@ impl SemanticOperationConfig {
 
 #[derive(Clone)]
 struct SemanticOperationEngine {
-    engine: merman::Engine,
+    engine: merman::MermaidEngine,
     parse_options: merman::ParseOptions,
     resources: merman::resources::InputResourcePolicy,
 }
@@ -1248,6 +1271,190 @@ mod tests {
     use std::sync::Arc;
     #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    fn full_engine_materializations() -> (usize, usize) {
+        (
+            SEMANTIC_ENGINE_MATERIALIZATIONS.with(std::cell::Cell::get),
+            crate::render::RENDER_ENGINE_MATERIALIZATIONS.with(std::cell::Cell::get),
+        )
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        feature = "analysis",
+        feature = "ascii",
+        feature = "diagram-flowchart"
+    ))]
+    #[test]
+    fn lean_binding_consumers_do_not_materialize_full_engines() {
+        const OPTIONS: &[u8] =
+            br#"{"site_config":{"themeVariables":{"primaryColor":"not-a-color"}}}"#;
+        const SOURCE: &[u8] = concat!(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\n",
+            "flowchart TD\nA --> B",
+        )
+        .as_bytes();
+        const DOCUMENT: &[u8] = concat!(
+            "```mermaid\n",
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\n",
+            "flowchart TD\nA --> B\n```",
+        )
+        .as_bytes();
+
+        let before = full_engine_materializations();
+        let based = BindingEngine::new(OPTIONS).expect("visual errors remain operation-local");
+        let overlaid = BindingEngine::new(b"").unwrap();
+        for operation in [
+            "analysis-json",
+            "analysis-facts-json",
+            "validation-json",
+            "document-analysis-json",
+            "document-analysis-facts-json",
+            "ascii",
+        ] {
+            let document = operation.starts_with("document-");
+            let source = if document { DOCUMENT } else { SOURCE };
+            let request = crate::BindingOperationRequest::new(operation, source)
+                .with_optional_uri(document.then_some(b"file:///diagram.md".as_slice()));
+            let once = crate::execute_once(request.clone().with_options_json(OPTIONS)).unwrap();
+            assert_eq!(
+                crate::operation::execute_once_data(request.clone().with_options_json(OPTIONS))
+                    .unwrap(),
+                once.data(),
+                "{operation}",
+            );
+            assert_eq!(based.execute(request.clone()).unwrap(), once, "{operation}");
+            assert_eq!(
+                based.execute_data(request.clone()).unwrap(),
+                once.data(),
+                "{operation}",
+            );
+            assert_eq!(
+                overlaid
+                    .execute(request.clone().with_options_json(OPTIONS))
+                    .unwrap(),
+                once,
+                "{operation}",
+            );
+            assert_eq!(
+                overlaid
+                    .execute_data(request.with_options_json(OPTIONS))
+                    .unwrap(),
+                once.data(),
+                "{operation}",
+            );
+            if operation != "ascii" {
+                let payload: Value = serde_json::from_slice(once.data()).unwrap();
+                assert_eq!(payload["valid"], true, "{operation}: {payload}");
+            }
+            assert_eq!(full_engine_materializations(), before, "{operation}");
+        }
+        assert!(based.semantic.get().is_none());
+        assert!(based.render.get().is_none());
+        assert!(overlaid.semantic.get().is_none());
+        assert!(overlaid.render.get().is_none());
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn full_binding_operations_materialize_only_the_requested_engine_once() {
+        const OPTIONS: &[u8] =
+            br#"{"site_config":{"themeVariables":{"primaryColor":"not-a-color"}}}"#;
+        const SOURCE: &[u8] = b"flowchart TD\nA --> B";
+        let before = full_engine_materializations();
+        let engine = BindingEngine::new(OPTIONS).expect("visual errors remain operation-local");
+        assert_eq!(full_engine_materializations(), before);
+
+        let cancelled = OperationControl::new();
+        cancelled.cancel();
+        for operation in ["semantic-json", "svg"] {
+            let error = engine
+                .execute(
+                    crate::BindingOperationRequest::new(operation, SOURCE)
+                        .with_control(cancelled.clone()),
+                )
+                .unwrap_err();
+            assert_eq!(error.status(), crate::BindingStatus::Cancelled);
+        }
+        assert_eq!(full_engine_materializations(), before);
+
+        let semantic_error = engine.parse_json(SOURCE).unwrap_err();
+        assert!(semantic_error.message().contains("not-a-color"));
+        assert_eq!(engine.parse_json(SOURCE).unwrap_err(), semantic_error);
+        assert_eq!(full_engine_materializations(), (before.0 + 1, before.1));
+
+        let render_error = engine.render_svg(SOURCE).unwrap_err();
+        assert!(render_error.message().contains("not-a-color"));
+        assert_eq!(engine.render_svg(SOURCE).unwrap_err(), render_error);
+        assert_eq!(full_engine_materializations(), (before.0 + 1, before.1 + 1));
+
+        for operation in ["semantic-json", "svg"] {
+            let expected = if operation == "semantic-json" {
+                &semantic_error
+            } else {
+                &render_error
+            };
+            let request =
+                crate::BindingOperationRequest::new(operation, SOURCE).with_options_json(OPTIONS);
+            assert_eq!(&crate::execute_once(request.clone()).unwrap_err(), expected);
+            assert_eq!(
+                &BindingEngine::new(b"")
+                    .unwrap()
+                    .execute(request)
+                    .unwrap_err(),
+                expected,
+            );
+        }
+        assert_eq!(full_engine_materializations(), (before.0 + 3, before.1 + 3));
+        #[cfg(feature = "analysis")]
+        engine
+            .analyze_json(SOURCE)
+            .expect("full errors do not poison lean analysis");
+        #[cfg(feature = "ascii")]
+        engine
+            .render_ascii(SOURCE)
+            .expect("full errors do not poison ASCII");
+        assert_eq!(full_engine_materializations(), (before.0 + 3, before.1 + 3));
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn delayed_render_engine_preserves_constructor_services_and_prepared_ownership() {
+        let before = full_engine_materializations();
+        let counter = CountingHostTextMeasurer::new();
+        let services = BindingEngineServices::new().with_host_text_measurer(counter.clone());
+        let engine = BindingEngine::from_options_and_services(
+            br#"{"site_config":{"flowchart":{"htmlLabels":false}}}"#,
+            services.clone(),
+        )
+        .unwrap();
+        let expected = engine
+            .render_svg(b"flowchart TD\nA[Retained] --> B[Output]")
+            .unwrap();
+        assert!(
+            counter.calls() > 0,
+            "lazy materialization retains the host service",
+        );
+        assert_eq!(full_engine_materializations(), (before.0, before.1 + 1));
+
+        let prepared = engine
+            .prepare_source(
+                b"flowchart TD\nA[Retained] --> B[Output]",
+                OperationControl::new(),
+            )
+            .unwrap();
+        assert_eq!(full_engine_materializations(), (before.0, before.1 + 1));
+        assert!(engine.semantic.get().is_none());
+        drop(engine);
+        assert_eq!(
+            prepared
+                .render_svg(b"", OperationControl::new(), &services)
+                .unwrap(),
+            expected,
+        );
+        assert_eq!(full_engine_materializations(), (before.0, before.1 + 2));
+    }
 
     #[test]
     fn theme_evaluation_limits_keep_resource_status_at_the_binding_boundary() {
@@ -1854,7 +2061,7 @@ mod tests {
     #[test]
     fn semantic_parse_preserves_the_public_compatibility_json_projection() {
         let source = "flowchart TD\nsubgraph outer\nA[Start] --> B[Done]\nend";
-        let expected = merman::Engine::new()
+        let expected = merman::MermaidEngine::new()
             .parse_diagram_sync(source, merman::ParseOptions::strict())
             .expect("compatibility JSON parse")
             .expect("flowchart diagram")
@@ -1878,7 +2085,7 @@ mod tests {
         for depth in 1..=150 {
             writeln!(source, "{}node{depth}", "  ".repeat(depth)).unwrap();
         }
-        let expected = merman::Engine::new()
+        let expected = merman::MermaidEngine::new()
             .parse_diagram_sync(&source, merman::ParseOptions::strict())
             .unwrap()
             .unwrap()
@@ -1897,7 +2104,7 @@ mod tests {
     #[test]
     fn semantic_parse_resource_boundaries_match_the_typed_model() {
         let source = "flowchart TD\nsubgraph outer\nsubgraph inner\nA[Start] --> B[Done]\nend\nend";
-        let parsed = merman::Engine::new()
+        let parsed = merman::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
             .expect("typed model parse")
             .expect("flowchart diagram");

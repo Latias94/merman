@@ -492,12 +492,13 @@ fn prove_ink(
 mod tests {
     use super::*;
     use merman::svg::DiagramThemeCompiler;
-    use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
+    use merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer};
 
     fn document(preset: ThemePreset) -> RenderedDocument {
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
-        let renderer = Renderer::new()
-            .with_engine(Engine::new().with_site_config(crate::preset_qualification_config()));
+        let renderer = Renderer::new().with_presentation_engine(
+            MermaidEngine::new().with_site_config(crate::preset_qualification_config()),
+        );
         let RenderOutput::Document(Some(document)) = renderer
             .render(
                 RenderRequest::document(

@@ -198,7 +198,6 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     implicationIds: <String>{
       "layout-cytoscape",
       "markdown",
-      "math",
     },
   ),
   "shell-completions": MermanBindingCapabilitySpec(

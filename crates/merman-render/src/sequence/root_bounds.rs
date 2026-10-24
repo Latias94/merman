@@ -7,14 +7,14 @@ use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_w
 use crate::Result;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
+use merman_core::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) is_neo: bool,
-    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) model: &'a SequenceDiagramModel,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
@@ -37,7 +37,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) base_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) math_sidecar: &'a super::SequenceMathSidecarBuilder<'a>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
     pub(super) block_label_box_metrics: super::SequenceBlockLabelBoxMetrics,

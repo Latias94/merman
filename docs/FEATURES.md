@@ -51,13 +51,23 @@ binary export to `svg`; the corresponding Web and CLI products make the same com
 their public workflow requires them. Those owner-specific compile combinations do not turn into
 global capability implications.
 
-The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
-`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
-not include the EPL-2.0 ELK implementation. The `complete-svg-elk` aggregate adds ELK; the
-`merman` facade defaults to `all-diagrams + complete-svg-elk`. Its notices and source provenance
-must accompany distributed artifacts. To omit ELK, disable default features and select the
-required diagram families plus `complete-svg` or individual capability leaves. Neither aggregate
-includes diagram families, system adapters, analysis, ASCII, or binary exports.
+Current Rust source builds also expose owner-local `presentation`, `compat-json`, and
+`editor-facts` features on the facade and core. These are projection boundaries, not new
+transport capability IDs. Defaults-off family selections and ASCII use canonical semantics;
+`svg` forwards `presentation`, while the facade's legacy JSON API requires explicit
+`compat-json`. Rich language tooling selects its required editor facts independently. See the
+[semantic/full migration](migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
+Core's `terminal-text` leaf owns shared terminal normalization and Unicode width helpers.
+ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not.
+
+The current development branch retires `complete-svg` and `complete-svg-elk`. Select output and
+layout leaves directly and add `math` only when needed. The facade defaults to
+`all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render
+packages omit math. Official CLI archives select math explicitly, while CLI source defaults and
+the `rustdoc` leaf omit it. Installed `0.9.1` artifacts retain their published recipes.
+The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
+disable defaults and select required families plus `svg` and the required layout leaves.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -176,16 +186,16 @@ operation or batch and never accumulate user fonts in a process-global cache.
 
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
-| Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + complete-svg-elk`), or `default-features = false, features = ["all-diagrams", "svg"]` for basic SVG |
-| SVG, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
-| SVG, Cytoscape, ELK, and math | `merman` | Defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
+| Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + svg + layout-cytoscape + layout-elk`), or `default-features = false, features = ["all-diagrams", "svg"]` for basic SVG |
+| SVG, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"]` |
+| SVG, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,svg,layout-cytoscape,layout-elk,math` with defaults disabled |
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features all-diagrams,stdio` |
-| Complete diagram CLI | `merman-cli` | Defaults or `cli-release`: all families, ELK, math, exports, editor tooling, Markdown, and `rustdoc` authoring |
+| Complete diagram CLI | `merman-cli` | Source defaults: all families, ELK, exports, analysis, Markdown and `rustdoc`; `cli-release` additionally selects math explicitly |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | Included in the default and release CLI; documented crates consume committed files through native `include_str!` |
-| One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` or `complete-svg` for mathematical labels |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
@@ -204,7 +214,7 @@ a supported Node transport or fallback.
 These selectors were introduced in `0.8.0-alpha.7` and are included in the published `0.8.0` release. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
 Low-level crates keep empty defaults. Existing `default-features = false` consumers must add
 `all-diagrams` to retain the previous language surface, or list the families they require.
-`complete-svg` alone selects outputs and engines, not languages.
+Output/layout/math leaves do not select diagram families.
 
 ### Flowchart and Gantt embedding
 
@@ -273,7 +283,7 @@ must be completed before claiming a reduction.
 
 ```toml
 [dependencies]
-merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
 ```rust
@@ -293,8 +303,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The ordinary `merman = { path = "crates/merman" }` dependency enables `all-diagrams` and the `complete-svg-elk`
-aggregate.
+The ordinary `merman = { path = "crates/merman" }` dependency enables
+`all-diagrams,svg,layout-cytoscape,layout-elk`. Add `math` explicitly for mathematical labels.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
 
@@ -340,7 +350,8 @@ merman = {
     default-features = false,
     features = [
         "all-diagrams",
-        "complete-svg",
+        "svg",
+        "layout-cytoscape",
         "system-clock",
         "system-timezone",
         "system-random",
@@ -384,14 +395,15 @@ merman = {
 ```
 
 `png`, `jpeg`, and `pdf` are separate capabilities. They are not silently included in the
-complete SVG aggregate and should not be added to every native SDK without a product reason.
+SVG recipe and should not be added to every native SDK without a product reason.
 
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
-SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, explicit native fonts, local Iconify loading,
+SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, explicit native fonts, local Iconify loading,
 Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is included in source defaults and the standard archive.
-The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
+The `cli-release` artifact selects those capabilities plus `math` explicitly. Source defaults omit math;
+use `cargo install merman-cli --locked --features math` when building a math-capable CLI from current source. Both closures include the
 EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7, 0.8.0, and 0.9.x include ELK in both recipes.
 Compiled native adapters never change the default runtime policy:
 
@@ -429,9 +441,9 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The `0.9.0` source default
-and release archive retain the deterministic CLI `build/check` authoring workflow, as in
-alpha.7. It enables SVG rendering with Cytoscape and math;
+Rustdoc has two independently distributed static-SVG workflows. Source defaults and release
+archives retain the deterministic CLI `build/check` authoring workflow. The `rustdoc` leaf
+enables SVG rendering with Cytoscape; mathematical labels require explicit `math`;
 it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
 committed, packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 `#![doc = include_str!(...)]`. This gives the documented crate zero attributable Merman packages
@@ -439,14 +451,14 @@ in its normal/build Cargo graph, supports crate-level docs, and makes diagram up
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
 features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
-optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply from alpha.7 through 0.9.0. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
-and continues to include math.
+optional: add `math` for mathematical labels. The facade also defaults to direct SVG and layout
+leaves without math. The retired complete aggregates have direct-leaf migration recipes above.
 
 The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
 out of ordinary builds while the dependency is disabled. To exclude ELK from documentation builds,
-use `default-features = false` and select the required diagram families plus `complete-svg` or
-narrower capability leaves. Cargo features are additive: selecting `complete-svg` alone does not
-remove an enabled default or a feature enabled by another dependency.
+use `default-features = false` and select the required diagram families plus `svg` and the needed
+layout leaves. Cargo features are additive: explicit leaves do not remove features enabled by
+other dependencies.
 
 | Concern | Checked CLI generation | Attribute macro |
 | --- | --- | --- |
@@ -468,8 +480,8 @@ Browser package names are the user-facing selection mechanism:
 
 | Package | Compiled workflow | Status |
 | --- | --- | --- |
-| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
-| `@mermanjs/web-render` | SVG, Cytoscape, ELK, and math | Complete SVG-only package |
+| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape and ELK | Browser SDK; custom source math opt-in |
+| `@mermanjs/web-render` | SVG, Cytoscape and ELK | SVG-only package; custom source math opt-in |
 | `@mermanjs/web-analysis` | Analysis | Slim package |
 | `@mermanjs/web-editor` | Analysis and editor | Slim package |
 | `@mermanjs/web-ascii` | ASCII | Slim package |

@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
@@ -32,23 +33,23 @@ fn compile(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
         .unwrap()
 }
 
-fn config(swimlane: bool, look: &str) -> MermaidConfig {
+fn config(swimlane: bool, look: &str) -> PresentationConfig {
     let mut config = json!({"look": look, "htmlLabels": false});
     if swimlane {
         config["layout"] = json!("swimlane");
     }
-    MermaidConfig::from_value(config)
+    PresentationConfig::from_value(config)
 }
 
 fn render(
     source: &str,
     theme: &DiagramTheme,
-    config: MermaidConfig,
+    config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
-        Engine::new().with_site_config(config),
+        MermaidEngine::new().with_site_config(config),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
@@ -457,7 +458,7 @@ fn edge_fill_uses_stroke_source_and_config_ownership() {
             let rendered = render(
                 ONE,
                 &theme,
-                MermaidConfig::from_value(value),
+                PresentationConfig::from_value(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();

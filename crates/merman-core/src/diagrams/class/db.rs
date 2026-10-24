@@ -1,16 +1,18 @@
+use crate::MermaidConfig;
+#[cfg(feature = "compat-json")]
+use crate::PresentationMetadata;
 use crate::common::parse_generic_types;
 use crate::models::class_diagram as class_typed;
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
-use crate::{MermaidConfig, ParseMetadata};
 use indexmap::IndexMap;
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::ast::{Action, RelationData};
 use super::{
-    LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
-    REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
+    LINE_DOTTED, LINE_SOLID, REL_AGGREGATION, REL_COMPOSITION, REL_DEPENDENCY, REL_EXTENSION,
+    REL_LOLLIPOP, REL_NONE,
 };
 
 #[derive(Debug, Clone)]
@@ -217,7 +219,6 @@ struct ClassNode {
     members: Vec<ClassMember>,
     annotations: Vec<String>,
     styles: Vec<String>,
-    dom_id: String,
     parent: Option<String>,
     link: Option<String>,
     link_target: Option<String>,
@@ -248,7 +249,6 @@ impl ClassNode {
                 .collect(),
             annotations: self.annotations,
             styles: self.styles,
-            dom_id: self.dom_id,
             parent: self.parent,
             link: self.link,
             link_target: self.link_target,
@@ -300,7 +300,6 @@ impl Interface {
 struct Namespace {
     id: String,
     label: String,
-    dom_id: String,
     class_ids: Vec<String>,
     note_ids: Vec<String>,
     parent: Option<String>,
@@ -312,7 +311,6 @@ impl Namespace {
         class_typed::Namespace {
             id: self.id,
             label: self.label,
-            dom_id: self.dom_id,
             class_ids: self.class_ids,
             note_ids: self.note_ids,
             parent: self.parent,
@@ -364,8 +362,6 @@ pub(super) struct ClassDb<'a> {
     explicit_css_assignments: BTreeMap<String, ExplicitCssAssignment>,
     paint_class_definitions: BTreeMap<String, PaintClassDefinition>,
     next_style_event_ordinal: usize,
-    class_counter: usize,
-    namespace_counter: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     security_level: Option<&'a str>,
@@ -373,80 +369,6 @@ pub(super) struct ClassDb<'a> {
 }
 
 impl<'a> ClassDb<'a> {
-    fn next_unique_synthetic_id(
-        prefix: &str,
-        ordinal: usize,
-        occupied: &mut BTreeSet<String>,
-    ) -> String {
-        let base = format!("{prefix}{ordinal}");
-        if occupied.insert(base.clone()) {
-            return base;
-        }
-
-        let mut disambiguator = 1usize;
-        loop {
-            let candidate = format!("{base}${disambiguator}");
-            if occupied.insert(candidate.clone()) {
-                return candidate;
-            }
-            disambiguator = disambiguator.saturating_add(1);
-        }
-    }
-
-    /// Keeps parser-synthesized routing ids outside the authored render-id domain.
-    ///
-    /// Mermaid names notes and lollipop interfaces `noteN`/`interfaceN`. Those names are not
-    /// reserved by the grammar, so a later authored class can otherwise collide with an earlier
-    /// synthetic endpoint. Finalizing the ids after the full model is known preserves the normal
-    /// Mermaid spelling while deterministically disambiguating only actual collisions.
-    fn disambiguate_synthetic_render_ids(&mut self) {
-        if self.notes.is_empty() && self.interfaces.is_empty() {
-            return;
-        }
-
-        let mut occupied = self
-            .classes
-            .keys()
-            .cloned()
-            .chain(
-                self.namespaces
-                    .values()
-                    .map(|namespace| namespace.dom_id.clone()),
-            )
-            .collect::<BTreeSet<_>>();
-
-        for (ordinal, note) in self.notes.iter_mut().enumerate() {
-            note.id = Self::next_unique_synthetic_id("note", ordinal, &mut occupied);
-        }
-
-        let mut interface_id_remaps = BTreeMap::new();
-        for (ordinal, interface) in self.interfaces.iter_mut().enumerate() {
-            let previous_id = interface.id.clone();
-            let render_id = Self::next_unique_synthetic_id("interface", ordinal, &mut occupied);
-            if previous_id != render_id {
-                interface_id_remaps.insert(previous_id, render_id.clone());
-                interface.id = render_id;
-            }
-        }
-
-        if !interface_id_remaps.is_empty() {
-            for relation in &mut self.relations {
-                if relation.relation.type1 == REL_LOLLIPOP
-                    && let Some(render_id) = interface_id_remaps.get(relation.id1.as_str())
-                {
-                    relation.id1.clone_from(render_id);
-                }
-                if relation.relation.type2 == REL_LOLLIPOP
-                    && let Some(render_id) = interface_id_remaps.get(relation.id2.as_str())
-                {
-                    relation.id2.clone_from(render_id);
-                }
-            }
-        }
-
-        self.rebuild_namespace_memberships();
-    }
-
     pub(super) fn new(config: &'a MermaidConfig) -> Self {
         Self {
             direction: "TB".to_string(),
@@ -461,8 +383,6 @@ impl<'a> ClassDb<'a> {
             explicit_css_assignments: BTreeMap::new(),
             paint_class_definitions: BTreeMap::new(),
             next_style_event_ordinal: 0,
-            class_counter: 0,
-            namespace_counter: 0,
             acc_title: None,
             acc_descr: None,
             security_level: config.get_str("securityLevel"),
@@ -501,8 +421,6 @@ impl<'a> ClassDb<'a> {
             }
             return;
         }
-        let dom_id = format!("{MERMAID_DOM_ID_PREFIX}{class_name}-{}", self.class_counter);
-        self.class_counter += 1;
         let text = if type_param.is_empty() {
             class_name.clone()
         } else {
@@ -520,7 +438,6 @@ impl<'a> ClassDb<'a> {
                 members: Vec::new(),
                 annotations: Vec::new(),
                 styles: Vec::new(),
-                dom_id,
                 parent: None,
                 link: None,
                 link_target: None,
@@ -915,17 +832,11 @@ impl<'a> ClassDb<'a> {
                 continue;
             }
 
-            let dom_id = format!(
-                "{MERMAID_DOM_ID_PREFIX}{current_id}-{}",
-                self.namespace_counter
-            );
-            self.namespace_counter += 1;
             self.namespaces.insert(
                 current_id.clone(),
                 Namespace {
                     id: current_id.clone(),
                     label: node_label,
-                    dom_id,
                     class_ids: Vec::new(),
                     note_ids: Vec::new(),
                     parent,
@@ -1155,27 +1066,6 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    fn hierarchical_namespaces_enabled(&self) -> bool {
-        self.config
-            .get_bool("class.hierarchicalNamespaces")
-            .unwrap_or(true)
-    }
-
-    fn resolve_explicit_ancestor_from(
-        namespaces: &IndexMap<String, Namespace>,
-        id: Option<&str>,
-    ) -> Option<String> {
-        let mut current = id.map(str::to_string);
-        while let Some(id) = current {
-            let ns = namespaces.get(id.as_str())?;
-            if ns.explicit {
-                return Some(id);
-            }
-            current = ns.parent.clone();
-        }
-        None
-    }
-
     fn rebuild_namespace_memberships(&mut self) {
         for ns in self.namespaces.values_mut() {
             ns.class_ids.clear();
@@ -1203,75 +1093,22 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    fn apply_namespace_render_config(&mut self) {
-        if self.hierarchical_namespaces_enabled() {
-            self.rebuild_namespace_memberships();
-            return;
-        }
-
-        let class_parent_updates: Vec<(String, Option<String>)> = self
-            .classes
-            .iter()
-            .map(|(id, class_node)| {
-                (
-                    id.clone(),
-                    Self::resolve_explicit_ancestor_from(
-                        &self.namespaces,
-                        class_node.parent.as_deref(),
-                    ),
-                )
-            })
-            .collect();
-        let note_parent_updates: Vec<(String, Option<String>)> = self
-            .notes
-            .iter()
-            .map(|note| {
-                (
-                    note.id.clone(),
-                    Self::resolve_explicit_ancestor_from(&self.namespaces, note.parent.as_deref()),
-                )
-            })
-            .collect();
-
-        self.namespaces.retain(|_, ns| ns.explicit);
-        for ns in self.namespaces.values_mut() {
-            ns.label = ns.id.clone();
-            ns.parent = None;
-        }
-        for (id, parent) in class_parent_updates {
-            if let Some(class_node) = self.classes.get_mut(&id) {
-                class_node.parent = parent;
-            }
-        }
-        for (id, parent) in note_parent_updates {
-            if let Some(note) = self.notes.iter_mut().find(|note| note.id == id) {
-                note.parent = parent;
-            }
-        }
-        self.rebuild_namespace_memberships();
-    }
-
-    pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
-        let model = self.into_typed_model(meta);
+    #[cfg(feature = "compat-json")]
+    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Value {
+        let model = class_typed::ClassDiagram::new(
+            self.into_semantic_model(&meta.diagram_type),
+            meta.effective_config.as_config(),
+        );
         super::render_model_to_compat_json(&model, meta)
             .expect("Class typed model must remain JSON-serializable")
     }
 
-    pub(super) fn into_typed_model(self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
-        self.into_typed_model_with_style_facts(meta).0
-    }
-
-    pub(super) fn into_typed_model_with_style_facts(
+    pub(super) fn into_semantic_model(
         mut self,
-        meta: &ParseMetadata,
-    ) -> (
-        class_typed::ClassDiagram,
-        class_typed::ClassStylePrecedenceFacts,
-    ) {
-        self.apply_namespace_render_config();
-        self.disambiguate_synthetic_render_ids();
+        diagram_type: &str,
+    ) -> class_typed::ClassDiagramModel {
+        self.rebuild_namespace_memberships();
         let namespace_facade_aliases = self.namespace_facade_aliases();
-        let style_precedence_facts = std::mem::take(&mut self.style_precedence_facts);
 
         let classes = self
             .classes
@@ -1315,8 +1152,8 @@ impl<'a> ClassDb<'a> {
             .map(|(k, sc)| (k, sc.into_typed()))
             .collect();
 
-        let model = class_typed::ClassDiagram {
-            diagram_type: meta.diagram_type.clone(),
+        class_typed::ClassDiagramModel {
+            diagram_type: diagram_type.to_string(),
             direction: self.direction,
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,
@@ -1327,6 +1164,7 @@ impl<'a> ClassDb<'a> {
             namespaces,
             namespace_facade_aliases,
             style_classes,
+            style_precedence_facts: self.style_precedence_facts,
             constants: class_typed::ClassConstants {
                 line_type: class_typed::ClassLineTypeConstants {
                     line: LINE_SOLID,
@@ -1341,8 +1179,7 @@ impl<'a> ClassDb<'a> {
                     lollipop: REL_LOLLIPOP,
                 },
             },
-        };
-        (model, style_precedence_facts)
+        }
     }
 }
 

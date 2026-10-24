@@ -116,13 +116,14 @@ base64.workspace = true
 cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true
+euclid.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 kurbo.workspace = true
 libm.workspace = true
 manatee = { workspace = true, optional = true }
 memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["presentation", "compat-json"] }
 merman-theme-contract.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }

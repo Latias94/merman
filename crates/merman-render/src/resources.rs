@@ -7,7 +7,7 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-mindmap")]
 use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 #[cfg(feature = "diagram-zenuml")]
-use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
+use merman_core::diagrams::zenuml::ZenumlDiagramModel;
 #[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::resources::{
@@ -749,7 +749,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-zenuml")]
     pub fn check_zenuml_complexity(
         &self,
-        model: &ZenumlDiagramRenderModel,
+        model: &ZenumlDiagramModel,
     ) -> Result<ZenumlComplexity, ResourceLimitExceeded> {
         self.input
             .check_zenuml_complexity(model)
@@ -759,7 +759,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
     ) -> Result<SequenceComplexity, ResourceLimitExceeded> {
         self.input
             .check_sequence_complexity(model)
@@ -1319,7 +1319,7 @@ impl OperationWorkMeter {
     #[cfg(feature = "diagram-sequence")]
     pub(crate) fn preflight_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
         operation_phase: OperationPhase,
     ) -> Result<SequenceComplexity, OperationWorkError> {
         self.resource_checkpoint(operation_phase)?;
@@ -1734,7 +1734,7 @@ mod tests {
     use merman_core::diagrams::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
     };
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
 
     #[test]
@@ -2012,7 +2012,7 @@ mod tests {
 
     #[test]
     fn model_preflight_observes_cancellation_before_latching_its_limit() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
             .expect("the controlled fixture should parse")
             .expect("the controlled fixture should produce a render model");
@@ -2402,7 +2402,7 @@ mod tests {
 
     #[test]
     fn zenuml_complexity_includes_inline_decorations() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nA->[rocket]B.call()\n",
                 ParseOptions::strict(),
@@ -2425,7 +2425,7 @@ mod tests {
 
     #[test]
     fn zenuml_uses_the_shared_model_budget() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nA.call() {\n  if(ok) {\n    if(inner) {\n      B.work()\n    }\n  }\n}\n",
                 ParseOptions::strict(),
@@ -2506,6 +2506,7 @@ mod tests {
                 styles: Vec::new(),
                 nodes: vec!["A".to_string()],
             }],
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };

@@ -2,8 +2,8 @@
 
 use merman::svg::{SvgPipeline, SvgRenderOptions, TextMeasurementPolicy};
 use merman::{
-    MermaidConfig, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
-    SvgRequest,
+    OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    presentation::PresentationConfig,
 };
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
@@ -147,7 +147,9 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
     })
 }
 
-fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::MermaidConfig> {
+fn fixture_site_config_for_relative_name(
+    relative_name: &str,
+) -> Option<merman::presentation::PresentationConfig> {
     let relative = relative_name
         .strip_prefix("fixtures/")
         .unwrap_or(relative_name);
@@ -160,7 +162,9 @@ fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::
                 path.display()
             )
         })
-        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
+        .map(|context| {
+            merman::presentation::PresentationConfig::from_value(context.site_config_value())
+        })
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -338,9 +342,13 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
-        let engine = self.renderer.engine().clone().with_site_config(site_config);
-        self.renderer = self.renderer.with_engine(engine);
+    fn with_site_config(mut self, site_config: PresentationConfig) -> Self {
+        let engine = self
+            .renderer
+            .presentation_engine()
+            .clone()
+            .with_site_config(site_config);
+        self.renderer = self.renderer.with_presentation_engine(engine);
         self
     }
 
@@ -401,8 +409,8 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     render_resvg_safe_with_options(name, source, false, None)
 }
 
-fn trusted_host_dark_flowchart_config() -> MermaidConfig {
-    MermaidConfig::from_value(serde_json::json!({
+fn trusted_host_dark_flowchart_config() -> PresentationConfig {
+    PresentationConfig::from_value(serde_json::json!({
         "themeVariables": {
             "mainBkg": "#111827",
             "primaryTextColor": "#f8fafc",
@@ -432,7 +440,7 @@ fn render_resvg_safe_with_options(
     name: &str,
     source: &str,
     lenient: bool,
-    site_config: Option<merman::MermaidConfig>,
+    site_config: Option<merman::presentation::PresentationConfig>,
 ) -> String {
     let renderer = if lenient {
         TypedSvgRenderer::new().with_lenient_parsing()
@@ -1056,7 +1064,7 @@ fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
     ];
 
     for (theme, expected_scale) in themes {
-        let site_config = MermaidConfig::from_value(serde_json::json!({
+        let site_config = PresentationConfig::from_value(serde_json::json!({
             "theme": theme,
             "themeVariables": {
                 "fontFamily": "Inter, sans-serif"

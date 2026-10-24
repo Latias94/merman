@@ -134,14 +134,14 @@ mod tests {
             }
         });
 
-        let config = merman_core::MermaidConfig::from_value(cfg);
+        let config = merman_core::presentation::PresentationConfig::from_value(cfg);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         let plan = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
             None,
             &config,
-            &merman_core::diagrams::requirement::RequirementDiagramRenderModel {
+            &merman_core::diagrams::requirement::RequirementDiagramModel {
                 acc_title: None,
                 acc_descr: None,
                 direction: String::new(),

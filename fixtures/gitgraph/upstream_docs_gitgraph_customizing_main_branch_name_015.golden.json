@@ -191,7 +191,11 @@
     "warningFacts": [
       {
         "message": "Commit ID Boston already exists",
-        "ruleId": "merman.git_graph.duplicate_commit_id"
+        "ruleId": "merman.git_graph.duplicate_commit_id",
+        "span": {
+          "end": 660,
+          "start": 642
+        }
       }
     ],
     "warnings": [

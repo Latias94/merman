@@ -1,6 +1,6 @@
+use crate::geom::Size;
 use crate::model::LayoutPoint;
 use dugong::RankDir;
-use merman_core::geom::Size;
 
 pub(crate) struct CompactSelfLoopGeometry {
     pub(crate) points: Vec<LayoutPoint>,

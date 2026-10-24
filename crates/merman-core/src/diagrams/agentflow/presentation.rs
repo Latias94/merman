@@ -1,59 +1,59 @@
-//! Presentation directives share Flowchart spelling but follow Agentflow database ordering.
-
 use super::{Declaration, ParseFailure, Parser};
-use crate::diagrams::flowchart::{
-    self, ClickAction, FlowEdgeDefaults, FlowchartModel, LinkStylePos, Tok,
-};
-use crate::{EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+use crate::SourceSpan;
+#[cfg(feature = "presentation")]
+use crate::diagrams::flowchart::FlowchartModel;
+use crate::diagrams::flowchart::{self, ClickAction, FlowEdgeDefaults, LinkStylePos, Tok};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorSemanticKind, EditorSemanticSymbol};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
-/// Retained rendering facts, excluded from Agentflow's compatibility semantic projection.
+/// Source-authored style, interaction, and label facts, excluded from Mermaid compatibility JSON.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AgentflowPresentation {
+pub struct AgentflowAuthoredStyles {
     #[serde(default)]
-    pub(super) nodes: HashMap<String, NodePresentation>,
+    pub nodes: HashMap<String, AgentflowNodeAttributes>,
     #[serde(default)]
-    edges: HashMap<String, EdgePresentation>,
+    pub edges: HashMap<String, AgentflowEdgeAttributes>,
     #[serde(default)]
-    subgraph_classes: HashMap<String, Vec<String>>,
+    pub subgraph_classes: HashMap<String, Vec<String>>,
     #[serde(default)]
-    pub(super) subgraph_label_types: HashMap<String, String>,
+    pub subgraph_label_types: HashMap<String, String>,
     #[serde(default)]
-    class_defs: IndexMap<String, Vec<String>>,
+    pub class_defs: IndexMap<String, Vec<String>>,
     #[serde(default)]
-    edge_defaults: Option<FlowEdgeDefaults>,
+    pub edge_defaults: Option<FlowEdgeDefaults>,
     #[serde(default)]
-    tooltips: HashMap<String, String>,
+    pub tooltips: HashMap<String, String>,
 }
 
+/// Authored label kind, classes, CSS, and admitted interaction for a node.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(super) struct NodePresentation {
+pub struct AgentflowNodeAttributes {
     #[serde(default)]
-    pub(super) dom_index: Option<usize>,
-    #[serde(default)]
-    pub(super) label_type: Option<String>,
-    classes: Vec<String>,
-    styles: Vec<String>,
-    link: Option<String>,
-    link_target: Option<String>,
-    have_callback: bool,
+    pub label_type: Option<String>,
+    pub classes: Vec<String>,
+    pub styles: Vec<String>,
+    pub link: Option<String>,
+    pub link_target: Option<String>,
+    pub have_callback: bool,
 }
 
+/// Authored label kind, classes, CSS, curve, and animation for an edge.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct EdgePresentation {
+pub struct AgentflowEdgeAttributes {
     #[serde(default)]
-    label_type: Option<String>,
-    classes: Vec<String>,
-    styles: Vec<String>,
-    interpolate: Option<String>,
-    animate: Option<bool>,
-    animation: Option<String>,
+    pub label_type: Option<String>,
+    pub classes: Vec<String>,
+    pub styles: Vec<String>,
+    pub interpolate: Option<String>,
+    pub animate: Option<bool>,
+    pub animation: Option<String>,
 }
 
-impl AgentflowPresentation {
+impl AgentflowAuthoredStyles {
     /// Borrows the canonical CSS declaration lists without building a Flowchart model.
     #[doc(hidden)]
     pub fn declaration_styles(&self) -> impl Iterator<Item = &[String]> {
@@ -65,13 +65,13 @@ impl AgentflowPresentation {
             .chain(self.edge_defaults.iter().map(|edge| edge.style.as_slice()))
     }
 
-    pub(super) fn node_label_type(&self, id: &str) -> Option<&str> {
+    pub fn node_label_type(&self, id: &str) -> Option<&str> {
         self.nodes
             .get(id)
             .map(|node| node.label_type.as_deref().unwrap_or("text"))
     }
 
-    pub(super) fn edge_label_type(&self, id: &str) -> Option<&str> {
+    pub fn edge_label_type(&self, id: &str) -> Option<&str> {
         self.edges
             .get(id)
             .and_then(|edge| edge.label_type.as_deref())
@@ -102,6 +102,7 @@ impl AgentflowPresentation {
         }
     }
 
+    #[cfg(feature = "presentation")]
     pub(super) fn apply_to_flowchart(&self, model: &mut FlowchartModel) {
         model.class_defs = self.class_defs.clone();
         model.edge_defaults = self.edge_defaults.clone();
@@ -146,11 +147,11 @@ impl AgentflowPresentation {
 impl Parser<'_> {
     pub(super) fn assign_class(&mut self, ids: &str, class: &str) {
         for id in ids.split(',') {
-            if let Some(node) = self.presentation.nodes.get_mut(id) {
+            if let Some(node) = self.authored.nodes.get_mut(id) {
                 node.classes.push(class.to_string());
             }
             if self.edges.iter().any(|edge| edge.id.as_deref() == Some(id)) {
-                self.presentation
+                self.authored
                     .edges
                     .entry(id.to_string())
                     .or_default()
@@ -158,7 +159,7 @@ impl Parser<'_> {
                     .push(class.to_string());
             }
             if self.sub_graph_index.contains_key(id) {
-                self.presentation
+                self.authored
                     .subgraph_classes
                     .entry(id.to_string())
                     .or_default()
@@ -224,14 +225,17 @@ impl Parser<'_> {
                         authored_shape: None,
                         class: None,
                     });
-                    let reference = self.declared_entities.contains(&style.target);
-                    self.push_symbol(
-                        &style.target,
-                        EditorSemanticKind::Object,
-                        id_span,
-                        reference,
-                    );
-                    self.presentation
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        let reference = self.declared_entities.contains(&style.target);
+                        self.push_symbol(
+                            &style.target,
+                            EditorSemanticKind::Object,
+                            id_span,
+                            reference,
+                        );
+                    }
+                    self.authored
                         .nodes
                         .get_mut(&style.target)
                         .unwrap()
@@ -248,22 +252,33 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for (id, span) in class.ids.into_iter().zip(class.id_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = class.ids.into_iter().zip(class.id_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = class.ids;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (id, source_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let id = entry;
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
-                    self.presentation
+                    self.authored
                         .class_defs
                         .entry(id.clone())
                         .or_default()
                         .extend(class.styles.iter().cloned());
-                    let span = SourceSpan::new(start + span.start, start + span.end);
-                    self.facts
-                        .push_symbol(EditorSemanticSymbol::class_definition(
+                    #[cfg(feature = "editor-facts")]
+                    if let Some(facts) = &mut self.facts {
+                        let span =
+                            SourceSpan::new(start + source_span.start, start + source_span.end);
+                        facts.push_symbol(EditorSemanticSymbol::class_definition(
                             id,
                             None,
                             EditorSemanticKind::Class,
                             span,
                             span,
                         ));
+                    }
                 }
             }
             Tok::ClassAssignStmt(class) => {
@@ -278,44 +293,64 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for (target, span) in class.targets.into_iter().zip(class.target_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = class.targets.into_iter().zip(class.target_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = class.targets;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (target, source_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let target = entry;
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     self.assign_class(&target, &class.class_name);
-                    let span = SourceSpan::new(start + span.start, start + span.end);
-                    self.push_symbol(&target, EditorSemanticKind::Object, span, true);
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        let span =
+                            SourceSpan::new(start + source_span.start, start + source_span.end);
+                        self.push_symbol(&target, EditorSemanticKind::Object, span, true);
+                    }
                 }
             }
             Tok::ClickStmt(click) => {
-                for (ids, group_span) in click.ids.iter().zip(&click.id_spans) {
+                #[cfg(feature = "editor-facts")]
+                let entries = click.ids.iter().zip(&click.id_spans);
+                #[cfg(not(feature = "editor-facts"))]
+                let entries = &click.ids;
+                for entry in entries {
+                    #[cfg(feature = "editor-facts")]
+                    let (ids, group_span) = entry;
+                    #[cfg(not(feature = "editor-facts"))]
+                    let ids = entry;
+                    #[cfg(feature = "editor-facts")]
                     let mut offset = 0;
                     for id in ids.split(',') {
-                        let span = SourceSpan::new(
-                            start + group_span.start + offset,
-                            start + group_span.start + offset + id.len(),
-                        );
-                        offset += id.len() + 1;
+                        #[cfg(feature = "editor-facts")]
+                        let span = {
+                            let span = SourceSpan::new(
+                                start + group_span.start + offset,
+                                start + group_span.start + offset + id.len(),
+                            );
+                            offset += id.len() + 1;
+                            span
+                        };
                         self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                         if let Some(tooltip) = &click.tooltip {
-                            self.presentation.tooltips.insert(
+                            self.authored.tooltips.insert(
                                 id.to_string(),
-                                crate::sanitize::sanitize_text(
-                                    tooltip,
-                                    &self.meta.effective_config,
-                                ),
+                                crate::sanitize::sanitize_text(tooltip, self.config),
                             );
                         }
                         self.assign_class(id, "clickable");
-                        if let Some(node) = self.presentation.nodes.get_mut(id) {
+                        if let Some(node) = self.authored.nodes.get_mut(id) {
                             match &click.action {
                                 ClickAction::Link { href, target } => {
-                                    node.link =
-                                        crate::utils::format_url(href, &self.meta.effective_config);
+                                    node.link = crate::utils::format_url(href, self.config);
                                     node.link_target = target.clone();
                                 }
                                 ClickAction::Callback => {
                                     if self
-                                        .meta
-                                        .effective_config
+                                        .config
                                         .as_value()
                                         .get("securityLevel")
                                         .and_then(Value::as_str)
@@ -326,6 +361,7 @@ impl Parser<'_> {
                                 }
                             }
                         }
+                        #[cfg(feature = "editor-facts")]
                         self.push_symbol(id, EditorSemanticKind::Object, span, true);
                     }
                 }
@@ -341,13 +377,12 @@ impl Parser<'_> {
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     match position {
                         LinkStylePos::Default => {
-                            let defaults =
-                                self.presentation.edge_defaults.get_or_insert_with(|| {
-                                    FlowEdgeDefaults {
-                                        interpolate: None,
-                                        style: Vec::new(),
-                                    }
-                                });
+                            let defaults = self.authored.edge_defaults.get_or_insert_with(|| {
+                                FlowEdgeDefaults {
+                                    interpolate: None,
+                                    style: Vec::new(),
+                                }
+                            });
                             if style.interpolate.is_some() {
                                 defaults.interpolate = style.interpolate.clone();
                             }
@@ -360,7 +395,7 @@ impl Parser<'_> {
                                 return Err(self.failure(format!("The index {index} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)", self.edges.len() as i128 - 1), SourceSpan::new(start, start + end)));
                             };
                             let id = edge.id.as_ref().expect("push_edge assigns an id");
-                            let edge = self.presentation.edges.entry(id.clone()).or_default();
+                            let edge = self.authored.edges.entry(id.clone()).or_default();
                             if style.interpolate.is_some() {
                                 edge.interpolate = style.interpolate.clone();
                             }

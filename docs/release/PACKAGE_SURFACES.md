@@ -14,8 +14,8 @@ The development baseline selects Mermaid `12.2.0`, retaining parser `2.0.1` and 
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-The development theme refactor changes Options JSON to schema `3`; prepared-source and layout-adaptation
-APIs further advance Web transport to API `8`. Those contracts and Mermaid `12.2.0` behavior are
+The development baseline uses Options JSON schema `3` and Web transport API `8`, including
+prepared sources and mounted diagrams. Those contracts and Mermaid `12.2.0` behavior are
 unreleased. Main's package metadata records the `0.9.2` version baseline, but only immutable
 `v0.9.2` identifies the published source and its artifacts.
 
@@ -67,13 +67,13 @@ library for Markdown recognition and HTML embedding, and the renderer owns SVG s
 isolation. The shared library does not depend on either product or select rendering features; it
 is published in the workspace dependency order before both consumers.
 
-In `0.8.0-alpha.7`, the macro defaults to `all-diagrams`, `svg`,
-`layout-cytoscape`, and `layout-elk`; mathematical labels require `math` or `complete-svg-elk`.
-The published alpha.6 macro includes math and excludes ELK by default. The `merman` facade
-uses `all-diagrams + complete-svg-elk` by default.
+The macro and current-source facade default to `all-diagrams`, `svg`,
+`layout-cytoscape`, and `layout-elk`; mathematical labels require explicit `math`.
+The current development branch retires the complete SVG aggregates; installed older products
+retain their original feature definitions.
 Both source defaults include the EPL-2.0 ELK implementation and its notice/source obligations.
-To omit ELK, disable default features and select the required diagram families plus `complete-svg`
-or narrower capability leaves; both packages retain those explicit options. Keep the macro dependency optional when ordinary builds should
+To omit ELK, disable default features and select the required diagram families plus `svg`
+and required layout leaves. Keep the macro dependency optional when ordinary builds should
 avoid its renderer closure; use generated fragments when documentation builds must avoid it too.
 [ADR-0088](../adr/0088-lean-rustdoc-default-features.md) records the earlier math opt-in decision;
 the alpha.7 Mermaid 12 alignment adds ELK to the product default.
@@ -162,16 +162,20 @@ package exports only `.` and contains exactly one owned WASM artifact at
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts, and math. |
+| `@mermanjs/web` | `web-full` | Browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | Public complete SVG-only renderer with Cytoscape, ELK, and math. |
+| `@mermanjs/web-render` | `web-render` | SVG-only renderer with Cytoscape and ELK layouts. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
 the artifact's typed missing-capability behavior; consumers should not infer support from package
 names or Cargo features.
+
+The generic browser packages omit math. Required math labels return the typed missing-capability
+error with id `math`; custom source builds can select the positive `math` feature explicitly.
+See the [Rust embedding and capability guide](../rendering/RUST_EMBEDDING.md).
 
 Release builds pack every public member into one verified artifact group. The manifest records the
 release version, source commit, target dist-tag, package/profile identity, tarball hash and npm
@@ -183,13 +187,13 @@ provide cross-package transactions, so the root package is deliberately publishe
 
 ## Compatibility And Migration Notes
 
-Current release semantics are intentionally explicit:
+Current source semantics are intentionally explicit:
 
 - Cargo features separately select positive diagram families and capabilities; the source of truth
   for an exact shipped artifact is the artifact profile catalog. The Rust facade defaults to
-  `all-diagrams + complete-svg-elk` (all families, SVG, Cytoscape, math, and ELK). Consumers disabling
+  `all-diagrams + svg + layout-cytoscape + layout-elk` (math is opt-in). Consumers disabling
   defaults must select `all-diagrams` or the required `diagram-*` selectors alongside output leaves
-  or an aggregate such as `complete-svg`. Products and release profiles select explicit families
+  and layout leaves. Products and release profiles select explicit families
   and capabilities when they need an artifact-specific closure.
 - Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
@@ -226,7 +230,7 @@ differ:
 | Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
 | Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
-| Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
+| Browser packages | package-specific | `web-full` and `web-render` omit math; dedicated packages own analysis, editor, and ASCII workflows. Custom source builds can opt into math. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
 Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU

@@ -9,9 +9,14 @@ use crate::{
     AnalysisRejection, AnalysisSyntaxFacts, DiagramParseDisposition, DocumentDiagram,
     FenceTextIndex, SourceDescriptor, SourceMap,
 };
+#[cfg(feature = "compat-json")]
 use merman_core::{
-    DiagramParseOutcome, DiagramSnapshotCapture, DiagramWarningFact, EditorSemanticFacts, Engine,
-    Error as CoreError, MermaidConfig, ParseMetadata, ParsedEditorFacts,
+    DiagramParseOutcome, DiagramSnapshotCapture,
+    presentation::{MermaidEngine, PresentationConfig, PresentationMetadata},
+};
+use merman_core::{
+    DiagramWarningFact, EditorSemanticFacts, Error as CoreError, MermaidConfig, ParsedEditorFacts,
+    SemanticMetadata, SemanticParseOutcome, SemanticParser, SemanticSnapshotCapture,
     preprocess::SourceConfigEvidence,
 };
 use std::fmt;
@@ -288,9 +293,73 @@ impl Hash for AnalysisEnvironmentIdentity {
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    engine: Engine,
+    backend: AnalysisBackend,
     options: AnalysisOptions,
     environment_identity: AnalysisEnvironmentIdentity,
+}
+
+#[derive(Debug, Clone)]
+enum AnalysisBackend {
+    Semantic(SemanticParser),
+    #[cfg(feature = "compat-json")]
+    Custom(Box<MermaidEngine>),
+}
+
+impl AnalysisBackend {
+    fn capture(
+        &self,
+        source: &str,
+        mode: CaptureMode,
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<DiagramAnalysisEvidence> {
+        match self {
+            Self::Semantic(parser) => match mode {
+                CaptureMode::DiagnosticsOnly => {
+                    parser.capture_diagram_recovery_snapshot_controlled_sync(source, control)
+                }
+                CaptureMode::RichFacts => {
+                    parser.capture_diagram_snapshot_controlled_sync(source, control)
+                }
+            }
+            .map(DiagramAnalysisEvidence::from_semantic_capture),
+            #[cfg(feature = "compat-json")]
+            Self::Custom(engine) => engine
+                .capture_diagram_snapshot_controlled_sync(source, control)
+                .map(DiagramAnalysisEvidence::from_mermaid_capture),
+        }
+    }
+
+    fn with_options(&self, options: &AnalysisOptions) -> Self {
+        match self {
+            Self::Semantic(_) => Self::Semantic(semantic_parser_from_options(options)),
+            #[cfg(feature = "compat-json")]
+            Self::Custom(engine) => Self::Custom(Box::new(apply_options_to_engine(
+                (**engine).clone(),
+                options,
+            ))),
+        }
+    }
+
+    fn begin_operation(
+        &self,
+    ) -> Result<merman_core::runtime::OperationContext, merman_core::runtime::RuntimePolicyError>
+    {
+        match self {
+            Self::Semantic(parser) => parser.begin_operation(),
+            #[cfg(feature = "compat-json")]
+            Self::Custom(engine) => engine.begin_operation(),
+        }
+    }
+
+    fn with_operation_context(self, context: merman_core::runtime::OperationContext) -> Self {
+        match self {
+            Self::Semantic(parser) => Self::Semantic(parser.with_operation_context(context)),
+            #[cfg(feature = "compat-json")]
+            Self::Custom(engine) => {
+                Self::Custom(Box::new((*engine).with_operation_context(context)))
+            }
+        }
+    }
 }
 
 impl Default for Analyzer {
@@ -305,23 +374,26 @@ impl Analyzer {
     }
 
     pub fn with_options(options: AnalysisOptions) -> Self {
-        let engine = engine_from_options(&options);
+        let backend = AnalysisBackend::Semantic(semantic_parser_from_options(&options));
         Self {
-            engine,
+            backend,
             options,
             environment_identity: AnalysisEnvironmentIdentity::new(),
         }
     }
 
-    /// Creates an analyzer with a customized engine while keeping `options` authoritative.
+    /// Creates an analyzer with a full Mermaid compatibility engine and custom registries.
     ///
     /// Registry customizations on `engine` are preserved. Runtime policy and site configuration
     /// are always taken from `options`, so snapshots cannot describe a different environment from
     /// the one used by the parser.
-    pub fn with_engine(engine: Engine, options: AnalysisOptions) -> Self {
+    /// This explicit adapter evaluates presentation, including visual themes. Default analyzers
+    /// always use the canonical semantic parser, even when this feature is enabled.
+    #[cfg(feature = "compat-json")]
+    pub fn with_mermaid_engine(engine: MermaidEngine, options: AnalysisOptions) -> Self {
         let engine = apply_options_to_engine(engine, &options);
         Self {
-            engine,
+            backend: AnalysisBackend::Custom(Box::new(engine)),
             options,
             environment_identity: AnalysisEnvironmentIdentity::new(),
         }
@@ -340,7 +412,7 @@ impl Analyzer {
         let mut options = self.options.clone();
         options.diagnostics = policy;
         Self {
-            engine: self.engine.clone(),
+            backend: self.backend.clone(),
             options,
             environment_identity: self.environment_identity.clone(),
         }
@@ -353,7 +425,7 @@ impl Analyzer {
             diagnostics: self.options.diagnostics.clone(),
         };
         Self {
-            engine: apply_options_to_engine(self.engine.clone(), &options),
+            backend: self.backend.with_options(&options),
             options,
             environment_identity: AnalysisEnvironmentIdentity::new(),
         }
@@ -366,7 +438,7 @@ impl Analyzer {
         let mut options = self.options.clone();
         options.snapshot.source = source;
         Self {
-            engine: self.engine.clone(),
+            backend: self.backend.clone(),
             options,
             environment_identity: AnalysisEnvironmentIdentity::new(),
         }
@@ -397,9 +469,9 @@ impl Analyzer {
     pub(crate) fn try_for_operation(
         &self,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
-        let context = self.engine.begin_operation()?;
+        let context = self.backend.begin_operation()?;
         Ok(Self {
-            engine: self.engine.clone().with_operation_context(context.clone()),
+            backend: self.backend.clone().with_operation_context(context.clone()),
             options: self.options.clone().with_operation_context(context),
             environment_identity: self.environment_identity.clone(),
         })
@@ -469,15 +541,12 @@ impl Analyzer {
         source: Arc<str>,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisPayload, AnalysisCancelled> {
-        match self.analyze_generation_shared_cancellable(source, cancellation)? {
-            AnalysisCaptureOutcome::Ready(generation) => {
-                generation.project_cancellable(self.options.diagnostic_policy(), cancellation)
-            }
-            AnalysisCaptureOutcome::Rejected(rejection) => {
-                cancellation.checkpoint()?;
-                Ok(rejection.into_payload())
-            }
-        }
+        crate::document::analyze_document_shared_cancellable(
+            source,
+            self,
+            self.options.source().clone(),
+            cancellation,
+        )
     }
 
     /// Generates and projects the facts contract cooperatively using one cancellation token.
@@ -509,10 +578,10 @@ impl Analyzer {
             source_map_for_diagram_cancellable(diagram, document_source_map, cancellation)?;
         let evidence = match control {
             CaptureCancellation::RecoverParserCancellation(_) => {
-                self.capture_evidence(diagram.text.as_str())
+                self.capture_evidence(diagram.text.as_str(), mode)
             }
             CaptureCancellation::Propagate(_) => {
-                self.capture_evidence_cancellable(diagram.text.as_str(), cancellation)?
+                self.capture_evidence_cancellable(diagram.text.as_str(), mode, cancellation)?
             }
         };
         cancellation.checkpoint()?;
@@ -535,9 +604,9 @@ impl Analyzer {
         Ok(captured)
     }
 
-    fn capture_evidence(&self, source: &str) -> DiagramAnalysisEvidence {
+    fn capture_evidence(&self, source: &str, mode: CaptureMode) -> DiagramAnalysisEvidence {
         let cancellation = AnalysisCancellationToken::new();
-        self.capture_evidence_cancellable(source, &cancellation)
+        self.capture_evidence_cancellable(source, mode, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
                 error: CoreError::from(merman_core::OperationCancelled {
                     phase: merman_core::OperationPhase::Analysis,
@@ -550,6 +619,7 @@ impl Analyzer {
     fn capture_evidence_cancellable(
         &self,
         source: &str,
+        mode: CaptureMode,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<DiagramAnalysisEvidence, AnalysisCancelled> {
         cancellation.checkpoint()?;
@@ -559,8 +629,8 @@ impl Analyzer {
             });
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.engine
-                .capture_diagram_snapshot_controlled_sync(source, cancellation.operation_control())
+            self.backend
+                .capture(source, mode, cancellation.operation_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {
@@ -569,57 +639,7 @@ impl Analyzer {
                 source_config: SourceConfigEvidence::default(),
             },
             Ok(Err(_)) => return Err(AnalysisCancelled),
-            Ok(Ok(parse_result)) => match parse_result {
-                DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
-                    let (meta, outcome, editor_facts, source_config) =
-                        snapshot.into_parts_with_source_config();
-                    let editor_facts = match editor_facts {
-                        ParsedEditorFacts::Available(facts) => Some(facts),
-                        ParsedEditorFacts::Unavailable => None,
-                    };
-                    match outcome {
-                        DiagramParseOutcome::Parsed { warning_facts, .. } => {
-                            DiagramAnalysisEvidence::Parsed {
-                                metadata: meta,
-                                warning_facts,
-                                editor_facts,
-                                source_config,
-                            }
-                        }
-                        DiagramParseOutcome::Failed(error) => {
-                            DiagramAnalysisEvidence::ParseFailed {
-                                metadata: meta,
-                                error,
-                                editor_facts,
-                                source_config,
-                            }
-                        }
-                        DiagramParseOutcome::Panicked(message) => DiagramAnalysisEvidence::Panic {
-                            message,
-                            metadata: Some(meta),
-                            source_config,
-                        },
-                    }
-                }
-                DiagramSnapshotCapture::Snapshot(None) => DiagramAnalysisEvidence::NoSnapshot {
-                    source_config: SourceConfigEvidence::default(),
-                },
-                DiagramSnapshotCapture::Failed {
-                    error,
-                    source_config,
-                } => DiagramAnalysisEvidence::OperationError {
-                    error,
-                    source_config,
-                },
-                DiagramSnapshotCapture::Panicked {
-                    panic,
-                    source_config,
-                } => DiagramAnalysisEvidence::Panic {
-                    message: panic.message().to_owned(),
-                    metadata: None,
-                    source_config,
-                },
-            },
+            Ok(Ok(evidence)) => evidence,
         };
         cancellation.checkpoint()?;
         Ok(evidence)
@@ -666,6 +686,7 @@ impl Analyzer {
                     cancellation,
                 )
             }
+            #[cfg(feature = "compat-json")]
             DiagramAnalysisEvidence::NoSnapshot { .. } => Self::finish_capture(
                 source_lints,
                 unavailable_syntax(None),
@@ -770,10 +791,7 @@ impl Analyzer {
         let syntax = match mode {
             CaptureMode::DiagnosticsOnly => None,
             CaptureMode::RichFacts => {
-                let effective_layout = metadata
-                    .effective_config
-                    .get_str("layout")
-                    .map(str::to_owned);
+                let effective_layout = metadata.effective_layout.clone();
                 Some(
                     AnalysisSyntaxFacts::new(
                         Some(diagram_type.to_string()),
@@ -825,7 +843,7 @@ impl Analyzer {
         let syntax = match mode {
             CaptureMode::DiagnosticsOnly => None,
             CaptureMode::RichFacts => {
-                let effective_layout = meta.effective_config.get_str("layout").map(str::to_owned);
+                let effective_layout = meta.effective_layout.clone();
                 Some(
                     AnalysisSyntaxFacts::new(
                         Some(diagram_type.to_string()),
@@ -927,15 +945,50 @@ fn source_is_blank_cancellable(
 }
 
 #[derive(Debug)]
+struct AnalysisMetadata {
+    diagram_type: String,
+    config: MermaidConfig,
+    effective_layout: Option<String>,
+}
+
+impl From<SemanticMetadata> for AnalysisMetadata {
+    fn from(metadata: SemanticMetadata) -> Self {
+        Self {
+            diagram_type: metadata.diagram_type,
+            config: metadata.config,
+            effective_layout: metadata
+                .semantic_config
+                .get_str("layout")
+                .map(str::to_owned),
+        }
+    }
+}
+
+#[cfg(feature = "compat-json")]
+impl From<PresentationMetadata> for AnalysisMetadata {
+    fn from(metadata: PresentationMetadata) -> Self {
+        Self {
+            diagram_type: metadata.diagram_type,
+            config: metadata.config,
+            effective_layout: metadata
+                .effective_config
+                .get_str("layout")
+                .map(str::to_owned),
+        }
+    }
+}
+
+#[derive(Debug)]
 enum DiagramAnalysisEvidence {
     EmptySource {
         source_config: SourceConfigEvidence,
     },
     Panic {
         message: String,
-        metadata: Option<ParseMetadata>,
+        metadata: Option<AnalysisMetadata>,
         source_config: SourceConfigEvidence,
     },
+    #[cfg(feature = "compat-json")]
     NoSnapshot {
         source_config: SourceConfigEvidence,
     },
@@ -944,13 +997,13 @@ enum DiagramAnalysisEvidence {
         source_config: SourceConfigEvidence,
     },
     Parsed {
-        metadata: ParseMetadata,
+        metadata: AnalysisMetadata,
         warning_facts: Vec<DiagramWarningFact>,
         editor_facts: Option<EditorSemanticFacts>,
         source_config: SourceConfigEvidence,
     },
     ParseFailed {
-        metadata: ParseMetadata,
+        metadata: AnalysisMetadata,
         error: CoreError,
         editor_facts: Option<EditorSemanticFacts>,
         source_config: SourceConfigEvidence,
@@ -958,14 +1011,109 @@ enum DiagramAnalysisEvidence {
 }
 
 impl DiagramAnalysisEvidence {
+    fn from_semantic_capture(capture: SemanticSnapshotCapture) -> Self {
+        match capture {
+            SemanticSnapshotCapture::Snapshot(snapshot) => {
+                let (metadata, outcome, editor_facts, source_config) =
+                    snapshot.into_parts_with_source_config();
+                let metadata = metadata.into();
+                let editor_facts = available_editor_facts(editor_facts);
+                match outcome {
+                    SemanticParseOutcome::Parsed(model) => Self::Parsed {
+                        metadata,
+                        warning_facts: model.into_warning_facts(),
+                        editor_facts,
+                        source_config,
+                    },
+                    SemanticParseOutcome::Failed(error) => Self::ParseFailed {
+                        metadata,
+                        error,
+                        editor_facts,
+                        source_config,
+                    },
+                    SemanticParseOutcome::Panicked(message) => Self::Panic {
+                        message,
+                        metadata: Some(metadata),
+                        source_config,
+                    },
+                }
+            }
+            SemanticSnapshotCapture::Failed {
+                error,
+                source_config,
+            } => Self::OperationError {
+                error,
+                source_config,
+            },
+            SemanticSnapshotCapture::Panicked {
+                panic,
+                source_config,
+            } => Self::Panic {
+                message: panic.message().to_owned(),
+                metadata: None,
+                source_config,
+            },
+        }
+    }
+
+    #[cfg(feature = "compat-json")]
+    fn from_mermaid_capture(capture: DiagramSnapshotCapture) -> Self {
+        match capture {
+            DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
+                let (metadata, outcome, editor_facts, source_config) =
+                    snapshot.into_parts_with_source_config();
+                let metadata = metadata.into();
+                let editor_facts = available_editor_facts(editor_facts);
+                match outcome {
+                    DiagramParseOutcome::Parsed { warning_facts, .. } => Self::Parsed {
+                        metadata,
+                        warning_facts,
+                        editor_facts,
+                        source_config,
+                    },
+                    DiagramParseOutcome::Failed(error) => Self::ParseFailed {
+                        metadata,
+                        error,
+                        editor_facts,
+                        source_config,
+                    },
+                    DiagramParseOutcome::Panicked(message) => Self::Panic {
+                        message,
+                        metadata: Some(metadata),
+                        source_config,
+                    },
+                }
+            }
+            DiagramSnapshotCapture::Snapshot(None) => Self::NoSnapshot {
+                source_config: SourceConfigEvidence::default(),
+            },
+            DiagramSnapshotCapture::Failed {
+                error,
+                source_config,
+            } => Self::OperationError {
+                error,
+                source_config,
+            },
+            DiagramSnapshotCapture::Panicked {
+                panic,
+                source_config,
+            } => Self::Panic {
+                message: panic.message().to_owned(),
+                metadata: None,
+                source_config,
+            },
+        }
+    }
+
     fn source_config(&self) -> &SourceConfigEvidence {
         match self {
             Self::EmptySource { source_config }
             | Self::Panic { source_config, .. }
-            | Self::NoSnapshot { source_config }
             | Self::OperationError { source_config, .. }
             | Self::Parsed { source_config, .. }
             | Self::ParseFailed { source_config, .. } => source_config,
+            #[cfg(feature = "compat-json")]
+            Self::NoSnapshot { source_config } => source_config,
         }
     }
 
@@ -987,12 +1135,20 @@ impl DiagramAnalysisEvidence {
                 ..
             } if source_config.rewrite_safe() => Some(&metadata.config),
             Self::EmptySource { .. }
-            | Self::NoSnapshot { .. }
             | Self::OperationError { .. }
             | Self::Panic { .. }
             | Self::Parsed { .. }
             | Self::ParseFailed { .. } => None,
+            #[cfg(feature = "compat-json")]
+            Self::NoSnapshot { .. } => None,
         }
+    }
+}
+
+fn available_editor_facts(facts: ParsedEditorFacts) -> Option<EditorSemanticFacts> {
+    match facts {
+        ParsedEditorFacts::Available(facts) => Some(facts),
+        ParsedEditorFacts::Unavailable => None,
     }
 }
 
@@ -1029,7 +1185,7 @@ impl<'a> CaptureCancellation<'a> {
 #[derive(Clone, Copy)]
 struct DiagramCaptureInput<'a> {
     source_map: &'a SourceMap,
-    metadata: &'a ParseMetadata,
+    metadata: &'a AnalysisMetadata,
     editor_facts: Option<&'a EditorSemanticFacts>,
 }
 
@@ -1046,13 +1202,23 @@ pub(crate) struct CapturedDiagram {
     pub(crate) parse_disposition: DiagramParseDisposition,
 }
 
-pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
-    apply_options_to_engine(Engine::new(), options)
+fn semantic_parser_from_options(options: &AnalysisOptions) -> SemanticParser {
+    let parser = SemanticParser::new().with_runtime_policy(options.runtime_policy().clone());
+    match options.site_config() {
+        Some(config) => parser.with_site_config(config.clone()),
+        None => parser,
+    }
 }
 
-fn apply_options_to_engine(engine: Engine, options: &AnalysisOptions) -> Engine {
+#[cfg(feature = "compat-json")]
+fn apply_options_to_engine(engine: MermaidEngine, options: &AnalysisOptions) -> MermaidEngine {
     engine
-        .with_exact_site_config(options.site_config().cloned())
+        .with_exact_site_config(
+            options
+                .site_config()
+                .cloned()
+                .map(PresentationConfig::from_config),
+        )
         .with_runtime_policy(options.runtime_policy().clone())
 }
 

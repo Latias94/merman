@@ -1,10 +1,17 @@
 use super::*;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
-    family::CombinedSemanticFailure,
+    EditorSemanticSymbol,
 };
+use crate::{
+    OperationControl, OperationControlResult, SourceSpan, family::CombinedSemanticFailure,
+};
+#[cfg(feature = "compat-json")]
 use serde_json::Map;
 #[cfg(test)]
 use std::cell::Cell;
@@ -106,11 +113,14 @@ fn parse_click_statement(
     }
 
     let mut tail_offset = rest_start + ids_len;
+    #[cfg(feature = "editor-facts")]
     let action_separator_present = tail_offset < trimmed.len();
     tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
     let mut href = None;
+    #[cfg(feature = "editor-facts")]
     let mut href_keyword = None;
     let mut call = None;
+    #[cfg(feature = "editor-facts")]
     let mut call_keyword = None;
 
     while tail_offset < trimmed.len() {
@@ -122,10 +132,13 @@ fn parse_click_statement(
                 ));
             }
             let href_keyword_end = tail_offset + "href".len();
-            href_keyword = Some(SourceSpan::new(
-                line_start + leading + tail_offset,
-                line_start + leading + href_keyword_end,
-            ));
+            #[cfg(feature = "editor-facts")]
+            {
+                href_keyword = Some(SourceSpan::new(
+                    line_start + leading + tail_offset,
+                    line_start + leading + href_keyword_end,
+                ));
+            }
             let after_href = &trimmed[href_keyword_end..];
             let href_ws = leading_whitespace_len(after_href);
             let quote_start = href_keyword_end + href_ws;
@@ -159,10 +172,13 @@ fn parse_click_statement(
                 ));
             }
             let call_keyword_end = tail_offset + "call".len();
-            call_keyword = Some(SourceSpan::new(
-                line_start + leading + tail_offset,
-                line_start + leading + call_keyword_end,
-            ));
+            #[cfg(feature = "editor-facts")]
+            {
+                call_keyword = Some(SourceSpan::new(
+                    line_start + leading + tail_offset,
+                    line_start + leading + call_keyword_end,
+                ));
+            }
             let after_call = &trimmed[call_keyword_end..];
             let call_ws = leading_whitespace_len(after_call);
             let name_start = call_keyword_end + call_ws;
@@ -188,6 +204,7 @@ fn parse_click_statement(
         {
             return Err(ClickStatementError::with_expected_action(
                 "invalid click statement: incomplete action",
+                #[cfg(feature = "editor-facts")]
                 SourceSpan::new(
                     line_start + leading + tail_offset,
                     line_start + leading + trimmed.len(),
@@ -211,12 +228,14 @@ fn parse_click_statement(
     }
 
     if href.is_none() && call.is_none() {
+        #[cfg(feature = "editor-facts")]
         let expected_action = action_separator_present.then(|| {
             let end = line_start + leading + trimmed.len();
             SourceSpan::new(end, end)
         });
         return Err(ClickStatementError {
             message: "invalid click statement: missing href or callback".to_string(),
+            #[cfg(feature = "editor-facts")]
             expected_action,
         });
     }
@@ -224,8 +243,10 @@ fn parse_click_statement(
     Ok(Some(ClickStatementParts {
         ids,
         href,
+        #[cfg(feature = "editor-facts")]
         href_keyword,
         call,
+        #[cfg(feature = "editor-facts")]
         call_keyword,
     }))
 }
@@ -233,6 +254,7 @@ fn parse_click_statement(
 #[derive(Debug)]
 struct ClickStatementError {
     message: String,
+    #[cfg(feature = "editor-facts")]
     expected_action: Option<SourceSpan>,
 }
 
@@ -240,13 +262,18 @@ impl ClickStatementError {
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            #[cfg(feature = "editor-facts")]
             expected_action: None,
         }
     }
 
-    fn with_expected_action(message: impl Into<String>, span: SourceSpan) -> Self {
+    fn with_expected_action(
+        message: impl Into<String>,
+        #[cfg(feature = "editor-facts")] span: SourceSpan,
+    ) -> Self {
         Self {
             message: message.into(),
+            #[cfg(feature = "editor-facts")]
             expected_action: Some(span),
         }
     }
@@ -341,8 +368,10 @@ fn is_callback_name_continue(ch: char) -> bool {
 struct ClickStatementParts<'a> {
     ids: SpannedText<'a>,
     href: Option<SpannedText<'a>>,
+    #[cfg(feature = "editor-facts")]
     href_keyword: Option<SourceSpan>,
     call: Option<ClickCallParts<'a>>,
+    #[cfg(feature = "editor-facts")]
     call_keyword: Option<SourceSpan>,
 }
 
@@ -394,7 +423,9 @@ struct GanttAccDescrBlock {
     statement_start: usize,
     statement_end: usize,
     body: String,
+    #[cfg(feature = "editor-facts")]
     first_content_start: Option<usize>,
+    #[cfg(feature = "editor-facts")]
     last_content_end: Option<usize>,
     complete: bool,
 }
@@ -419,7 +450,9 @@ impl GanttAccDescrBlock {
             statement_start: line_start + leading,
             statement_end: line_start + line.len(),
             body: String::new(),
+            #[cfg(feature = "editor-facts")]
             first_content_start: None,
+            #[cfg(feature = "editor-facts")]
             last_content_end: None,
             complete: false,
         };
@@ -438,20 +471,29 @@ impl GanttAccDescrBlock {
 
     fn accept_body_slice(&mut self, text: &str, start: usize) {
         let Some(close_offset) = text.find('}') else {
-            self.append_text(text, start);
+            self.append_text(
+                text,
+                #[cfg(feature = "editor-facts")]
+                start,
+            );
             self.body.push('\n');
             self.statement_end = start + text.len();
             return;
         };
 
-        self.append_text(&text[..close_offset], start);
+        self.append_text(
+            &text[..close_offset],
+            #[cfg(feature = "editor-facts")]
+            start,
+        );
         self.statement_end = start + close_offset + '}'.len_utf8();
         self.complete = true;
     }
 
-    fn append_text(&mut self, text: &str, start: usize) {
+    fn append_text(&mut self, text: &str, #[cfg(feature = "editor-facts")] start: usize) {
         self.body.push_str(text);
 
+        #[cfg(feature = "editor-facts")]
         if self.first_content_start.is_none() {
             let leading = leading_whitespace_len(text);
             if leading < text.len() {
@@ -459,7 +501,9 @@ impl GanttAccDescrBlock {
             }
         }
 
+        #[cfg(feature = "editor-facts")]
         let trimmed_len = text.trim_end().len();
+        #[cfg(feature = "editor-facts")]
         if trimmed_len > 0 {
             self.last_content_end = Some(start + trimmed_len);
         }
@@ -494,6 +538,7 @@ impl GanttAccDescrBlock {
         SourceSpan::new(self.statement_start, self.statement_end)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn emit_symbol(&self, facts: &mut EditorSemanticFacts) {
         let text = self.body.trim();
         if text.is_empty() {
@@ -521,6 +566,7 @@ impl GanttAccDescrBlock {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_gantt_click_symbols(
     line: &str,
     line_start: usize,
@@ -586,6 +632,7 @@ fn collect_gantt_click_symbols(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_gantt_section_symbol(
     line: &str,
     line_start: usize,
@@ -605,6 +652,7 @@ fn collect_gantt_section_symbol(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gantt_payload_symbol(
     line: &str,
     line_start: usize,
@@ -638,6 +686,7 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
     )
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_gantt_task_field_symbols(
     fields: &[SpannedText<'_>],
     statement_span: SourceSpan,
@@ -675,10 +724,12 @@ fn collect_gantt_task_field_symbols(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_gantt_task_tag(text: &str) -> bool {
     matches!(text, "active" | "done" | "crit" | "milestone" | "vert")
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gantt_relative_ref_symbols(
     field: &SpannedText<'_>,
     statement_span: SourceSpan,
@@ -704,6 +755,7 @@ fn push_gantt_relative_ref_symbols(
     }
 }
 
+#[cfg(feature = "editor-facts")]
 struct GanttDelimitedIdSymbols<'a> {
     text: &'a str,
     text_start: usize,
@@ -716,11 +768,13 @@ struct GanttDelimitedIdSymbols<'a> {
 }
 
 #[derive(Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum GanttIdRole {
     Definition,
     Reference,
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gantt_delimited_id_symbols(
     request: GanttDelimitedIdSymbols<'_>,
     facts: &mut EditorSemanticFacts,
@@ -770,6 +824,7 @@ fn push_gantt_delimited_id_symbols(
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gantt_id_symbol(
     field: SpannedText<'_>,
     detail: &str,
@@ -854,7 +909,61 @@ impl<'a> SpannedText<'a> {
     }
 }
 
-pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_gantt_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<GanttDiagramModel>> {
+    let construction = construct_gantt_semantic_source_controlled(
+        code,
+        &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        false,
+        control,
+    )?;
+    let source = match construction {
+        Ok(source) => source,
+        #[cfg(feature = "editor-facts")]
+        Err(failure) if editor_demand.needs_recovery() => {
+            let (error, editor_facts) = failure.into_parts();
+            return Ok(SemanticConstruction {
+                model: Err(error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: Some(editor_facts),
+            });
+        }
+        Err(failure) => {
+            return Ok(SemanticConstruction {
+                model: Err(failure.into_error()),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: None,
+            });
+        }
+    };
+    let GanttSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = source;
+    let model = match db {
+        Some(db) => gantt_db_to_model_controlled(db, raw_task_to_semantic_task, control)?,
+        None => Ok(GanttDiagramModel::default()),
+    };
+    Ok(SemanticConstruction {
+        model: model.map(|mut model| {
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            model
+        }),
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    })
+}
+
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_gantt(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
@@ -862,10 +971,10 @@ pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     super::render_model_to_compat_json(&model, meta)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_gantt_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<GanttDiagramRenderModel> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(GanttDiagramRenderModel::empty_compatibility_output());
@@ -873,12 +982,20 @@ pub(crate) fn parse_gantt_model_for_render(
     gantt_db_to_render_model(db)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_gantt_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
-    let construction = construct_gantt_semantic_source_controlled(code, meta, control)?;
+    let construction = construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(failure.into_error())),
@@ -889,12 +1006,19 @@ pub(crate) fn parse_gantt_model_for_render_controlled(
     }
 }
 
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = match construct_gantt_semantic_source_controlled(code, meta, control)? {
+    let construction = match construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        true,
+        control,
+    )? {
         Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
         Err(error) => Err(error),
     };
@@ -907,13 +1031,16 @@ pub(crate) fn parse_gantt_json_and_editor_facts(
 
 struct GanttSemanticSource {
     db: Option<GanttDb>,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self { db, editor_facts } = self;
@@ -925,50 +1052,87 @@ impl GanttSemanticSource {
             None => Ok(json!({})),
         };
         control.checkpoint()?;
-        Ok((model, editor_facts))
+        Ok((
+            model,
+            editor_facts.expect("Gantt combined parse requests editor facts"),
+        ))
     }
 }
 
-fn parse_gantt_semantic_source(code: &str, meta: &ParseMetadata) -> Result<GanttSemanticSource> {
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
+fn parse_gantt_semantic_source(
+    code: &str,
+    meta: &PresentationMetadata,
+) -> Result<GanttSemanticSource> {
     construct_gantt_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_gantt_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
-    construct_gantt_semantic_source_controlled(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    construct_gantt_semantic_source_controlled(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_gantt_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    config: &crate::MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] capture_display_mode: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_gantt_semantic_source_once(code, meta, control)
+    parse_gantt_semantic_source_once(
+        code,
+        config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        capture_display_mode,
+        control,
+    )
 }
 
 fn parse_gantt_semantic_source_once(
     code: &str,
-    meta: &ParseMetadata,
+    config: &crate::MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] capture_display_mode: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = GanttDb::default();
     db.clear();
-    db.set_security_level(meta.effective_config.get_str("securityLevel"));
-    if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
-        db.set_display_mode(dm);
+    db.set_security_level(config.get_str("securityLevel"));
+    #[cfg(feature = "presentation")]
+    {
+        if capture_display_mode && let Some(dm) = config.get_str("gantt.displayMode") {
+            db.set_display_mode(dm);
+        }
+    }
+    #[cfg(feature = "editor-facts")]
+    if editor_demand == EditorFactsDemand::Capture {
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
     }
 
     let mut cursor = LineCursor::new(code);
     let mut header_seen = false;
-    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts =
+        (editor_demand == EditorFactsDemand::Capture).then(EditorSemanticFacts::new);
     let mut first_error = None;
 
     while let Some((line, line_start)) = cursor.next_line() {
@@ -991,6 +1155,7 @@ fn parse_gantt_semantic_source_once(
                         line_start + trimmed_start + "gantt".len() + rest_offset,
                         &mut db,
                         &mut cursor,
+                        #[cfg(feature = "editor-facts")]
                         &mut editor_facts,
                         control,
                     )?
@@ -1010,6 +1175,7 @@ fn parse_gantt_semantic_source_once(
                 line_start,
                 &mut db,
                 &mut cursor,
+                #[cfg(feature = "editor-facts")]
                 &mut editor_facts,
                 control,
             )?
@@ -1024,6 +1190,7 @@ fn parse_gantt_semantic_source_once(
             line_start,
             &mut db,
             &mut cursor,
+            #[cfg(feature = "editor-facts")]
             &mut editor_facts,
             control,
         )?
@@ -1032,10 +1199,14 @@ fn parse_gantt_semantic_source_once(
         });
     }
 
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = editor_demand.finish_facts(editor_facts);
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
+            #[cfg(feature = "editor-facts")]
             "gantt",
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         )));
     }
@@ -1043,6 +1214,7 @@ fn parse_gantt_semantic_source_once(
     if !header_seen {
         return Ok(Ok(GanttSemanticSource {
             db: None,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         }));
     }
@@ -1050,29 +1222,34 @@ fn parse_gantt_semantic_source_once(
     control.checkpoint()?;
     if let Err(error) = db.finalize_tasks_controlled(control)? {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
+            #[cfg(feature = "editor-facts")]
             "gantt",
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
         )));
     }
     Ok(Ok(GanttSemanticSource {
         db: Some(db),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
@@ -1126,6 +1303,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
+#[cfg(feature = "compat-json")]
 fn strings_to_json_controlled(
     strings: &[String],
     control: &OperationControl,
@@ -1140,6 +1318,7 @@ fn strings_to_json_controlled(
     Ok(values)
 }
 
+#[cfg(feature = "compat-json")]
 fn serialize_gantt_tasks_controlled(
     tasks: &[GanttRenderTask],
     control: &OperationControl,
@@ -1160,6 +1339,7 @@ fn serialize_gantt_tasks_controlled(
     Ok(values)
 }
 
+#[cfg(feature = "compat-json")]
 fn string_map_to_json_controlled(
     values: &HashMap<String, String>,
     control: &OperationControl,
@@ -1174,6 +1354,7 @@ fn string_map_to_json_controlled(
     Ok(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn serialize_map_to_json_controlled<T: serde::Serialize>(
     values: &HashMap<String, T>,
     control: &OperationControl,
@@ -1188,16 +1369,36 @@ fn serialize_map_to_json_controlled<T: serde::Serialize>(
     Ok(out)
 }
 
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn gantt_db_to_render_model(db: GanttDb) -> Result<GanttDiagramRenderModel> {
     let control = OperationControl::new();
     gantt_db_to_render_model_controlled(db, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(super) fn gantt_db_to_render_model_controlled(
     mut db: GanttDb,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
+    let display_mode = std::mem::take(&mut db.display_mode);
+    Ok(
+        gantt_db_to_model_controlled(db, raw_task_to_render_task, control)?.map(|model| {
+            GanttDiagramRenderModel {
+                model,
+                display_mode,
+                #[cfg(feature = "compat-json")]
+                compatibility_output: CompatibilityOutputState::Model,
+            }
+        }),
+    )
+}
+
+fn gantt_db_to_model_controlled<Task>(
+    mut db: GanttDb,
+    convert_task: fn(RawTask, &str) -> Result<Task>,
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramModel<Task>>> {
     control.checkpoint()?;
     let raw_tasks = db.take_tasks();
     let mut tasks = Vec::with_capacity(raw_tasks.len());
@@ -1205,14 +1406,14 @@ pub(super) fn gantt_db_to_render_model_controlled(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match raw_task_to_render_task(task, &db.date_format) {
+        match convert_task(task, &db.date_format) {
             Ok(task) => tasks.push(task),
             Err(error) => return Ok(Err(error)),
         }
     }
 
     control.checkpoint()?;
-    Ok(Ok(GanttDiagramRenderModel {
+    Ok(Ok(GanttDiagramModel {
         title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
         acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
         acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
@@ -1223,7 +1424,6 @@ pub(super) fn gantt_db_to_render_model_controlled(
         includes: std::mem::take(&mut db.includes),
         excludes: std::mem::take(&mut db.excludes),
         inclusive_end_dates: db.inclusive_end_dates,
-        display_mode: std::mem::take(&mut db.display_mode),
         top_axis: db.top_axis,
         weekday: std::mem::take(&mut db.weekday),
         weekend: std::mem::take(&mut db.weekend),
@@ -1231,7 +1431,6 @@ pub(super) fn gantt_db_to_render_model_controlled(
         tasks,
         links: std::mem::take(&mut db.links),
         click_events: std::mem::take(&mut db.click_events),
-        compatibility_output: CompatibilityOutputState::Model,
     }))
 }
 
@@ -1239,12 +1438,21 @@ fn non_empty_opt(value: String) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
+#[cfg(feature = "presentation")]
 fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderTask> {
+    let semantic = raw_task_to_semantic_task(t, date_format)?;
+    Ok(GanttRenderTask {
+        render_end_ms: semantic.render_end_ms,
+        semantic,
+    })
+}
+
+fn raw_task_to_semantic_task(t: RawTask, date_format: &str) -> Result<GanttTask> {
     let start_ms = task_time_ms(&t, "startTime", t.start_time)?;
     let end_ms = task_time_ms(&t, "endTime", t.end_time)?;
     let (raw_start, start_constraint) = match t.raw.start_time {
         StartTimeRaw::PrevTaskEnd => (
-            GanttRenderTaskStart::PrevTaskEnd {
+            GanttTaskStart::PrevTaskEnd {
                 id: t.prev_task_id.clone(),
             },
             GanttTaskStartConstraint::PreviousTaskEnd {
@@ -1258,15 +1466,12 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
                     value: start_data.clone(),
                 },
             };
-            (
-                GanttRenderTaskStart::GetStartDate { start_data },
-                constraint,
-            )
+            (GanttTaskStart::GetStartDate { start_data }, constraint)
         }
     };
     let end_constraint = gantt_end_constraint(&t.raw.end_data, date_format);
 
-    Ok(GanttRenderTask {
+    Ok(GanttTask {
         id: t.id,
         task: t.task,
         section: t.section,
@@ -1284,16 +1489,16 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
         end_constraint,
         processed: t.processed,
         manual_end_time: t.manual_end_time,
-        raw: GanttRenderTaskRaw {
+        raw: GanttTaskRaw {
             data: t.raw.data,
             start_time: raw_start,
-            end_time: GanttRenderTaskEnd {
+            end_time: GanttTaskEnd {
                 data: t.raw.end_data,
             },
         },
         start_ms,
         end_ms,
-        render_end_ms: t.render_end_time.map(|d| d.timestamp_millis()),
+        render_end_ms: t.render_end_time.map(|date| date.timestamp_millis()),
     })
 }
 
@@ -1338,7 +1543,7 @@ fn parse_gantt_statement(
     line_start: usize,
     db: &mut GanttDb,
     cursor: &mut LineCursor<'_>,
-    facts: &mut EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")] facts: &mut Option<EditorSemanticFacts>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<()>> {
     control.checkpoint()?;
@@ -1349,103 +1554,151 @@ fn parse_gantt_statement(
     }
 
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true) {
-        facts.push_directive_prefix("dateFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt date format",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("dateFormat");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt date format",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_date_format(v.text);
         return Ok(Ok(()));
     }
     if starts_with_case_insensitive(t, "inclusiveEndDates") {
-        facts.push_directive_prefix("inclusiveEndDates");
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("inclusiveEndDates");
+        }
         db.enable_inclusive_end_dates();
         return Ok(Ok(()));
     }
     if starts_with_case_insensitive(t, "topAxis") {
-        facts.push_directive_prefix("topAxis");
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("topAxis");
+        }
         db.enable_top_axis();
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
-        facts.push_directive_prefix("axisFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt axis format",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("axisFormat");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt axis format",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_axis_format(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
-        facts.push_directive_prefix("tickInterval");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt tick interval",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("tickInterval");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt tick interval",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_tick_interval(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
-        facts.push_directive_prefix("includes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt includes",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("includes");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt includes",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_includes(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
-        facts.push_directive_prefix("excludes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt excludes",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("excludes");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt excludes",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_excludes(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
-        facts.push_directive_prefix("todayMarker");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt today marker",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("todayMarker");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt today marker",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_today_marker(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
-        facts.push_directive_prefix("weekday");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt weekday",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("weekday");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt weekday",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1467,15 +1720,21 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
-        facts.push_directive_prefix("weekend");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt weekend",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("weekend");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt weekend",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1494,56 +1753,86 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
-        facts.push_directive_prefix("title");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt title",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("title");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt title",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_diagram_title(v.text);
         return Ok(Ok(()));
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
-        facts.push_directive_prefix("section");
-        collect_gantt_section_symbol(stripped, line_start, v, facts);
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("section");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            collect_gantt_section_symbol(stripped, line_start, v, facts);
+        }
         db.add_section(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accTitle") {
-        facts.push_directive_prefix("accTitle");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt accessibility title",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("accTitle");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt accessibility title",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_acc_title(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accDescr") {
-        facts.push_directive_prefix("accDescr");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            v,
-            "gantt accessibility description",
-            EditorSemanticKind::String,
-            facts,
-        );
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("accDescr");
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            push_gantt_payload_symbol(
+                stripped,
+                line_start,
+                v,
+                "gantt accessibility description",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
         db.set_acc_descr(v.text.trim());
         return Ok(Ok(()));
     }
     if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
-        facts.push_directive_prefix("accDescr");
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            facts.push_directive_prefix("accDescr");
+        }
         let block = block.consume_remaining(cursor, control)?;
         block.resume_after_closing_brace(cursor);
         db.set_acc_descr(block.value());
-        block.emit_symbol(facts);
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = facts.as_mut() {
+            block.emit_symbol(facts);
+        }
         if !block.is_complete() {
             return Ok(Err(Error::diagram_parse_insertion_point(
                 "gantt".to_string(),
@@ -1555,8 +1844,14 @@ fn parse_gantt_statement(
     }
     match parse_click_statement(stripped, line_start) {
         Ok(Some(click)) => {
-            facts.push_directive_prefix("click");
-            collect_gantt_click_symbols(stripped, line_start, click, facts);
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = facts.as_mut() {
+                facts.push_directive_prefix("click");
+            }
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = facts.as_mut() {
+                collect_gantt_click_symbols(stripped, line_start, click, facts);
+            }
             if let Some(call) = click.call {
                 db.set_click_event(
                     click.ids.text,
@@ -1571,10 +1866,17 @@ fn parse_gantt_statement(
         }
         Ok(None) => {}
         Err(error) => {
-            facts.push_directive_prefix("click");
-            if let Some(expected_action) = error.expected_action {
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = facts.as_mut() {
+                facts.push_directive_prefix("click");
+            }
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = facts.as_mut()
+                && let Some(expected_action) = error.expected_action
+            {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::InteractionAction,
+                    #[cfg(feature = "editor-facts")]
                     expected_action,
                 ));
             }
@@ -1604,15 +1906,19 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
     let leading = stripped.len().saturating_sub(task_stmt.len());
+    #[cfg(feature = "editor-facts")]
     let statement_span =
         SourceSpan::new(line_start + leading, line_start + leading + task_stmt.len());
     let fields = split_gantt_fields(task_data, line_start + leading + colon + 1);
-    let editor_fields = fields
-        .iter()
-        .copied()
-        .filter_map(SpannedText::trim)
-        .collect::<Vec<_>>();
-    collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
+    #[cfg(feature = "editor-facts")]
+    if let Some(facts) = facts.as_mut() {
+        let editor_fields = fields
+            .iter()
+            .copied()
+            .filter_map(SpannedText::trim)
+            .collect::<Vec<_>>();
+        collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
+    }
     let field_text = fields.iter().map(|field| field.text).collect::<Vec<_>>();
     let task_info = db.parse_task_info(&field_text);
     db.add_task(task_txt, &format!(":{task_data}"), task_info);

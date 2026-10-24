@@ -31,7 +31,7 @@ fn facade_lifecycle_child() {
             let started = Instant::now();
             println!(
                 "case=facade-semantic-smoke depth=2 source_bytes={} \
-                 path=Renderer.prepare_semantic profile=default-input-policy-strict \
+                 path=Renderer.prepare_presentation profile=default-input-policy-strict \
                  worker_stack_bytes={WORKER_STACK_BYTES} build_mode={}",
                 SOURCE.len(),
                 if cfg!(debug_assertions) {
@@ -44,7 +44,7 @@ fn facade_lifecycle_child() {
             let renderer = Renderer::new().with_parse_options(ParseOptions::strict());
             marker(started, "parse", "begin");
             let artifact = renderer
-                .prepare_semantic(SOURCE, OperationControl::new())
+                .prepare_presentation(SOURCE, OperationControl::new())
                 .expect("maintained facade prepares semantics")
                 .expect("nested flowchart is detected");
             marker(started, "parse", "done");
@@ -68,7 +68,7 @@ fn facade_lifecycle_child() {
             marker(started, "drop", "done");
             marker(started, "after-small-operation", "begin");
             let small = renderer
-                .prepare_semantic("flowchart TD\na --> b\n", OperationControl::new())
+                .prepare_presentation("flowchart TD\na --> b\n", OperationControl::new())
                 .expect("facade remains usable")
                 .expect("small flowchart is detected");
             drop(small);
@@ -209,7 +209,7 @@ fn integrated_facade_lifecycle_child() {
                 let source = nested_source(family, 3_000, false);
                 println!("source_bytes={} depth=3000", source.len());
                 marker(started, "model", "begin");
-                let direct = merman::Engine::new()
+                let direct = merman::MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -221,7 +221,7 @@ fn integrated_facade_lifecycle_child() {
                 let control = OperationControl::new();
                 let renderer = Renderer::new().with_parse_options(ParseOptions::lenient());
                 let error = renderer
-                    .prepare_semantic(&source, control.clone())
+                    .prepare_presentation(&source, control.clone())
                     .unwrap_err();
                 let merman::RenderError::ResourceLimitExceeded(limit) = &error else {
                     panic!("expected resource terminal with suppression: {error:?}");
@@ -233,7 +233,7 @@ fn integrated_facade_lifecycle_child() {
                 assert!(limit.provenance.is_some());
                 control.cancel();
                 let replayed = renderer
-                    .prepare_semantic("flowchart TD\na-->b", control)
+                    .prepare_presentation("flowchart TD\na-->b", control)
                     .unwrap_err();
                 let merman::RenderError::ResourceLimitExceeded(replayed) = replayed else {
                     panic!("the earlier resource terminal must remain sticky");
@@ -286,7 +286,7 @@ fn integrated_facade_lifecycle_child() {
             } else if case == "repeated-id-targets" {
                 let source = nested_source("flowchart", 3_000, true);
                 let renderer = Renderer::new().with_parse_options(ParseOptions::strict());
-                let direct = merman::Engine::new()
+                let direct = merman::MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
@@ -298,7 +298,7 @@ fn integrated_facade_lifecycle_child() {
                 );
                 drop(direct);
                 let artifact = renderer
-                    .prepare_semantic(&source, OperationControl::new())
+                    .prepare_presentation(&source, OperationControl::new())
                     .unwrap()
                     .unwrap();
                 let json = artifact.compatibility_json().unwrap();
@@ -341,7 +341,7 @@ fn integrated_facade_lifecycle_child() {
                 ] {
                     let artifact = Renderer::new()
                         .with_parse_options(ParseOptions::strict())
-                        .prepare_semantic(source, OperationControl::new())
+                        .prepare_presentation(source, OperationControl::new())
                         .unwrap()
                         .unwrap();
                     let json = artifact.compatibility_json().unwrap();
@@ -355,7 +355,7 @@ fn integrated_facade_lifecycle_child() {
                 panic!("unknown integrated facade case");
             }
             let small = Renderer::new()
-                .prepare_semantic("flowchart TD\na-->b\n", OperationControl::new())
+                .prepare_presentation("flowchart TD\na-->b\n", OperationControl::new())
                 .unwrap()
                 .unwrap();
             drop(small);

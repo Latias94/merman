@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -80,7 +80,7 @@ fn try_render_zenuml_with_theme(
     theme: &DiagramTheme,
     require_portable: bool,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed ZenUML")
         .expect("detect themed ZenUML");
@@ -108,7 +108,7 @@ fn try_render_zenuml_with_resource_policy(
     diagram_id: &str,
     resource_policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ZenUML resource-bound fixture")
         .expect("detect ZenUML resource-bound fixture");
@@ -365,8 +365,10 @@ Bob-->Alice: Reply
 "#;
 
 fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> String {
-    let parsed = Engine::new()
-        .with_site_config(merman_core::MermaidConfig::from_value(config))
+    let parsed = MermaidEngine::new()
+        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+            config,
+        ))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -476,10 +478,12 @@ fn zenuml_configured_css_removes_forbidden_scalars_at_the_xml_boundary() {
 #[test]
 fn zenuml_configured_css_obeys_the_actual_svg_byte_ceiling() {
     let render = |policy| {
-        let parsed = Engine::new()
-            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
-                "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
-            })))
+        let parsed = MermaidEngine::new()
+            .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
+                }),
+            ))
             .parse_diagram_for_render_model_sync("zenuml\nA->B: request\n", ParseOptions::strict())
             .unwrap()
             .unwrap();

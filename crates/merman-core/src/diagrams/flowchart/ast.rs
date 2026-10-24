@@ -1,7 +1,15 @@
+#[cfg(any(
+    test,
+    feature = "editor-facts",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
 use super::LexError;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use super::{Edge, Node, SubgraphHeader};
-use crate::{EditorExpectedSyntax, SourceSpan};
+#[cfg(feature = "editor-facts")]
+use crate::EditorExpectedSyntax;
+use crate::SourceSpan;
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(
@@ -11,10 +19,12 @@ use crate::{EditorExpectedSyntax, SourceSpan};
         reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
     )
 )]
+#[cfg(feature = "editor-facts")]
 pub(crate) struct FlowchartDirectiveEditorEvidence {
     expected_syntax: [Option<EditorExpectedSyntax>; 3],
 }
 
+#[cfg(feature = "editor-facts")]
 impl FlowchartDirectiveEditorEvidence {
     pub(crate) fn new(
         directive: EditorExpectedSyntax,
@@ -33,11 +43,13 @@ impl FlowchartDirectiveEditorEvidence {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg(feature = "editor-facts")]
 pub(crate) struct FlowchartClickEditorEvidence {
     action: Option<EditorExpectedSyntax>,
     payload: Option<EditorExpectedSyntax>,
 }
 
+#[cfg(feature = "editor-facts")]
 impl FlowchartClickEditorEvidence {
     pub(crate) fn new(action: Option<SourceSpan>, payload: Option<SourceSpan>) -> Self {
         Self {
@@ -60,27 +72,37 @@ pub(crate) struct StyleStmt {
     pub target: String,
     pub target_span: Option<SourceSpan>,
     pub styles: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     pub styles_text: Option<String>,
+    #[cfg(feature = "editor-facts")]
     pub styles_span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")]
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClassDefStmt {
     pub ids: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     pub id_spans: Vec<SourceSpan>,
     pub styles: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     pub styles_text: Option<String>,
+    #[cfg(feature = "editor-facts")]
     pub styles_span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")]
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClassAssignStmt {
     pub targets: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     pub target_spans: Vec<SourceSpan>,
     pub class_name: String,
+    #[cfg(feature = "editor-facts")]
     pub class_name_span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")]
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
 }
 
@@ -103,11 +125,15 @@ pub(crate) enum ClickAction {
 )]
 pub(crate) struct ClickStmt {
     pub ids: Vec<String>,
+    #[cfg(feature = "editor-facts")]
     pub id_spans: Vec<SourceSpan>,
     pub tooltip: Option<String>,
     pub action: ClickAction,
+    #[cfg(feature = "editor-facts")]
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
+    #[cfg(feature = "editor-facts")]
     pub interaction_evidence: FlowchartClickEditorEvidence,
+    #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }
 
@@ -298,13 +324,13 @@ impl<'a> Iterator for StatementWalk<'a> {
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, OperationControl, ParseMetadata};
+    use crate::{MermaidConfig, OperationControl, SemanticMetadata};
 
-    fn metadata() -> ParseMetadata {
-        ParseMetadata {
+    fn metadata() -> SemanticMetadata {
+        SemanticMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
             title: None,
         }
     }

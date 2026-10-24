@@ -99,6 +99,17 @@ runs emit the required `pr-gate` status name;
 push, schedule, and manual lifecycles use event-specific gate names so their results cannot satisfy
 the pull-request check by identity collision.
 
+For an explicit full-branch verification, dispatch `CI` with `all_owners=true`:
+
+```text
+gh workflow run ci.yml --ref <branch> -f all_owners=true
+```
+
+This selects every existing owner, including platform bindings, Android instrumentation and Apple
+consumers, without requiring a mergeable PR or changing the branch's source baseline. The default
+manual and weekly runs retain the core/SVG safety net. Performance contracts in this run do not
+replace a separately registered timing confirmation.
+
 The planner records SVG parity as a selector inside the same owner plan rather than as a second
 owner. Pull requests select it for the SVG renderer and its shared parser/layout crates, the SVG
 comparator and root-viewport oracle, active renderer fixtures, and pinned upstream authorities.

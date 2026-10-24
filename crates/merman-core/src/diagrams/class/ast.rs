@@ -130,6 +130,7 @@ impl ActionArena {
                     error: super::LexError {
                         message: error.to_string(),
                         span: crate::SourceSpan::new(0, 0),
+                        #[cfg(feature = "editor-facts")]
                         expected_syntax: None,
                     },
                 })?;
