@@ -899,6 +899,13 @@ impl FontLoader {
             self.database.faces().count().saturating_add(faces),
             self.limits.max_faces,
         )?;
+        // fontdb admits metadata-only faces; shaping also requires valid metrics tables.
+        for index in 0..faces {
+            self.checkpoint()?;
+            rustybuzz::ttf_parser::Face::parse(&bytes, index as u32).map_err(|error| {
+                source_error(path, format!("invalid OpenType face {index}: {error:?}"))
+            })?;
+        }
         let mut candidate = usvg::fontdb::Database::new();
         let bytes = Arc::new(bytes);
         candidate.load_font_source(usvg::fontdb::Source::Binary(bytes.clone()));

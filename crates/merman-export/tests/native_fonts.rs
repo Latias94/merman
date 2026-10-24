@@ -254,7 +254,14 @@ fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
         NativeFontContext::from_font_bytes([], Default::default(), &control),
         Err(NativeFontError::EmptyFontSet)
     ));
-    for bytes in [Vec::new(), b"not an OpenType font".to_vec()] {
+    let mut missing_metrics = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
+    let table_count = u16::from_be_bytes([missing_metrics[4], missing_metrics[5]]) as usize;
+    let metrics_entry = missing_metrics[12..12 + table_count * 16]
+        .chunks_exact_mut(16)
+        .find(|entry| &entry[..4] == b"hhea")
+        .expect("fixture has horizontal metrics");
+    metrics_entry[..4].copy_from_slice(b"bad!");
+    for bytes in [Vec::new(), b"not an OpenType font".to_vec(), missing_metrics] {
         let temporary = TestDirectory::new();
         let path = temporary.0.join("malformed.ttf");
         std::fs::write(&path, &bytes).unwrap();
