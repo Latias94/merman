@@ -641,6 +641,13 @@
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   },
+  "overrides": {
+    "@vscode/vsce": {
+      "@azure/identity": {
+        "@azure/msal-node": "7.1.1"
+      }
+    }
+  },
   "allowScripts": {
     "@vscode/vsce-sign@2.1.0": true,
     "esbuild@0.28.2": true
